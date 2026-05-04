@@ -31,10 +31,20 @@ export function AudioWaveformSelector({
   const [totalDuration, setTotalDuration] = useState(0);
   const [isDecoding, setIsDecoding] = useState(true);
 
+  // Drag state stored in refs so event handlers always see current values
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
   const dragStartTime = useRef(0);
+  const totalDurationRef = useRef(0);
+  const clipDurationSecRef = useRef(clipDurationSec);
+  const clipStartTimeRef = useRef(clipStartTime);
 
+  // Keep refs in sync with props/state
+  useEffect(() => { totalDurationRef.current = totalDuration; }, [totalDuration]);
+  useEffect(() => { clipDurationSecRef.current = clipDurationSec; }, [clipDurationSec]);
+  useEffect(() => { clipStartTimeRef.current = clipStartTime; }, [clipStartTime]);
+
+  // ── Audio decode ─────────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
     setIsDecoding(true);
@@ -45,9 +55,7 @@ export function AudioWaveformSelector({
       try {
         const arrayBuffer = await file.arrayBuffer();
         const ctx = new AudioContext();
-        if (ctx.state === "suspended") {
-          await ctx.resume();
-        }
+        if (ctx.state === "suspended") await ctx.resume();
         const audioBuffer = await new Promise<AudioBuffer>((resolve, reject) => {
           ctx.decodeAudioData(arrayBuffer.slice(0), resolve, reject);
         });
@@ -84,6 +92,7 @@ export function AudioWaveformSelector({
     return () => { cancelled = true; };
   }, [file]);
 
+  // ── Canvas draw ───────────────────────────────────────────────────────────
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas || !waveformData || totalDuration === 0) return;
@@ -141,64 +150,52 @@ export function AudioWaveformSelector({
 
   useEffect(() => { draw(); }, [draw]);
 
-  const clamp = useCallback((start: number) => {
-    return Math.max(0, Math.min(start, Math.max(0, totalDuration - clipDurationSec)));
-  }, [totalDuration, clipDurationSec]);
-
-  const timeFromX = useCallback((clientX: number): number => {
-    const canvas = canvasRef.current;
-    if (!canvas || totalDuration === 0) return 0;
-    const rect = canvas.getBoundingClientRect();
-    const ratio = (clientX - rect.left) / rect.width;
-    return ratio * totalDuration;
-  }, [totalDuration]);
-
-  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (totalDuration === 0) return;
-    isDragging.current = true;
-    dragStartX.current = e.clientX;
-    dragStartTime.current = clipStartTime;
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  const clampStart = (start: number) => {
+    const dur = totalDurationRef.current;
+    const clipDur = clipDurationSecRef.current;
+    return Math.max(0, Math.min(start, Math.max(0, dur - clipDur)));
   };
 
-  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDragging.current || totalDuration === 0) return;
+  const xToTime = (clientX: number): number => {
+    const canvas = canvasRef.current;
+    if (!canvas || totalDurationRef.current === 0) return 0;
+    const rect = canvas.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    return ratio * totalDurationRef.current;
+  };
+
+  // ── Pointer events (capture keeps tracking even outside the element) ──────
+  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (totalDurationRef.current === 0) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    isDragging.current = true;
+    dragStartX.current = e.clientX;
+    dragStartTime.current = clipStartTimeRef.current;
+  }, []);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!isDragging.current || totalDurationRef.current === 0) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
     const dx = e.clientX - dragStartX.current;
-    const timeDelta = (dx / rect.width) * totalDuration;
-    onClipStartTimeChange(clamp(dragStartTime.current + timeDelta));
-  }, [totalDuration, clamp, onClipStartTimeChange]);
+    const timeDelta = (dx / rect.width) * totalDurationRef.current;
+    onClipStartTimeChange(clampStart(dragStartTime.current + timeDelta));
+  }, [onClipStartTimeChange]);
 
-  const handleMouseUp = () => { isDragging.current = false; };
+  const handlePointerUp = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!isDragging.current) return;
+    const wasDrag = Math.abs(e.clientX - dragStartX.current) > 4;
+    isDragging.current = false;
+    e.currentTarget.releasePointerCapture(e.pointerId);
 
-  const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (Math.abs(e.clientX - dragStartX.current) > 4) return;
-    const t = timeFromX(e.clientX);
-    onClipStartTimeChange(clamp(t - clipDurationSec / 2));
-  }, [timeFromX, clamp, clipDurationSec, onClipStartTimeChange]);
-
-  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
-    const touch = e.touches[0];
-    if (!touch) return;
-    isDragging.current = true;
-    dragStartX.current = touch.clientX;
-    dragStartTime.current = clipStartTime;
-  };
-
-  const handleTouchMove = useCallback((e: React.TouchEvent<HTMLCanvasElement>) => {
-    const touch = e.touches[0];
-    if (!touch || !isDragging.current || totalDuration === 0) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const dx = touch.clientX - dragStartX.current;
-    const timeDelta = (dx / rect.width) * totalDuration;
-    onClipStartTimeChange(clamp(dragStartTime.current + timeDelta));
-    e.preventDefault();
-  }, [totalDuration, clamp, onClipStartTimeChange]);
-
-  const handleTouchEnd = () => { isDragging.current = false; };
+    if (!wasDrag) {
+      // Treat as a click: center selection under cursor
+      const t = xToTime(e.clientX);
+      onClipStartTimeChange(clampStart(t - clipDurationSecRef.current / 2));
+    }
+  }, [onClipStartTimeChange]);
 
   const endTime = Math.min(clipStartTime + clipDurationSec, totalDuration);
 
@@ -214,15 +211,11 @@ export function AudioWaveformSelector({
             ref={canvasRef}
             width={1200}
             height={80}
-            className="w-full h-20 rounded-xl border border-border/40 bg-background/60 cursor-grab active:cursor-grabbing"
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-            onClick={handleClick}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
+            className="w-full h-20 rounded-xl border border-border/40 bg-background/60 cursor-grab active:cursor-grabbing touch-none"
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
           />
           <div className="flex items-center justify-between mt-1.5 px-0.5">
             <span className="text-[10px] text-muted-foreground/60 font-mono">0:00</span>
