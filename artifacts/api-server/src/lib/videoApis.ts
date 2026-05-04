@@ -4,6 +4,8 @@ export interface ClipRequest {
   prompt: string;
   durationSeconds: number;
   aspectRatio?: string;
+  removeWatermark?: boolean;
+  imageDataUrl?: string;
 }
 
 export interface ClipResult {
@@ -32,10 +34,18 @@ function delay(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-// A minimal 1×1 dark PNG used as a neutral starting frame for Runway image-to-video.
+// Fallback 1×1 dark PNG used when no reference image is provided.
 // Runway Gen-3 requires promptImage; the text prompt drives the visual content.
 const RUNWAY_SEED_IMAGE =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+const RUNWAY_RATIOS: Record<string, string> = {
+  "16:9": "1280:768",
+  "9:16": "768:1280",
+  "4:3": "1104:832",
+  "1:1": "960:960",
+  "21:9": "1584:672",
+};
 
 async function generateWithRunway(req: ClipRequest): Promise<string> {
   const apiKey = process.env.RUNWAY_API_KEY!;
@@ -50,10 +60,11 @@ async function generateWithRunway(req: ClipRequest): Promise<string> {
     },
     body: JSON.stringify({
       model: "gen3a_turbo",
-      promptImage: RUNWAY_SEED_IMAGE,
+      promptImage: req.imageDataUrl ?? RUNWAY_SEED_IMAGE,
       promptText: req.prompt.slice(0, 1000),
       duration,
-      ratio: req.aspectRatio === "9:16" ? "720:1280" : "1280:768",
+      ratio: RUNWAY_RATIOS[req.aspectRatio ?? "16:9"] ?? "1280:768",
+      watermark: req.removeWatermark === true ? false : undefined,
     }),
     signal: AbortSignal.timeout(30_000),
   });

@@ -58,6 +58,7 @@ export const jobsTable = pgTable("jobs", {
   resolution: text("resolution"),
   character: text("character"),
   removeWatermark: boolean("remove_watermark").notNull().default(false),
+  referenceImagePath: text("reference_image_path"),
   retryCount: integer("retry_count").notNull().default(0),
   claimedAt: timestamp("claimed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })

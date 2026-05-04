@@ -49,4 +49,9 @@ export interface CreateJobRequest {
    * @nullable
    */
   removeWatermark?: boolean | null;
+  /**
+   * Object storage path for an optional reference image used as Runway starting frame
+   * @nullable
+   */
+  referenceImagePath?: string | null;
 }

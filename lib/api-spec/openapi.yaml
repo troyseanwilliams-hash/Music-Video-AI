@@ -642,6 +642,9 @@ components:
           type: [string, 'null']
         lyricsText:
           type: [string, 'null']
+        referenceImagePath:
+          type: [string, 'null']
+          description: Object storage path for an optional reference image
         createdAt:
           type: string
           format: date-time
@@ -672,7 +675,7 @@ components:
           description: Optional lyrics to overlay on the generated video
         aspectRatio:
           type: [string, 'null']
-          enum: ['16:9', '9:16', '1:1', '4:3', null]
+          enum: ['16:9', '9:16', '1:1', '4:3', '21:9', null]
           description: Output video aspect ratio (defaults to 16:9)
         resolution:
           type: [string, 'null']
@@ -685,6 +688,9 @@ components:
         removeWatermark:
           type: [boolean, 'null']
           description: Whether to remove the provider watermark from generated clips
+        referenceImagePath:
+          type: [string, 'null']
+          description: Object storage path for an optional reference image used as Runway starting frame
 
     JobListResponse:
       type: object

@@ -32,6 +32,11 @@ export interface Job {
   videoId?: string | null;
   /** @nullable */
   lyricsText?: string | null;
+  /**
+   * Object storage path for an optional reference image
+   * @nullable
+   */
+  referenceImagePath?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

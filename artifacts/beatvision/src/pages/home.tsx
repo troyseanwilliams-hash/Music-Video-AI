@@ -64,7 +64,7 @@ export default function Home() {
                   <Music className="h-6 w-6 text-primary" />
                 </div>
                 <h3 className="text-xl font-bold mb-3">Deep Audio Analysis</h3>
-                <p className="text-muted-foreground">Our engine breaks down your track's BPM, stems, mood, and drops to perfectly sync visual transitions with musical moments.</p>
+                <p className="text-muted-foreground">Our engine breaks down your track's BPM, mood, energy, and section structure to perfectly sync visual transitions with musical moments.</p>
               </div>
               
               <div className="p-6 rounded-2xl bg-card border border-card-border shadow-lg">
@@ -80,7 +80,7 @@ export default function Home() {
                   <Sparkles className="h-6 w-6 text-pink-500" />
                 </div>
                 <h3 className="text-xl font-bold mb-3">Prompt-Driven</h3>
-                <p className="text-muted-foreground">Guide the generation with custom text prompts. You provide the creative direction, our AI handles the complex rendering.</p>
+                <p className="text-muted-foreground">Guide the generation with custom text prompts and an optional reference image. You set the creative direction, our AI handles the rendering.</p>
               </div>
             </div>
           </div>

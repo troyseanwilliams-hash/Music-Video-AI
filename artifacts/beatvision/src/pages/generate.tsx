@@ -24,7 +24,7 @@ import { motion } from "framer-motion";
 import {
   Upload, Link as LinkIcon, Music, Sparkles, Loader2, CheckCircle2, XCircle,
   Users, Clapperboard, Layers, Zap, Film, Wand2, Video as VideoIcon, FileText,
-  ChevronDown, User, Maximize2, Captions, Diamond, Pencil, MonitorPlay,
+  ChevronDown, User, Maximize2, Captions, Diamond, Pencil, MonitorPlay, ImageIcon,
 } from "lucide-react";
 
 const STYLES = [
@@ -43,6 +43,7 @@ const ASPECT_RATIOS = [
   CreateJobRequestAspectRatio["9:16"],
   CreateJobRequestAspectRatio["1:1"],
   CreateJobRequestAspectRatio["4:3"],
+  CreateJobRequestAspectRatio["21:9"],
 ] as const;
 
 const RESOLUTIONS = [
@@ -85,6 +86,50 @@ export default function Generate() {
   const [resolution, setResolution] = useState<CreateJobRequestResolution>(CreateJobRequestResolution["720p"]);
   const [character, setCharacter] = useState<CharacterValue>("none");
   const [removeWatermark, setRemoveWatermark] = useState(false);
+
+  // Reference image
+  const refImageInputRef = useRef<HTMLInputElement>(null);
+  const [refImageObjectPath, setRefImageObjectPath] = useState<string | null>(null);
+  const [refImagePreviewUrl, setRefImagePreviewUrl] = useState<string | null>(null);
+  const [isUploadingRefImage, setIsUploadingRefImage] = useState(false);
+  const [refImageError, setRefImageError] = useState<string | null>(null);
+
+  const handleRefImageSelect = async (file: File) => {
+    if (!file) return;
+    setRefImageError(null);
+    setIsUploadingRefImage(true);
+    const localUrl = URL.createObjectURL(file);
+    setRefImagePreviewUrl(localUrl);
+    try {
+      const res = await fetch("/api/storage/uploads/request-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+      });
+      if (!res.ok) throw new Error("Failed to get upload URL");
+      const data = await res.json();
+      await fetch(data.uploadURL, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      const url = new URL(data.uploadURL);
+      const match = url.pathname.match(/(\/objects\/.*?)(\?|$)/);
+      if (match) {
+        setRefImageObjectPath(match[1]);
+      } else {
+        const parts = url.pathname.split("/");
+        const idx = parts.indexOf("objects");
+        if (idx !== -1) setRefImageObjectPath("/" + parts.slice(idx).join("/").split("?")[0]);
+      }
+    } catch (err) {
+      setRefImageError(err instanceof Error ? err.message : "Upload failed");
+      setRefImageObjectPath(null);
+      setRefImagePreviewUrl(null);
+    } finally {
+      setIsUploadingRefImage(false);
+    }
+  };
 
   const handleFileSelect = async (file: File) => {
     if (!file) return;
@@ -166,6 +211,7 @@ export default function Generate() {
           resolution,
           character: character !== "none" ? character : null,
           removeWatermark,
+          referenceImagePath: refImageObjectPath ?? null,
         },
       },
       {
@@ -465,6 +511,81 @@ export default function Generate() {
             </TabsContent>
           </Tabs>
 
+          {/* ── Reference Image (optional) ── */}
+          <div className="rounded-xl border border-border/60 bg-background/30 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3">
+              <div className="flex items-center gap-2">
+                <ImageIcon className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium">Reference Image</span>
+                <span className="text-xs text-muted-foreground">— optional starting frame for Runway</span>
+              </div>
+              {refImageObjectPath && (
+                <button
+                  onClick={() => {
+                    setRefImageObjectPath(null);
+                    if (refImagePreviewUrl) URL.revokeObjectURL(refImagePreviewUrl);
+                    setRefImagePreviewUrl(null);
+                    setRefImageError(null);
+                  }}
+                  className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+
+            <input
+              ref={refImageInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleRefImageSelect(file);
+                e.target.value = "";
+              }}
+            />
+
+            {refImageObjectPath && refImagePreviewUrl ? (
+              <div className="px-4 pb-4 flex items-center gap-4">
+                <img
+                  src={refImagePreviewUrl}
+                  alt="Reference"
+                  className="h-20 w-20 rounded-lg object-cover border border-border/40"
+                />
+                <div>
+                  <p className="text-sm font-medium text-green-500">Image ready</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Will be used as the starting frame for each clip</p>
+                  <button
+                    onClick={() => refImageInputRef.current?.click()}
+                    className="text-xs text-primary hover:underline mt-1"
+                  >
+                    Change image
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="px-4 pb-4">
+                <button
+                  onClick={() => refImageInputRef.current?.click()}
+                  disabled={isUploadingRefImage}
+                  className="w-full flex items-center justify-center gap-2 rounded-lg border border-dashed border-border/60 hover:border-primary/50 hover:bg-primary/5 px-4 py-3 text-sm text-muted-foreground transition-colors"
+                >
+                  {isUploadingRefImage ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" /> Uploading…</>
+                  ) : (
+                    <><Upload className="h-4 w-4" /> Upload image (JPG, PNG, WebP)</>
+                  )}
+                </button>
+                {refImageError && (
+                  <p className="text-xs text-destructive mt-1.5 flex items-center gap-1">
+                    <XCircle className="h-3 w-3" />{refImageError}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* ── Prompt ── */}
           <div className="space-y-4">
             <Label htmlFor="prompt">Creative Prompt</Label>
@@ -558,6 +679,11 @@ export default function Generate() {
             {lyricsEnabled && (
               <span className="rounded-full border border-primary/30 bg-primary/10 text-primary px-2.5 py-1">
                 Captions on
+              </span>
+            )}
+            {refImageObjectPath && (
+              <span className="rounded-full border border-primary/30 bg-primary/10 text-primary px-2.5 py-1">
+                Reference image set
               </span>
             )}
           </div>

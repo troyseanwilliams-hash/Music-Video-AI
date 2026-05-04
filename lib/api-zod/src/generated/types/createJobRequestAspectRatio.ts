@@ -19,4 +19,5 @@ export const CreateJobRequestAspectRatio = {
   "9:16": "9:16",
   "1:1": "1:1",
   "4:3": "4:3",
+  "21:9": "21:9",
 } as const;

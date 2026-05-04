@@ -210,6 +210,10 @@ export const ListJobsResponse = zod.object({
       errorMessage: zod.string().nullish(),
       videoId: zod.string().nullish(),
       lyricsText: zod.string().nullish(),
+      referenceImagePath: zod
+        .string()
+        .nullish()
+        .describe("Object storage path for an optional reference image"),
       createdAt: zod.coerce.date(),
       updatedAt: zod.coerce.date(),
     }),
@@ -261,6 +265,7 @@ export const CreateJobBody = zod.object({
       zod.literal("9:16"),
       zod.literal("1:1"),
       zod.literal("4:3"),
+      zod.literal("21:9"),
       zod.literal(null),
     ])
     .nullish()
@@ -278,6 +283,12 @@ export const CreateJobBody = zod.object({
     .boolean()
     .nullish()
     .describe("Whether to remove the provider watermark from generated clips"),
+  referenceImagePath: zod
+    .string()
+    .nullish()
+    .describe(
+      "Object storage path for an optional reference image used as Runway starting frame",
+    ),
 });
 
 /**
@@ -344,6 +355,10 @@ export const GetJobResponse = zod.object({
   errorMessage: zod.string().nullish(),
   videoId: zod.string().nullish(),
   lyricsText: zod.string().nullish(),
+  referenceImagePath: zod
+    .string()
+    .nullish()
+    .describe("Object storage path for an optional reference image"),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -524,6 +539,10 @@ export const GetDashboardStatsResponse = zod.object({
         errorMessage: zod.string().nullish(),
         videoId: zod.string().nullish(),
         lyricsText: zod.string().nullish(),
+        referenceImagePath: zod
+          .string()
+          .nullish()
+          .describe("Object storage path for an optional reference image"),
         createdAt: zod.coerce.date(),
         updatedAt: zod.coerce.date(),
       }),

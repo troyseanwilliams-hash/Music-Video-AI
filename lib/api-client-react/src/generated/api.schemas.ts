@@ -149,6 +149,11 @@ export interface Job {
   videoId?: string | null;
   /** @nullable */
   lyricsText?: string | null;
+  /**
+   * Object storage path for an optional reference image
+   * @nullable
+   */
+  referenceImagePath?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -175,6 +180,7 @@ export const CreateJobRequestAspectRatio = {
   "9:16": "9:16",
   "1:1": "1:1",
   "4:3": "4:3",
+  "21:9": "21:9",
 } as const;
 
 /**
@@ -229,6 +235,11 @@ export interface CreateJobRequest {
    * @nullable
    */
   removeWatermark?: boolean | null;
+  /**
+   * Object storage path for an optional reference image used as Runway starting frame
+   * @nullable
+   */
+  referenceImagePath?: string | null;
 }
 
 export interface JobListResponse {

@@ -172,6 +172,21 @@ async function selectSections(sections: AudioSection[]): Promise<AudioSection[]>
   return result;
 }
 
+async function loadReferenceImageDataUrl(job: JobRow): Promise<string | null> {
+  if (!job.referenceImagePath) return null;
+  try {
+    const file = await storageService.getObjectEntityFile(job.referenceImagePath);
+    const [buf] = await file.download();
+    const ext = job.referenceImagePath.split(".").pop()?.toLowerCase() ?? "jpg";
+    const mime =
+      ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
+    return `data:${mime};base64,${buf.toString("base64")}`;
+  } catch (err) {
+    logger.warn({ err, jobId: job.id }, "Could not load reference image, skipping");
+    return null;
+  }
+}
+
 async function generateClips(
   job: JobRow,
   analysis: AudioAnalysis,
@@ -180,6 +195,7 @@ async function generateClips(
   const provider = getActiveProvider();
   const sections = await selectSections(analysis.sections);
   const clips: { buffer: Buffer; targetDuration: number }[] = [];
+  const refImageDataUrl = await loadReferenceImageDataUrl(job);
 
   logger.info(
     { jobId: job.id, provider, sectionCount: sections.length },
@@ -212,6 +228,8 @@ async function generateClips(
         prompt,
         durationSeconds: clipDuration,
         aspectRatio: job.aspectRatio ?? "16:9",
+        removeWatermark: job.removeWatermark ?? false,
+        imageDataUrl: refImageDataUrl ?? undefined,
       });
       if (!result) {
         clipBuffer = await createSimulationClip(clipDuration);
