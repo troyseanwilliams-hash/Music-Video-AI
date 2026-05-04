@@ -86,6 +86,9 @@ export default function Generate() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [prompt, setPrompt] = useState("");
+  const promptRef = useRef<HTMLTextAreaElement>(null);
+  const audioSectionRef = useRef<HTMLDivElement>(null);
+  const [fieldErrors, setFieldErrors] = useState<{ prompt?: string; audio?: string }>({});
   const [selectedStyle, setSelectedStyle] = useState<VideoStyle>(VideoStyle.cinematic);
   const [lyricsEnabled, setLyricsEnabled] = useState(false);
   const [lyricsText, setLyricsText] = useState("");
@@ -264,18 +267,31 @@ export default function Generate() {
   const characterLabel = CHARACTERS.find((c) => c.value === character)?.label ?? "None";
 
   const handleGenerate = () => {
-    if (!prompt) {
-      toast({ title: "Prompt required", description: "Please describe the visuals you want.", variant: "destructive" });
-      return;
+    const errors: { prompt?: string; audio?: string } = {};
+
+    if (!prompt.trim()) {
+      errors.prompt = "Please describe the visuals you want.";
     }
     if (sourceType === CreateJobRequestAudioSourceType.upload && !objectPath) {
-      toast({ title: "Audio required", description: "Please upload an audio file first.", variant: "destructive" });
+      errors.audio = isUploading ? "Still uploading — wait a moment." : "Please upload an audio file.";
+    }
+    if (sourceType !== CreateJobRequestAudioSourceType.upload && !audioUrl.trim()) {
+      errors.audio = "Please paste a YouTube or Suno URL.";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      // Scroll to the first error field
+      if (errors.audio) {
+        audioSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      } else if (errors.prompt) {
+        promptRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+        promptRef.current?.focus();
+      }
       return;
     }
-    if (sourceType !== CreateJobRequestAudioSourceType.upload && !audioUrl) {
-      toast({ title: "URL required", description: "Please paste a YouTube or Suno link.", variant: "destructive" });
-      return;
-    }
+
+    setFieldErrors({});
 
     createJob.mutate(
       {
@@ -304,6 +320,10 @@ export default function Generate() {
       },
       {
         onSuccess: (job) => setLocation(`/jobs/${job.id}`),
+        onError: (err) => {
+          const msg = (err as { message?: string })?.message ?? "Something went wrong. Please try again.";
+          toast({ title: "Submission failed", description: msg, variant: "destructive" });
+        },
       },
     );
   };
@@ -511,9 +531,10 @@ export default function Generate() {
           </div>
 
           {/* ── Audio Source ── */}
+          <div ref={audioSectionRef}>
           <Tabs
             value={sourceType}
-            onValueChange={(v) => setSourceType(v as CreateJobRequestAudioSourceType)}
+            onValueChange={(v) => { setSourceType(v as CreateJobRequestAudioSourceType); setFieldErrors((e) => ({ ...e, audio: undefined })); }}
             className="w-full"
           >
             <TabsList className="grid w-full grid-cols-2 mb-6">
@@ -654,12 +675,18 @@ export default function Generate() {
                   id="audio-url"
                   placeholder="https://youtube.com/watch?v=..."
                   value={audioUrl}
-                  onChange={(e) => setAudioUrl(e.target.value)}
-                  className="h-12 bg-background/50 border-input"
+                  onChange={(e) => { setAudioUrl(e.target.value); setFieldErrors((fe) => ({ ...fe, audio: undefined })); }}
+                  className={`h-12 bg-background/50 ${fieldErrors.audio ? "border-destructive" : "border-input"}`}
                 />
               </div>
             </TabsContent>
           </Tabs>
+          {fieldErrors.audio && (
+            <p className="mt-2 flex items-center gap-1.5 text-sm font-medium text-destructive">
+              <XCircle className="h-4 w-4 shrink-0" /> {fieldErrors.audio}
+            </p>
+          )}
+          </div>
 
           {/* ── Reference Image (optional) ── */}
           <div className="rounded-xl border border-border/60 bg-background/30 overflow-hidden">
@@ -746,15 +773,21 @@ export default function Generate() {
           </div>
 
           {/* ── Prompt ── */}
-          <div className="space-y-4">
+          <div className="space-y-2">
             <Label htmlFor="prompt">Creative Prompt</Label>
             <Textarea
+              ref={promptRef}
               id="prompt"
               placeholder="Describe the visual style, subject matter, and mood you want..."
-              className="min-h-[100px] resize-none bg-background/50 border-input"
+              className={`min-h-[100px] resize-none bg-background/50 ${fieldErrors.prompt ? "border-destructive" : "border-input"}`}
               value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
+              onChange={(e) => { setPrompt(e.target.value); setFieldErrors((fe) => ({ ...fe, prompt: undefined })); }}
             />
+            {fieldErrors.prompt && (
+              <p className="flex items-center gap-1.5 text-sm font-medium text-destructive">
+                <XCircle className="h-4 w-4 shrink-0" /> {fieldErrors.prompt}
+              </p>
+            )}
           </div>
 
           {/* ── Visual Style ── */}

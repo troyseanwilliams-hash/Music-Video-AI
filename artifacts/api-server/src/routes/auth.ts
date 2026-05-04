@@ -136,6 +136,11 @@ router.post("/auth/login", async (req: Request, res: Response) => {
     return;
   }
 
+  if (user.isDisabled) {
+    res.status(403).json({ error: "This account has been disabled." });
+    return;
+  }
+
   await db
     .update(usersTable)
     .set({ lastLoginAt: new Date() })
