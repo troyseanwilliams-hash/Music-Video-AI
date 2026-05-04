@@ -20,8 +20,8 @@ const features = [
   },
   {
     icon: Zap,
-    title: "Beat-Synced Cuts",
-    description: "Every edit lands precisely on the beat — automatically",
+    title: "Section-Synced Cuts",
+    description: "Each clip is timed to your track's energy peaks and structure",
   },
   {
     icon: Film,
