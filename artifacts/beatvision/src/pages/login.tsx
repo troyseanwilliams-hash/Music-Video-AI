@@ -50,7 +50,7 @@ export default function Login() {
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-electric shadow-glow">
             <Music2 className="h-5 w-5 text-white" />
           </div>
-          <span className="text-xl font-bold tracking-tight">Syncbeat.ai</span>
+          <span className="text-xl font-bold tracking-tight">AiBeatSync.com</span>
         </div>
 
         {/* Hero copy */}
@@ -88,7 +88,7 @@ export default function Login() {
 
         {/* Footer */}
         <p className="relative z-10 text-xs text-muted-foreground/60">
-          &copy; {new Date().getFullYear()} Syncbeat.ai. All rights reserved.
+          &copy; {new Date().getFullYear()} AiBeatSync.com. All rights reserved.
         </p>
       </div>
 
@@ -108,7 +108,7 @@ export default function Login() {
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-electric shadow-glow">
               <Music2 className="h-4 w-4 text-white" />
             </div>
-            <span className="font-bold text-lg">Syncbeat.ai</span>
+            <span className="font-bold text-lg">AiBeatSync.com</span>
           </div>
 
           <div className="mb-8">
