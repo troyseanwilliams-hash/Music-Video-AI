@@ -6,6 +6,7 @@ import jobsRouter from "./jobs";
 import videosRouter from "./videos";
 import creditsRouter from "./credits";
 import dashboardRouter from "./dashboard";
+import adminResetRouter from "./adminReset";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use(jobsRouter);
 router.use(videosRouter);
 router.use(creditsRouter);
 router.use(dashboardRouter);
+router.use(adminResetRouter);
 
 export default router;
