@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useListVideos, useDeleteVideo, getListVideosQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Loader2, Trash2, Play, Film } from "lucide-react";
+import { Loader2, Trash2, Play, Film, Download } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -73,51 +73,70 @@ export default function Gallery() {
               key={video.id}
               className="group relative rounded-2xl bg-card border border-card-border overflow-hidden shadow-lg transition-all hover:border-primary/50 hover:shadow-glow flex flex-col"
             >
-              <div className="aspect-video bg-muted relative overflow-hidden flex items-center justify-center">
+              {/* Thumbnail — clicking anywhere on it goes to the job page */}
+              <Link href={`/jobs/${video.jobId}`} className="block relative aspect-video bg-muted overflow-hidden">
                 {video.thumbnailObjectPath ? (
-                  <img 
-                    src={`/api/storage${video.thumbnailObjectPath}`} 
+                  <img
+                    src={`/api/storage${video.thumbnailObjectPath}`}
                     alt={video.title || "Video thumbnail"}
-                    className="object-cover w-full h-full"
+                    className="object-cover w-full h-full transition-transform duration-300 group-hover:scale-105"
                   />
                 ) : (
-                  <Film className="h-12 w-12 text-muted-foreground/30" />
+                  <div className="w-full h-full flex items-center justify-center">
+                    <Film className="h-12 w-12 text-muted-foreground/30" />
+                  </div>
                 )}
-                
-                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                  <a href={`/api/storage${video.videoObjectPath}`} target="_blank" rel="noopener noreferrer">
-                    <Button size="icon" className="h-12 w-12 rounded-full bg-primary text-white hover:bg-primary hover:scale-110 transition-all">
-                      <Play className="h-6 w-6 ml-1" />
-                    </Button>
-                  </a>
+
+                {/* Always-visible play overlay */}
+                <div className="absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity duration-200 group-hover:bg-black/60">
+                  <div className="h-14 w-14 rounded-full bg-primary/90 hover:bg-primary flex items-center justify-center shadow-2xl transition-transform duration-200 group-hover:scale-110">
+                    <Play className="h-7 w-7 text-white ml-1" />
+                  </div>
                 </div>
-                
+
                 {video.durationSeconds && (
                   <div className="absolute bottom-2 right-2 bg-black/80 px-2 py-1 rounded text-xs font-medium text-white backdrop-blur-sm">
-                    {Math.floor(video.durationSeconds / 60)}:{(video.durationSeconds % 60).toString().padStart(2, '0')}
+                    {Math.floor(video.durationSeconds / 60)}:{(video.durationSeconds % 60).toString().padStart(2, "0")}
                   </div>
                 )}
-              </div>
-              
-              <div className="p-4 flex-1 flex flex-col">
-                <h3 className="font-semibold text-lg line-clamp-1 mb-1" title={video.prompt || video.title || "Untitled"}>
-                  {video.title || video.prompt || "Untitled"}
-                </h3>
-                
-                <div className="flex items-center justify-between mt-auto pt-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium px-2 py-1 rounded-md bg-secondary text-secondary-foreground capitalize">
-                      {video.style}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(video.createdAt).toLocaleDateString()}
-                    </span>
-                  </div>
-                  
+              </Link>
+
+              <div className="p-4 flex-1 flex flex-col gap-3">
+                <Link href={`/jobs/${video.jobId}`} className="block">
+                  <h3
+                    className="font-semibold text-base line-clamp-2 hover:text-primary transition-colors"
+                    title={video.prompt || video.title || "Untitled"}
+                  >
+                    {video.title || video.prompt || "Untitled"}
+                  </h3>
+                </Link>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-medium px-2 py-1 rounded-md bg-secondary text-secondary-foreground capitalize">
+                    {video.style}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(video.createdAt).toLocaleDateString()}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2 mt-auto pt-1">
+                  <Link href={`/jobs/${video.jobId}`} className="flex-1">
+                    <Button size="sm" className="w-full bg-gradient-electric text-white shadow-glow text-xs h-8">
+                      <Play className="h-3.5 w-3.5 mr-1.5" /> Watch
+                    </Button>
+                  </Link>
+
+                  <a href={`/api/storage${video.videoObjectPath}`} download target="_blank" rel="noopener noreferrer">
+                    <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" title="Download video">
+                      <Download className="h-3.5 w-3.5" />
+                    </Button>
+                  </a>
+
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive">
-                        <Trash2 className="h-4 w-4" />
+                      <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive">
+                        <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>

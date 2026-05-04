@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useGetDashboardStats } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus, Film, CheckCircle2, Clock, AlertCircle, Crown } from "lucide-react";
+import { Loader2, Plus, Film, CheckCircle2, Clock, AlertCircle, Crown, Play } from "lucide-react";
 
 function daysUntil(dateStr: string | null | undefined): number {
   if (!dateStr) return 0;
@@ -139,29 +139,43 @@ export default function Dashboard() {
                 
                 <div className="divide-y divide-border/50">
                   {stats.recentJobs.map((job) => (
-                    <Link key={job.id} href={`/jobs/${job.id}`} className="grid grid-cols-12 gap-4 p-4 hover:bg-muted/10 transition-colors items-center cursor-pointer">
-                      <div className="col-span-6 md:col-span-5 truncate pr-4 font-medium">
+                    <div key={job.id} className="grid grid-cols-12 gap-4 p-4 hover:bg-muted/10 transition-colors items-center">
+                      <div className="col-span-5 md:col-span-4 truncate pr-4 font-medium">
                         {job.prompt || "Untitled generation"}
                       </div>
                       <div className="col-span-3 md:col-span-2 capitalize text-sm text-muted-foreground">
                         {job.style}
                       </div>
-                      <div className="col-span-3 md:col-span-3">
-                        <div className="flex items-center gap-2">
-                          {job.status === 'ready' ? (
-                            <CheckCircle2 className="h-4 w-4 text-green-500" />
-                          ) : job.status === 'failed' ? (
-                            <AlertCircle className="h-4 w-4 text-destructive" />
-                          ) : (
-                            <Loader2 className="h-4 w-4 text-primary animate-spin" />
-                          )}
-                          <span className="text-sm capitalize">{job.status}</span>
-                        </div>
+                      <div className="col-span-4 md:col-span-4 flex items-center gap-2">
+                        {job.status === 'ready' ? (
+                          <>
+                            <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                            <Link href={`/jobs/${job.id}`}>
+                              <Button size="sm" className="h-7 text-xs bg-gradient-electric text-white shadow-glow px-3">
+                                <Play className="h-3 w-3 mr-1" /> Watch
+                              </Button>
+                            </Link>
+                          </>
+                        ) : job.status === 'failed' ? (
+                          <>
+                            <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
+                            <Link href={`/jobs/${job.id}`}>
+                              <span className="text-sm text-destructive">Failed</span>
+                            </Link>
+                          </>
+                        ) : (
+                          <>
+                            <Loader2 className="h-4 w-4 text-primary animate-spin shrink-0" />
+                            <Link href={`/jobs/${job.id}`}>
+                              <span className="text-sm capitalize text-primary">{job.status}…</span>
+                            </Link>
+                          </>
+                        )}
                       </div>
                       <div className="hidden md:block col-span-2 text-right text-sm text-muted-foreground">
                         {new Date(job.createdAt).toLocaleDateString()}
                       </div>
-                    </Link>
+                    </div>
                   ))}
                 </div>
               </div>
