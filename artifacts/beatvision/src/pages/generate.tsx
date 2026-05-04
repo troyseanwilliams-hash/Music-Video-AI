@@ -95,7 +95,7 @@ export default function Generate() {
   const [resolution, setResolution] = useState<CreateJobRequestResolution>(CreateJobRequestResolution["720p"]);
   const [character, setCharacter] = useState<CharacterValue>("none");
   const [removeWatermark, setRemoveWatermark] = useState(false);
-  const [requestedDuration, setRequestedDuration] = useState<CreateJobRequestRequestedDuration>(CreateJobRequestRequestedDuration["10"]);
+  const [requestedDuration, setRequestedDuration] = useState<CreateJobRequestRequestedDuration>(CreateJobRequestRequestedDuration.NUMBER_10);
   const [clipStartTime, setClipStartTime] = useState(0);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
 
@@ -378,14 +378,14 @@ export default function Generate() {
                 <DropdownMenuTrigger asChild>
                   <button className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 px-3 py-1.5 text-sm font-medium transition-colors">
                     <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span>{requestedDuration}s</span>
+                    <span>{durationToSeconds(requestedDuration) ?? 10}s</span>
                     <ChevronDown className="h-3 w-3 text-muted-foreground ml-0.5" />
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-36">
                   {([
-                    { value: CreateJobRequestRequestedDuration["5"], label: "5 seconds" },
-                    { value: CreateJobRequestRequestedDuration["10"], label: "10 seconds" },
+                    { value: CreateJobRequestRequestedDuration.NUMBER_5, label: "5 seconds" },
+                    { value: CreateJobRequestRequestedDuration.NUMBER_10, label: "10 seconds" },
                   ] as const).map(({ value, label }) => (
                     <DropdownMenuItem
                       key={value}

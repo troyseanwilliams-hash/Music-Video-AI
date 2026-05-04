@@ -125,11 +125,12 @@ function AudioWaveformSelectorInner({
   }, [file]);
 
   // ── Derived values ────────────────────────────────────────────────────────
+  const safeDuration = (isFinite(clipDurationSec) && clipDurationSec > 0) ? clipDurationSec : 10;
   const knownDuration = totalDuration > 0 ? totalDuration : FALLBACK_DURATION;
-  const maxStart = Math.max(0, knownDuration - clipDurationSec);
+  const maxStart = Math.max(0, knownDuration - safeDuration);
   const clampedStart = Math.min(Math.max(0, clipStartTime), maxStart);
-  const endTime = clampedStart + clipDurationSec;
-  const trackTooShort = totalDuration > 0 && totalDuration <= clipDurationSec;
+  const endTime = clampedStart + safeDuration;
+  const trackTooShort = totalDuration > 0 && totalDuration <= safeDuration;
 
   // ── Canvas ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -230,7 +231,7 @@ function AudioWaveformSelectorInner({
         <div className="text-center">
           <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wide">Duration</p>
           <p className="text-sm font-semibold tabular-nums text-foreground">
-            {clipDurationSec}s
+            {safeDuration}s
           </p>
         </div>
         <div className="text-center min-w-[56px]">
