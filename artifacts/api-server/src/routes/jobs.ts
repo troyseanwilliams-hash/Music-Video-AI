@@ -292,6 +292,34 @@ router.get("/jobs/:id/events", async (req, res) => {
   });
 });
 
+router.get("/jobs/:id/video", async (req, res) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const jobId = req.params.id;
+  const [job] = await db
+    .select()
+    .from(jobsTable)
+    .where(
+      and(eq(jobsTable.id, jobId), eq(jobsTable.userId, req.user.id)),
+    )
+    .limit(1);
+
+  if (!job) {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
+
+  if (!job.videoId) {
+    res.status(404).json({ error: "Video not ready yet" });
+    return;
+  }
+
+  res.redirect(`/api/storage/objects/videos/${job.videoId}.mp4`);
+});
+
 router.post("/jobs/:id/retry", async (req, res) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: "Unauthorized" });

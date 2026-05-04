@@ -36,10 +36,15 @@ function delay(ms: number) {
 
 const RUNWAY_BASE = "https://api.dev.runwayml.com/v1";
 const RUNWAY_VERSION = "2024-11-06";
+const RUNWAY_MODEL = "gen4.5";
+// Fallback 1×1 dark PNG when no reference image is provided.
+// Runway image_to_video requires promptImage; the text prompt drives visuals.
+const RUNWAY_SEED_IMAGE =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
 const RUNWAY_RATIOS: Record<string, string> = {
-  "16:9": "1280:768",
-  "9:16": "768:1280",
+  "16:9": "1280:720",
+  "9:16": "720:1280",
   "4:3": "1104:832",
   "1:1": "960:960",
   "21:9": "1584:672",
@@ -55,31 +60,16 @@ async function generateWithRunway(req: ClipRequest): Promise<string> {
     "X-Runway-Version": RUNWAY_VERSION,
   };
 
-  let body: Record<string, unknown>;
-  let endpoint: string;
+  const body: Record<string, unknown> = {
+    model: RUNWAY_MODEL,
+    promptImage: req.imageDataUrl ?? RUNWAY_SEED_IMAGE,
+    promptText: req.prompt.slice(0, 1000),
+    duration,
+    ratio,
+    ...(req.removeWatermark === true ? { watermark: false } : {}),
+  };
 
-  if (req.imageDataUrl) {
-    endpoint = `${RUNWAY_BASE}/image_to_video`;
-    body = {
-      model: "gen3a_turbo",
-      promptImage: req.imageDataUrl,
-      promptText: req.prompt.slice(0, 1000),
-      duration,
-      ratio,
-      ...(req.removeWatermark === true ? { watermark: false } : {}),
-    };
-  } else {
-    endpoint = `${RUNWAY_BASE}/text_to_video`;
-    body = {
-      model: "gen3a_turbo",
-      promptText: req.prompt.slice(0, 1000),
-      duration,
-      ratio,
-      ...(req.removeWatermark === true ? { watermark: false } : {}),
-    };
-  }
-
-  const genRes = await fetch(endpoint, {
+  const genRes = await fetch(`${RUNWAY_BASE}/image_to_video`, {
     method: "POST",
     headers,
     body: JSON.stringify(body),

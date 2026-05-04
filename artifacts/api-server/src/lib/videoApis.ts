@@ -34,14 +34,18 @@ function delay(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+const RUNWAY_BASE = "https://api.dev.runwayml.com/v1";
+const RUNWAY_VERSION = "2024-11-06";
+const RUNWAY_MODEL = "gen4.5";
+
 // Fallback 1×1 dark PNG used when no reference image is provided.
 // Runway Gen-3 requires promptImage; the text prompt drives the visual content.
 const RUNWAY_SEED_IMAGE =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
 const RUNWAY_RATIOS: Record<string, string> = {
-  "16:9": "1280:768",
-  "9:16": "768:1280",
+  "16:9": "1280:720",
+  "9:16": "720:1280",
   "4:3": "1104:832",
   "1:1": "960:960",
   "21:9": "1584:672",
@@ -51,15 +55,15 @@ async function generateWithRunway(req: ClipRequest): Promise<string> {
   const apiKey = process.env.RUNWAY_API_KEY!;
   const duration = Math.min(Math.max(Math.ceil(req.durationSeconds), 5), 10) as 5 | 10;
 
-  const genRes = await fetch("https://api.runwayml.com/v1/image_to_video", {
+  const genRes = await fetch(`${RUNWAY_BASE}/image_to_video`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
-      "X-Runway-Version": "2024-11-06",
+      "X-Runway-Version": RUNWAY_VERSION,
     },
     body: JSON.stringify({
-      model: "gen3a_turbo",
+      model: RUNWAY_MODEL,
       promptImage: req.imageDataUrl ?? RUNWAY_SEED_IMAGE,
       promptText: req.prompt.slice(0, 1000),
       duration,
@@ -75,8 +79,8 @@ async function generateWithRunway(req: ClipRequest): Promise<string> {
 
   for (let i = 0; i < 120; i++) {
     await delay(5000);
-    const pollRes = await fetch(`https://api.runwayml.com/v1/tasks/${taskId}`, {
-      headers: { Authorization: `Bearer ${apiKey}`, "X-Runway-Version": "2024-11-06" },
+    const pollRes = await fetch(`${RUNWAY_BASE}/tasks/${taskId}`, {
+      headers: { Authorization: `Bearer ${apiKey}`, "X-Runway-Version": RUNWAY_VERSION },
       signal: AbortSignal.timeout(15_000),
     });
     if (!pollRes.ok) continue;
