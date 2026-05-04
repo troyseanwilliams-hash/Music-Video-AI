@@ -120,20 +120,13 @@ export default function Generate() {
       });
       if (!res.ok) throw new Error("Failed to get upload URL");
       const data = await res.json();
-      await fetch(data.uploadURL, {
+      const putRes = await fetch(data.uploadURL, {
         method: "PUT",
         headers: { "Content-Type": file.type },
         body: file,
       });
-      const url = new URL(data.uploadURL);
-      const match = url.pathname.match(/(\/objects\/.*?)(\?|$)/);
-      if (match) {
-        setRefImageObjectPath(match[1]);
-      } else {
-        const parts = url.pathname.split("/");
-        const idx = parts.indexOf("objects");
-        if (idx !== -1) setRefImageObjectPath("/" + parts.slice(idx).join("/").split("?")[0]);
-      }
+      if (!putRes.ok) throw new Error(`Storage upload failed: ${putRes.status}`);
+      setRefImageObjectPath(data.objectPath);
     } catch (err) {
       setRefImageError(err instanceof Error ? err.message : "Upload failed");
       setRefImageObjectPath(null);
@@ -183,15 +176,7 @@ export default function Generate() {
         xhr.send(file);
       });
 
-      const url = new URL(data.uploadURL);
-      const match = url.pathname.match(/(\/objects\/.*?)(\?|$)/);
-      if (match) {
-        setObjectPath(match[1]);
-      } else {
-        const parts = url.pathname.split("/");
-        const idx = parts.indexOf("objects");
-        if (idx !== -1) setObjectPath("/" + parts.slice(idx).join("/").split("?")[0]);
-      }
+      setObjectPath(data.objectPath);
       setUploadProgress(100);
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Upload failed");

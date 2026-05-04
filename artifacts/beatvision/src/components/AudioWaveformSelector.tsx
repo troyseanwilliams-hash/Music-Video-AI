@@ -45,7 +45,12 @@ export function AudioWaveformSelector({
       try {
         const arrayBuffer = await file.arrayBuffer();
         const ctx = new AudioContext();
-        const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+        if (ctx.state === "suspended") {
+          await ctx.resume();
+        }
+        const audioBuffer = await new Promise<AudioBuffer>((resolve, reject) => {
+          ctx.decodeAudioData(arrayBuffer.slice(0), resolve, reject);
+        });
         await ctx.close();
         if (cancelled) return;
 
@@ -67,8 +72,11 @@ export function AudioWaveformSelector({
           setWaveformData(waveform);
           setIsDecoding(false);
         }
-      } catch {
-        if (!cancelled) setIsDecoding(false);
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Waveform decode error:", err);
+          setIsDecoding(false);
+        }
       }
     };
 
