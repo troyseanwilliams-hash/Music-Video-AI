@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useToast } from "@/hooks/use-toast";
 import { AudioWaveformSelector } from "@/components/AudioWaveformSelector";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
@@ -178,15 +179,19 @@ export default function Generate() {
 
       setObjectPath(data.objectPath);
       setUploadProgress(100);
+      toast({ title: "Audio ready", description: `${file.name} uploaded successfully.` });
     } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "Upload failed");
+      const msg = err instanceof Error ? err.message : "Upload failed";
+      setUploadError(msg);
       setUploadedFileName(null);
       setObjectPath(null);
+      toast({ title: "Upload failed", description: msg, variant: "destructive" });
     } finally {
       setIsUploading(false);
     }
   };
 
+  const { toast } = useToast();
   const createJob = useCreateJob();
 
   useEffect(() => {
@@ -535,63 +540,18 @@ export default function Generate() {
                 }}
               />
 
-              <div
-                className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center transition-colors cursor-pointer ${
-                  isUploading
-                    ? "border-primary/40 bg-primary/5"
-                    : objectPath
-                      ? "border-green-500/40 bg-green-500/5"
-                      : "border-border hover:border-primary/50 hover:bg-primary/5"
-                }`}
-                onClick={() => !isUploading && !objectPath && fileInputRef.current?.click()}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  const file = e.dataTransfer.files?.[0];
-                  if (file && !isUploading) handleFileSelect(file);
-                }}
-              >
-                {objectPath ? (
-                  <div className="flex flex-col items-center gap-4">
-                    <div className="h-16 w-16 rounded-full bg-green-500/20 flex items-center justify-center">
-                      <CheckCircle2 className="h-8 w-8 text-green-500" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-lg">Ready</p>
-                      <p className="text-sm text-muted-foreground truncate max-w-xs">{uploadedFileName}</p>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setObjectPath(null);
-                        setUploadedFileName(null);
-                        setUploadedFile(null);
-                        setClipStartTime(0);
-                        setUploadError(null);
-                      }}
-                    >
-                      Replace file
-                    </Button>
-                  </div>
-                ) : isUploading ? (
-                  <div className="flex flex-col items-center gap-4 w-full max-w-xs">
-                    <div className="h-16 w-16 rounded-full bg-primary/20 flex items-center justify-center">
-                      <Loader2 className="h-8 w-8 text-primary animate-spin" />
-                    </div>
-                    <div className="w-full space-y-2">
-                      <p className="font-medium">Uploading…</p>
-                      <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-primary rounded-full transition-all"
-                          style={{ width: `${uploadProgress}%` }}
-                        />
-                      </div>
-                      <p className="text-sm text-muted-foreground">{uploadProgress}%</p>
-                    </div>
-                  </div>
-                ) : (
+              {/* ── Drop zone — only shown when no file selected yet ── */}
+              {!uploadedFile ? (
+                <div
+                  className="border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center transition-colors cursor-pointer border-border hover:border-primary/50 hover:bg-primary/5"
+                  onClick={() => fileInputRef.current?.click()}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const file = e.dataTransfer.files?.[0];
+                    if (file) handleFileSelect(file);
+                  }}
+                >
                   <div className="flex flex-col items-center gap-4">
                     <div className="h-16 w-16 rounded-full bg-secondary flex items-center justify-center">
                       <Music className="h-8 w-8 text-muted-foreground" />
@@ -607,20 +567,60 @@ export default function Generate() {
                         {uploadError}
                       </div>
                     )}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        fileInputRef.current?.click();
-                      }}
-                    >
+                    <Button type="button" variant="outline" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}>
                       <Upload className="h-4 w-4 mr-2" />
                       Choose file
                     </Button>
                   </div>
-                )}
-              </div>
+                </div>
+              ) : (
+                /* ── Compact file strip — shown while uploading or after upload ── */
+                <div className="rounded-xl border border-border/60 bg-background/40 overflow-hidden">
+                  {/* Progress bar sits at very top, invisible when done */}
+                  {isUploading && (
+                    <div className="h-1 bg-secondary">
+                      <div
+                        className="h-full bg-primary transition-all duration-300"
+                        style={{ width: `${uploadProgress}%` }}
+                      />
+                    </div>
+                  )}
+                  <div className="flex items-center gap-3 px-4 py-3">
+                    <div className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center ${objectPath ? "bg-green-500/15" : "bg-primary/10"}`}>
+                      {isUploading
+                        ? <Loader2 className="h-4 w-4 text-primary animate-spin" />
+                        : objectPath
+                          ? <CheckCircle2 className="h-4 w-4 text-green-500" />
+                          : <XCircle className="h-4 w-4 text-destructive" />
+                      }
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{uploadedFileName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {isUploading
+                          ? `Uploading in background… ${uploadProgress}%`
+                          : objectPath
+                            ? "Ready to generate"
+                            : uploadError ?? "Upload failed"}
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
+                      onClick={() => {
+                        setObjectPath(null);
+                        setUploadedFileName(null);
+                        setUploadedFile(null);
+                        setClipStartTime(0);
+                        setUploadError(null);
+                      }}
+                    >
+                      Change
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               {/* ── Waveform Clip Selector — shown as soon as a file is chosen ── */}
               {uploadedFile && (

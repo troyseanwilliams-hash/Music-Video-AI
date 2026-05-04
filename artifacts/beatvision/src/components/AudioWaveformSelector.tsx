@@ -1,4 +1,28 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, Component, type ReactNode } from "react";
+
+// ── Error boundary prevents waveform crashes from blanking the page ──────────
+class WaveformErrorBoundary extends Component<
+  { children: ReactNode },
+  { error: boolean }
+> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { error: false };
+  }
+  static getDerivedStateFromError() {
+    return { error: true };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="h-20 rounded-xl bg-secondary/30 border border-border/40 flex items-center justify-center">
+          <p className="text-xs text-muted-foreground">Waveform preview unavailable — clip selection still works below.</p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 interface AudioWaveformSelectorProps {
   file: File;
@@ -17,7 +41,7 @@ const SAMPLES = 200;
 const SEL_COLOR = "#8b5cf6";
 const TRACK_COLOR = "#374151";
 
-export function AudioWaveformSelector({
+function AudioWaveformSelectorInner({
   file,
   clipDurationSec,
   clipStartTime,
@@ -206,5 +230,14 @@ export function AudioWaveformSelector({
         </p>
       )}
     </div>
+  );
+}
+
+// Exported with error boundary so any crash shows a fallback, not a blank page
+export function AudioWaveformSelector(props: AudioWaveformSelectorProps) {
+  return (
+    <WaveformErrorBoundary>
+      <AudioWaveformSelectorInner {...props} />
+    </WaveformErrorBoundary>
   );
 }
