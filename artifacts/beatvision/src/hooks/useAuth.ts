@@ -7,6 +7,9 @@ export interface AuthUser {
   firstName: string | null;
   lastName: string | null;
   profileImageUrl: string | null;
+  subscriptionStatus: "trial" | "active" | "cancelled" | "none";
+  trialEndsAt: string | null;
+  isAdmin: boolean;
 }
 
 export const AUTH_QUERY_KEY = ["auth", "user"] as const;

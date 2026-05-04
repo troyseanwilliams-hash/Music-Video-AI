@@ -19,6 +19,9 @@ export const usersTable = pgTable("users", {
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
+  subscriptionStatus: varchar("subscription_status").notNull().default("trial"),
+  trialEndsAt: timestamp("trial_ends_at", { withTimezone: true })
+    .default(sql`NOW() + INTERVAL '7 days'`),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

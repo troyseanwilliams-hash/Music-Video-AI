@@ -9,6 +9,19 @@ export interface HealthStatus {
   status: string;
 }
 
+/**
+ * Current subscription state of the user
+ */
+export type AuthUserSubscriptionStatus =
+  (typeof AuthUserSubscriptionStatus)[keyof typeof AuthUserSubscriptionStatus];
+
+export const AuthUserSubscriptionStatus = {
+  trial: "trial",
+  active: "active",
+  cancelled: "cancelled",
+  none: "none",
+} as const;
+
 export interface AuthUser {
   id: string;
   /** @nullable */
@@ -19,6 +32,15 @@ export interface AuthUser {
   lastName: string | null;
   /** @nullable */
   profileImageUrl: string | null;
+  /** Current subscription state of the user */
+  subscriptionStatus: AuthUserSubscriptionStatus;
+  /**
+   * When the free trial expires (null means no expiry set)
+   * @nullable
+   */
+  trialEndsAt?: string | null;
+  /** Whether the user has admin/power-user privileges */
+  isAdmin: boolean;
 }
 
 export interface AuthUserEnvelope {

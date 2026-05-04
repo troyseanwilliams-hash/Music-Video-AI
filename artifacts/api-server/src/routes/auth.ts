@@ -4,6 +4,23 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { RegisterUserBody, LoginUserBody, GetCurrentAuthUserResponse } from "@workspace/api-zod";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+
+function isAdminEmail(email: string | null | undefined): boolean {
+  return !!(process.env.ADMIN_EMAIL && email && email.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase());
+}
+
+function buildUserPayload(user: typeof usersTable.$inferSelect) {
+  return {
+    id: user.id,
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    profileImageUrl: user.profileImageUrl,
+    subscriptionStatus: (user.subscriptionStatus ?? "trial") as "trial" | "active" | "cancelled" | "none",
+    trialEndsAt: user.trialEndsAt?.toISOString() ?? null,
+    isAdmin: isAdminEmail(user.email),
+  };
+}
 import {
   clearSession,
   getSessionId,
@@ -28,12 +45,17 @@ function setSessionCookie(res: Response, sid: string) {
   });
 }
 
-router.get("/auth/user", (req: Request, res: Response) => {
-  res.json(
-    GetCurrentAuthUserResponse.parse({
-      user: req.isAuthenticated() ? req.user : null,
-    }),
-  );
+router.get("/auth/user", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.json(GetCurrentAuthUserResponse.parse({ user: null }));
+    return;
+  }
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.user.id)).limit(1);
+  if (!user) {
+    res.json(GetCurrentAuthUserResponse.parse({ user: null }));
+    return;
+  }
+  res.json(GetCurrentAuthUserResponse.parse({ user: buildUserPayload(user) }));
 });
 
 router.post("/auth/register", async (req: Request, res: Response) => {
@@ -62,6 +84,8 @@ router.post("/auth/register", async (req: Request, res: Response) => {
   const firstName = nameParts[0] ?? name.trim();
   const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : null;
 
+  const trialEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
   const [user] = await db
     .insert(usersTable)
     .values({
@@ -70,25 +94,19 @@ router.post("/auth/register", async (req: Request, res: Response) => {
       passwordHash,
       firstName,
       lastName,
+      subscriptionStatus: "trial",
+      trialEndsAt,
       lastLoginAt: new Date(),
     })
     .returning();
 
   req.log.info({ userId: user.id, email: user.email }, "User registered");
 
-  const sessionData: SessionData = {
-    user: {
-      id: user.id,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      profileImageUrl: user.profileImageUrl,
-    },
-  };
-
+  const payload = buildUserPayload(user);
+  const sessionData: SessionData = { user: payload };
   const sid = await createSession(sessionData);
   setSessionCookie(res, sid);
-  res.json(GetCurrentAuthUserResponse.parse({ user: sessionData.user }));
+  res.json(GetCurrentAuthUserResponse.parse({ user: payload }));
 });
 
 router.post("/auth/login", async (req: Request, res: Response) => {
@@ -125,19 +143,11 @@ router.post("/auth/login", async (req: Request, res: Response) => {
 
   req.log.info({ userId: user.id, email: user.email }, "User signed in");
 
-  const sessionData: SessionData = {
-    user: {
-      id: user.id,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      profileImageUrl: user.profileImageUrl,
-    },
-  };
-
+  const payload = buildUserPayload(user);
+  const sessionData: SessionData = { user: payload };
   const sid = await createSession(sessionData);
   setSessionCookie(res, sid);
-  res.json(GetCurrentAuthUserResponse.parse({ user: sessionData.user }));
+  res.json(GetCurrentAuthUserResponse.parse({ user: payload }));
 });
 
 router.get("/logout", async (req: Request, res: Response) => {

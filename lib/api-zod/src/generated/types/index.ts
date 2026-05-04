@@ -11,6 +11,7 @@ export * from "./audioAnalysisSectionsItem";
 export * from "./authorizationSessionHeaderParameter";
 export * from "./authUser";
 export * from "./authUserEnvelope";
+export * from "./authUserSubscriptionStatus";
 export * from "./createJobRequest";
 export * from "./createJobRequestAspectRatio";
 export * from "./createJobRequestAudioSourceType";

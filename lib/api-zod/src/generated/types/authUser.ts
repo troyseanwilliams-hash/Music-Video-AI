@@ -5,6 +5,7 @@
  * BeatVision AI API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { AuthUserSubscriptionStatus } from "./authUserSubscriptionStatus";
 
 export interface AuthUser {
   id: string;
@@ -16,4 +17,13 @@ export interface AuthUser {
   lastName: string | null;
   /** @nullable */
   profileImageUrl: string | null;
+  /** Current subscription state of the user */
+  subscriptionStatus: AuthUserSubscriptionStatus;
+  /**
+   * When the free trial expires (null means no expiry set)
+   * @nullable
+   */
+  trialEndsAt?: Date | null;
+  /** Whether the user has admin/power-user privileges */
+  isAdmin: boolean;
 }

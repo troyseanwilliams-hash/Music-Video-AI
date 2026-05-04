@@ -484,7 +484,7 @@ components:
 
     AuthUser:
       type: object
-      required: [id, email, firstName, lastName, profileImageUrl]
+      required: [id, email, firstName, lastName, profileImageUrl, subscriptionStatus, isAdmin]
       properties:
         id:
           type: string
@@ -497,6 +497,17 @@ components:
           type: [string, 'null']
         profileImageUrl:
           type: [string, 'null']
+        subscriptionStatus:
+          type: string
+          enum: [trial, active, cancelled, none]
+          description: Current subscription state of the user
+        trialEndsAt:
+          type: [string, 'null']
+          format: date-time
+          description: When the free trial expires (null means no expiry set)
+        isAdmin:
+          type: boolean
+          description: Whether the user has admin/power-user privileges
     AuthUserEnvelope:
       type: object
       required: [user]

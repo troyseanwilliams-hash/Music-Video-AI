@@ -4,11 +4,16 @@ import { useAuth } from "@/hooks/useAuth";
 import { useGetDashboardStats } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus, Film, CheckCircle2, Clock, AlertCircle } from "lucide-react";
+import { Loader2, Plus, Film, CheckCircle2, Clock, AlertCircle, Crown } from "lucide-react";
+
+function daysUntil(dateStr: string | null | undefined): number {
+  if (!dateStr) return 0;
+  return Math.max(0, Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86_400_000));
+}
 
 export default function Dashboard() {
   const [, setLocation] = useLocation();
-  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   
   const { data: stats, isLoading: statsLoading } = useGetDashboardStats({
     query: {
@@ -24,8 +29,38 @@ export default function Dashboard() {
 
   if (isAuthLoading || !isAuthenticated) return null;
 
+  const isAdmin = user?.isAdmin ?? false;
+  const subStatus = user?.subscriptionStatus ?? "none";
+  const trialDaysLeft = daysUntil(user?.trialEndsAt);
+  const trialExpired = subStatus === "trial" && trialDaysLeft === 0;
+
   return (
     <div className="container mx-auto px-4 py-12 max-w-6xl">
+      {subStatus === "trial" && !isAdmin && (
+        <div className={`mb-6 flex items-center justify-between gap-4 rounded-lg border px-4 py-3 text-sm ${
+          trialExpired
+            ? "border-destructive/40 bg-destructive/5 text-destructive"
+            : "border-primary/30 bg-primary/5"
+        }`}>
+          <div className="flex items-center gap-2">
+            <Clock className={`h-4 w-4 shrink-0 ${trialExpired ? "text-destructive" : "text-primary"}`} />
+            <span>
+              {trialExpired
+                ? "Your free trial has expired. Upgrade to keep creating videos."
+                : <>Free trial — <strong>{trialDaysLeft} day{trialDaysLeft !== 1 ? "s" : ""}</strong> remaining.</>}
+            </span>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className={`shrink-0 ${trialExpired ? "border-destructive/40 text-destructive hover:bg-destructive/10" : "border-primary/40 text-primary hover:bg-primary/10"}`}
+            onClick={() => alert("Subscription billing coming soon!")}
+          >
+            <Crown className="mr-1.5 h-3.5 w-3.5" />
+            Upgrade
+          </Button>
+        </div>
+      )}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <div>
           <h1 className="text-4xl font-bold tracking-tight">Dashboard</h1>

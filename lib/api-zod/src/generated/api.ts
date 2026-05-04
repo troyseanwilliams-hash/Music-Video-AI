@@ -33,6 +33,16 @@ export const GetCurrentAuthUserResponse = zod.object({
       firstName: zod.string().nullable(),
       lastName: zod.string().nullable(),
       profileImageUrl: zod.string().nullable(),
+      subscriptionStatus: zod
+        .enum(["trial", "active", "cancelled", "none"])
+        .describe("Current subscription state of the user"),
+      trialEndsAt: zod.coerce
+        .date()
+        .nullish()
+        .describe("When the free trial expires (null means no expiry set)"),
+      isAdmin: zod
+        .boolean()
+        .describe("Whether the user has admin\/power-user privileges"),
     }),
     zod.null(),
   ]),
@@ -61,6 +71,16 @@ export const RegisterUserResponse = zod.object({
       firstName: zod.string().nullable(),
       lastName: zod.string().nullable(),
       profileImageUrl: zod.string().nullable(),
+      subscriptionStatus: zod
+        .enum(["trial", "active", "cancelled", "none"])
+        .describe("Current subscription state of the user"),
+      trialEndsAt: zod.coerce
+        .date()
+        .nullish()
+        .describe("When the free trial expires (null means no expiry set)"),
+      isAdmin: zod
+        .boolean()
+        .describe("Whether the user has admin\/power-user privileges"),
     }),
     zod.null(),
   ]),
@@ -83,6 +103,16 @@ export const LoginUserResponse = zod.object({
       firstName: zod.string().nullable(),
       lastName: zod.string().nullable(),
       profileImageUrl: zod.string().nullable(),
+      subscriptionStatus: zod
+        .enum(["trial", "active", "cancelled", "none"])
+        .describe("Current subscription state of the user"),
+      trialEndsAt: zod.coerce
+        .date()
+        .nullish()
+        .describe("When the free trial expires (null means no expiry set)"),
+      isAdmin: zod
+        .boolean()
+        .describe("Whether the user has admin\/power-user privileges"),
     }),
     zod.null(),
   ]),

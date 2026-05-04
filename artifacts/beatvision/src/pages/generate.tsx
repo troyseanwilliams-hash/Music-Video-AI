@@ -25,6 +25,7 @@ import {
   Upload, Link as LinkIcon, Music, Sparkles, Loader2, CheckCircle2, XCircle,
   Users, Clapperboard, Layers, Zap, Film, Wand2, Video as VideoIcon, FileText,
   ChevronDown, User, Maximize2, Captions, Diamond, Pencil, MonitorPlay, ImageIcon,
+  Lock, Clock, Crown,
 } from "lucide-react";
 
 const STYLES = [
@@ -61,9 +62,14 @@ const CHARACTERS = [
 ] as const;
 type CharacterValue = (typeof CHARACTERS)[number]["value"];
 
+function daysUntil(dateStr: string | null): number {
+  if (!dateStr) return 0;
+  return Math.max(0, Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86_400_000));
+}
+
 export default function Generate() {
   const [, setLocation] = useLocation();
-  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const styleRef = useRef<HTMLDivElement>(null);
 
   const [sourceType, setSourceType] = useState<CreateJobRequestAudioSourceType>(
@@ -187,6 +193,65 @@ export default function Generate() {
 
   if (isAuthLoading || !isAuthenticated) return null;
 
+  const isAdmin = user?.isAdmin ?? false;
+  const subStatus = user?.subscriptionStatus ?? "none";
+  const trialDaysLeft = daysUntil(user?.trialEndsAt ?? null);
+  const trialExpired = subStatus === "trial" && trialDaysLeft === 0;
+  const canCreate = isAdmin || subStatus === "active" || (subStatus === "trial" && !trialExpired);
+
+  if (!canCreate) {
+    return (
+      <div className="min-h-[70vh] flex items-center justify-center px-4">
+        <div className="max-w-md w-full text-center space-y-6">
+          <div className="flex justify-center">
+            <div className="h-20 w-20 rounded-full bg-primary/10 flex items-center justify-center">
+              {trialExpired ? (
+                <Clock className="h-10 w-10 text-primary" />
+              ) : (
+                <Lock className="h-10 w-10 text-primary" />
+              )}
+            </div>
+          </div>
+          <div>
+            <h2 className="text-3xl font-bold tracking-tight mb-3">
+              {trialExpired ? "Your Trial Has Ended" : "Subscription Required"}
+            </h2>
+            <p className="text-muted-foreground text-lg">
+              {trialExpired
+                ? "Your 7-day free trial has expired. Upgrade to Pro to keep creating AI music videos."
+                : "You need an active subscription to create videos."}
+            </p>
+          </div>
+          <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-left space-y-3">
+            <div className="flex items-center gap-3 text-sm">
+              <Crown className="h-4 w-4 text-primary shrink-0" />
+              <span>Unlimited AI music video generations</span>
+            </div>
+            <div className="flex items-center gap-3 text-sm">
+              <Sparkles className="h-4 w-4 text-primary shrink-0" />
+              <span>All visual styles and aspect ratios</span>
+            </div>
+            <div className="flex items-center gap-3 text-sm">
+              <Zap className="h-4 w-4 text-primary shrink-0" />
+              <span>Priority processing queue</span>
+            </div>
+          </div>
+          <Button
+            size="lg"
+            className="w-full bg-gradient-electric text-white shadow-glow text-base"
+            onClick={() => alert("Subscription billing coming soon — check back shortly!")}
+          >
+            <Crown className="mr-2 h-5 w-5" />
+            Upgrade to Pro
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            Contact support if you believe this is an error.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const characterLabel = CHARACTERS.find((c) => c.value === character)?.label ?? "None";
 
   const handleGenerate = () => {
@@ -222,6 +287,25 @@ export default function Generate() {
 
   return (
     <div className="container mx-auto px-4 py-12 max-w-4xl">
+      {subStatus === "trial" && !isAdmin && (
+        <div className="mb-6 flex items-center justify-between gap-4 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-sm">
+          <div className="flex items-center gap-2">
+            <Clock className="h-4 w-4 text-primary shrink-0" />
+            <span>
+              Free trial — <strong>{trialDaysLeft} day{trialDaysLeft !== 1 ? "s" : ""}</strong> remaining.
+            </span>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-primary/40 text-primary hover:bg-primary/10 shrink-0"
+            onClick={() => alert("Subscription billing coming soon!")}
+          >
+            <Crown className="mr-1.5 h-3.5 w-3.5" />
+            Upgrade
+          </Button>
+        </div>
+      )}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

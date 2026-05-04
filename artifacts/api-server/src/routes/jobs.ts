@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { Client } from "pg";
 import { db } from "@workspace/db";
-import { jobsTable, creditsTable } from "@workspace/db";
+import { jobsTable, creditsTable, usersTable } from "@workspace/db";
 import { eq, and, desc, count } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
@@ -74,6 +74,35 @@ router.post("/jobs", async (req, res) => {
       .status(400)
       .json({ error: "audioSourceUrl required for youtube/suno source type" });
     return;
+  }
+
+  const [userRecord] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.id, req.user.id))
+    .limit(1);
+
+  const isAdmin = !!(process.env.ADMIN_EMAIL && userRecord?.email?.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase());
+
+  if (!isAdmin) {
+    const status = userRecord?.subscriptionStatus ?? "none";
+    const trialEndsAt = userRecord?.trialEndsAt;
+
+    if (status === "trial") {
+      if (!trialEndsAt || new Date() > trialEndsAt) {
+        res.status(403).json({
+          error: "Your free trial has expired. Upgrade to continue creating videos.",
+          code: "TRIAL_EXPIRED",
+        });
+        return;
+      }
+    } else if (status !== "active") {
+      res.status(403).json({
+        error: "A subscription is required to create videos.",
+        code: "SUBSCRIPTION_REQUIRED",
+      });
+      return;
+    }
   }
 
   const credits = await db
