@@ -94,7 +94,7 @@ export default function Generate() {
   const [resolution, setResolution] = useState<CreateJobRequestResolution>(CreateJobRequestResolution["720p"]);
   const [character, setCharacter] = useState<CharacterValue>("none");
   const [removeWatermark, setRemoveWatermark] = useState(false);
-  const [requestedDuration, setRequestedDuration] = useState<CreateJobRequestRequestedDuration>(CreateJobRequestRequestedDuration.full);
+  const [requestedDuration, setRequestedDuration] = useState<CreateJobRequestRequestedDuration>(CreateJobRequestRequestedDuration["10"]);
   const [clipStartTime, setClipStartTime] = useState(0);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
 
@@ -114,6 +114,7 @@ export default function Generate() {
     try {
       const res = await fetch("/api/storage/uploads/request-url", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
       });
@@ -163,6 +164,7 @@ export default function Generate() {
     try {
       const res = await fetch("/api/storage/uploads/request-url", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
       });
@@ -277,6 +279,8 @@ export default function Generate() {
       return alert("Please upload an audio file");
     if (sourceType !== CreateJobRequestAudioSourceType.upload && !audioUrl)
       return alert("Please enter a URL");
+    if (!refImageObjectPath)
+      return alert("Please upload a reference image — it's used as the starting frame for Runway video generation.");
 
     createJob.mutate(
       {
@@ -384,18 +388,14 @@ export default function Generate() {
                 <DropdownMenuTrigger asChild>
                   <button className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 px-3 py-1.5 text-sm font-medium transition-colors">
                     <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span>{requestedDuration === CreateJobRequestRequestedDuration.full ? "Full" : `${requestedDuration}s`}</span>
+                    <span>{requestedDuration}s</span>
                     <ChevronDown className="h-3 w-3 text-muted-foreground ml-0.5" />
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-36">
                   {([
                     { value: CreateJobRequestRequestedDuration["5"], label: "5 seconds" },
-                    { value: CreateJobRequestRequestedDuration["8"], label: "8 seconds" },
                     { value: CreateJobRequestRequestedDuration["10"], label: "10 seconds" },
-                    { value: CreateJobRequestRequestedDuration["30"], label: "30 seconds" },
-                    { value: CreateJobRequestRequestedDuration["60"], label: "60 seconds" },
-                    { value: CreateJobRequestRequestedDuration.full, label: "Full track" },
                   ] as const).map(({ value, label }) => (
                     <DropdownMenuItem
                       key={value}
@@ -680,7 +680,7 @@ export default function Generate() {
               <div className="flex items-center gap-2">
                 <ImageIcon className="h-4 w-4 text-primary" />
                 <span className="text-sm font-medium">Reference Image</span>
-                <span className="text-xs text-muted-foreground">— optional starting frame for Runway</span>
+                <span className="text-xs text-destructive font-medium">— required for Runway generation</span>
               </div>
               {refImageObjectPath && (
                 <button
@@ -827,7 +827,7 @@ export default function Generate() {
           {/* ── Settings Summary ── */}
           <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
             <span className="rounded-full border border-border/40 bg-secondary/30 px-2.5 py-1">
-              {aspectRatio} · {resolution} · {requestedDuration === CreateJobRequestRequestedDuration.full ? "Full track" : `${requestedDuration}s`}
+              {aspectRatio} · {resolution} · {requestedDuration}s
             </span>
             {character !== "none" && (
               <span className="rounded-full border border-border/40 bg-secondary/30 px-2.5 py-1">

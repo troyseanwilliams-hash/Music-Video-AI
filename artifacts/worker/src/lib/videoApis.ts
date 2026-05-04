@@ -34,10 +34,8 @@ function delay(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-// Fallback 1×1 dark PNG used when no reference image is provided.
-// Runway Gen-3 requires promptImage; the text prompt drives the visual content.
-const RUNWAY_SEED_IMAGE =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+const RUNWAY_BASE = "https://api.dev.runwayml.com/v1";
+const RUNWAY_VERSION = "2024-11-06";
 
 const RUNWAY_RATIOS: Record<string, string> = {
   "16:9": "1280:768",
@@ -49,23 +47,42 @@ const RUNWAY_RATIOS: Record<string, string> = {
 
 async function generateWithRunway(req: ClipRequest): Promise<string> {
   const apiKey = process.env.RUNWAY_API_KEY!;
-  const duration = Math.min(Math.max(Math.ceil(req.durationSeconds), 5), 10) as 5 | 10;
+  const duration = (req.durationSeconds <= 5 ? 5 : 10) as 5 | 10;
+  const ratio = RUNWAY_RATIOS[req.aspectRatio ?? "16:9"] ?? "1280:768";
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    "Content-Type": "application/json",
+    "X-Runway-Version": RUNWAY_VERSION,
+  };
 
-  const genRes = await fetch("https://api.runwayml.com/v1/image_to_video", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "X-Runway-Version": "2024-11-06",
-    },
-    body: JSON.stringify({
+  let body: Record<string, unknown>;
+  let endpoint: string;
+
+  if (req.imageDataUrl) {
+    endpoint = `${RUNWAY_BASE}/image_to_video`;
+    body = {
       model: "gen3a_turbo",
-      promptImage: req.imageDataUrl ?? RUNWAY_SEED_IMAGE,
+      promptImage: req.imageDataUrl,
       promptText: req.prompt.slice(0, 1000),
       duration,
-      ratio: RUNWAY_RATIOS[req.aspectRatio ?? "16:9"] ?? "1280:768",
-      watermark: req.removeWatermark === true ? false : undefined,
-    }),
+      ratio,
+      ...(req.removeWatermark === true ? { watermark: false } : {}),
+    };
+  } else {
+    endpoint = `${RUNWAY_BASE}/text_to_video`;
+    body = {
+      model: "gen3a_turbo",
+      promptText: req.prompt.slice(0, 1000),
+      duration,
+      ratio,
+      ...(req.removeWatermark === true ? { watermark: false } : {}),
+    };
+  }
+
+  const genRes = await fetch(endpoint, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
     signal: AbortSignal.timeout(30_000),
   });
 
@@ -75,8 +92,8 @@ async function generateWithRunway(req: ClipRequest): Promise<string> {
 
   for (let i = 0; i < 120; i++) {
     await delay(5000);
-    const pollRes = await fetch(`https://api.runwayml.com/v1/tasks/${taskId}`, {
-      headers: { Authorization: `Bearer ${apiKey}`, "X-Runway-Version": "2024-11-06" },
+    const pollRes = await fetch(`${RUNWAY_BASE}/tasks/${taskId}`, {
+      headers: { Authorization: `Bearer ${apiKey}`, "X-Runway-Version": RUNWAY_VERSION },
       signal: AbortSignal.timeout(15_000),
     });
     if (!pollRes.ok) continue;
@@ -129,9 +146,7 @@ async function generateWithLuma(req: ClipRequest): Promise<string> {
 }
 
 function makeKlingJWT(accessKeyId: string, secretKey: string): string {
-  const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString(
-    "base64url",
-  );
+  const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
   const now = Math.floor(Date.now() / 1000);
   const payload = Buffer.from(
     JSON.stringify({ iss: accessKeyId, exp: now + 1800, nbf: now - 5 }),
