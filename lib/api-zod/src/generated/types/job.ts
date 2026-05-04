@@ -43,6 +43,12 @@ export interface Job {
    * @nullable
    */
   requestedDuration?: JobRequestedDuration;
+  /**
+   * Audio clip start time in seconds; null means start from the beginning
+   * @minimum 0
+   * @nullable
+   */
+  clipStartTime?: number | null;
   createdAt: Date;
   updatedAt: Date;
 }

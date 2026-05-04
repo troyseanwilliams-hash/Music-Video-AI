@@ -60,6 +60,7 @@ export const jobsTable = pgTable("jobs", {
   removeWatermark: boolean("remove_watermark").notNull().default(false),
   referenceImagePath: text("reference_image_path"),
   requestedDuration: text("requested_duration").default("full"),
+  clipStartTime: real("clip_start_time"),
   retryCount: integer("retry_count").notNull().default(0),
   claimedAt: timestamp("claimed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })

@@ -188,6 +188,8 @@ export const ListJobsHeader = zod.object({
     .describe("Opaque session token — `Bearer <sid>`."),
 });
 
+export const listJobsResponseJobsItemClipStartTimeMin = 0;
+
 export const ListJobsResponse = zod.object({
   jobs: zod.array(
     zod.object({
@@ -256,6 +258,13 @@ export const ListJobsResponse = zod.object({
         ])
         .nullish()
         .describe("Requested output video length"),
+      clipStartTime: zod
+        .number()
+        .min(listJobsResponseJobsItemClipStartTimeMin)
+        .nullish()
+        .describe(
+          "Audio clip start time in seconds; null means start from the beginning",
+        ),
       createdAt: zod.coerce.date(),
       updatedAt: zod.coerce.date(),
     }),
@@ -280,6 +289,8 @@ export const createJobBodyPromptMax = 1000;
 export const createJobBodyLyricsTextMax = 5000;
 
 export const createJobBodyCharacterMax = 100;
+
+export const createJobBodyClipStartTimeMin = 0;
 
 export const CreateJobBody = zod.object({
   prompt: zod.string().min(1).max(createJobBodyPromptMax),
@@ -345,6 +356,13 @@ export const CreateJobBody = zod.object({
     .describe(
       "Requested output video length. '5'\/'8'\/'10' = short clip, '30'\/'60' = multi-clip stitch, 'full' = full audio length (default)",
     ),
+  clipStartTime: zod
+    .number()
+    .min(createJobBodyClipStartTimeMin)
+    .nullish()
+    .describe(
+      "Audio clip start time in seconds; null or omit means start from the beginning",
+    ),
 });
 
 /**
@@ -360,6 +378,8 @@ export const GetJobHeader = zod.object({
     .optional()
     .describe("Opaque session token — `Bearer <sid>`."),
 });
+
+export const getJobResponseClipStartTimeMin = 0;
 
 export const GetJobResponse = zod.object({
   id: zod.string(),
@@ -427,6 +447,13 @@ export const GetJobResponse = zod.object({
     ])
     .nullish()
     .describe("Requested output video length"),
+  clipStartTime: zod
+    .number()
+    .min(getJobResponseClipStartTimeMin)
+    .nullish()
+    .describe(
+      "Audio clip start time in seconds; null means start from the beginning",
+    ),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -548,6 +575,8 @@ export const GetDashboardStatsHeader = zod.object({
     .describe("Opaque session token — `Bearer <sid>`."),
 });
 
+export const getDashboardStatsResponseRecentJobsItemClipStartTimeMin = 0;
+
 export const GetDashboardStatsResponse = zod.object({
   totalJobs: zod.number(),
   completedJobs: zod.number(),
@@ -623,6 +652,13 @@ export const GetDashboardStatsResponse = zod.object({
           ])
           .nullish()
           .describe("Requested output video length"),
+        clipStartTime: zod
+          .number()
+          .min(getDashboardStatsResponseRecentJobsItemClipStartTimeMin)
+          .nullish()
+          .describe(
+            "Audio clip start time in seconds; null means start from the beginning",
+          ),
         createdAt: zod.coerce.date(),
         updatedAt: zod.coerce.date(),
       }),

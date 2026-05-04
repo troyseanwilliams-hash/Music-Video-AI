@@ -660,6 +660,10 @@ components:
           type: [string, 'null']
           enum: ['5', '8', '10', '30', '60', 'full', null]
           description: Requested output video length
+        clipStartTime:
+          type: [number, 'null']
+          minimum: 0
+          description: Audio clip start time in seconds; null means start from the beginning
         createdAt:
           type: string
           format: date-time
@@ -710,6 +714,10 @@ components:
           type: [string, 'null']
           enum: ['5', '8', '10', '30', '60', 'full', null]
           description: Requested output video length. '5'/'8'/'10' = short clip, '30'/'60' = multi-clip stitch, 'full' = full audio length (default)
+        clipStartTime:
+          type: [number, 'null']
+          minimum: 0
+          description: Audio clip start time in seconds; null or omit means start from the beginning
 
     JobListResponse:
       type: object

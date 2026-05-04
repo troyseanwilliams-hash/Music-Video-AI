@@ -18,6 +18,29 @@ const MAX_RETRIES = 3;
 const POLL_INTERVAL_MS = 5000;
 const MAX_CLIPS_PER_JOB = 3;
 
+async function extractAudioClip(
+  audio: { buffer: Buffer; ext: string },
+  startSec: number,
+  durationSec: number,
+): Promise<{ buffer: Buffer; ext: string }> {
+  const id = randomUUID();
+  const inputPath = join(tmpdir(), `bv_in_${id}.${audio.ext}`);
+  const outputPath = join(tmpdir(), `bv_clip_${id}.${audio.ext}`);
+  try {
+    await writeFile(inputPath, audio.buffer);
+    await execAsync(
+      `ffmpeg -y -ss ${startSec.toFixed(3)} -t ${durationSec} -i "${inputPath}" -c copy "${outputPath}"`,
+      { timeout: 30_000 },
+    );
+    const { readFile } = await import("fs/promises");
+    const clipped = await readFile(outputPath);
+    return { buffer: clipped, ext: audio.ext };
+  } finally {
+    await unlink(inputPath).catch(() => {});
+    await unlink(outputPath).catch(() => {});
+  }
+}
+
 interface GenerationPlan {
   sections: AudioSection[];
   clipDurationSec: 5 | 10;
@@ -314,14 +337,39 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
   }
 }
 
+type ExtendedJobRow = JobRow & {
+  requestedDuration?: string | null;
+  clipStartTime?: number | null;
+};
+
 async function processJob(job: JobRow): Promise<void> {
   logger.info({ jobId: job.id, style: job.style, provider: getActiveProvider() }, "Processing job");
+
+  const extJob = job as ExtendedJobRow;
 
   try {
     // === ANALYZING ===
     await updateJobStatus(job.id, { progressPercent: 5 });
 
-    const audioData = await getAudioBuffer(job);
+    const rawAudioData = await getAudioBuffer(job);
+
+    // If the user selected a specific clip window, extract just that segment
+    let audioData = rawAudioData;
+    if (
+      rawAudioData &&
+      extJob.clipStartTime != null &&
+      extJob.clipStartTime >= 0 &&
+      extJob.requestedDuration &&
+      extJob.requestedDuration !== "full"
+    ) {
+      const durSec = parseInt(extJob.requestedDuration, 10);
+      logger.info(
+        { jobId: job.id, clipStartTime: extJob.clipStartTime, durSec },
+        "Extracting audio clip segment",
+      );
+      audioData = await extractAudioClip(rawAudioData, extJob.clipStartTime, durSec);
+    }
+
     let analysis: AudioAnalysis;
 
     if (audioData) {
@@ -362,13 +410,13 @@ async function processJob(job: JobRow): Promise<void> {
 
     // === GENERATING ===
     const plan = buildGenerationPlan(
-      (job as JobRow & { requestedDuration?: string | null }).requestedDuration,
+      extJob.requestedDuration,
       analysis.sections,
       analysis.durationSeconds,
     );
 
     logger.info(
-      { jobId: job.id, requestedDuration: (job as JobRow & { requestedDuration?: string | null }).requestedDuration, planClips: plan.sections.length, targetOutputDuration: plan.targetOutputDuration },
+      { jobId: job.id, requestedDuration: extJob.requestedDuration, planClips: plan.sections.length, targetOutputDuration: plan.targetOutputDuration },
       "Generation plan built",
     );
 
@@ -381,7 +429,7 @@ async function processJob(job: JobRow): Promise<void> {
     // === STITCHING ===
     logger.info({ jobId: job.id, clipCount: clips.length }, "Stitching clips with audio");
 
-    const lyricsText = (job as JobRow & { lyricsText?: string | null }).lyricsText ?? undefined;
+    const lyricsText = extJob.lyricsText ?? undefined;
 
     let videoBuffer: Buffer;
     let thumbnailBuffer: Buffer;

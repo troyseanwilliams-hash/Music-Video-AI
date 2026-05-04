@@ -60,4 +60,10 @@ export interface CreateJobRequest {
    * @nullable
    */
   requestedDuration?: CreateJobRequestRequestedDuration;
+  /**
+   * Audio clip start time in seconds; null or omit means start from the beginning
+   * @minimum 0
+   * @nullable
+   */
+  clipStartTime?: number | null;
 }

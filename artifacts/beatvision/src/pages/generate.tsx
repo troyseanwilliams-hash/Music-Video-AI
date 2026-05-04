@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { AudioWaveformSelector } from "@/components/AudioWaveformSelector";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -94,6 +95,8 @@ export default function Generate() {
   const [character, setCharacter] = useState<CharacterValue>("none");
   const [removeWatermark, setRemoveWatermark] = useState(false);
   const [requestedDuration, setRequestedDuration] = useState<CreateJobRequestRequestedDuration>(CreateJobRequestRequestedDuration.full);
+  const [clipStartTime, setClipStartTime] = useState(0);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
 
   // Reference image
   const refImageInputRef = useRef<HTMLInputElement>(null);
@@ -139,8 +142,20 @@ export default function Generate() {
     }
   };
 
+  const durationToSeconds = useCallback((dur: CreateJobRequestRequestedDuration): number | null => {
+    if (dur === CreateJobRequestRequestedDuration.full) return null;
+    return parseInt(dur, 10);
+  }, []);
+
+  const handleDurationChange = useCallback((dur: CreateJobRequestRequestedDuration) => {
+    setRequestedDuration(dur);
+    setClipStartTime(0);
+  }, []);
+
   const handleFileSelect = async (file: File) => {
     if (!file) return;
+    setUploadedFile(file);
+    setClipStartTime(0);
     setUploadError(null);
     setIsUploading(true);
     setUploadProgress(0);
@@ -280,6 +295,12 @@ export default function Generate() {
           removeWatermark,
           referenceImagePath: refImageObjectPath ?? null,
           requestedDuration,
+          clipStartTime:
+            requestedDuration !== CreateJobRequestRequestedDuration.full &&
+            sourceType === CreateJobRequestAudioSourceType.upload &&
+            clipStartTime > 0
+              ? clipStartTime
+              : null,
         },
       },
       {
@@ -378,7 +399,7 @@ export default function Generate() {
                   ] as const).map(({ value, label }) => (
                     <DropdownMenuItem
                       key={value}
-                      onClick={() => setRequestedDuration(value)}
+                      onClick={() => handleDurationChange(value)}
                       className={requestedDuration === value ? "text-primary font-medium" : ""}
                     >
                       {label}
@@ -561,6 +582,8 @@ export default function Generate() {
                         e.stopPropagation();
                         setObjectPath(null);
                         setUploadedFileName(null);
+                        setUploadedFile(null);
+                        setClipStartTime(0);
                         setUploadError(null);
                       }}
                     >
@@ -614,6 +637,28 @@ export default function Generate() {
                 )}
               </div>
             </TabsContent>
+
+            {/* ── Waveform Clip Selector (upload source, non-full duration) ── */}
+            {sourceType === CreateJobRequestAudioSourceType.upload &&
+              uploadedFile &&
+              objectPath &&
+              requestedDuration !== CreateJobRequestRequestedDuration.full && (
+                <div className="rounded-xl border border-primary/30 bg-background/40 p-4 space-y-2">
+                  <div className="flex items-center gap-2 text-sm font-medium text-primary mb-3">
+                    <Clock className="h-4 w-4" />
+                    <span>Drag to select the clip section</span>
+                    <span className="text-muted-foreground font-normal text-xs ml-auto">
+                      Choosing which {requestedDuration}s of your track to use
+                    </span>
+                  </div>
+                  <AudioWaveformSelector
+                    file={uploadedFile}
+                    clipDurationSec={durationToSeconds(requestedDuration) ?? 10}
+                    clipStartTime={clipStartTime}
+                    onClipStartTimeChange={setClipStartTime}
+                  />
+                </div>
+              )}
 
             <TabsContent value={CreateJobRequestAudioSourceType.youtube} className="mt-0">
               <div className="space-y-4">
