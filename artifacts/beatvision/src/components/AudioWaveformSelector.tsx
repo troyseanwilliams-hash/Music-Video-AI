@@ -234,7 +234,6 @@ function AudioWaveformSelectorInner({
         step={0.1}
         value={[clampedStart, endTime]}
         onValueChange={onSliderChange}
-        minStepsBetweenThumbs={Math.round(clipDurationSec / 0.1)}
         className="py-1"
       />
 
