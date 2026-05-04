@@ -536,7 +536,7 @@ export default function Generate() {
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value={CreateJobRequestAudioSourceType.upload} className="mt-0">
+            <TabsContent value={CreateJobRequestAudioSourceType.upload} className="mt-0 space-y-4">
               {/* Hidden native file input */}
               <input
                 ref={fileInputRef}
@@ -636,13 +636,9 @@ export default function Generate() {
                   </div>
                 )}
               </div>
-            </TabsContent>
 
-            {/* ── Waveform Clip Selector (upload source, non-full duration) ── */}
-            {sourceType === CreateJobRequestAudioSourceType.upload &&
-              uploadedFile &&
-              objectPath &&
-              requestedDuration !== CreateJobRequestRequestedDuration.full && (
+              {/* ── Waveform Clip Selector — shown as soon as a file is chosen ── */}
+              {uploadedFile && (
                 <div className="rounded-xl border border-primary/30 bg-background/40 p-4 space-y-2">
                   <div className="flex items-center gap-2 text-sm font-medium text-primary mb-3">
                     <Clock className="h-4 w-4" />
@@ -659,6 +655,7 @@ export default function Generate() {
                   />
                 </div>
               )}
+            </TabsContent>
 
             <TabsContent value={CreateJobRequestAudioSourceType.youtube} className="mt-0">
               <div className="space-y-4">
@@ -709,16 +706,29 @@ export default function Generate() {
               }}
             />
 
-            {refImageObjectPath && refImagePreviewUrl ? (
+            {refImagePreviewUrl ? (
               <div className="px-4 pb-4 flex items-center gap-4">
-                <img
-                  src={refImagePreviewUrl}
-                  alt="Reference"
-                  className="h-20 w-20 rounded-lg object-cover border border-border/40"
-                />
+                <div className="relative shrink-0">
+                  <img
+                    src={refImagePreviewUrl}
+                    alt="Reference"
+                    className="h-20 w-20 rounded-lg object-cover border border-border/40"
+                  />
+                  {isUploadingRefImage && (
+                    <div className="absolute inset-0 rounded-lg bg-black/50 flex items-center justify-center">
+                      <Loader2 className="h-5 w-5 text-white animate-spin" />
+                    </div>
+                  )}
+                </div>
                 <div>
-                  <p className="text-sm font-medium text-green-500">Image ready</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Will be used as the starting frame for each clip</p>
+                  {isUploadingRefImage ? (
+                    <p className="text-sm font-medium text-muted-foreground">Uploading…</p>
+                  ) : refImageObjectPath ? (
+                    <p className="text-sm font-medium text-green-500">Image ready</p>
+                  ) : (
+                    <p className="text-sm font-medium text-destructive">Upload failed — try again</p>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-0.5">Starting frame for each video clip</p>
                   <button
                     onClick={() => refImageInputRef.current?.click()}
                     className="text-xs text-primary hover:underline mt-1"
@@ -734,11 +744,7 @@ export default function Generate() {
                   disabled={isUploadingRefImage}
                   className="w-full flex items-center justify-center gap-2 rounded-lg border border-dashed border-border/60 hover:border-primary/50 hover:bg-primary/5 px-4 py-3 text-sm text-muted-foreground transition-colors"
                 >
-                  {isUploadingRefImage ? (
-                    <><Loader2 className="h-4 w-4 animate-spin" /> Uploading…</>
-                  ) : (
-                    <><Upload className="h-4 w-4" /> Upload image (JPG, PNG, WebP)</>
-                  )}
+                  <Upload className="h-4 w-4" /> Upload image (JPG, PNG, WebP)
                 </button>
                 {refImageError && (
                   <p className="text-xs text-destructive mt-1.5 flex items-center gap-1">
