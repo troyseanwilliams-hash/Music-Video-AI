@@ -47,6 +47,20 @@ Job processor (`artifacts/api-server/src/lib/jobProcessor.ts` and `artifacts/wor
 
 Generated videos are downloaded from the AI provider and stored in Replit App Storage at `/objects/videos/<videoId>.mp4`.
 
+### Generator Settings (compact toolbar)
+
+The generate page includes a compact settings toolbar with:
+- **Character** — dropdown: None, Person, Couple, Crowd, Abstract, Animal (injected into AI prompt)
+- **Aspect Ratio** — dropdown: 16:9 (default), 9:16, 1:1, 4:3 (passed to Runway API)
+- **Resolution** — dropdown: 720p (default), 1080p
+- **Style** — scrolls to the visual style grid below
+- **Captions** — toggles the lyrics/subtitle overlay section
+- **Remove Watermark** — boolean toggle
+- **Edit** — focuses the prompt textarea
+
+DB columns: `aspect_ratio`, `resolution`, `character`, `remove_watermark` on `jobs` table.
+OpenAPI fields: `aspectRatio`, `resolution`, `character`, `removeWatermark` on `CreateJobRequest`.
+
 ### Smart Prompt Building
 
 Audio is analyzed with `music-metadata` to extract BPM, energy, mood, and section structure. A rich AI prompt is then constructed from:

@@ -6,6 +6,7 @@ import {
   real,
   jsonb,
   pgEnum,
+  boolean,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -53,6 +54,10 @@ export const jobsTable = pgTable("jobs", {
   errorMessage: text("error_message"),
   videoId: text("video_id"),
   lyricsText: text("lyrics_text"),
+  aspectRatio: text("aspect_ratio"),
+  resolution: text("resolution"),
+  character: text("character"),
+  removeWatermark: boolean("remove_watermark").notNull().default(false),
   retryCount: integer("retry_count").notNull().default(0),
   claimedAt: timestamp("claimed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })

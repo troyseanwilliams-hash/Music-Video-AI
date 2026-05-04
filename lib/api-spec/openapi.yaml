@@ -701,6 +701,21 @@ components:
           type: [string, 'null']
           maxLength: 5000
           description: Optional lyrics to overlay on the generated video
+        aspectRatio:
+          type: [string, 'null']
+          enum: ['16:9', '9:16', '1:1', '4:3', null]
+          description: Output video aspect ratio (defaults to 16:9)
+        resolution:
+          type: [string, 'null']
+          enum: ['720p', '1080p', null]
+          description: Output video resolution (defaults to 720p)
+        character:
+          type: [string, 'null']
+          maxLength: 100
+          description: Optional character type to feature in the video
+        removeWatermark:
+          type: [boolean, 'null']
+          description: Whether to remove the provider watermark from generated clips
 
     JobListResponse:
       type: object

@@ -234,6 +234,8 @@ export const createJobBodyPromptMax = 1000;
 
 export const createJobBodyLyricsTextMax = 5000;
 
+export const createJobBodyCharacterMax = 100;
+
 export const CreateJobBody = zod.object({
   prompt: zod.string().min(1).max(createJobBodyPromptMax),
   style: zod.enum([
@@ -254,6 +256,29 @@ export const CreateJobBody = zod.object({
     .max(createJobBodyLyricsTextMax)
     .nullish()
     .describe("Optional lyrics to overlay on the generated video"),
+  aspectRatio: zod
+    .union([
+      zod.literal("16:9"),
+      zod.literal("9:16"),
+      zod.literal("1:1"),
+      zod.literal("4:3"),
+      zod.literal(null),
+    ])
+    .nullish()
+    .describe("Output video aspect ratio (defaults to 16:9)"),
+  resolution: zod
+    .union([zod.literal("720p"), zod.literal("1080p"), zod.literal(null)])
+    .nullish()
+    .describe("Output video resolution (defaults to 720p)"),
+  character: zod
+    .string()
+    .max(createJobBodyCharacterMax)
+    .nullish()
+    .describe("Optional character type to feature in the video"),
+  removeWatermark: zod
+    .boolean()
+    .nullish()
+    .describe("Whether to remove the provider watermark from generated clips"),
 });
 
 /**

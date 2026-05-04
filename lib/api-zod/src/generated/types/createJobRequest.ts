@@ -5,7 +5,9 @@
  * BeatVision AI API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { CreateJobRequestAspectRatio } from "./createJobRequestAspectRatio";
 import type { CreateJobRequestAudioSourceType } from "./createJobRequestAudioSourceType";
+import type { CreateJobRequestResolution } from "./createJobRequestResolution";
 import type { VideoStyle } from "./videoStyle";
 
 export interface CreateJobRequest {
@@ -26,4 +28,25 @@ export interface CreateJobRequest {
    * @nullable
    */
   lyricsText?: string | null;
+  /**
+   * Output video aspect ratio (defaults to 16:9)
+   * @nullable
+   */
+  aspectRatio?: CreateJobRequestAspectRatio;
+  /**
+   * Output video resolution (defaults to 720p)
+   * @nullable
+   */
+  resolution?: CreateJobRequestResolution;
+  /**
+   * Optional character type to feature in the video
+   * @maxLength 100
+   * @nullable
+   */
+  character?: string | null;
+  /**
+   * Whether to remove the provider watermark from generated clips
+   * @nullable
+   */
+  removeWatermark?: boolean | null;
 }

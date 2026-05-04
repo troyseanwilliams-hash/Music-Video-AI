@@ -161,6 +161,34 @@ export const CreateJobRequestAudioSourceType = {
   suno: "suno",
 } as const;
 
+/**
+ * Output video aspect ratio (defaults to 16:9)
+ * @nullable
+ */
+export type CreateJobRequestAspectRatio =
+  | (typeof CreateJobRequestAspectRatio)[keyof typeof CreateJobRequestAspectRatio]
+  | null;
+
+export const CreateJobRequestAspectRatio = {
+  "16:9": "16:9",
+  "9:16": "9:16",
+  "1:1": "1:1",
+  "4:3": "4:3",
+} as const;
+
+/**
+ * Output video resolution (defaults to 720p)
+ * @nullable
+ */
+export type CreateJobRequestResolution =
+  | (typeof CreateJobRequestResolution)[keyof typeof CreateJobRequestResolution]
+  | null;
+
+export const CreateJobRequestResolution = {
+  "720p": "720p",
+  "1080p": "1080p",
+} as const;
+
 export interface CreateJobRequest {
   /**
    * @minLength 1
@@ -179,6 +207,27 @@ export interface CreateJobRequest {
    * @nullable
    */
   lyricsText?: string | null;
+  /**
+   * Output video aspect ratio (defaults to 16:9)
+   * @nullable
+   */
+  aspectRatio?: CreateJobRequestAspectRatio;
+  /**
+   * Output video resolution (defaults to 720p)
+   * @nullable
+   */
+  resolution?: CreateJobRequestResolution;
+  /**
+   * Optional character type to feature in the video
+   * @maxLength 100
+   * @nullable
+   */
+  character?: string | null;
+  /**
+   * Whether to remove the provider watermark from generated clips
+   * @nullable
+   */
+  removeWatermark?: boolean | null;
 }
 
 export interface JobListResponse {

@@ -120,15 +120,23 @@ function buildSectionPrompt(
         ? "upbeat fluid transitions, dynamic movement"
         : "slow atmospheric panning, long smooth dissolves";
 
-  return [
+  const characterDesc =
+    job.character && job.character !== "none"
+      ? `featuring ${job.character}`
+      : "";
+
+  const parts = [
     styleDesc,
     paceDesc,
     `${analysis.mood} mood`,
     energyDesc,
+    characterDesc,
     `${section.label} section visual treatment`,
     userPrompt,
     "beat-synced cuts, professional music video production, 4K ultra-wide",
-  ].join(", ");
+  ].filter(Boolean);
+
+  return parts.join(", ");
 }
 
 async function createSimulationClip(durationSec: number): Promise<Buffer> {
@@ -200,7 +208,11 @@ async function generateClips(
         { jobId: job.id, section: section.label, provider, prompt: prompt.slice(0, 80) },
         "Generating AI clip",
       );
-      const result = await generateClip({ prompt, durationSeconds: clipDuration });
+      const result = await generateClip({
+        prompt,
+        durationSeconds: clipDuration,
+        aspectRatio: job.aspectRatio ?? "16:9",
+      });
       if (!result) {
         clipBuffer = await createSimulationClip(clipDuration);
       } else {
