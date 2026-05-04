@@ -16,7 +16,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
 
-## Project: AiBeatSync.com
+## Project: AI Beat Sync
 
 Full-stack AI music video generator (similar to freebeat.ai).
 
@@ -28,7 +28,7 @@ Full-stack AI music video generator (similar to freebeat.ai).
 
 ### Features
 
-- **Auth**: Replit Auth (OIDC) — sessions stored in PostgreSQL
+- **Auth**: Custom email/password auth — bcrypt-hashed passwords stored in PostgreSQL, sessions in `sessions` table
 - **Storage**: Replit App Storage (GCS presigned URLs via sidecar at `127.0.0.1:1106`)
 - **Job Pipeline**: queued → analyzing → generating → stitching → ready
 - **Background Processing**: Atomic job claiming via `FOR UPDATE SKIP LOCKED` (safe for multiple concurrent workers)
@@ -83,7 +83,7 @@ Push schema changes: `pnpm --filter @workspace/db run push`
 - `lib/api-spec` — OpenAPI spec (source of truth)
 - `lib/api-client-react` — Generated React Query hooks + Zod schemas (from Orval)
 - `lib/db` — Drizzle ORM schema (sessions, users, jobs, videos, credits tables)
-- `lib/replit-auth-web` — `useAuth()` hook for frontend auth state
+- `artifacts/beatvision/src/hooks/useAuth.ts` — custom `useAuth()` hook (React Query, no third-party auth lib)
 - `lib/object-storage-web` — `ObjectUploader` Uppy-based file upload component
 
 ### Deployment Configuration

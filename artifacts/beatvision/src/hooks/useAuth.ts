@@ -1,0 +1,75 @@
+import { useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+
+export interface AuthUser {
+  id: string;
+  email: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  profileImageUrl: string | null;
+}
+
+export const AUTH_QUERY_KEY = ["auth", "user"] as const;
+
+async function fetchCurrentUser(): Promise<AuthUser | null> {
+  const res = await fetch("/api/auth/user", { credentials: "include" });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.user ?? null;
+}
+
+export function useAuth() {
+  const queryClient = useQueryClient();
+
+  const { data: user, isLoading } = useQuery({
+    queryKey: AUTH_QUERY_KEY,
+    queryFn: fetchCurrentUser,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const login = useCallback(
+    async (email: string, password: string): Promise<void> => {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Login failed");
+      await queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEY });
+    },
+    [queryClient],
+  );
+
+  const register = useCallback(
+    async (name: string, email: string, password: string): Promise<void> => {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name, email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Registration failed");
+      await queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEY });
+    },
+    [queryClient],
+  );
+
+  const logout = useCallback(() => {
+    queryClient.setQueryData(AUTH_QUERY_KEY, null);
+    queryClient.clear();
+    window.location.href = "/api/logout";
+  }, [queryClient]);
+
+  return {
+    user: user ?? null,
+    isAuthenticated: user != null,
+    isLoading,
+    login,
+    register,
+    logout,
+  };
+}

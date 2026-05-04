@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@workspace/replit-auth-web";
+import { useAuth } from "@/hooks/useAuth";
 import { useGetDashboardStats } from "@workspace/api-client-react";
 import { Video, LayoutDashboard, Wand2, LogOut, Loader2 } from "lucide-react";
 import {
@@ -31,7 +31,7 @@ export function Navbar() {
               <Video className="h-5 w-5 text-white" />
             </div>
             <span className="font-bold text-xl tracking-tight hidden sm:inline-block">
-              AiBeatSync.com
+              AI Beat Sync
             </span>
           </Link>
 

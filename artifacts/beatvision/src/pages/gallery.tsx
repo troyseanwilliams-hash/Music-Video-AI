@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useLocation, Link } from "wouter";
-import { useAuth } from "@workspace/replit-auth-web";
+import { useAuth } from "@/hooks/useAuth";
 import { useListVideos, useDeleteVideo, getListVideosQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";

@@ -39,64 +39,63 @@ export const GetCurrentAuthUserResponse = zod.object({
 });
 
 /**
- * @summary Start the browser OIDC login flow
+ * @summary Register a new account with email and password
  */
-export const BeginBrowserLoginQueryParams = zod.object({
-  returnTo: zod.coerce
-    .string()
-    .optional()
-    .describe(
-      "Relative path to redirect to after login (must start with `\/`). Defaults to `\/`.",
-    ),
+export const registerUserBodyEmailMin = 5;
+
+export const registerUserBodyPasswordMin = 8;
+
+export const registerUserBodyNameMax = 100;
+
+export const RegisterUserBody = zod.object({
+  email: zod.string().email().min(registerUserBodyEmailMin),
+  password: zod.string().min(registerUserBodyPasswordMin),
+  name: zod.string().min(1).max(registerUserBodyNameMax),
+});
+
+export const RegisterUserResponse = zod.object({
+  user: zod.union([
+    zod.object({
+      id: zod.string(),
+      email: zod.string().email().nullable(),
+      firstName: zod.string().nullable(),
+      lastName: zod.string().nullable(),
+      profileImageUrl: zod.string().nullable(),
+    }),
+    zod.null(),
+  ]),
 });
 
 /**
- * @summary Complete the browser OIDC login flow
+ * @summary Sign in with email and password
  */
-export const HandleBrowserLoginCallbackQueryParams = zod.object({
-  code: zod.coerce.string().optional(),
-  state: zod.coerce.string().optional(),
-  iss: zod.coerce.string().url().optional(),
+
+export const LoginUserBody = zod.object({
+  email: zod.string().email(),
+  password: zod.string().min(1),
+});
+
+export const LoginUserResponse = zod.object({
+  user: zod.union([
+    zod.object({
+      id: zod.string(),
+      email: zod.string().email().nullable(),
+      firstName: zod.string().nullable(),
+      lastName: zod.string().nullable(),
+      profileImageUrl: zod.string().nullable(),
+    }),
+    zod.null(),
+  ]),
 });
 
 /**
- * @summary Clear the session and begin OIDC logout
+ * @summary Clear the session and redirect home
  */
 export const LogoutBrowserSessionHeader = zod.object({
   Authorization: zod
     .string()
     .optional()
     .describe("Opaque session token — `Bearer <sid>`."),
-});
-
-/**
- * @summary Exchange a mobile OIDC code for a session token
- */
-
-export const ExchangeMobileAuthorizationCodeBody = zod.object({
-  code: zod.string().min(1),
-  code_verifier: zod.string().min(1),
-  redirect_uri: zod.string().url().min(1),
-  state: zod.string().min(1),
-  nonce: zod.string().min(1).optional(),
-});
-
-export const ExchangeMobileAuthorizationCodeResponse = zod.object({
-  token: zod.string(),
-});
-
-/**
- * @summary Delete a mobile session token
- */
-export const LogoutMobileSessionHeader = zod.object({
-  Authorization: zod
-    .string()
-    .optional()
-    .describe("Opaque session token — `Bearer <sid>`."),
-});
-
-export const LogoutMobileSessionResponse = zod.object({
-  success: zod.boolean(),
 });
 
 /**

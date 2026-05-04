@@ -25,27 +25,28 @@ export interface AuthUserEnvelope {
   user: AuthUser | null;
 }
 
-export interface MobileTokenExchangeRequest {
-  /** @minLength 1 */
-  code: string;
-  /** @minLength 1 */
-  code_verifier: string;
-  /** @minLength 1 */
-  redirect_uri: string;
-  /** @minLength 1 */
-  state: string;
-  /** @minLength 1 */
-  nonce?: string;
+export interface RegisterRequest {
+  /** @minLength 5 */
+  email: string;
+  /** @minLength 8 */
+  password: string;
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  name: string;
 }
 
-export interface MobileTokenExchangeSuccess {
-  token: string;
+export interface LoginRequest {
+  email: string;
+  /** @minLength 1 */
+  password: string;
 }
 
-export const LogoutSuccessValue = {
+export const SuccessResponseValue = {
   success: true,
 } as const;
-export type LogoutSuccess = typeof LogoutSuccessValue;
+export type SuccessResponse = typeof SuccessResponseValue;
 
 export interface ErrorEnvelope {
   error: string;
@@ -284,19 +285,6 @@ export interface DashboardStats {
  * Opaque session token — `Bearer <sid>`.
  */
 export type AuthorizationSessionHeaderParameter = string;
-
-export type BeginBrowserLoginParams = {
-  /**
-   * Relative path to redirect to after login (must start with `/`). Defaults to `/`.
-   */
-  returnTo?: string;
-};
-
-export type HandleBrowserLoginCallbackParams = {
-  code?: string;
-  state?: string;
-  iss?: string;
-};
 
 export type ListJobsParams = {
   /**
