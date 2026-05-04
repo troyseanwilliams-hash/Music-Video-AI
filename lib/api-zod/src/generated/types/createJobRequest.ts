@@ -7,6 +7,7 @@
  */
 import type { CreateJobRequestAspectRatio } from "./createJobRequestAspectRatio";
 import type { CreateJobRequestAudioSourceType } from "./createJobRequestAudioSourceType";
+import type { CreateJobRequestRequestedDuration } from "./createJobRequestRequestedDuration";
 import type { CreateJobRequestResolution } from "./createJobRequestResolution";
 import type { VideoStyle } from "./videoStyle";
 
@@ -54,4 +55,9 @@ export interface CreateJobRequest {
    * @nullable
    */
   referenceImagePath?: string | null;
+  /**
+   * Requested output video length. '5'/'8'/'10' = short clip, '30'/'60' = multi-clip stitch, 'full' = full audio length (default)
+   * @nullable
+   */
+  requestedDuration?: CreateJobRequestRequestedDuration;
 }

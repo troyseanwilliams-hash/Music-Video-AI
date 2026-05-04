@@ -244,6 +244,18 @@ export const ListJobsResponse = zod.object({
         .string()
         .nullish()
         .describe("Object storage path for an optional reference image"),
+      requestedDuration: zod
+        .union([
+          zod.literal("5"),
+          zod.literal("8"),
+          zod.literal("10"),
+          zod.literal("30"),
+          zod.literal("60"),
+          zod.literal("full"),
+          zod.literal(null),
+        ])
+        .nullish()
+        .describe("Requested output video length"),
       createdAt: zod.coerce.date(),
       updatedAt: zod.coerce.date(),
     }),
@@ -319,6 +331,20 @@ export const CreateJobBody = zod.object({
     .describe(
       "Object storage path for an optional reference image used as Runway starting frame",
     ),
+  requestedDuration: zod
+    .union([
+      zod.literal("5"),
+      zod.literal("8"),
+      zod.literal("10"),
+      zod.literal("30"),
+      zod.literal("60"),
+      zod.literal("full"),
+      zod.literal(null),
+    ])
+    .nullish()
+    .describe(
+      "Requested output video length. '5'\/'8'\/'10' = short clip, '30'\/'60' = multi-clip stitch, 'full' = full audio length (default)",
+    ),
 });
 
 /**
@@ -389,6 +415,18 @@ export const GetJobResponse = zod.object({
     .string()
     .nullish()
     .describe("Object storage path for an optional reference image"),
+  requestedDuration: zod
+    .union([
+      zod.literal("5"),
+      zod.literal("8"),
+      zod.literal("10"),
+      zod.literal("30"),
+      zod.literal("60"),
+      zod.literal("full"),
+      zod.literal(null),
+    ])
+    .nullish()
+    .describe("Requested output video length"),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -573,6 +611,18 @@ export const GetDashboardStatsResponse = zod.object({
           .string()
           .nullish()
           .describe("Object storage path for an optional reference image"),
+        requestedDuration: zod
+          .union([
+            zod.literal("5"),
+            zod.literal("8"),
+            zod.literal("10"),
+            zod.literal("30"),
+            zod.literal("60"),
+            zod.literal("full"),
+            zod.literal(null),
+          ])
+          .nullish()
+          .describe("Requested output video length"),
         createdAt: zod.coerce.date(),
         updatedAt: zod.coerce.date(),
       }),

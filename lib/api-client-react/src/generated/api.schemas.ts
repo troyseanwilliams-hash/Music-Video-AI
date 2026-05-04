@@ -148,6 +148,23 @@ export const JobAudioSourceType = {
   suno: "suno",
 } as const;
 
+/**
+ * Requested output video length
+ * @nullable
+ */
+export type JobRequestedDuration =
+  | (typeof JobRequestedDuration)[keyof typeof JobRequestedDuration]
+  | null;
+
+export const JobRequestedDuration = {
+  NUMBER_5: "5",
+  NUMBER_8: "8",
+  NUMBER_10: "10",
+  NUMBER_30: "30",
+  NUMBER_60: "60",
+  full: "full",
+} as const;
+
 export interface Job {
   id: string;
   userId: string;
@@ -176,6 +193,11 @@ export interface Job {
    * @nullable
    */
   referenceImagePath?: string | null;
+  /**
+   * Requested output video length
+   * @nullable
+   */
+  requestedDuration?: JobRequestedDuration;
   createdAt: string;
   updatedAt: string;
 }
@@ -216,6 +238,23 @@ export type CreateJobRequestResolution =
 export const CreateJobRequestResolution = {
   "720p": "720p",
   "1080p": "1080p",
+} as const;
+
+/**
+ * Requested output video length. '5'/'8'/'10' = short clip, '30'/'60' = multi-clip stitch, 'full' = full audio length (default)
+ * @nullable
+ */
+export type CreateJobRequestRequestedDuration =
+  | (typeof CreateJobRequestRequestedDuration)[keyof typeof CreateJobRequestRequestedDuration]
+  | null;
+
+export const CreateJobRequestRequestedDuration = {
+  NUMBER_5: "5",
+  NUMBER_8: "8",
+  NUMBER_10: "10",
+  NUMBER_30: "30",
+  NUMBER_60: "60",
+  full: "full",
 } as const;
 
 export interface CreateJobRequest {
@@ -262,6 +301,11 @@ export interface CreateJobRequest {
    * @nullable
    */
   referenceImagePath?: string | null;
+  /**
+   * Requested output video length. '5'/'8'/'10' = short clip, '30'/'60' = multi-clip stitch, 'full' = full audio length (default)
+   * @nullable
+   */
+  requestedDuration?: CreateJobRequestRequestedDuration;
 }
 
 export interface JobListResponse {

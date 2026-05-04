@@ -18,6 +18,47 @@ const MAX_RETRIES = 3;
 const POLL_INTERVAL_MS = 5000;
 const MAX_CLIPS_PER_JOB = 3;
 
+interface GenerationPlan {
+  sections: AudioSection[];
+  clipDurationSec: 5 | 10;
+  targetOutputDuration: number;
+}
+
+function buildGenerationPlan(
+  requestedDuration: string | null | undefined,
+  sections: AudioSection[],
+  audioDurationSec: number,
+): GenerationPlan {
+  const dur = requestedDuration ?? "full";
+
+  if (dur === "full") {
+    const selected = sections.length <= MAX_CLIPS_PER_JOB
+      ? sections
+      : (() => {
+          const sorted = [...sections].sort((a, b) => b.energy - a.energy);
+          const picked = new Set<number>();
+          picked.add(sections.indexOf(sorted[0]!));
+          picked.add(0);
+          picked.add(sections.length - 1);
+          return Array.from(picked).sort((a, b) => a - b).map((i) => sections[i]!).slice(0, MAX_CLIPS_PER_JOB);
+        })();
+    return { sections: selected, clipDurationSec: 10, targetOutputDuration: audioDurationSec };
+  }
+
+  const durSec = parseInt(dur, 10); // 5, 8, 10, 30, 60
+  const clipDurationSec: 5 | 10 = durSec <= 5 ? 5 : 10;
+  const numClips = Math.max(1, Math.ceil(durSec / clipDurationSec));
+
+  // Select sections, cycling if we need more clips than sections
+  const sorted = [...sections].sort((a, b) => b.energy - a.energy);
+  const selected: AudioSection[] = [];
+  for (let i = 0; i < numClips; i++) {
+    selected.push(sorted[i % sorted.length]!);
+  }
+
+  return { sections: selected, clipDurationSec, targetOutputDuration: durSec };
+}
+
 const storageService = new ObjectStorageService();
 type JobRow = typeof jobsTable.$inferSelect;
 
@@ -158,19 +199,6 @@ async function createSimulationClip(durationSec: number): Promise<Buffer> {
   }
 }
 
-async function selectSections(sections: AudioSection[]): Promise<AudioSection[]> {
-  if (sections.length <= MAX_CLIPS_PER_JOB) return sections;
-  const sorted = [...sections].sort((a, b) => b.energy - a.energy);
-  const selected = new Set<number>();
-  selected.add(sections.indexOf(sorted[0]!));
-  selected.add(0);
-  selected.add(sections.length - 1);
-  const result = Array.from(selected)
-    .sort((a, b) => a - b)
-    .map((i) => sections[i]!)
-    .slice(0, MAX_CLIPS_PER_JOB);
-  return result;
-}
 
 async function loadReferenceImageDataUrl(job: JobRow): Promise<string | null> {
   if (!job.referenceImagePath) return null;
@@ -190,22 +218,23 @@ async function loadReferenceImageDataUrl(job: JobRow): Promise<string | null> {
 async function generateClips(
   job: JobRow,
   analysis: AudioAnalysis,
+  plan: GenerationPlan,
   onProgress: (pct: number) => Promise<void>,
 ): Promise<{ buffer: Buffer; targetDuration: number }[]> {
   const provider = getActiveProvider();
-  const sections = await selectSections(analysis.sections);
+  const { sections, clipDurationSec } = plan;
   const clips: { buffer: Buffer; targetDuration: number }[] = [];
   const refImageDataUrl = await loadReferenceImageDataUrl(job);
 
   logger.info(
-    { jobId: job.id, provider, sectionCount: sections.length },
-    "Generating clips per section",
+    { jobId: job.id, provider, sectionCount: sections.length, clipDurationSec, targetOutputDuration: plan.targetOutputDuration },
+    "Generating clips per plan",
   );
 
   for (let i = 0; i < sections.length; i++) {
     const section = sections[i]!;
     const targetDuration = Math.max(1, section.endTime - section.startTime);
-    const clipDuration = Math.min(Math.max(Math.ceil(targetDuration), 5), 10);
+    const clipDuration = clipDurationSec;
 
     await onProgress(30 + Math.floor((i / sections.length) * 40));
 
@@ -332,7 +361,18 @@ async function processJob(job: JobRow): Promise<void> {
     });
 
     // === GENERATING ===
-    const clips = await generateClips(job, analysis, (pct) =>
+    const plan = buildGenerationPlan(
+      (job as JobRow & { requestedDuration?: string | null }).requestedDuration,
+      analysis.sections,
+      analysis.durationSeconds,
+    );
+
+    logger.info(
+      { jobId: job.id, requestedDuration: (job as JobRow & { requestedDuration?: string | null }).requestedDuration, planClips: plan.sections.length, targetOutputDuration: plan.targetOutputDuration },
+      "Generation plan built",
+    );
+
+    const clips = await generateClips(job, analysis, plan, (pct) =>
       updateJobStatus(job.id, { progressPercent: pct }),
     );
 
@@ -351,7 +391,7 @@ async function processJob(job: JobRow): Promise<void> {
         clips,
         audioBuffer: audioData.buffer,
         audioExt: audioData.ext,
-        totalDuration: analysis.durationSeconds,
+        totalDuration: plan.targetOutputDuration,
         lyricsText,
       });
       videoBuffer = stitchResult.videoBuffer;

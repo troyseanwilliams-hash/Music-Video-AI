@@ -656,6 +656,10 @@ components:
         referenceImagePath:
           type: [string, 'null']
           description: Object storage path for an optional reference image
+        requestedDuration:
+          type: [string, 'null']
+          enum: ['5', '8', '10', '30', '60', 'full', null]
+          description: Requested output video length
         createdAt:
           type: string
           format: date-time
@@ -702,6 +706,10 @@ components:
         referenceImagePath:
           type: [string, 'null']
           description: Object storage path for an optional reference image used as Runway starting frame
+        requestedDuration:
+          type: [string, 'null']
+          enum: ['5', '8', '10', '30', '60', 'full', null]
+          description: Requested output video length. '5'/'8'/'10' = short clip, '30'/'60' = multi-clip stitch, 'full' = full audio length (default)
 
     JobListResponse:
       type: object

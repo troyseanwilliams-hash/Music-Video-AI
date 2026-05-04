@@ -6,6 +6,7 @@ import {
   CreateJobRequestAudioSourceType,
   CreateJobRequestAspectRatio,
   CreateJobRequestResolution,
+  CreateJobRequestRequestedDuration,
   VideoStyle,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
@@ -92,6 +93,7 @@ export default function Generate() {
   const [resolution, setResolution] = useState<CreateJobRequestResolution>(CreateJobRequestResolution["720p"]);
   const [character, setCharacter] = useState<CharacterValue>("none");
   const [removeWatermark, setRemoveWatermark] = useState(false);
+  const [requestedDuration, setRequestedDuration] = useState<CreateJobRequestRequestedDuration>(CreateJobRequestRequestedDuration.full);
 
   // Reference image
   const refImageInputRef = useRef<HTMLInputElement>(null);
@@ -277,6 +279,7 @@ export default function Generate() {
           character: character !== "none" ? character : null,
           removeWatermark,
           referenceImagePath: refImageObjectPath ?? null,
+          requestedDuration,
         },
       },
       {
@@ -348,6 +351,37 @@ export default function Generate() {
                       className={character === c.value ? "text-primary font-medium" : ""}
                     >
                       {c.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <div className="h-5 w-px bg-border/40 mx-0.5" />
+
+              {/* Duration */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 px-3 py-1.5 text-sm font-medium transition-colors">
+                    <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span>{requestedDuration === CreateJobRequestRequestedDuration.full ? "Full" : `${requestedDuration}s`}</span>
+                    <ChevronDown className="h-3 w-3 text-muted-foreground ml-0.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-36">
+                  {([
+                    { value: CreateJobRequestRequestedDuration["5"], label: "5 seconds" },
+                    { value: CreateJobRequestRequestedDuration["8"], label: "8 seconds" },
+                    { value: CreateJobRequestRequestedDuration["10"], label: "10 seconds" },
+                    { value: CreateJobRequestRequestedDuration["30"], label: "30 seconds" },
+                    { value: CreateJobRequestRequestedDuration["60"], label: "60 seconds" },
+                    { value: CreateJobRequestRequestedDuration.full, label: "Full track" },
+                  ] as const).map(({ value, label }) => (
+                    <DropdownMenuItem
+                      key={value}
+                      onClick={() => setRequestedDuration(value)}
+                      className={requestedDuration === value ? "text-primary font-medium" : ""}
+                    >
+                      {label}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
@@ -748,7 +782,7 @@ export default function Generate() {
           {/* ── Settings Summary ── */}
           <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
             <span className="rounded-full border border-border/40 bg-secondary/30 px-2.5 py-1">
-              {aspectRatio} · {resolution}
+              {aspectRatio} · {resolution} · {requestedDuration === CreateJobRequestRequestedDuration.full ? "Full track" : `${requestedDuration}s`}
             </span>
             {character !== "none" && (
               <span className="rounded-full border border-border/40 bg-secondary/30 px-2.5 py-1">

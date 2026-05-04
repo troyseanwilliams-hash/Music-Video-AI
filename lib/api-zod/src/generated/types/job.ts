@@ -7,6 +7,7 @@
  */
 import type { AudioAnalysis } from "./audioAnalysis";
 import type { JobAudioSourceType } from "./jobAudioSourceType";
+import type { JobRequestedDuration } from "./jobRequestedDuration";
 import type { JobStatus } from "./jobStatus";
 
 export interface Job {
@@ -37,6 +38,11 @@ export interface Job {
    * @nullable
    */
   referenceImagePath?: string | null;
+  /**
+   * Requested output video length
+   * @nullable
+   */
+  requestedDuration?: JobRequestedDuration;
   createdAt: Date;
   updatedAt: Date;
 }
