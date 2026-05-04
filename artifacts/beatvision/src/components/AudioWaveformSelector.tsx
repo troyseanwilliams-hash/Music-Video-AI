@@ -16,7 +16,9 @@ class WaveformErrorBoundary extends Component<
     if (this.state.error) {
       return (
         <div className="h-20 rounded-xl bg-secondary/30 border border-border/40 flex items-center justify-center">
-          <p className="text-xs text-muted-foreground">Waveform preview unavailable — clip selection still works below.</p>
+          <p className="text-xs text-muted-foreground">
+            Waveform preview unavailable — clip selection still works below.
+          </p>
         </div>
       );
     }
@@ -39,7 +41,7 @@ function formatTime(sec: number): string {
 
 const SAMPLES = 200;
 const SEL_COLOR = "#8b5cf6";
-const TRACK_COLOR = "#374151";
+const TRACK_COLOR = "#2d3748";
 
 function AudioWaveformSelectorInner({
   file,
@@ -50,34 +52,44 @@ function AudioWaveformSelectorInner({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [totalDuration, setTotalDuration] = useState<number>(0);
   const [waveform, setWaveform] = useState<Float32Array | null>(null);
+  const [phase, setPhase] = useState<"loading" | "ready" | "error">("loading");
 
-  // ── Phase 1: get duration quickly via HTML5 Audio metadata ────────────────
+  // ── Phase 1: get duration via HTML5 Audio metadata (fast, no decode) ──────
   useEffect(() => {
     let cancelled = false;
     setTotalDuration(0);
     setWaveform(null);
+    setPhase("loading");
 
     const url = URL.createObjectURL(file);
     const audio = new Audio();
     audio.preload = "metadata";
 
-    audio.addEventListener("loadedmetadata", () => {
+    const onMeta = () => {
       if (!cancelled && isFinite(audio.duration) && audio.duration > 0) {
         setTotalDuration(audio.duration);
+        setPhase("ready");
+      } else if (!cancelled) {
+        setPhase("error");
       }
       URL.revokeObjectURL(url);
-    });
+    };
 
-    audio.addEventListener("error", () => {
+    const onError = () => {
+      if (!cancelled) setPhase("error");
       URL.revokeObjectURL(url);
-    });
+    };
 
+    audio.addEventListener("loadedmetadata", onMeta);
+    audio.addEventListener("error", onError);
     audio.src = url;
+    audio.load();
 
     return () => {
       cancelled = true;
+      audio.removeEventListener("loadedmetadata", onMeta);
+      audio.removeEventListener("error", onError);
       audio.src = "";
-      URL.revokeObjectURL(url);
     };
   }, [file]);
 
@@ -89,9 +101,10 @@ function AudioWaveformSelectorInner({
     const decode = async () => {
       try {
         const buf = await file.arrayBuffer();
-        const ctx = new OfflineAudioContext(1, 1, 44100);
-        const audioBuf = await ctx.decodeAudioData(buf);
+        const offCtx = new OfflineAudioContext(1, 1, 44100);
+        const audioBuf = await offCtx.decodeAudioData(buf);
         if (cancelled) return;
+
         const ch = audioBuf.getChannelData(0);
         const block = Math.max(1, Math.floor(ch.length / SAMPLES));
         const out = new Float32Array(SAMPLES);
@@ -105,7 +118,7 @@ function AudioWaveformSelectorInner({
         }
         if (!cancelled) setWaveform(out);
       } catch {
-        // Waveform bars are optional — slider still works without them
+        // Bars are optional — slider still works
       }
     };
 
@@ -126,13 +139,22 @@ function AudioWaveformSelectorInner({
 
     ctx.clearRect(0, 0, W, H);
 
-    const dur = totalDuration || 1;
-    const selStartRatio = Math.min(clipStartTime / dur, 1);
-    const selEndRatio = Math.min((clipStartTime + clipDurationSec) / dur, 1);
+    // While loading — show a pulsing placeholder bar, no selection yet
+    if (phase === "loading" || totalDuration === 0) {
+      ctx.fillStyle = TRACK_COLOR;
+      ctx.fillRect(0, mid - 3, W, 6);
+      ctx.fillStyle = "#4b5563";
+      ctx.fillRect(0, mid - 1, W * 0.4, 2);
+      return;
+    }
+
+    const selStartRatio = Math.min(clipStartTime / totalDuration, 1);
+    const selEndRatio = Math.min((clipStartTime + clipDurationSec) / totalDuration, 1);
     const selStartX = selStartRatio * W;
     const selEndX = selEndRatio * W;
 
     if (waveform) {
+      // Draw actual waveform bars
       const barW = W / SAMPLES;
       for (let i = 0; i < SAMPLES; i++) {
         const x = i * barW;
@@ -142,46 +164,34 @@ function AudioWaveformSelectorInner({
         ctx.fillRect(x, mid - h, Math.max(1, barW - 0.5), h * 2);
       }
     } else {
-      // Placeholder gradient bar while waveform loads
-      const grad = ctx.createLinearGradient(0, 0, W, 0);
-      grad.addColorStop(0, TRACK_COLOR);
-      grad.addColorStop(selStartRatio, TRACK_COLOR);
-      grad.addColorStop(selStartRatio, SEL_COLOR);
-      grad.addColorStop(selEndRatio, SEL_COLOR);
-      grad.addColorStop(selEndRatio, TRACK_COLOR);
-      grad.addColorStop(1, TRACK_COLOR);
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, mid - 4, W, 8);
+      // Placeholder bars with correct selection region
+      for (let i = 0; i < SAMPLES; i++) {
+        const x = (i / SAMPLES) * W;
+        const inSel = x >= selStartX && x < selEndX;
+        const fakeH = mid * (0.2 + 0.2 * Math.sin(i * 0.3) + 0.1 * Math.sin(i * 0.7));
+        ctx.fillStyle = inSel ? SEL_COLOR : TRACK_COLOR;
+        ctx.fillRect(x, mid - fakeH, Math.max(1, (W / SAMPLES) - 0.5), fakeH * 2);
+      }
     }
 
-    // Selection highlight
-    ctx.fillStyle = "rgba(139,92,246,0.12)";
+    // Selection tint + border
+    ctx.fillStyle = "rgba(139,92,246,0.10)";
     ctx.fillRect(selStartX, 0, selEndX - selStartX, H);
-
-    // Selection border
     ctx.strokeStyle = "#a78bfa";
     ctx.lineWidth = 2;
-    ctx.strokeRect(selStartX + 1, 1, selEndX - selStartX - 2, H - 2);
+    ctx.strokeRect(selStartX + 1, 1, Math.max(0, selEndX - selStartX - 2), H - 2);
 
-  }, [waveform, totalDuration, clipStartTime, clipDurationSec]);
+  }, [waveform, totalDuration, clipStartTime, clipDurationSec, phase]);
 
-  // ── Slider state ──────────────────────────────────────────────────────────
-  const maxStart = totalDuration > 0
-    ? Math.max(0, totalDuration - clipDurationSec)
-    : 0;
-
-  const clampedStart = totalDuration > 0
-    ? Math.min(clipStartTime, maxStart)
-    : 0;
-
-  const endTime = totalDuration > 0
-    ? Math.min(clampedStart + clipDurationSec, totalDuration)
-    : clipDurationSec;
+  // ── Slider ────────────────────────────────────────────────────────────────
+  const maxStart = totalDuration > 0 ? Math.max(0, totalDuration - clipDurationSec) : 0;
+  const clampedStart = totalDuration > 0 ? Math.min(clipStartTime, maxStart) : 0;
+  const endTime = totalDuration > 0 ? Math.min(clampedStart + clipDurationSec, totalDuration) : clipDurationSec;
 
   return (
-    <div className="space-y-3">
-      {/* Waveform canvas */}
-      <div className="rounded-xl overflow-hidden border border-border/40 bg-background/60">
+    <div className="space-y-2">
+      {/* Canvas — always visible, immediately shows loading state then selection */}
+      <div className="relative rounded-xl overflow-hidden border border-border/40 bg-[#111827]">
         <canvas
           ref={canvasRef}
           width={800}
@@ -189,51 +199,60 @@ function AudioWaveformSelectorInner({
           className="w-full block"
           style={{ height: 72 }}
         />
+        {phase === "loading" && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <p className="text-[10px] text-muted-foreground/50 tracking-wide uppercase">
+              Analyzing audio…
+            </p>
+          </div>
+        )}
+        {phase === "ready" && !waveform && (
+          <div className="absolute bottom-1 right-2">
+            <p className="text-[9px] text-muted-foreground/30">loading waveform…</p>
+          </div>
+        )}
       </div>
 
-      {/* Slider — always rendered */}
-      <div className="px-0.5">
-        <input
-          type="range"
-          min={0}
-          max={maxStart}
-          step={0.05}
-          value={clampedStart}
-          onChange={(e) => onClipStartTimeChange(parseFloat(e.target.value))}
-          disabled={maxStart <= 0}
-          className="w-full cursor-pointer"
-          style={{ accentColor: "#8b5cf6" }}
-        />
-      </div>
+      {/* Slider */}
+      <input
+        type="range"
+        min={0}
+        max={maxStart}
+        step={0.05}
+        value={clampedStart}
+        onChange={(e) => onClipStartTimeChange(parseFloat(e.target.value))}
+        disabled={phase !== "ready" || maxStart <= 0}
+        className="w-full cursor-pointer"
+        style={{ accentColor: "#8b5cf6" }}
+      />
 
-      {/* Time readout */}
+      {/* Time labels */}
       <div className="flex items-center justify-between text-xs">
-        <span className="text-muted-foreground/60 font-mono">
+        <span className="text-muted-foreground/50 font-mono">
           {totalDuration > 0 ? "0:00" : "—"}
         </span>
-        <span className="text-primary font-semibold tabular-nums">
-          {totalDuration > 0
-            ? `${formatTime(clampedStart)} → ${formatTime(endTime)}`
-            : `Loading…`}
+        <span className="font-semibold tabular-nums" style={{ color: "#a78bfa" }}>
+          {phase === "loading"
+            ? "Analyzing…"
+            : `${formatTime(clampedStart)} → ${formatTime(endTime)}`}
           <span className="text-muted-foreground font-normal ml-1.5">
             ({clipDurationSec}s clip)
           </span>
         </span>
-        <span className="text-muted-foreground/60 font-mono">
+        <span className="text-muted-foreground/50 font-mono">
           {totalDuration > 0 ? formatTime(totalDuration) : "—"}
         </span>
       </div>
 
-      {totalDuration > 0 && maxStart <= 0 && (
+      {phase === "ready" && maxStart <= 0 && (
         <p className="text-xs text-amber-500 text-center">
-          Your track is {formatTime(totalDuration)} — shorter than the {clipDurationSec}s clip. The full track will be used.
+          Track is {formatTime(totalDuration)} — shorter than {clipDurationSec}s. The full track will be used.
         </p>
       )}
     </div>
   );
 }
 
-// Exported with error boundary so any crash shows a fallback, not a blank page
 export function AudioWaveformSelector(props: AudioWaveformSelectorProps) {
   return (
     <WaveformErrorBoundary>
