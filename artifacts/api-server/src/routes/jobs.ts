@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { Client } from "pg";
 import { db } from "@workspace/db";
 import { jobsTable, creditsTable } from "@workspace/db";
 import { eq, and, desc, count } from "drizzle-orm";
@@ -165,6 +166,134 @@ router.get("/jobs/:id", async (req, res) => {
   }
 
   res.json(job[0]);
+});
+
+router.get("/jobs/:id/events", async (req, res) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const jobId = req.params.id;
+
+  const existing = await db
+    .select()
+    .from(jobsTable)
+    .where(
+      and(eq(jobsTable.id, jobId), eq(jobsTable.userId, req.user.id)),
+    )
+    .limit(1);
+
+  if (!existing[0]) {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  const sendJob = (job: typeof existing[0]) => {
+    res.write(`data: ${JSON.stringify(job)}\n\n`);
+  };
+
+  sendJob(existing[0]);
+
+  if (existing[0].status === "ready" || existing[0].status === "failed") {
+    res.end();
+    return;
+  }
+
+  const pgClient = new Client({ connectionString: process.env.DATABASE_URL });
+  let pgConnected = false;
+  let ended = false;
+
+  try {
+    await pgClient.connect();
+    pgConnected = true;
+    const channel = `job_${jobId.replace(/-/g, "_")}`;
+    await pgClient.query(`LISTEN "${channel}"`);
+
+    pgClient.on("notification", async () => {
+      if (ended) return;
+      try {
+        const [updated] = await db
+          .select()
+          .from(jobsTable)
+          .where(eq(jobsTable.id, jobId))
+          .limit(1);
+        if (updated) {
+          sendJob(updated);
+          if (updated.status === "ready" || updated.status === "failed") {
+            ended = true;
+            await pgClient.end().catch(() => {});
+            res.end();
+          }
+        }
+      } catch {
+      }
+    });
+
+    pgClient.on("error", () => {
+    });
+  } catch {
+    pgConnected = false;
+  }
+
+  const heartbeat = setInterval(() => {
+    if (!ended) res.write(": heartbeat\n\n");
+  }, 25000);
+
+  req.on("close", async () => {
+    ended = true;
+    clearInterval(heartbeat);
+    if (pgConnected) {
+      await pgClient.end().catch(() => {});
+    }
+  });
+});
+
+router.post("/jobs/:id/retry", async (req, res) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const jobId = req.params.id;
+  const [job] = await db
+    .select()
+    .from(jobsTable)
+    .where(
+      and(eq(jobsTable.id, jobId), eq(jobsTable.userId, req.user.id)),
+    )
+    .limit(1);
+
+  if (!job) {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
+
+  if (job.status !== "failed") {
+    res.status(400).json({ error: "Only failed jobs can be retried" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(jobsTable)
+    .set({
+      status: "queued",
+      progressPercent: 0,
+      errorMessage: null,
+      retryCount: 0,
+      claimedAt: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(jobsTable.id, jobId))
+    .returning();
+
+  res.json(updated);
 });
 
 export default router;

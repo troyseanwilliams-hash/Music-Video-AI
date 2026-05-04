@@ -23,6 +23,7 @@
     "google-auth-library": "^10.6.2",
     "music-metadata": "^11.12.3",
     "openid-client": "^6.8.4",
+    "pg": "^8.20.0",
     "pino": "^9",
     "pino-http": "^10",
     "uuid": "^14.0.0"

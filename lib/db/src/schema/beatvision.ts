@@ -52,6 +52,8 @@ export const jobsTable = pgTable("jobs", {
   progressPercent: integer("progress_percent"),
   errorMessage: text("error_message"),
   videoId: text("video_id"),
+  retryCount: integer("retry_count").notNull().default(0),
+  claimedAt: timestamp("claimed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

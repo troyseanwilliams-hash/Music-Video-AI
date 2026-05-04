@@ -24,16 +24,45 @@ Full-stack AI music video generator (similar to freebeat.ai).
 
 - **`artifacts/beatvision`** — React + Vite frontend (preview path: `/`)
 - **`artifacts/api-server`** — Express 5 backend (preview path: `/api`)
+- **`artifacts/worker`** — Dedicated background job worker (port 9000, VM deployment)
 
 ### Features
 
 - **Auth**: Replit Auth (OIDC) — sessions stored in PostgreSQL
-- **Storage**: Replit App Storage (GCS presigned URLs via `@workspace/object-storage-web`)
-- **Job Pipeline**: queued → analyzing → generating → stitching → ready (background processor polling every 5s)
+- **Storage**: Replit App Storage (GCS presigned URLs via sidecar at `127.0.0.1:1106`)
+- **Job Pipeline**: queued → analyzing → generating → stitching → ready
+- **Background Processing**: Atomic job claiming via `FOR UPDATE SKIP LOCKED` (safe for multiple concurrent workers)
+- **Retry Logic**: Failed jobs retry up to 3× with exponential backoff (2min, 4min, 8min)
+- **Real-time Updates**: SSE endpoint (`GET /api/jobs/:id/events`) using pg LISTEN/NOTIFY; frontend falls back to 3s polling if SSE unavailable
 - **Credits System**: per-user credit tracking in DB
-- **Real-time polling**: job status auto-polls every 3s while active
 - **Video Gallery**: grid view with inline playback and deletion
 - **Dashboard**: stats overview + recent job activity
+
+### AI Video Generation
+
+Job processor (`artifacts/api-server/src/lib/jobProcessor.ts` and `artifacts/worker/src/lib/jobProcessor.ts`) supports:
+- **Runway ML Gen-3 Turbo**: set `RUNWAY_API_KEY`
+- **Luma Dream Machine**: set `LUMA_API_KEY`
+- **Simulation mode**: if neither key is set, simulates a 4s generation (dev/demo)
+
+Generated videos are downloaded from the AI provider and stored in Replit App Storage at `/objects/videos/<videoId>.mp4`.
+
+### Smart Prompt Building
+
+Audio is analyzed with `music-metadata` to extract BPM, energy, mood, and section structure. A rich AI prompt is then constructed from:
+- Visual style (cinematic, neon, anime, etc.)
+- Tempo descriptor (fast-paced, atmospheric, etc.)
+- Energy level (intense, vibrant, calm)
+- Dominant section label (chorus, drop, etc.)
+- User's custom prompt text
+
+### DB Schema
+
+Tables: `sessions`, `users`, `jobs`, `videos`, `credits`
+
+Key job columns: `retry_count` (int, default 0), `claimed_at` (timestamp) — used for atomic claiming and retry tracking.
+
+Push schema changes: `pnpm --filter @workspace/db run push`
 
 ### Shared Libraries
 
@@ -43,25 +72,34 @@ Full-stack AI music video generator (similar to freebeat.ai).
 - `lib/replit-auth-web` — `useAuth()` hook for frontend auth state
 - `lib/object-storage-web` — `ObjectUploader` Uppy-based file upload component
 
-### AI Integration
+### Deployment Configuration
 
-Job processor (`artifacts/api-server/src/lib/jobProcessor.ts`) stubs out AI video generation.
-To activate real generation, set one of:
-- `RUNWAY_API_KEY` — Runway ML
-- `LUMA_API_KEY` — Luma Dream Machine
-- `KLING_API_KEY` — Kling AI
+| Artifact       | Type      | Notes                                              |
+|---------------|-----------|----------------------------------------------------|
+| beatvision    | Static    | React+Vite SPA, no server                          |
+| api-server    | VM        | Runs job processor in prod (`RUN_JOB_PROCESSOR=true`) |
+| worker        | VM        | Dedicated job processor, health at `/worker/health` |
 
-### DB Schema
-
-Tables: `sessions`, `users`, `jobs`, `videos`, `credits`
-Push schema changes: `pnpm --filter @workspace/db run push`
+In production, both api-server and worker can run the job processor safely — `FOR UPDATE SKIP LOCKED` ensures each job is claimed by exactly one worker.
 
 ## Key Commands
 
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- `pnpm --filter @workspace/api-server run dev` — run API server locally
+```bash
+# Install deps
+pnpm install
 
-See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
+# Push DB schema
+pnpm --filter @workspace/db run push
+
+# Build api-server
+pnpm --filter @workspace/api-server run build
+
+# Build worker
+pnpm --filter @workspace/worker run build
+
+# Typecheck all
+pnpm run typecheck
+
+# Codegen (OpenAPI → React Query hooks)
+pnpm --filter @workspace/api-spec run codegen
+```

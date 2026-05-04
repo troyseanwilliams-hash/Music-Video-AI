@@ -24,7 +24,16 @@ app.listen(port, (err) => {
 
   logger.info({ port }, "Server listening");
 
-  startJobProcessor().catch((err) => {
-    logger.error({ err }, "Failed to start job processor");
-  });
+  // In production the dedicated worker artifact runs the job processor.
+  // In development (or when explicitly opted in) run it here too.
+  const runProcessor =
+    process.env.NODE_ENV !== "production" ||
+    process.env.RUN_JOB_PROCESSOR === "true";
+  if (runProcessor) {
+    startJobProcessor().catch((err) => {
+      logger.error({ err }, "Failed to start job processor");
+    });
+  } else {
+    logger.info("Job processor disabled (handled by worker artifact in production)");
+  }
 });

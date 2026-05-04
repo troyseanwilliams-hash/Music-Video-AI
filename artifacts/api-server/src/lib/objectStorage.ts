@@ -154,6 +154,32 @@ export class ObjectStorageService {
     return objectFile;
   }
 
+  async uploadVideoFromUrl(videoUrl: string, videoId: string): Promise<string> {
+    const privateObjectDir = this.getPrivateObjectDir();
+    const objectEntityPath = `${privateObjectDir}/videos/${videoId}.mp4`;
+    const { bucketName, objectName } = parseObjectPath(objectEntityPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+
+    const res = await fetch(videoUrl, { signal: AbortSignal.timeout(120_000) });
+    if (!res.ok) throw new Error(`Failed to download video from AI provider: HTTP ${res.status}`);
+
+    const buffer = Buffer.from(await res.arrayBuffer());
+    await file.save(buffer, { contentType: "video/mp4", resumable: buffer.length > 5 * 1024 * 1024 });
+
+    return `/objects/videos/${videoId}.mp4`;
+  }
+
+  async uploadVideoBuffer(buffer: Buffer, videoId: string): Promise<string> {
+    const privateObjectDir = this.getPrivateObjectDir();
+    const objectEntityPath = `${privateObjectDir}/videos/${videoId}.mp4`;
+    const { bucketName, objectName } = parseObjectPath(objectEntityPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+    await file.save(buffer, { contentType: "video/mp4", resumable: buffer.length > 5 * 1024 * 1024 });
+    return `/objects/videos/${videoId}.mp4`;
+  }
+
   normalizeObjectEntityPath(rawPath: string): string {
     if (!rawPath.startsWith("https://storage.googleapis.com/")) {
       return rawPath;
