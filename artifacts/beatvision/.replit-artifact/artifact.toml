@@ -1,6 +1,6 @@
 kind = "web"
 previewPath = "/"
-title = "BeatVision AI"
+title = "Syncbeat.ai"
 version = "1.0.0"
 id = "artifacts/beatvision"
 router = "path"

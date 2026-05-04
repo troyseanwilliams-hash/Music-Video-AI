@@ -31,7 +31,7 @@ export function Navbar() {
               <Video className="h-5 w-5 text-white" />
             </div>
             <span className="font-bold text-xl tracking-tight hidden sm:inline-block">
-              BeatVision AI
+              Syncbeat.ai
             </span>
           </Link>
 

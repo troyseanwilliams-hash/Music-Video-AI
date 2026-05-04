@@ -30,7 +30,7 @@ export default function Home() {
               </h1>
               
               <p className="text-lg md:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto">
-                BeatVision AI analyzes your audio tracks and generates stunning, beat-synced music videos perfectly matched to the mood, energy, and rhythm of your music.
+                Syncbeat.ai analyzes your audio tracks and generates stunning, beat-synced music videos perfectly matched to the mood, energy, and rhythm of your music.
               </p>
               
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">

@@ -16,7 +16,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
 
-## Project: BeatVision AI
+## Project: Syncbeat.ai
 
 Full-stack AI music video generator (similar to freebeat.ai).
 
