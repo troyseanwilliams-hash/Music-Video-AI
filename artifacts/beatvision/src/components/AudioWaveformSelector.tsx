@@ -17,7 +17,7 @@ const WAVEFORM_SAMPLES = 600;
 const BAR_GAP = 0.5;
 const TRACK_COLOR = "#374151";
 const SELECTION_COLOR = "#8b5cf6";
-const SELECTION_BG = "rgba(139,92,246,0.12)";
+const SELECTION_BG = "rgba(139,92,246,0.15)";
 const HANDLE_COLOR = "#a78bfa";
 
 export function AudioWaveformSelector({
@@ -31,19 +31,6 @@ export function AudioWaveformSelector({
   const [totalDuration, setTotalDuration] = useState(0);
   const [isDecoding, setIsDecoding] = useState(true);
 
-  // Drag state stored in refs so event handlers always see current values
-  const isDragging = useRef(false);
-  const dragStartX = useRef(0);
-  const dragStartTime = useRef(0);
-  const totalDurationRef = useRef(0);
-  const clipDurationSecRef = useRef(clipDurationSec);
-  const clipStartTimeRef = useRef(clipStartTime);
-
-  // Keep refs in sync with props/state
-  useEffect(() => { totalDurationRef.current = totalDuration; }, [totalDuration]);
-  useEffect(() => { clipDurationSecRef.current = clipDurationSec; }, [clipDurationSec]);
-  useEffect(() => { clipStartTimeRef.current = clipStartTime; }, [clipStartTime]);
-
   // ── Audio decode ─────────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
@@ -54,12 +41,11 @@ export function AudioWaveformSelector({
     const decode = async () => {
       try {
         const arrayBuffer = await file.arrayBuffer();
-        const ctx = new AudioContext();
-        if (ctx.state === "suspended") await ctx.resume();
+        // OfflineAudioContext avoids autoplay-policy suspension issues
+        const probe = new OfflineAudioContext(1, 1, 44100);
         const audioBuffer = await new Promise<AudioBuffer>((resolve, reject) => {
-          ctx.decodeAudioData(arrayBuffer.slice(0), resolve, reject);
+          probe.decodeAudioData(arrayBuffer.slice(0), resolve, reject);
         });
-        await ctx.close();
         if (cancelled) return;
 
         const dur = audioBuffer.duration;
@@ -111,6 +97,7 @@ export function AudioWaveformSelector({
     const selStartX = selStartRatio * W;
     const selEndX = selEndRatio * W;
 
+    // Draw bars
     for (let i = 0; i < WAVEFORM_SAMPLES; i++) {
       const x = i * barWidth;
       const inSel = x >= selStartX && x < selEndX;
@@ -119,26 +106,18 @@ export function AudioWaveformSelector({
       ctx.fillRect(x, mid - h, Math.max(1, barWidth - BAR_GAP), h * 2);
     }
 
+    // Selection background tint
     ctx.fillStyle = SELECTION_BG;
     ctx.fillRect(selStartX, 0, selEndX - selStartX, H);
 
-    const borderRadius = 2;
+    // Selection border
     ctx.strokeStyle = HANDLE_COLOR;
     ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(selStartX + borderRadius, 0);
-    ctx.lineTo(selEndX - borderRadius, 0);
-    ctx.lineTo(selEndX, borderRadius);
-    ctx.lineTo(selEndX, H - borderRadius);
-    ctx.lineTo(selEndX - borderRadius, H);
-    ctx.lineTo(selStartX + borderRadius, H);
-    ctx.lineTo(selStartX, H - borderRadius);
-    ctx.lineTo(selStartX, borderRadius);
-    ctx.closePath();
-    ctx.stroke();
+    ctx.strokeRect(selStartX + 1, 1, selEndX - selStartX - 2, H - 2);
 
-    const handleW = 4;
-    const handleH = 28;
+    // Drag handles
+    const handleW = 5;
+    const handleH = 32;
     ctx.fillStyle = HANDLE_COLOR;
     ctx.beginPath();
     ctx.roundRect(selStartX - handleW / 2, mid - handleH / 2, handleW, handleH, 2);
@@ -150,54 +129,14 @@ export function AudioWaveformSelector({
 
   useEffect(() => { draw(); }, [draw]);
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
-  const clampStart = (start: number) => {
-    const dur = totalDurationRef.current;
-    const clipDur = clipDurationSecRef.current;
-    return Math.max(0, Math.min(start, Math.max(0, dur - clipDur)));
+  // ── Slider range ──────────────────────────────────────────────────────────
+  const maxStart = Math.max(0, totalDuration - clipDurationSec);
+  const clampedStart = Math.min(clipStartTime, maxStart);
+  const endTime = Math.min(clampedStart + clipDurationSec, totalDuration);
+
+  const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onClipStartTimeChange(parseFloat(e.target.value));
   };
-
-  const xToTime = (clientX: number): number => {
-    const canvas = canvasRef.current;
-    if (!canvas || totalDurationRef.current === 0) return 0;
-    const rect = canvas.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    return ratio * totalDurationRef.current;
-  };
-
-  // ── Pointer events (capture keeps tracking even outside the element) ──────
-  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (totalDurationRef.current === 0) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
-    isDragging.current = true;
-    dragStartX.current = e.clientX;
-    dragStartTime.current = clipStartTimeRef.current;
-  }, []);
-
-  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!isDragging.current || totalDurationRef.current === 0) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const dx = e.clientX - dragStartX.current;
-    const timeDelta = (dx / rect.width) * totalDurationRef.current;
-    onClipStartTimeChange(clampStart(dragStartTime.current + timeDelta));
-  }, [onClipStartTimeChange]);
-
-  const handlePointerUp = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!isDragging.current) return;
-    const wasDrag = Math.abs(e.clientX - dragStartX.current) > 4;
-    isDragging.current = false;
-    e.currentTarget.releasePointerCapture(e.pointerId);
-
-    if (!wasDrag) {
-      // Treat as a click: center selection under cursor
-      const t = xToTime(e.clientX);
-      onClipStartTimeChange(clampStart(t - clipDurationSecRef.current / 2));
-    }
-  }, [onClipStartTimeChange]);
-
-  const endTime = Math.min(clipStartTime + clipDurationSec, totalDuration);
 
   return (
     <div className="space-y-2">
@@ -206,21 +145,35 @@ export function AudioWaveformSelector({
           <p className="text-xs text-muted-foreground animate-pulse">Analyzing audio waveform…</p>
         </div>
       ) : waveformData ? (
-        <div className="relative select-none">
-          <canvas
-            ref={canvasRef}
-            width={1200}
-            height={80}
-            className="w-full h-20 rounded-xl border border-border/40 bg-background/60 cursor-grab active:cursor-grabbing touch-none"
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerUp}
+        <div className="space-y-1">
+          {/* Waveform canvas — visual only */}
+          <div className="relative rounded-xl overflow-hidden border border-border/40 bg-background/60">
+            <canvas
+              ref={canvasRef}
+              width={1200}
+              height={80}
+              className="w-full h-20 block"
+            />
+          </div>
+
+          {/* Native range slider — this is what actually controls the position */}
+          <input
+            type="range"
+            min={0}
+            max={maxStart > 0 ? maxStart : 0}
+            step={0.1}
+            value={clampedStart}
+            onChange={handleSliderChange}
+            disabled={maxStart === 0}
+            className="w-full h-2 appearance-none rounded-full cursor-pointer accent-violet-500"
+            style={{ accentColor: "#8b5cf6" }}
           />
-          <div className="flex items-center justify-between mt-1.5 px-0.5">
+
+          {/* Time labels */}
+          <div className="flex items-center justify-between px-0.5">
             <span className="text-[10px] text-muted-foreground/60 font-mono">0:00</span>
             <span className="text-xs text-primary font-medium">
-              {formatTime(clipStartTime)} → {formatTime(endTime)}
+              {formatTime(clampedStart)} → {formatTime(endTime)}
               <span className="text-muted-foreground font-normal ml-1">
                 ({clipDurationSec}s clip)
               </span>
