@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ObjectUploader } from "@workspace/object-storage-web";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -23,7 +22,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { motion } from "framer-motion";
 import {
-  Upload, Link as LinkIcon, Music, Sparkles, Loader2,
+  Upload, Link as LinkIcon, Music, Sparkles, Loader2, CheckCircle2, XCircle,
   Users, Clapperboard, Layers, Zap, Film, Wand2, Video as VideoIcon, FileText,
   ChevronDown, User, Maximize2, Captions, Diamond, Pencil, MonitorPlay,
 } from "lucide-react";
@@ -71,6 +70,11 @@ export default function Generate() {
   );
   const [audioUrl, setAudioUrl] = useState("");
   const [objectPath, setObjectPath] = useState<string | null>(null);
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [prompt, setPrompt] = useState("");
   const [selectedStyle, setSelectedStyle] = useState<VideoStyle>(VideoStyle.cinematic);
   const [lyricsEnabled, setLyricsEnabled] = useState(false);
@@ -81,6 +85,52 @@ export default function Generate() {
   const [resolution, setResolution] = useState<CreateJobRequestResolution>(CreateJobRequestResolution["720p"]);
   const [character, setCharacter] = useState<CharacterValue>("none");
   const [removeWatermark, setRemoveWatermark] = useState(false);
+
+  const handleFileSelect = async (file: File) => {
+    if (!file) return;
+    setUploadError(null);
+    setIsUploading(true);
+    setUploadProgress(0);
+    setUploadedFileName(file.name);
+    try {
+      const res = await fetch("/api/storage/uploads/request-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+      });
+      if (!res.ok) throw new Error("Failed to get upload URL");
+      const data = await res.json();
+
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100));
+        };
+        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload failed: ${xhr.status}`)));
+        xhr.onerror = () => reject(new Error("Network error during upload"));
+        xhr.open("PUT", data.uploadURL);
+        xhr.setRequestHeader("Content-Type", file.type);
+        xhr.send(file);
+      });
+
+      const url = new URL(data.uploadURL);
+      const match = url.pathname.match(/(\/objects\/.*?)(\?|$)/);
+      if (match) {
+        setObjectPath(match[1]);
+      } else {
+        const parts = url.pathname.split("/");
+        const idx = parts.indexOf("objects");
+        if (idx !== -1) setObjectPath("/" + parts.slice(idx).join("/").split("?")[0]);
+      }
+      setUploadProgress(100);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Upload failed");
+      setUploadedFileName(null);
+      setObjectPath(null);
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const createJob = useCreateJob();
 
@@ -302,56 +352,101 @@ export default function Generate() {
             </TabsList>
 
             <TabsContent value={CreateJobRequestAudioSourceType.upload} className="mt-0">
-              <div className="border-2 border-dashed border-border rounded-xl p-8 flex flex-col items-center justify-center text-center">
+              {/* Hidden native file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="audio/*,.mp3,.wav,.flac,.ogg,.m4a,.aac"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleFileSelect(file);
+                  e.target.value = "";
+                }}
+              />
+
+              <div
+                className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center transition-colors cursor-pointer ${
+                  isUploading
+                    ? "border-primary/40 bg-primary/5"
+                    : objectPath
+                      ? "border-green-500/40 bg-green-500/5"
+                      : "border-border hover:border-primary/50 hover:bg-primary/5"
+                }`}
+                onClick={() => !isUploading && !objectPath && fileInputRef.current?.click()}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const file = e.dataTransfer.files?.[0];
+                  if (file && !isUploading) handleFileSelect(file);
+                }}
+              >
                 {objectPath ? (
                   <div className="flex flex-col items-center gap-4">
-                    <div className="h-16 w-16 rounded-full bg-primary/20 flex items-center justify-center">
-                      <Music className="h-8 w-8 text-primary" />
+                    <div className="h-16 w-16 rounded-full bg-green-500/20 flex items-center justify-center">
+                      <CheckCircle2 className="h-8 w-8 text-green-500" />
                     </div>
                     <div>
-                      <p className="font-medium text-lg">Audio ready</p>
-                      <p className="text-sm text-muted-foreground">File uploaded successfully</p>
+                      <p className="font-medium text-lg">Ready</p>
+                      <p className="text-sm text-muted-foreground truncate max-w-xs">{uploadedFileName}</p>
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => setObjectPath(null)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setObjectPath(null);
+                        setUploadedFileName(null);
+                        setUploadError(null);
+                      }}
+                    >
                       Replace file
                     </Button>
                   </div>
+                ) : isUploading ? (
+                  <div className="flex flex-col items-center gap-4 w-full max-w-xs">
+                    <div className="h-16 w-16 rounded-full bg-primary/20 flex items-center justify-center">
+                      <Loader2 className="h-8 w-8 text-primary animate-spin" />
+                    </div>
+                    <div className="w-full space-y-2">
+                      <p className="font-medium">Uploading…</p>
+                      <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-primary rounded-full transition-all"
+                          style={{ width: `${uploadProgress}%` }}
+                        />
+                      </div>
+                      <p className="text-sm text-muted-foreground">{uploadProgress}%</p>
+                    </div>
+                  </div>
                 ) : (
-                  <ObjectUploader
-                    onGetUploadParameters={async (file) => {
-                      const res = await fetch("/api/storage/uploads/request-url", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          name: file.name,
-                          size: file.size,
-                          contentType: file.type,
-                        }),
-                      });
-                      const data = await res.json();
-                      return {
-                        method: "PUT",
-                        url: data.uploadURL,
-                        headers: { "Content-Type": file.type },
-                      };
-                    }}
-                    onComplete={(result) => {
-                      const first = result.successful?.[0];
-                      if (first) {
-                        const url = new URL(first.uploadURL ?? "");
-                        const match = url.pathname.match(/(\/objects\/.*)/);
-                        if (match) {
-                          setObjectPath(match[1] ?? null);
-                        } else {
-                          const parts = url.pathname.split("/");
-                          const idx = parts.indexOf("objects");
-                          if (idx !== -1) setObjectPath("/" + parts.slice(idx).join("/"));
-                        }
-                      }
-                    }}
-                  >
-                    Upload MP3 / WAV
-                  </ObjectUploader>
+                  <div className="flex flex-col items-center gap-4">
+                    <div className="h-16 w-16 rounded-full bg-secondary flex items-center justify-center">
+                      <Music className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-lg">Drop your audio here</p>
+                      <p className="text-sm text-muted-foreground mt-1">or click to browse files</p>
+                      <p className="text-xs text-muted-foreground/60 mt-1">MP3, WAV, FLAC, AAC · up to 50 MB</p>
+                    </div>
+                    {uploadError && (
+                      <div className="flex items-center gap-2 text-sm text-destructive">
+                        <XCircle className="h-4 w-4" />
+                        {uploadError}
+                      </div>
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        fileInputRef.current?.click();
+                      }}
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      Choose file
+                    </Button>
+                  </div>
                 )}
               </div>
             </TabsContent>
