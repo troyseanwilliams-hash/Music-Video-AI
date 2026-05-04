@@ -32,11 +32,16 @@ function delay(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+// A minimal 1×1 dark PNG used as a neutral starting frame for Runway image-to-video.
+// Runway Gen-3 requires promptImage; the text prompt drives the visual content.
+const RUNWAY_SEED_IMAGE =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
 async function generateWithRunway(req: ClipRequest): Promise<string> {
   const apiKey = process.env.RUNWAY_API_KEY!;
-  const duration = Math.min(Math.max(Math.ceil(req.durationSeconds), 5), 10);
+  const duration = Math.min(Math.max(Math.ceil(req.durationSeconds), 5), 10) as 5 | 10;
 
-  const genRes = await fetch("https://api.dev.runwayml.com/v1/image_to_video", {
+  const genRes = await fetch("https://api.runwayml.com/v1/image_to_video", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -45,6 +50,7 @@ async function generateWithRunway(req: ClipRequest): Promise<string> {
     },
     body: JSON.stringify({
       model: "gen3a_turbo",
+      promptImage: RUNWAY_SEED_IMAGE,
       promptText: req.prompt.slice(0, 1000),
       duration,
       ratio: req.aspectRatio === "9:16" ? "720:1280" : "1280:768",
@@ -53,12 +59,12 @@ async function generateWithRunway(req: ClipRequest): Promise<string> {
   });
 
   if (!genRes.ok)
-    throw new Error(`Runway ${genRes.status}: ${(await genRes.text()).slice(0, 200)}`);
+    throw new Error(`Runway ${genRes.status}: ${(await genRes.text()).slice(0, 300)}`);
   const { id: taskId } = (await genRes.json()) as { id: string };
 
   for (let i = 0; i < 120; i++) {
     await delay(5000);
-    const pollRes = await fetch(`https://api.dev.runwayml.com/v1/tasks/${taskId}`, {
+    const pollRes = await fetch(`https://api.runwayml.com/v1/tasks/${taskId}`, {
       headers: { Authorization: `Bearer ${apiKey}`, "X-Runway-Version": "2024-11-06" },
       signal: AbortSignal.timeout(15_000),
     });
