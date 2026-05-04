@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, Component, type ReactNode } from "react";
-import { Slider } from "@/components/ui/slider";
 
 // ── Error boundary ────────────────────────────────────────────────────────────
 class WaveformErrorBoundary extends Component<
@@ -16,7 +15,7 @@ class WaveformErrorBoundary extends Component<
       return (
         <div className="rounded-xl bg-secondary/30 border border-border/40 p-4">
           <p className="text-xs text-muted-foreground text-center">
-            Waveform preview unavailable — selection still works.
+            Waveform preview unavailable.
           </p>
         </div>
       );
@@ -39,7 +38,6 @@ function fmt(sec: number): string {
 }
 
 const SAMPLES = 200;
-// Use while real duration is unknown — wide enough for most tracks
 const FALLBACK_DURATION = 300;
 
 function AudioWaveformSelectorInner({
@@ -49,12 +47,11 @@ function AudioWaveformSelectorInner({
   onClipStartTimeChange,
 }: AudioWaveformSelectorProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [totalDuration, setTotalDuration] = useState(0);   // 0 = not yet known
+  const [totalDuration, setTotalDuration] = useState(0);
   const [waveform, setWaveform] = useState<Float32Array | null>(null);
   const [analyzing, setAnalyzing] = useState(true);
 
-  // ── Duration via HTML5 Audio metadata ────────────────────────────────────
-  // This is a "nice to have" — the slider works immediately without it
+  // ── Get duration via Audio element ────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
     setTotalDuration(0);
@@ -65,24 +62,21 @@ function AudioWaveformSelectorInner({
     const audio = new Audio();
     audio.preload = "metadata";
 
-    const finish = (dur: number) => {
-      if (!cancelled) {
-        setTotalDuration(dur);
+    const onMeta = () => {
+      if (!cancelled && isFinite(audio.duration) && audio.duration > 0) {
+        setTotalDuration(audio.duration);
         setAnalyzing(false);
       }
       URL.revokeObjectURL(url);
     };
-
-    audio.addEventListener("loadedmetadata", () => {
-      if (isFinite(audio.duration) && audio.duration > 0) finish(audio.duration);
-      else finish(0);
-    });
-    audio.addEventListener("error", () => {
+    const onErr = () => {
       if (!cancelled) setAnalyzing(false);
       URL.revokeObjectURL(url);
-    });
+    };
 
-    // Hard timeout — if metadata never fires, unlock UI after 3 s
+    audio.addEventListener("loadedmetadata", onMeta);
+    audio.addEventListener("error", onErr);
+
     const timer = setTimeout(() => {
       if (!cancelled) setAnalyzing(false);
     }, 3000);
@@ -93,13 +87,13 @@ function AudioWaveformSelectorInner({
     return () => {
       cancelled = true;
       clearTimeout(timer);
-      audio.removeEventListener("loadedmetadata", () => {});
-      audio.removeEventListener("error", () => {});
+      audio.removeEventListener("loadedmetadata", onMeta);
+      audio.removeEventListener("error", onErr);
       audio.src = "";
     };
   }, [file]);
 
-  // ── Waveform bars via OfflineAudioContext ─────────────────────────────────
+  // ── Waveform via OfflineAudioContext ──────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
     const decode = async () => {
@@ -108,13 +102,10 @@ function AudioWaveformSelectorInner({
         const offCtx = new OfflineAudioContext(1, 1, 44100);
         const audioBuf = await offCtx.decodeAudioData(buf);
         if (cancelled) return;
-
-        // If Audio metadata didn't fire, use decoded duration
         if (audioBuf.duration > 0) {
           setTotalDuration(prev => prev > 0 ? prev : audioBuf.duration);
           setAnalyzing(false);
         }
-
         const ch = audioBuf.getChannelData(0);
         const block = Math.max(1, Math.floor(ch.length / SAMPLES));
         const out = new Float32Array(SAMPLES);
@@ -127,18 +118,17 @@ function AudioWaveformSelectorInner({
           out[i] = peak;
         }
         if (!cancelled) setWaveform(out);
-      } catch { /* waveform bars are optional */ }
+      } catch { /* waveform is optional */ }
     };
     decode();
     return () => { cancelled = true; };
   }, [file]);
 
-  // ── Derived slider values ─────────────────────────────────────────────────
-  // If we don't know duration yet, use FALLBACK so slider is always draggable
+  // ── Derived values ────────────────────────────────────────────────────────
   const knownDuration = totalDuration > 0 ? totalDuration : FALLBACK_DURATION;
   const maxStart = Math.max(0, knownDuration - clipDurationSec);
-  const clampedStart = Math.min(clipStartTime, maxStart);
-  const endTime = Math.min(clampedStart + clipDurationSec, knownDuration);
+  const clampedStart = Math.min(Math.max(0, clipStartTime), maxStart);
+  const endTime = clampedStart + clipDurationSec;
   const trackTooShort = totalDuration > 0 && totalDuration <= clipDurationSec;
 
   // ── Canvas ────────────────────────────────────────────────────────────────
@@ -147,17 +137,15 @@ function AudioWaveformSelectorInner({
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-
     const W = canvas.width;
     const H = canvas.height;
     const mid = H / 2;
     ctx.clearRect(0, 0, W, H);
 
-    const dur = totalDuration > 0 ? totalDuration : FALLBACK_DURATION;
-    const sx = Math.min(clampedStart / dur, 1) * W;
-    const ex = Math.min(endTime / dur, 1) * W;
+    const dur = knownDuration;
+    const sx = (clampedStart / dur) * W;
+    const ex = (endTime / dur) * W;
 
-    // Draw bars or placeholder
     for (let i = 0; i < SAMPLES; i++) {
       const x = (i / SAMPLES) * W;
       const inSel = x >= sx && x < ex;
@@ -165,42 +153,21 @@ function AudioWaveformSelectorInner({
       if (waveform) {
         amp = waveform[i] ?? 0;
       } else if (!analyzing) {
-        // Placeholder wavy bars once we're past loading
         amp = 0.2 + 0.18 * Math.sin(i * 0.3) + 0.08 * Math.sin(i * 0.7);
       } else {
-        amp = 0.06; // flat loading bar
+        amp = 0.06;
       }
       const h = Math.max(2, amp * mid * 0.9);
       ctx.fillStyle = inSel ? "#8b5cf6" : "#2d3748";
       ctx.fillRect(x, mid - h, Math.max(1, W / SAMPLES - 0.5), h * 2);
     }
 
-    // Selection tint + border
     ctx.fillStyle = "rgba(139,92,246,0.10)";
     ctx.fillRect(sx, 0, ex - sx, H);
     ctx.strokeStyle = "#a78bfa";
     ctx.lineWidth = 2;
     ctx.strokeRect(sx + 1, 1, Math.max(0, ex - sx - 2), H - 2);
-  }, [waveform, totalDuration, clampedStart, endTime, analyzing]);
-
-  // ── Slider: track which thumb moved ──────────────────────────────────────
-  const prevRef = useRef<[number, number]>([clampedStart, endTime]);
-  useEffect(() => { prevRef.current = [clampedStart, endTime]; }, [clampedStart, endTime]);
-
-  const onSliderChange = (vals: number[]) => {
-    const [ns, ne] = vals as [number, number];
-    const [ps] = prevRef.current;
-    let next: number;
-    if (Math.abs(ns - ps) >= 0.04) {
-      // left thumb moved
-      next = Math.min(ns, maxStart);
-    } else {
-      // right thumb moved
-      next = Math.max(0, Math.min(ne - clipDurationSec, maxStart));
-    }
-    prevRef.current = [next, next + clipDurationSec];
-    onClipStartTimeChange(next);
-  };
+  }, [waveform, knownDuration, clampedStart, endTime, analyzing]);
 
   return (
     <div className="space-y-3">
@@ -214,30 +181,45 @@ function AudioWaveformSelectorInner({
           style={{ height: 72 }}
         />
         {analyzing && (
-          <div className="absolute inset-0 flex items-center justify-center">
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <p className="text-[10px] text-muted-foreground/50 tracking-widest uppercase">
               Analyzing audio…
             </p>
           </div>
         )}
-        {!analyzing && !waveform && (
-          <div className="absolute bottom-1 right-2">
-            <p className="text-[9px] text-muted-foreground/30">loading waveform…</p>
-          </div>
-        )}
       </div>
 
-      {/* Two-thumb slider — always enabled so user can drag immediately */}
-      <Slider
-        min={0}
-        max={knownDuration}
-        step={0.1}
-        value={[clampedStart, endTime]}
-        onValueChange={onSliderChange}
-        className="py-1"
-      />
+      {/* ── Native range input — always works in every browser ── */}
+      <div className="relative px-1">
+        {/* Track */}
+        <div className="absolute inset-x-1 top-1/2 -translate-y-1/2 h-1.5 rounded-full bg-primary/20" />
+        {/* Selected range fill */}
+        <div
+          className="absolute top-1/2 -translate-y-1/2 h-1.5 rounded-full bg-primary"
+          style={{
+            left: `calc(${(clampedStart / knownDuration) * 100}% + 4px)`,
+            right: `calc(${((knownDuration - endTime) / knownDuration) * 100}% + 4px)`,
+          }}
+        />
+        {/* Thumb marker for end (visual only) */}
+        <div
+          className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-background border-2 border-primary shadow pointer-events-none"
+          style={{ left: `calc(${(endTime / knownDuration) * 100}% - 8px)` }}
+        />
+        {/* Native range input for start position */}
+        <input
+          type="range"
+          min={0}
+          max={maxStart > 0 ? maxStart : 1}
+          step={0.1}
+          value={clampedStart}
+          onChange={(e) => onClipStartTimeChange(parseFloat(e.target.value))}
+          className="waveform-range relative"
+          style={{ zIndex: 10 }}
+        />
+      </div>
 
-      {/* Start / Duration / End labels */}
+      {/* Labels */}
       <div className="flex items-center justify-between">
         <div className="text-center min-w-[56px]">
           <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wide">Start</p>
@@ -259,7 +241,7 @@ function AudioWaveformSelectorInner({
         </div>
       </div>
 
-      {/* Track length hint */}
+      {/* Total length */}
       <div className="flex justify-between text-[10px] text-muted-foreground/40 font-mono px-0.5">
         <span>0:00</span>
         {totalDuration > 0
