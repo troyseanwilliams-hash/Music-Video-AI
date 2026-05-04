@@ -57,7 +57,8 @@ function getSafeReturnTo(value: unknown): string {
   return value;
 }
 
-async function upsertUser(claims: Record<string, unknown>) {
+async function upsertUser(claims: Record<string, unknown>, log?: { info: (obj: object, msg: string) => void }) {
+  const now = new Date();
   const userData = {
     id: claims.sub as string,
     email: (claims.email as string) || null,
@@ -66,6 +67,7 @@ async function upsertUser(claims: Record<string, unknown>) {
     profileImageUrl: (claims.profile_image_url || claims.picture) as
       | string
       | null,
+    lastLoginAt: now,
   };
 
   const [user] = await db
@@ -75,10 +77,21 @@ async function upsertUser(claims: Record<string, unknown>) {
       target: usersTable.id,
       set: {
         ...userData,
-        updatedAt: new Date(),
+        updatedAt: now,
       },
     })
     .returning();
+
+  log?.info(
+    {
+      userId: user.id,
+      email: user.email,
+      name: [user.firstName, user.lastName].filter(Boolean).join(" ") || null,
+      lastLoginAt: now.toISOString(),
+    },
+    "User signed in",
+  );
+
   return user;
 }
 
@@ -166,6 +179,7 @@ router.get("/callback", async (req: Request, res: Response) => {
 
   const dbUser = await upsertUser(
     claims as unknown as Record<string, unknown>,
+    req.log,
   );
 
   const now = Math.floor(Date.now() / 1000);
@@ -236,6 +250,7 @@ router.post(
 
       const dbUser = await upsertUser(
         claims as unknown as Record<string, unknown>,
+        req.log,
       );
 
       const now = Math.floor(Date.now() / 1000);
