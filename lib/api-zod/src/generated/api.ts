@@ -210,6 +210,7 @@ export const ListJobsResponse = zod.object({
       progressPercent: zod.number().nullish(),
       errorMessage: zod.string().nullish(),
       videoId: zod.string().nullish(),
+      lyricsText: zod.string().nullish(),
       createdAt: zod.coerce.date(),
       updatedAt: zod.coerce.date(),
     }),
@@ -231,6 +232,8 @@ export const CreateJobHeader = zod.object({
 
 export const createJobBodyPromptMax = 1000;
 
+export const createJobBodyLyricsTextMax = 5000;
+
 export const CreateJobBody = zod.object({
   prompt: zod.string().min(1).max(createJobBodyPromptMax),
   style: zod.enum([
@@ -246,6 +249,11 @@ export const CreateJobBody = zod.object({
   audioSourceType: zod.enum(["upload", "youtube", "suno"]),
   audioObjectPath: zod.string().nullish(),
   audioSourceUrl: zod.string().nullish(),
+  lyricsText: zod
+    .string()
+    .max(createJobBodyLyricsTextMax)
+    .nullish()
+    .describe("Optional lyrics to overlay on the generated video"),
 });
 
 /**
@@ -311,6 +319,7 @@ export const GetJobResponse = zod.object({
   progressPercent: zod.number().nullish(),
   errorMessage: zod.string().nullish(),
   videoId: zod.string().nullish(),
+  lyricsText: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -490,6 +499,7 @@ export const GetDashboardStatsResponse = zod.object({
         progressPercent: zod.number().nullish(),
         errorMessage: zod.string().nullish(),
         videoId: zod.string().nullish(),
+        lyricsText: zod.string().nullish(),
         createdAt: zod.coerce.date(),
         updatedAt: zod.coerce.date(),
       }),

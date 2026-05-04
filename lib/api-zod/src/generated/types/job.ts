@@ -30,6 +30,8 @@ export interface Job {
   errorMessage?: string | null;
   /** @nullable */
   videoId?: string | null;
+  /** @nullable */
+  lyricsText?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

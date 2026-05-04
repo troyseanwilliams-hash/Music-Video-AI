@@ -180,6 +180,16 @@ export class ObjectStorageService {
     return `/objects/videos/${videoId}.mp4`;
   }
 
+  async uploadThumbnailBuffer(buffer: Buffer, videoId: string): Promise<string> {
+    const privateObjectDir = this.getPrivateObjectDir();
+    const objectEntityPath = `${privateObjectDir}/thumbnails/${videoId}.jpg`;
+    const { bucketName, objectName } = parseObjectPath(objectEntityPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+    await file.save(buffer, { contentType: "image/jpeg", resumable: false });
+    return `/objects/thumbnails/${videoId}.jpg`;
+  }
+
   normalizeObjectEntityPath(rawPath: string): string {
     if (!rawPath.startsWith("https://storage.googleapis.com/")) {
       return rawPath;

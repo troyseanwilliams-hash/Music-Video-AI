@@ -146,6 +146,8 @@ export interface Job {
   errorMessage?: string | null;
   /** @nullable */
   videoId?: string | null;
+  /** @nullable */
+  lyricsText?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -171,6 +173,12 @@ export interface CreateJobRequest {
   audioObjectPath?: string | null;
   /** @nullable */
   audioSourceUrl?: string | null;
+  /**
+   * Optional lyrics to overlay on the generated video
+   * @maxLength 5000
+   * @nullable
+   */
+  lyricsText?: string | null;
 }
 
 export interface JobListResponse {

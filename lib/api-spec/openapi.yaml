@@ -671,6 +671,8 @@ components:
           type: [string, 'null']
         videoId:
           type: [string, 'null']
+        lyricsText:
+          type: [string, 'null']
         createdAt:
           type: string
           format: date-time
@@ -695,6 +697,10 @@ components:
           type: [string, 'null']
         audioSourceUrl:
           type: [string, 'null']
+        lyricsText:
+          type: [string, 'null']
+          maxLength: 5000
+          description: Optional lyrics to overlay on the generated video
 
     JobListResponse:
       type: object

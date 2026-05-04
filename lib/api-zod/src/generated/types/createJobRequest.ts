@@ -20,4 +20,10 @@ export interface CreateJobRequest {
   audioObjectPath?: string | null;
   /** @nullable */
   audioSourceUrl?: string | null;
+  /**
+   * Optional lyrics to overlay on the generated video
+   * @maxLength 5000
+   * @nullable
+   */
+  lyricsText?: string | null;
 }

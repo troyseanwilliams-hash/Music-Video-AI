@@ -8,58 +8,70 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ObjectUploader } from "@workspace/object-storage-web";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
 import { motion } from "framer-motion";
-import { Upload, Link as LinkIcon, Music, Sparkles, Loader2, Users, Clapperboard, Layers, Zap, Film, Wand2, Video as VideoIcon } from "lucide-react";
+import {
+  Upload, Link as LinkIcon, Music, Sparkles, Loader2,
+  Users, Clapperboard, Layers, Zap, Film, Wand2, Video as VideoIcon, FileText,
+} from "lucide-react";
 
 const STYLES = [
-  { id: VideoStyle.realistic, label: "Realistic Dancers", icon: Users },
+  { id: VideoStyle.realistic, label: "Realistic", icon: Users },
   { id: VideoStyle.anime, label: "Anime", icon: Sparkles },
   { id: VideoStyle.cinematic, label: "Cinematic", icon: Clapperboard },
   { id: VideoStyle.abstract, label: "Abstract", icon: Layers },
   { id: VideoStyle.neon, label: "Neon Glow", icon: Zap },
-  { id: VideoStyle.vintage, label: "Vintage Film", icon: Film },
-  { id: VideoStyle.fantasy, label: "Fantasy World", icon: Wand2 },
-  { id: VideoStyle.documentary, label: "Documentary", icon: VideoIcon },
+  { id: VideoStyle.vintage, label: "Vintage", icon: Film },
+  { id: VideoStyle.fantasy, label: "Fantasy", icon: Wand2 },
+  { id: VideoStyle.documentary, label: "Docu-style", icon: VideoIcon },
 ];
 
 export default function Generate() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
-  
-  const [sourceType, setSourceType] = useState<CreateJobRequestAudioSourceType>(CreateJobRequestAudioSourceType.upload);
+
+  const [sourceType, setSourceType] = useState<CreateJobRequestAudioSourceType>(
+    CreateJobRequestAudioSourceType.upload,
+  );
   const [audioUrl, setAudioUrl] = useState("");
   const [objectPath, setObjectPath] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
   const [selectedStyle, setSelectedStyle] = useState<VideoStyle>(VideoStyle.cinematic);
+  const [lyricsEnabled, setLyricsEnabled] = useState(false);
+  const [lyricsText, setLyricsText] = useState("");
 
   const createJob = useCreateJob();
 
   useEffect(() => {
-    if (!isAuthLoading && !isAuthenticated) {
-      setLocation("/login");
-    }
+    if (!isAuthLoading && !isAuthenticated) setLocation("/login");
   }, [isAuthenticated, isAuthLoading, setLocation]);
 
   if (isAuthLoading || !isAuthenticated) return null;
 
   const handleGenerate = () => {
     if (!prompt) return alert("Please enter a prompt");
-    if (sourceType === CreateJobRequestAudioSourceType.upload && !objectPath) return alert("Please upload an audio file");
-    if (sourceType !== CreateJobRequestAudioSourceType.upload && !audioUrl) return alert("Please enter a URL");
+    if (sourceType === CreateJobRequestAudioSourceType.upload && !objectPath)
+      return alert("Please upload an audio file");
+    if (sourceType !== CreateJobRequestAudioSourceType.upload && !audioUrl)
+      return alert("Please enter a URL");
 
-    createJob.mutate({
-      data: {
-        prompt,
-        style: selectedStyle,
-        audioSourceType: sourceType,
-        audioObjectPath: sourceType === CreateJobRequestAudioSourceType.upload ? objectPath : null,
-        audioSourceUrl: sourceType !== CreateJobRequestAudioSourceType.upload ? audioUrl : null,
-      }
-    }, {
-      onSuccess: (job) => {
-        setLocation(`/jobs/${job.id}`);
-      }
-    });
+    createJob.mutate(
+      {
+        data: {
+          prompt,
+          style: selectedStyle,
+          audioSourceType: sourceType,
+          audioObjectPath:
+            sourceType === CreateJobRequestAudioSourceType.upload ? objectPath : null,
+          audioSourceUrl:
+            sourceType !== CreateJobRequestAudioSourceType.upload ? audioUrl : null,
+          lyricsText: lyricsEnabled && lyricsText.trim() ? lyricsText.trim() : null,
+        },
+      },
+      {
+        onSuccess: (job) => setLocation(`/jobs/${job.id}`),
+      },
+    );
   };
 
   return (
@@ -71,25 +83,32 @@ export default function Generate() {
       >
         <div>
           <h1 className="text-4xl font-bold tracking-tight mb-2">Create New Video</h1>
-          <p className="text-muted-foreground">Upload a track or paste a link, and our AI will bring it to life.</p>
+          <p className="text-muted-foreground">
+            Upload a track, our AI analyses the beats, and generates a synced music video.
+          </p>
         </div>
 
         <div className="grid gap-8 p-8 rounded-2xl bg-card border border-card-border shadow-lg">
-          
-          <Tabs 
-            value={sourceType} 
+          <Tabs
+            value={sourceType}
             onValueChange={(v) => setSourceType(v as CreateJobRequestAudioSourceType)}
             className="w-full"
           >
             <TabsList className="grid w-full grid-cols-2 mb-6">
-              <TabsTrigger value={CreateJobRequestAudioSourceType.upload} className="flex items-center gap-2">
+              <TabsTrigger
+                value={CreateJobRequestAudioSourceType.upload}
+                className="flex items-center gap-2"
+              >
                 <Upload className="h-4 w-4" /> Upload Audio
               </TabsTrigger>
-              <TabsTrigger value={CreateJobRequestAudioSourceType.youtube} className="flex items-center gap-2">
+              <TabsTrigger
+                value={CreateJobRequestAudioSourceType.youtube}
+                className="flex items-center gap-2"
+              >
                 <LinkIcon className="h-4 w-4" /> Paste Link
               </TabsTrigger>
             </TabsList>
-            
+
             <TabsContent value={CreateJobRequestAudioSourceType.upload} className="mt-0">
               <div className="border-2 border-dashed border-border rounded-xl p-8 flex flex-col items-center justify-center text-center">
                 {objectPath ? (
@@ -127,20 +146,13 @@ export default function Generate() {
                     onComplete={(result) => {
                       if (result.successful.length > 0) {
                         const url = new URL(result.successful[0].uploadURL);
-                        // The objectPath must be retrieved from the original response, but since Uppy doesn't expose the original response directly in this callback easily without a custom plugin, we can extract the path from the presigned URL path (e.g. /bucket-name/objects/uploads/uuid)
-                        // A more robust way is to make our own upload logic or just store it. We will use a regex to get everything after the bucket name
-                        const pathname = url.pathname;
-                        // Extract /objects/... part
-                        const match = pathname.match(/(\/objects\/.*)/);
+                        const match = url.pathname.match(/(\/objects\/.*)/);
                         if (match) {
                           setObjectPath(match[1]);
                         } else {
-                           // Fallback for local
-                           const parts = url.pathname.split('/');
-                           const idx = parts.indexOf('objects');
-                           if(idx !== -1) {
-                             setObjectPath('/' + parts.slice(idx).join('/'));
-                           }
+                          const parts = url.pathname.split("/");
+                          const idx = parts.indexOf("objects");
+                          if (idx !== -1) setObjectPath("/" + parts.slice(idx).join("/"));
                         }
                       }
                     }}
@@ -150,11 +162,11 @@ export default function Generate() {
                 )}
               </div>
             </TabsContent>
-            
+
             <TabsContent value={CreateJobRequestAudioSourceType.youtube} className="mt-0">
               <div className="space-y-4">
                 <Label htmlFor="audio-url">YouTube or Suno URL</Label>
-                <Input 
+                <Input
                   id="audio-url"
                   placeholder="https://youtube.com/watch?v=..."
                   value={audioUrl}
@@ -170,7 +182,7 @@ export default function Generate() {
             <Textarea
               id="prompt"
               placeholder="Describe the visual style, subject matter, and mood you want..."
-              className="min-h-[120px] resize-none bg-background/50 border-input"
+              className="min-h-[100px] resize-none bg-background/50 border-input"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
             />
@@ -178,27 +190,68 @@ export default function Generate() {
 
           <div className="space-y-4">
             <Label>Visual Style</Label>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {STYLES.map((style) => (
-                <div
-                  key={style.id}
-                  onClick={() => setSelectedStyle(style.id)}
-                  className={`cursor-pointer rounded-xl border p-4 transition-all hover:border-primary/50 flex flex-col items-center justify-center text-center gap-2 ${
-                    selectedStyle === style.id 
-                      ? "border-primary bg-primary/10 shadow-glow" 
-                      : "border-border bg-background/50 hover:bg-background/80"
-                  }`}
-                >
-                  <span className="text-2xl" role="img" aria-hidden="true">{style.icon}</span>
-                  <span className="text-sm font-medium">{style.label}</span>
-                </div>
-              ))}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {STYLES.map((style) => {
+                const Icon = style.icon;
+                return (
+                  <div
+                    key={style.id}
+                    onClick={() => setSelectedStyle(style.id)}
+                    className={`cursor-pointer rounded-xl border p-4 transition-all hover:border-primary/50 flex flex-col items-center justify-center text-center gap-2 ${
+                      selectedStyle === style.id
+                        ? "border-primary bg-primary/10 shadow-glow"
+                        : "border-border bg-background/50 hover:bg-background/80"
+                    }`}
+                  >
+                    <Icon className="h-6 w-6 text-primary/80" />
+                    <span className="text-sm font-medium">{style.label}</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          <Button 
-            size="lg" 
-            className="w-full h-14 text-lg bg-gradient-electric text-white shadow-glow mt-4"
+          <div className="rounded-xl border border-border bg-background/30 p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FileText className="h-4 w-4 text-primary" />
+                <Label htmlFor="lyrics-toggle" className="cursor-pointer font-medium">
+                  Lyrics Overlay
+                </Label>
+                <span className="text-xs text-muted-foreground">
+                  — burns subtitle text onto the video
+                </span>
+              </div>
+              <Switch
+                id="lyrics-toggle"
+                checked={lyricsEnabled}
+                onCheckedChange={setLyricsEnabled}
+              />
+            </div>
+
+            {lyricsEnabled && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+              >
+                <Textarea
+                  placeholder="Paste your lyrics here. They'll be overlaid on the video as rolling subtitles..."
+                  className="min-h-[120px] resize-none bg-background/50 border-input"
+                  value={lyricsText}
+                  onChange={(e) => setLyricsText(e.target.value)}
+                  maxLength={5000}
+                />
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  {lyricsText.length}/5000 characters
+                </p>
+              </motion.div>
+            )}
+          </div>
+
+          <Button
+            size="lg"
+            className="w-full h-14 text-lg bg-gradient-electric text-white shadow-glow mt-2"
             disabled={createJob.isPending}
             onClick={handleGenerate}
           >
@@ -207,11 +260,10 @@ export default function Generate() {
             ) : (
               <>
                 <Sparkles className="mr-2 h-5 w-5" />
-                Generate AI Music Video
+                Generate Beat-Synced Video
               </>
             )}
           </Button>
-
         </div>
       </motion.div>
     </div>
