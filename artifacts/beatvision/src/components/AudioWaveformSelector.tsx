@@ -172,16 +172,20 @@ function AudioWaveformSelectorInner({
   // ── Two-thumb slider handler ──────────────────────────────────────────────
   const prevValuesRef = useRef([clampedStart, endTime]);
 
+  // Keep ref in sync whenever the derived values change (e.g. duration picker changed)
+  useEffect(() => {
+    prevValuesRef.current = [clampedStart, endTime];
+  }, [clampedStart, endTime]);
+
   const handleSliderChange = (values: number[]) => {
     const [newStart, newEnd] = values;
-    const [prevStart, prevEnd] = prevValuesRef.current;
+    const [prevStart] = prevValuesRef.current;
 
-    let nextStart = clampedStart;
-
-    if (newStart !== prevStart) {
+    let nextStart: number;
+    if (Math.abs(newStart - prevStart) >= 0.01) {
       // Left thumb moved
       nextStart = Math.min(newStart, maxStart);
-    } else if (newEnd !== prevEnd) {
+    } else {
       // Right thumb moved — derive start from new end
       nextStart = Math.max(0, Math.min(newEnd - clipDurationSec, maxStart));
     }
