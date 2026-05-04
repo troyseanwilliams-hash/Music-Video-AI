@@ -67,3 +67,5 @@ channel = "stable-25_05"
 
 [userenv.shared]
 ADMIN_EMAIL = "troy.sean.williams@gmail.com"
+ADMIN_PASSWORD = "Bubba@666"
+ADMIN_NAME = "Troy Williams"

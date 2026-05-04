@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { startJobProcessor } from "./lib/jobProcessor";
+import { ensureAdminUser } from "./lib/ensureAdminUser";
 
 const rawPort = process.env["PORT"];
 
@@ -23,6 +24,10 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+
+  ensureAdminUser().catch((err) => {
+    logger.error({ err }, "Failed to ensure admin user");
+  });
 
   // In production the dedicated worker artifact runs the job processor.
   // In development (or when explicitly opted in) run it here too.
