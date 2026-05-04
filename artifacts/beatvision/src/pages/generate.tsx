@@ -627,7 +627,7 @@ export default function Generate() {
                 <div className="rounded-xl border border-primary/30 bg-background/40 p-4 space-y-2">
                   <div className="flex items-center gap-2 text-sm font-medium text-primary mb-3">
                     <Clock className="h-4 w-4" />
-                    <span>Drag to select the clip section</span>
+                    <span>Slide to select which part of your track to use</span>
                     <span className="text-muted-foreground font-normal text-xs ml-auto">
                       Choosing which {requestedDuration}s of your track to use
                     </span>
