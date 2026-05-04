@@ -37,10 +37,14 @@ router.get("/dashboard/stats", async (req, res) => {
   if (credits[0]) {
     creditsRemaining = credits[0].creditsRemaining;
   } else {
-    await db
-      .insert(creditsTable)
-      .values({ id: randomUUID(), userId })
-      .onConflictDoNothing();
+    try {
+      await db
+        .insert(creditsTable)
+        .values({ id: randomUUID(), userId })
+        .onConflictDoNothing();
+    } catch {
+      // FK violation: stale session referencing a deleted user — ignore
+    }
   }
 
   const completedJobs = allJobs.filter((j) => j.status === "ready").length;
