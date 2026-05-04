@@ -264,13 +264,18 @@ export default function Generate() {
   const characterLabel = CHARACTERS.find((c) => c.value === character)?.label ?? "None";
 
   const handleGenerate = () => {
-    if (!prompt) return alert("Please enter a prompt");
-    if (sourceType === CreateJobRequestAudioSourceType.upload && !objectPath)
-      return alert("Please upload an audio file");
-    if (sourceType !== CreateJobRequestAudioSourceType.upload && !audioUrl)
-      return alert("Please enter a URL");
-    if (!refImageObjectPath)
-      return alert("Please upload a reference image — it's used as the starting frame for Runway video generation.");
+    if (!prompt) {
+      toast({ title: "Prompt required", description: "Please describe the visuals you want.", variant: "destructive" });
+      return;
+    }
+    if (sourceType === CreateJobRequestAudioSourceType.upload && !objectPath) {
+      toast({ title: "Audio required", description: "Please upload an audio file first.", variant: "destructive" });
+      return;
+    }
+    if (sourceType !== CreateJobRequestAudioSourceType.upload && !audioUrl) {
+      toast({ title: "URL required", description: "Please paste a YouTube or Suno link.", variant: "destructive" });
+      return;
+    }
 
     createJob.mutate(
       {
@@ -662,7 +667,7 @@ export default function Generate() {
               <div className="flex items-center gap-2">
                 <ImageIcon className="h-4 w-4 text-primary" />
                 <span className="text-sm font-medium">Reference Image</span>
-                <span className="text-xs text-destructive font-medium">— required for Runway generation</span>
+                <span className="text-xs text-muted-foreground">— optional, sets the starting frame</span>
               </div>
               {refImageObjectPath && (
                 <button
