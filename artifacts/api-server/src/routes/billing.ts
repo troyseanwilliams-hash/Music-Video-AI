@@ -51,157 +51,81 @@ const TOPUP_META: Record<
   },
 };
 
-// ── In-memory cache for billing plans (60 s TTL) ─────────────────────────────
-let plansCache: { data: unknown; expiresAt: number } | null = null;
-const PLANS_CACHE_TTL_MS = 60_000;
-
-router.get("/billing/plans", async (req, res) => {
-  try {
-    // Return cached data if still fresh
-    if (plansCache && Date.now() < plansCache.expiresAt) {
-      res.json(plansCache.data);
-      return;
-    }
-
-    const stripe = await getUncachableStripeClient();
-
-    // Two parallel Stripe calls — one round-trip total:
-    // 1. All active recurring prices (subscriptions) with product expanded
-    // 2. Topup prices by lookup key (bypasses product active-status)
-    const [recurringPrices, topupPrices] = await Promise.all([
-      stripe.prices.list({
-        active: true,
-        limit: 100,
-        type: "recurring",
-        expand: ["data.product"],
-      }),
-      stripe.prices.list({
-        lookup_keys: [...TOPUP_LOOKUP_KEYS],
-        active: true,
-        limit: 20,
-      }),
-    ]);
-
-    type PriceEntry = {
-      id: string;
-      lookupKey: string | null;
-      nickname: string | null;
-      unitAmount: number;
-      currency: string;
-      credits: number;
-      interval: string | null;
-    };
-
-    // ── Build subscriptions from recurring prices ───────────────────────────
-    const subscriptionMap = new Map<
-      string,
-      {
-        id: string;
-        name: string;
-        description: string | null;
-        popular: boolean;
-        prices: PriceEntry[];
-      }
-    >();
-
-    for (const price of recurringPrices.data) {
-      if (price.unit_amount === null) continue;
-      const product =
-        typeof price.product === "string"
-          ? null
-          : (price.product as import("stripe").default.Product);
-      if (!product || product.active === false) continue;
-
-      const priceEntry: PriceEntry = {
-        id: price.id,
-        lookupKey: price.lookup_key ?? null,
-        nickname: price.nickname ?? null,
-        unitAmount: price.unit_amount,
-        currency: price.currency,
-        credits: parseCredits(price.metadata),
-        interval: price.recurring?.interval ?? null,
-      };
-
-      if (!subscriptionMap.has(product.id)) {
-        subscriptionMap.set(product.id, {
-          id: product.id,
-          name: product.name,
-          description: product.description ?? null,
-          popular: product.metadata?.["popular"] === "true",
-          prices: [],
-        });
-      }
-      subscriptionMap.get(product.id)!.prices.push(priceEntry);
-    }
-
-    // Sort each product's prices: monthly first, then yearly
-    for (const sub of subscriptionMap.values()) {
-      sub.prices.sort((a, b) => {
-        const order = { month: 0, year: 1 };
-        return (
-          (order[a.interval as keyof typeof order] ?? 99) -
-          (order[b.interval as keyof typeof order] ?? 99)
-        );
-      });
-    }
-
-    const subscriptions = [...subscriptionMap.values()].map((s) => ({
-      ...s,
+// ── Static plan catalog — no Stripe call needed ───────────────────────────────
+// Prices use lookupKey as the price `id` so the frontend can pass it straight
+// to /billing/checkout, which resolves the real Stripe price ID at purchase time.
+const STATIC_PLANS = {
+  subscriptions: [
+    {
+      id: "starter",
+      name: "Starter",
+      description: "400 credits per month — best for casual creators",
       kind: "subscription" as const,
-    }));
+      popular: false,
+      prices: [
+        { id: "starter_monthly", lookupKey: "starter_monthly", nickname: "Starter Monthly", unitAmount: 900, currency: "usd", credits: 400, interval: "month" },
+        { id: "starter_yearly", lookupKey: "starter_yearly", nickname: "Starter Yearly", unitAmount: 9000, currency: "usd", credits: 4800, interval: "year" },
+      ],
+    },
+    {
+      id: "pro",
+      name: "Pro",
+      description: "1650 credits per month — for serious creators",
+      kind: "subscription" as const,
+      popular: true,
+      prices: [
+        { id: "pro_monthly", lookupKey: "pro_monthly", nickname: "Pro Monthly", unitAmount: 2900, currency: "usd", credits: 1650, interval: "month" },
+        { id: "pro_yearly", lookupKey: "pro_yearly", nickname: "Pro Yearly", unitAmount: 29000, currency: "usd", credits: 19800, interval: "year" },
+      ],
+    },
+    {
+      id: "studio",
+      name: "Studio",
+      description: "5000 credits per month — for production teams",
+      kind: "subscription" as const,
+      popular: false,
+      prices: [
+        { id: "studio_monthly", lookupKey: "studio_monthly", nickname: "Studio Monthly", unitAmount: 7900, currency: "usd", credits: 5000, interval: "month" },
+        { id: "studio_yearly", lookupKey: "studio_yearly", nickname: "Studio Yearly", unitAmount: 79000, currency: "usd", credits: 60000, interval: "year" },
+      ],
+    },
+  ],
+  topups: [
+    {
+      id: "topup_1000",
+      name: "1,000 Credits",
+      description: "1,000 credits · one-time purchase · never expires",
+      kind: "topup" as const,
+      popular: false,
+      prices: [
+        { id: "topup_1000", lookupKey: "topup_1000", nickname: "1000 Credits", unitAmount: 2000, currency: "usd", credits: 1000, interval: null },
+      ],
+    },
+    {
+      id: "topup_5000",
+      name: "5,000 Credits",
+      description: "5,000 credits · one-time purchase · never expires · save 15%",
+      kind: "topup" as const,
+      popular: true,
+      prices: [
+        { id: "topup_5000", lookupKey: "topup_5000", nickname: "5000 Credits", unitAmount: 8500, currency: "usd", credits: 5000, interval: null },
+      ],
+    },
+    {
+      id: "topup_20000",
+      name: "20,000 Credits",
+      description: "20,000 credits · one-time purchase · never expires · save 25%",
+      kind: "topup" as const,
+      popular: false,
+      prices: [
+        { id: "topup_20000", lookupKey: "topup_20000", nickname: "20000 Credits", unitAmount: 30000, currency: "usd", credits: 20000, interval: null },
+      ],
+    },
+  ],
+};
 
-    // ── Build topups from lookup-key prices ──────────────────────────────────
-    const topups: Array<{
-      id: string;
-      name: string;
-      description: string | null;
-      kind: "topup";
-      popular: boolean;
-      prices: PriceEntry[];
-    }> = [];
-
-    for (const price of topupPrices.data) {
-      if (!price.lookup_key || price.unit_amount === null) continue;
-      const meta = TOPUP_META[price.lookup_key];
-      if (!meta) continue;
-      topups.push({
-        id: price.id,
-        name: meta.name,
-        description: meta.description,
-        popular: meta.popular,
-        kind: "topup",
-        prices: [
-          {
-            id: price.id,
-            lookupKey: price.lookup_key,
-            nickname: price.nickname ?? null,
-            unitAmount: price.unit_amount,
-            currency: price.currency,
-            credits: parseCredits(price.metadata),
-            interval: null,
-          },
-        ],
-      });
-    }
-
-    const tierOrder = ["starter", "pro", "studio"];
-    subscriptions.sort((a, b) => {
-      const ai = tierOrder.indexOf(a.name.toLowerCase());
-      const bi = tierOrder.indexOf(b.name.toLowerCase());
-      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-    });
-    topups.sort(
-      (a, b) =>
-        (a.prices[0]?.unitAmount ?? 0) - (b.prices[0]?.unitAmount ?? 0),
-    );
-
-    const responseData = { subscriptions, topups };
-    plansCache = { data: responseData, expiresAt: Date.now() + PLANS_CACHE_TTL_MS };
-    res.json(responseData);
-  } catch (err) {
-    req.log.error({ err }, "Failed to list billing plans");
-    res.status(500).json({ error: "Failed to load plans" });
-  }
+router.get("/billing/plans", (_req, res) => {
+  res.json(STATIC_PLANS);
 });
 
 router.get("/billing/subscription", async (req, res) => {
@@ -275,14 +199,17 @@ router.post("/billing/checkout", async (req, res) => {
     return;
   }
 
-  const { priceId, successUrl, cancelUrl } = req.body as {
+  // Accept either a Stripe price ID (price_xxx) or a lookup key (e.g. pro_monthly)
+  const { priceId, lookupKey: rawLookupKey, successUrl, cancelUrl } = req.body as {
     priceId?: string;
+    lookupKey?: string;
     successUrl?: string | null;
     cancelUrl?: string | null;
   };
 
-  if (!priceId || typeof priceId !== "string") {
-    res.status(400).json({ error: "priceId is required" });
+  const priceIdentifier = priceId ?? rawLookupKey;
+  if (!priceIdentifier || typeof priceIdentifier !== "string") {
+    res.status(400).json({ error: "priceId or lookupKey is required" });
     return;
   }
 
@@ -320,7 +247,24 @@ router.post("/billing/checkout", async (req, res) => {
         .onConflictDoNothing({ target: creditsTable.userId });
     }
 
-    const price = await stripe.prices.retrieve(priceId);
+    // Resolve lookup key → real Stripe price ID if needed
+    let resolvedPriceId = priceIdentifier;
+    if (!priceIdentifier.startsWith("price_")) {
+      const found = await stripe.prices.list({
+        lookup_keys: [priceIdentifier],
+        active: true,
+        limit: 1,
+      });
+      const resolved = found.data[0];
+      if (!resolved) {
+        res.status(400).json({ error: `No active price found for lookup key: ${priceIdentifier}` });
+        return;
+      }
+      resolvedPriceId = resolved.id;
+    }
+
+    const price = await stripe.prices.retrieve(resolvedPriceId);
+    const priceId = resolvedPriceId;
     const mode: Stripe.Checkout.SessionCreateParams.Mode = price.recurring
       ? "subscription"
       : "payment";
