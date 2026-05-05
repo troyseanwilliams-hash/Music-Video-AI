@@ -117,6 +117,7 @@ export async function stitchVideoClips(input: StitchInput): Promise<StitchResult
     const outputOptions = [
       "-map", "0:v",
       "-map", "1:a",
+      "-t", String(input.totalDuration),   // hard cap — guarantees correct duration
       "-c:v", "libx264",
       "-preset", "fast",
       "-crf", "22",

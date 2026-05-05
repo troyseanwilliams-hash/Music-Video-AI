@@ -207,9 +207,20 @@ async function generateClips(
     "Generating clips per section",
   );
 
+  // Compute the total output duration from the job's requested duration.
+  // Do NOT use section.endTime - section.startTime: when audio clipping fails
+  // or MP3 headers report the wrong total length, section timestamps reflect
+  // the full audio file and each clip gets looped for the entire song duration.
+  const requestedDur = (job as JobRow & { requestedDuration?: string | null }).requestedDuration;
+  const totalOutputDuration =
+    !requestedDur || requestedDur === "full"
+      ? analysis.durationSeconds
+      : parseInt(requestedDur, 10);
+  const perClipTargetDuration = Math.max(1, totalOutputDuration / sections.length);
+
   for (let i = 0; i < sections.length; i++) {
     const section = sections[i]!;
-    const targetDuration = Math.max(1, section.endTime - section.startTime);
+    const targetDuration = perClipTargetDuration;
     const clipDuration = Math.min(Math.max(Math.ceil(targetDuration), 5), 10);
 
     await onProgress(30 + Math.floor((i / sections.length) * 40));
@@ -352,11 +363,16 @@ async function processJob(job: JobRow): Promise<void> {
     let thumbnailBuffer: Buffer;
 
     if (audioData) {
+      const reqDur = (job as JobRow & { requestedDuration?: string | null }).requestedDuration;
+      const stitchDuration =
+        !reqDur || reqDur === "full"
+          ? analysis.durationSeconds
+          : parseInt(reqDur, 10);
       const stitchResult = await stitchVideoClips({
         clips,
         audioBuffer: audioData.buffer,
         audioExt: audioData.ext,
-        totalDuration: analysis.durationSeconds,
+        totalDuration: stitchDuration,
         lyricsText,
       });
       videoBuffer = stitchResult.videoBuffer;
@@ -419,12 +435,51 @@ async function processJob(job: JobRow): Promise<void> {
   }
 }
 
+// Reset jobs that have been stuck in a non-terminal, non-queued state for
+// longer than STALE_THRESHOLD_MS. This recovers from: Runway API hangs that
+// exceed the 10-minute polling timeout, unhandled crashes mid-generation, and
+// any other scenario where the process dies without marking the job failed.
+const STALE_THRESHOLD_MS = 15 * 60 * 1000; // 15 minutes
+const STALE_CHECK_INTERVAL_MS = 5 * 60 * 1000; // check every 5 minutes
+
+async function recoverStaleJobs(): Promise<void> {
+  try {
+    const cutoff = new Date(Date.now() - STALE_THRESHOLD_MS);
+    const stale = await db.execute(sql`
+      UPDATE jobs
+      SET
+        status    = 'queued',
+        claimed_at = NULL,
+        progress_percent = 0,
+        error_message = 'Auto-recovered: stuck for >15 min without progress',
+        retry_count = LEAST(retry_count + 1, ${MAX_RETRIES - 1}),
+        updated_at = NOW()
+      WHERE status IN ('analyzing', 'generating', 'stitching')
+        AND updated_at < ${cutoff}
+        AND retry_count < ${MAX_RETRIES}
+      RETURNING id
+    `);
+    const recovered = (stale as { rows: { id: string }[] }).rows;
+    if (recovered.length > 0) {
+      logger.warn({ recovered: recovered.map((r) => r.id) }, "Recovered stale jobs");
+      for (const { id } of recovered) await notifyJobUpdate(id);
+    }
+  } catch (err) {
+    logger.error({ err }, "Stale job recovery error (non-fatal)");
+  }
+}
+
 let isRunning = false;
 
 export async function startJobProcessor(): Promise<void> {
   if (isRunning) return;
   isRunning = true;
   logger.info("Job processor started");
+
+  // Run stale-job recovery immediately on startup (catches jobs stuck across
+  // a deployment restart), then on a regular interval.
+  recoverStaleJobs();
+  setInterval(recoverStaleJobs, STALE_CHECK_INTERVAL_MS);
 
   const poll = async () => {
     try {
