@@ -5,6 +5,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import {
   useCreateJob,
+  useGetDashboardStats,
   CreateJobRequestAudioSourceType,
   CreateJobRequestAspectRatio,
   CreateJobRequestResolution,
@@ -28,7 +29,7 @@ import {
   Upload, Link as LinkIcon, Music, Sparkles, Loader2, CheckCircle2, XCircle,
   Users, Clapperboard, Layers, Zap, Film, Wand2, Video as VideoIcon, FileText,
   ChevronDown, User, Maximize2, Captions, Diamond, Pencil, MonitorPlay, ImageIcon,
-  Lock, Clock, Crown,
+  Lock, Clock, Crown, Coins,
 } from "lucide-react";
 
 const STYLES = [
@@ -68,6 +69,28 @@ type CharacterValue = (typeof CHARACTERS)[number]["value"];
 function daysUntil(dateStr: string | null): number {
   if (!dateStr) return 0;
   return Math.max(0, Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86_400_000));
+}
+
+// Mirrors server-side calculateCreditCost — must stay in sync with jobs.ts
+const MAX_CLIPS_PER_JOB = 3;
+const RUNWAY_USD_PER_SEC = 0.05;
+const MARKUP = 2;
+const USD_PER_CREDIT = 0.10;
+
+function estimateCreditCost(requestedDuration: CreateJobRequestRequestedDuration | null | undefined): number {
+  const dur = requestedDuration ?? CreateJobRequestRequestedDuration.full;
+  let clipDurationSec: 5 | 10;
+  let numClips: number;
+  if (dur === CreateJobRequestRequestedDuration.full) {
+    clipDurationSec = 10;
+    numClips = MAX_CLIPS_PER_JOB;
+  } else {
+    const durSec = parseInt(dur as string, 10);
+    clipDurationSec = durSec <= 5 ? 5 : 10;
+    numClips = Math.max(1, Math.ceil(durSec / clipDurationSec));
+  }
+  const chargeUSD = numClips * clipDurationSec * RUNWAY_USD_PER_SEC * MARKUP;
+  return Math.ceil(chargeUSD / USD_PER_CREDIT);
 }
 
 export default function Generate() {
@@ -196,6 +219,7 @@ export default function Generate() {
 
   const { toast } = useToast();
   const createJob = useCreateJob();
+  const { data: statsData } = useGetDashboardStats({});
 
   useEffect(() => {
     if (!isAuthLoading && !isAuthenticated) {
@@ -881,21 +905,42 @@ export default function Generate() {
           </div>
 
           {/* ── Generate ── */}
-          <Button
-            size="lg"
-            className="w-full h-14 text-lg bg-gradient-electric text-white shadow-glow mt-2"
-            disabled={createJob.isPending}
-            onClick={handleGenerate}
-          >
-            {createJob.isPending ? (
-              <Loader2 className="h-6 w-6 animate-spin" />
-            ) : (
-              <>
-                <Sparkles className="mr-2 h-5 w-5" />
-                Generate Beat-Synced Video
-              </>
-            )}
-          </Button>
+          {(() => {
+            const cost = estimateCreditCost(requestedDuration);
+            const balance = statsData?.creditsRemaining ?? null;
+            const canAfford = balance === null || balance >= cost;
+            return (
+              <div className="space-y-2">
+                <Button
+                  size="lg"
+                  className="w-full h-14 text-lg bg-gradient-electric text-white shadow-glow mt-2"
+                  disabled={createJob.isPending || !canAfford}
+                  onClick={handleGenerate}
+                >
+                  {createJob.isPending ? (
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                  ) : (
+                    <>
+                      <Sparkles className="mr-2 h-5 w-5" />
+                      Generate Beat-Synced Video
+                    </>
+                  )}
+                </Button>
+                <div className={`flex items-center justify-center gap-1.5 text-xs ${canAfford ? "text-muted-foreground" : "text-destructive font-medium"}`}>
+                  <Coins className="h-3.5 w-3.5" />
+                  <span>
+                    Costs <strong>{cost} credits</strong>
+                    {balance !== null && (
+                      <> — you have <strong className={canAfford ? "" : "text-destructive"}>{balance} remaining</strong></>
+                    )}
+                  </span>
+                  {!canAfford && (
+                    <span className="ml-1">— insufficient balance</span>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </motion.div>
     </div>

@@ -12,6 +12,31 @@ import {
 
 const router = Router();
 
+// ── Credit cost calculation ────────────────────────────────────────────────
+// Runway Gen-4.5 pricing: $0.05 / second of video generated.
+// We charge 2× that.  With 1 credit = $0.10 → 1 credit per second of output.
+const MAX_CLIPS_PER_JOB = 3; // mirrors jobProcessor.ts constant
+const RUNWAY_USD_PER_SEC = 0.05;
+const MARKUP = 2;
+const USD_PER_CREDIT = 0.10;
+
+function calculateCreditCost(requestedDuration: string | null | undefined): number {
+  const dur = requestedDuration ?? "full";
+  let clipDurationSec: 5 | 10;
+  let numClips: number;
+  if (dur === "full") {
+    clipDurationSec = 10;
+    numClips = MAX_CLIPS_PER_JOB;
+  } else {
+    const durSec = parseInt(dur, 10);
+    clipDurationSec = durSec <= 5 ? 5 : 10;
+    numClips = Math.max(1, Math.ceil(durSec / clipDurationSec));
+  }
+  const totalSec = numClips * clipDurationSec;
+  const chargeUSD = totalSec * RUNWAY_USD_PER_SEC * MARKUP;
+  return Math.ceil(chargeUSD / USD_PER_CREDIT);
+}
+
 router.get("/jobs", async (req, res) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: "Unauthorized" });
@@ -120,8 +145,15 @@ router.post("/jobs", async (req, res) => {
     userCredits = newCredits;
   }
 
-  if (userCredits.creditsRemaining <= 0) {
-    res.status(402).json({ error: "Insufficient credits" });
+  const creditCost = calculateCreditCost(requestedDuration);
+
+  if (userCredits.creditsRemaining < creditCost) {
+    res.status(402).json({
+      error: `Insufficient credits — this job costs ${creditCost} credits but you only have ${userCredits.creditsRemaining} remaining.`,
+      code: "INSUFFICIENT_CREDITS",
+      creditsRequired: creditCost,
+      creditsRemaining: userCredits.creditsRemaining,
+    });
     return;
   }
 
@@ -162,11 +194,16 @@ router.post("/jobs", async (req, res) => {
     })
     .returning();
 
+  req.log.info(
+    { userId: req.user.id, requestedDuration, creditCost, creditsRemaining: userCredits.creditsRemaining },
+    "Deducting credits for job",
+  );
+
   await db
     .update(creditsTable)
     .set({
-      creditsRemaining: userCredits.creditsRemaining - 1,
-      creditsUsed: userCredits.creditsUsed + 1,
+      creditsRemaining: userCredits.creditsRemaining - creditCost,
+      creditsUsed: userCredits.creditsUsed + creditCost,
       totalGenerations: userCredits.totalGenerations + 1,
     })
     .where(eq(creditsTable.userId, req.user.id));
