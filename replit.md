@@ -36,6 +36,9 @@ Full-stack AI music video generator (similar to freebeat.ai).
 - **Real-time Updates**: SSE endpoint (`GET /api/jobs/:id/events`) using pg LISTEN/NOTIFY; frontend falls back to 3s polling if SSE unavailable
 - **Credits System**: per-user credit tracking in DB; webhook-driven grants from Stripe (idempotent via `credit_grants.stripe_event_id`); credit grant history exposed via `GET /api/billing/grants` and displayed in the pricing page under "Credit history"
 - **Billing**: Stripe subscriptions (Starter $9 / Pro $29 / Studio $79 monthly+yearly) and one-time top-ups (50/200/600 credits). Powered by `stripe-replit-sync` (managed webhooks + local `stripe.*` schema mirror). See `artifacts/api-server/src/lib/stripeClient.ts`, `webhookHandlers.ts`, `routes/billing.ts`. Seed prices via `pnpm --filter @workspace/scripts run seed-stripe`. **Note**: `stripe-replit-sync` MUST be in esbuild `external` array (it loads migration .sql files via `__dirname`).
+- **Stripe Replay Alerts**: On every startup, `replayRecentStripeEvents()` emits a structured error log (count + IDs + types) if any events fail. An optional Slack alert fires when failures meet the threshold. Two env vars control this:
+  - `STRIPE_REPLAY_ALERT_SLACK_WEBHOOK` — Slack incoming webhook URL; if unset, only the structured log is emitted.
+  - `STRIPE_REPLAY_ALERT_THRESHOLD` — minimum failure count to trigger the Slack alert (positive integer, defaults to `1`).
 - **Video Gallery**: grid view with inline playback and deletion
 - **Dashboard**: stats overview + recent job activity
 

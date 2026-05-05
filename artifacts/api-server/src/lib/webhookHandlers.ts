@@ -544,7 +544,7 @@ export async function replayRecentStripeEvents(
   allEvents.sort((a, b) => a.created - b.created);
 
   let replayed = 0;
-  let failed = 0;
+  const failedEvents: Array<{ id: string; type: string }> = [];
 
   for (const event of allEvents) {
     try {
@@ -570,7 +570,7 @@ export async function replayRecentStripeEvents(
           break;
       }
     } catch (err) {
-      failed++;
+      failedEvents.push({ id: event.id, type: event.type });
       logger.error(
         { err, eventType: event.type, eventId: event.id },
         "Error replaying Stripe event on startup — continuing",
@@ -578,16 +578,94 @@ export async function replayRecentStripeEvents(
     }
   }
 
-  if (failed > 0) {
+  if (failedEvents.length > 0) {
     logger.error(
-      { replayed, failed, total: allEvents.length },
+      {
+        replayed,
+        failed: failedEvents.length,
+        total: allEvents.length,
+        failedEventIds: failedEvents.map((e) => e.id),
+        failedEventTypes: failedEvents.map((e) => e.type),
+        failedEvents,
+      },
       "Stripe event replay finished with errors — some credits may need manual review",
     );
+
+    await notifyReplayFailures(failedEvents);
   } else {
     logger.info(
       { replayed, total: allEvents.length },
       "Stripe event replay complete",
     );
+  }
+}
+
+/**
+ * Send an admin alert when Stripe event replay failures meet or exceed the
+ * configured threshold.
+ *
+ * Reads two optional environment variables:
+ *   STRIPE_REPLAY_ALERT_SLACK_WEBHOOK  — incoming webhook URL to post to
+ *   STRIPE_REPLAY_ALERT_THRESHOLD      — minimum failure count that triggers
+ *                                        the alert (defaults to 1)
+ *
+ * If the webhook URL is not set the function is a no-op (the structured log
+ * emitted by the caller is still the primary signal).
+ */
+async function notifyReplayFailures(
+  failedEvents: Array<{ id: string; type: string }>,
+): Promise<void> {
+  const webhookUrl = process.env["STRIPE_REPLAY_ALERT_SLACK_WEBHOOK"];
+  if (!webhookUrl) return;
+
+  const rawThreshold = process.env["STRIPE_REPLAY_ALERT_THRESHOLD"];
+  let threshold = 1;
+  if (rawThreshold !== undefined && rawThreshold !== "") {
+    const parsed = parseInt(rawThreshold, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      logger.warn(
+        { rawThreshold },
+        "STRIPE_REPLAY_ALERT_THRESHOLD is not a valid positive integer — defaulting to 1",
+      );
+    } else {
+      threshold = parsed;
+    }
+  }
+  if (failedEvents.length < threshold) return;
+
+  const summary = failedEvents
+    .map((e) => `• \`${e.id}\` (${e.type})`)
+    .join("\n");
+
+  const body = JSON.stringify({
+    text: [
+      `*Stripe event replay alert* — ${failedEvents.length} event(s) failed during server startup.`,
+      "These events may need manual review to ensure credits were granted correctly.",
+      "",
+      "*Failed events:*",
+      summary,
+    ].join("\n"),
+  });
+
+  try {
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    });
+    if (!response.ok) {
+      logger.warn(
+        { status: response.status },
+        "Stripe replay alert: Slack webhook returned non-OK status",
+      );
+    } else {
+      logger.info(
+        { failedCount: failedEvents.length },
+        "Stripe replay alert sent to Slack",
+      );
+    }
+  } catch (err) {
+    logger.error({ err }, "Stripe replay alert: failed to post to Slack webhook");
   }
 }
 
