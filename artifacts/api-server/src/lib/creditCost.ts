@@ -3,7 +3,7 @@ const MAX_CLIPS_PER_JOB = 3;
 const RUNWAY_TOKENS_PER_5S = 330;
 const RUNWAY_TOKENS_PER_10S = 660;
 const RUNWAY_USD_PER_TOKEN = 0.01;
-const MARKUP = 3;
+const MARKUP = 1.5;
 const USD_PER_CREDIT = 0.10;
 
 export function getClipPlan(requestedDuration: string | null | undefined): {
