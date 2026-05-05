@@ -401,37 +401,67 @@ export default function Pricing() {
       {topups.length > 0 && (
         <section className="mb-16">
           <div className="text-center mb-8">
-            <h2 className="text-2xl font-bold mb-2">Need a quick boost?</h2>
+            <h2 className="text-2xl font-bold mb-2">Credit packs</h2>
             <p className="text-muted-foreground">
-              One-time top-ups never expire. Use them whenever your subscription
-              credits run out.
+              One-time purchase · credits never expire · bigger packs = lower cost per video
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {topups.map((plan) => {
               const price = plan.prices[0];
               if (!price) return null;
+
+              const faceValueCents = price.credits * 10; // $0.10/credit face value
+              const savingsPct = faceValueCents > 0
+                ? Math.round((1 - price.unitAmount / faceValueCents) * 100)
+                : 0;
+              const perCreditCents = price.unitAmount / price.credits;
+              // Estimate videos: a typical 10s video costs 99 credits
+              const estVideos = Math.floor(price.credits / 99);
+
               return (
                 <Card
                   key={plan.id}
-                  className="bg-card/30 border-card-border"
+                  className={`relative bg-card/30 border ${plan.popular ? "border-primary/60 shadow-glow" : "border-card-border"}`}
                   data-testid={`card-topup-${price.credits}`}
                 >
+                  {plan.popular && (
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-gradient-electric text-xs font-semibold text-white shadow-glow">
+                      Best value
+                    </div>
+                  )}
+                  {savingsPct > 0 && !plan.popular && (
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-secondary border border-border text-xs font-semibold text-foreground">
+                      Save {savingsPct}%
+                    </div>
+                  )}
                   <CardHeader>
                     <CardTitle className="text-xl">
-                      {price.credits} credits
+                      {price.credits.toLocaleString()} credits
                     </CardTitle>
                     <p className="text-sm text-muted-foreground">
-                      One-time purchase · never expires
+                      ≈ {estVideos} videos · never expires
                     </p>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="text-3xl font-bold">
-                      {formatPrice(price.unitAmount, price.currency)}
+                    <div>
+                      <div className="text-3xl font-bold">
+                        {formatPrice(price.unitAmount, price.currency)}
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-sm text-muted-foreground">
+                          ${perCreditCents.toFixed(3).replace(/0+$/, "").replace(/\.$/, "")} / credit
+                        </span>
+                        {savingsPct > 0 && (
+                          <span className="text-xs font-medium text-primary">
+                            {savingsPct}% off
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <Button
-                      variant="outline"
-                      className="w-full"
+                      className={`w-full ${plan.popular ? "bg-gradient-electric text-white shadow-glow" : ""}`}
+                      variant={plan.popular ? "default" : "outline"}
                       disabled={busyPriceId === price.id}
                       onClick={() => handleSubscribe(price.id)}
                       data-testid={`button-topup-${price.credits}`}
