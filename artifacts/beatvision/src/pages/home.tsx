@@ -127,7 +127,7 @@ export default function Home() {
         {/* Sneaky Feature Spotlight */}
         <section className="py-14 border-t border-border/30">
           <div className="container px-4 md:px-6 mx-auto">
-            <div className="grid md:grid-cols-2 gap-6">
+            <div className="grid md:grid-cols-3 gap-6">
               <motion.div
                 initial={{ opacity: 0, y: 12 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -160,6 +160,24 @@ export default function Home() {
                   <h3 className="text-lg font-bold mb-1">Start from your album art</h3>
                   <p className="text-muted-foreground text-sm leading-relaxed">
                     Upload a reference image — existing artwork, a photo, a mood board — and the AI uses it alongside your prompt to keep the visuals on-brand from the first frame.
+                  </p>
+                </div>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.4, delay: 0.2 }}
+                className="flex gap-5 p-6 rounded-2xl bg-card border border-[#1DB954]/25"
+              >
+                <div className="flex-shrink-0 h-12 w-12 rounded-xl flex items-center justify-center" style={{ background: "rgba(29,185,84,0.15)" }}>
+                  <MonitorPlay className="h-6 w-6" style={{ color: "#1DB954" }} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold mb-1">Import straight from Suno</h3>
+                  <p className="text-muted-foreground text-sm leading-relaxed">
+                    Paste any Suno share link and we'll pull the track directly — no downloading, no re-uploading. Generate on Suno, visualize here.
                   </p>
                 </div>
               </motion.div>

@@ -72,18 +72,38 @@ async function updateJobStatus(
 async function getAudioBuffer(
   job: JobRow,
 ): Promise<{ buffer: Buffer; ext: string } | null> {
-  if (!job.audioObjectPath) return null;
-  try {
-    const file = await storageService.getObjectEntityFile(job.audioObjectPath);
-    const [buf] = await file.download();
-    const audioFilename = job.audioObjectPath.split("/").pop() ?? "";
-    const audioDot = audioFilename.lastIndexOf(".");
-    const ext = audioDot !== -1 ? audioFilename.slice(audioDot + 1).toLowerCase() : "mp3";
-    return { buffer: buf, ext };
-  } catch (err) {
-    logger.warn({ err, jobId: job.id }, "Could not download audio, using defaults");
-    return null;
+  // Uploaded file path
+  if (job.audioObjectPath) {
+    try {
+      const file = await storageService.getObjectEntityFile(job.audioObjectPath);
+      const [buf] = await file.download();
+      const audioFilename = job.audioObjectPath.split("/").pop() ?? "";
+      const audioDot = audioFilename.lastIndexOf(".");
+      const ext = audioDot !== -1 ? audioFilename.slice(audioDot + 1).toLowerCase() : "mp3";
+      return { buffer: buf, ext };
+    } catch (err) {
+      logger.warn({ err, jobId: job.id }, "Could not download audio, using defaults");
+      return null;
+    }
   }
+
+  // Suno CDN URL (resolved on the client, stored in audioSourceUrl)
+  if (job.audioSourceType === "suno" && job.audioSourceUrl) {
+    try {
+      logger.info({ jobId: job.id }, "Fetching Suno audio from CDN URL");
+      const res = await fetch(job.audioSourceUrl, {
+        headers: { "User-Agent": "AIBeatSync/1.0" },
+      });
+      if (!res.ok) throw new Error(`Suno CDN returned ${res.status}`);
+      const buf = Buffer.from(await res.arrayBuffer());
+      return { buffer: buf, ext: "mp3" };
+    } catch (err) {
+      logger.warn({ err, jobId: job.id }, "Could not fetch Suno audio");
+      return null;
+    }
+  }
+
+  return null;
 }
 
 const STYLE_PROMPTS: Record<string, string> = {

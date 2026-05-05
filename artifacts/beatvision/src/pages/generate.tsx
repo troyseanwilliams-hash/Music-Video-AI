@@ -122,6 +122,10 @@ export default function Generate() {
     CreateJobRequestAudioSourceType.upload,
   );
   const [audioUrl, setAudioUrl] = useState("");
+  const [sunoInputUrl, setSunoInputUrl] = useState("");
+  const [sunoResolving, setSunoResolving] = useState(false);
+  const [sunoResolved, setSunoResolved] = useState<{ audioUrl: string; title: string; artist: string } | null>(null);
+  const [sunoError, setSunoError] = useState<string | null>(null);
   const [objectPath, setObjectPath] = useState<string | null>(null);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -311,6 +315,24 @@ export default function Generate() {
 
   const characterLabel = CHARACTERS.find((c) => c.value === character)?.label ?? "None";
 
+  const handleSunoResolve = useCallback(async () => {
+    if (!sunoInputUrl.trim() || sunoResolving) return;
+    setSunoResolving(true);
+    setSunoError(null);
+    setSunoResolved(null);
+    try {
+      const res = await fetch(`/api/suno/resolve?url=${encodeURIComponent(sunoInputUrl)}`);
+      const data = await res.json() as { audioUrl?: string; title?: string; artist?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Failed to load track");
+      setSunoResolved({ audioUrl: data.audioUrl!, title: data.title ?? "Untitled", artist: data.artist ?? "" });
+      setFieldErrors((fe) => ({ ...fe, audio: undefined }));
+    } catch (err) {
+      setSunoError(err instanceof Error ? err.message : "Could not load track");
+    } finally {
+      setSunoResolving(false);
+    }
+  }, [sunoInputUrl, sunoResolving]);
+
   const handleGenerate = () => {
     const errors: { prompt?: string; audio?: string } = {};
 
@@ -320,8 +342,11 @@ export default function Generate() {
     if (sourceType === CreateJobRequestAudioSourceType.upload && !objectPath) {
       errors.audio = isUploading ? "Still uploading — wait a moment." : "Please upload an audio file.";
     }
-    if (sourceType !== CreateJobRequestAudioSourceType.upload && !audioUrl.trim()) {
-      errors.audio = "Please paste a YouTube or Suno URL.";
+    if (sourceType === CreateJobRequestAudioSourceType.youtube && !audioUrl.trim()) {
+      errors.audio = "Please paste a YouTube URL.";
+    }
+    if (sourceType === CreateJobRequestAudioSourceType.suno && !sunoResolved) {
+      errors.audio = sunoResolving ? "Loading track — wait a moment." : "Please load a Suno track first.";
     }
 
     if (Object.keys(errors).length > 0) {
@@ -347,7 +372,8 @@ export default function Generate() {
           audioObjectPath:
             sourceType === CreateJobRequestAudioSourceType.upload ? objectPath : null,
           audioSourceUrl:
-            sourceType !== CreateJobRequestAudioSourceType.upload ? audioUrl : null,
+            sourceType === CreateJobRequestAudioSourceType.youtube ? audioUrl :
+            sourceType === CreateJobRequestAudioSourceType.suno ? (sunoResolved?.audioUrl ?? null) : null,
           lyricsText: lyricsEnabled && lyricsText.trim() ? lyricsText.trim() : null,
           aspectRatio,
           resolution,
@@ -609,7 +635,7 @@ export default function Generate() {
             onValueChange={(v) => { setSourceType(v as CreateJobRequestAudioSourceType); setFieldErrors((e) => ({ ...e, audio: undefined })); }}
             className="w-full"
           >
-            <TabsList className="grid w-full grid-cols-2 mb-6">
+            <TabsList className="grid w-full grid-cols-3 mb-6">
               <TabsTrigger
                 value={CreateJobRequestAudioSourceType.upload}
                 className="flex items-center gap-2"
@@ -620,7 +646,13 @@ export default function Generate() {
                 value={CreateJobRequestAudioSourceType.youtube}
                 className="flex items-center gap-2"
               >
-                <LinkIcon className="h-4 w-4" /> Paste Link
+                <LinkIcon className="h-4 w-4" /> YouTube
+              </TabsTrigger>
+              <TabsTrigger
+                value={CreateJobRequestAudioSourceType.suno}
+                className="flex items-center gap-2"
+              >
+                <MonitorPlay className="h-4 w-4 text-[#1DB954]" /> Suno
               </TabsTrigger>
             </TabsList>
 
@@ -742,7 +774,7 @@ export default function Generate() {
 
             <TabsContent value={CreateJobRequestAudioSourceType.youtube} className="mt-0">
               <div className="space-y-4">
-                <Label htmlFor="audio-url">YouTube or Suno URL</Label>
+                <Label htmlFor="audio-url">YouTube URL</Label>
                 <Input
                   id="audio-url"
                   placeholder="https://youtube.com/watch?v=..."
@@ -750,6 +782,50 @@ export default function Generate() {
                   onChange={(e) => { setAudioUrl(e.target.value); setFieldErrors((fe) => ({ ...fe, audio: undefined })); }}
                   className={`h-12 bg-background/50 ${fieldErrors.audio ? "border-destructive" : "border-input"}`}
                 />
+              </div>
+            </TabsContent>
+
+            <TabsContent value={CreateJobRequestAudioSourceType.suno} className="mt-0">
+              <div className="space-y-3">
+                <Label htmlFor="suno-url">Suno share link</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="suno-url"
+                    placeholder="https://suno.com/song/..."
+                    value={sunoInputUrl}
+                    onChange={(e) => {
+                      setSunoInputUrl(e.target.value);
+                      setSunoResolved(null);
+                      setSunoError(null);
+                      setFieldErrors((fe) => ({ ...fe, audio: undefined }));
+                    }}
+                    onBlur={handleSunoResolve}
+                    className={`h-12 bg-background/50 ${fieldErrors.audio ? "border-destructive" : "border-input"}`}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-12 px-4 shrink-0"
+                    onClick={handleSunoResolve}
+                    disabled={sunoResolving || !sunoInputUrl.trim()}
+                  >
+                    {sunoResolving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Load"}
+                  </Button>
+                </div>
+                {sunoResolved && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#1DB954]/10 border border-[#1DB954]/30 text-sm">
+                    <CheckCircle2 className="h-4 w-4 text-[#1DB954] shrink-0" />
+                    <span className="font-medium">{sunoResolved.title}</span>
+                    {sunoResolved.artist && (
+                      <span className="text-muted-foreground">by {sunoResolved.artist}</span>
+                    )}
+                  </div>
+                )}
+                {sunoError && (
+                  <p className="flex items-center gap-1.5 text-sm text-destructive">
+                    <XCircle className="h-4 w-4 shrink-0" /> {sunoError}
+                  </p>
+                )}
               </div>
             </TabsContent>
           </Tabs>
