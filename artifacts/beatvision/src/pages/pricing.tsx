@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, Link } from "wouter";
-import { useAuth } from "@/hooks/useAuth";
+import { useQueryClient } from "@tanstack/react-query";
+import { AUTH_QUERY_KEY, useAuth } from "@/hooks/useAuth";
 import {
   useListBillingPlans,
   useGetBillingSubscription,
   createBillingCheckout,
   createBillingPortalSession,
+  getGetBillingSubscriptionQueryKey,
+  getGetCreditsQueryKey,
+  getGetDashboardStatsQueryKey,
+  type BillingSubscriptionResponse,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -46,6 +51,7 @@ export default function Pricing() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const [interval, setInterval] = useState<Interval>("month");
   const [busyPriceId, setBusyPriceId] = useState<string | null>(null);
@@ -61,10 +67,46 @@ export default function Pricing() {
     if (status === "success") {
       toast({
         title: "Payment successful",
-        description:
-          "Thanks! Your credits should appear within a few seconds. If they don't, refresh the page.",
+        description: "Thanks! Updating your credits…",
       });
       window.history.replaceState({}, "", window.location.pathname);
+
+      const subKey = getGetBillingSubscriptionQueryKey();
+      const creditsKey = getGetCreditsQueryKey();
+      const statsKey = getGetDashboardStatsQueryKey();
+
+      const initialSub =
+        queryClient.getQueryData<BillingSubscriptionResponse>(subKey);
+      const initialCredits = initialSub?.creditsRemaining ?? 0;
+      const initialActive = initialSub?.subscriptionStatus === "active";
+
+      const invalidateAll = () => {
+        queryClient.invalidateQueries({ queryKey: subKey });
+        queryClient.invalidateQueries({ queryKey: creditsKey });
+        queryClient.invalidateQueries({ queryKey: statsKey });
+        queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEY });
+      };
+
+      invalidateAll();
+
+      const startedAt = Date.now();
+      const intervalId = window.setInterval(() => {
+        const elapsed = Date.now() - startedAt;
+        const sub =
+          queryClient.getQueryData<BillingSubscriptionResponse>(subKey);
+        const creditsIncreased =
+          (sub?.creditsRemaining ?? 0) > initialCredits;
+        const becameActive =
+          !initialActive && sub?.subscriptionStatus === "active";
+
+        if (creditsIncreased || becameActive || elapsed >= 10000) {
+          window.clearInterval(intervalId);
+          return;
+        }
+        invalidateAll();
+      }, 1500);
+
+      return () => window.clearInterval(intervalId);
     } else if (status === "cancelled") {
       toast({
         title: "Checkout cancelled",
@@ -72,7 +114,8 @@ export default function Pricing() {
       });
       window.history.replaceState({}, "", window.location.pathname);
     }
-  }, [toast]);
+    return undefined;
+  }, [toast, queryClient]);
 
   const subscriptions = plans?.subscriptions ?? [];
   const topups = plans?.topups ?? [];
