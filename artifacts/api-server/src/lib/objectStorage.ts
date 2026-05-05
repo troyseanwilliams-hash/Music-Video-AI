@@ -171,6 +171,13 @@ export class ObjectStorageService {
     return objectFile;
   }
 
+  async getVideoSignedUrl(videoId: string, ttlSec: number = 3600): Promise<string> {
+    const privateObjectDir = this.getPrivateObjectDir();
+    const objectEntityPath = `${privateObjectDir}/videos/${videoId}.mp4`;
+    const { bucketName, objectName } = parseObjectPath(objectEntityPath);
+    return signObjectURL({ bucketName, objectName, method: "GET", ttlSec });
+  }
+
   async uploadVideoFromUrl(videoUrl: string, videoId: string): Promise<string> {
     const privateObjectDir = this.getPrivateObjectDir();
     const objectEntityPath = `${privateObjectDir}/videos/${videoId}.mp4`;

@@ -458,7 +458,7 @@ export default function JobStatus() {
               animate={{ opacity: 1, scale: 1 }}
               className="rounded-2xl border border-primary/30 bg-black overflow-hidden shadow-2xl shadow-primary/10"
             >
-              <VideoPlayer videoId={job.videoId} />
+              <VideoPlayer jobId={job.id} videoId={job.videoId} />
               <div className="p-4 bg-card flex justify-between items-center border-t border-border gap-3 flex-wrap">
                 <div>
                   <p className="font-medium text-sm">Your beat-synced video is ready</p>
@@ -634,9 +634,9 @@ function ErrorIcon({ category }: { category: ErrorCategory }) {
   }
 }
 
-function VideoPlayer({ videoId }: { videoId: string }) {
+function VideoPlayer({ jobId, videoId }: { jobId: string; videoId: string }) {
   const [errored, setErrored] = useState(false);
-  const videoSrc = `/api/storage/objects/videos/${videoId}.mp4`;
+  const videoSrc = `/api/jobs/${jobId}/video`;
   const posterSrc = `/api/storage/objects/thumbnails/${videoId}.jpg`;
 
   if (errored) {

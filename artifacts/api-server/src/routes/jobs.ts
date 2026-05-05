@@ -10,6 +10,7 @@ import {
   GetJobParams,
 } from "@workspace/api-zod";
 import { calculateCreditCost } from "../lib/creditCost";
+import { ObjectStorageService } from "../lib/objectStorage";
 
 const router = Router();
 
@@ -321,7 +322,9 @@ router.get("/jobs/:id/video", async (req, res) => {
     return;
   }
 
-  res.redirect(`/api/storage/objects/videos/${job.videoId}.mp4`);
+  const storageService = new ObjectStorageService();
+  const signedUrl = await storageService.getVideoSignedUrl(job.videoId);
+  res.redirect(302, signedUrl);
 });
 
 router.post("/jobs/:id/retry", async (req, res) => {
