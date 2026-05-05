@@ -107,23 +107,18 @@ router.get("/storage/objects/*path", async (req: Request, res: Response) => {
   try {
     const raw = req.params.path;
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
+
+    // For video files: redirect to a signed GCS URL so the browser can stream
+    // directly from GCS (supports Range requests natively, no server proxying).
+    if (wildcardPath.startsWith("videos/") && wildcardPath.endsWith(".mp4")) {
+      const videoId = wildcardPath.slice("videos/".length, -".mp4".length);
+      const signedUrl = await objectStorageService.getVideoSignedUrl(videoId, 3600);
+      res.redirect(302, signedUrl);
+      return;
+    }
+
     const objectPath = `/objects/${wildcardPath}`;
     const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
-
-    // --- Protected route example (uncomment when using replit-auth) ---
-    // if (!req.isAuthenticated()) {
-    //   res.status(401).json({ error: "Unauthorized" });
-    //   return;
-    // }
-    // const canAccess = await objectStorageService.canAccessObjectEntity({
-    //   userId: req.user.id,
-    //   objectFile,
-    //   requestedPermission: ObjectPermission.READ,
-    // });
-    // if (!canAccess) {
-    //   res.status(403).json({ error: "Forbidden" });
-    //   return;
-    // }
 
     const rangeHeader = req.headers.range;
     let parsedRange: { start: number; end?: number } | undefined;
