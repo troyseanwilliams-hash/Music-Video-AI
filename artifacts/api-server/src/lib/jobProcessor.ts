@@ -1,7 +1,7 @@
 import { db } from "@workspace/db";
 import { jobsTable, videosTable, creditsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
-import { calculateCreditCost } from "./creditCost";
+import { calculateCreditCost, getClipPlan } from "./creditCost";
 import { randomUUID } from "crypto";
 import { exec } from "child_process";
 import { promisify } from "util";
@@ -198,12 +198,19 @@ async function generateClips(
   onProgress: (pct: number) => Promise<void>,
 ): Promise<{ buffer: Buffer; targetDuration: number }[]> {
   const provider = getActiveProvider();
-  const sections = await selectSections(analysis.sections);
+  const requestedDur = (job as JobRow & { requestedDuration?: string | null }).requestedDuration;
+
+  // Use the same clip plan as the credit formula so the number of Runway calls
+  // matches exactly what was charged.
+  const { numClips: maxClips } = getClipPlan(requestedDur);
+  const allSections = await selectSections(analysis.sections);
+  const sections = allSections.slice(0, maxClips);
+
   const clips: { buffer: Buffer; targetDuration: number }[] = [];
   const refImageDataUrl = await loadReferenceImageDataUrl(job);
 
   logger.info(
-    { jobId: job.id, provider, sectionCount: sections.length },
+    { jobId: job.id, provider, sectionCount: sections.length, maxClips },
     "Generating clips per section",
   );
 
@@ -211,7 +218,6 @@ async function generateClips(
   // Do NOT use section.endTime - section.startTime: when audio clipping fails
   // or MP3 headers report the wrong total length, section timestamps reflect
   // the full audio file and each clip gets looped for the entire song duration.
-  const requestedDur = (job as JobRow & { requestedDuration?: string | null }).requestedDuration;
   const totalOutputDuration =
     !requestedDur || requestedDur === "full"
       ? analysis.durationSeconds
