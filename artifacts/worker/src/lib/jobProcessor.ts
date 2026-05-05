@@ -259,9 +259,16 @@ async function generateClips(
     "Generating clips per plan",
   );
 
+  // Distribute the total output duration evenly across clips.
+  // Do NOT use section.endTime - section.startTime: when the audio-clip
+  // extraction fails or MP3 headers report the wrong total length, section
+  // timestamps reflect the full audio file instead of the requested window,
+  // causing each Runway clip to be looped for the entire song duration.
+  const perClipTargetDuration = plan.targetOutputDuration / sections.length;
+
   for (let i = 0; i < sections.length; i++) {
     const section = sections[i]!;
-    const targetDuration = Math.max(1, section.endTime - section.startTime);
+    const targetDuration = Math.max(1, perClipTargetDuration);
     const clipDuration = clipDurationSec;
 
     await onProgress(30 + Math.floor((i / sections.length) * 40));
