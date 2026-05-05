@@ -267,21 +267,18 @@ export default function JobStatus() {
                 Style: <span className="capitalize text-foreground font-medium">{job.style}</span>
               </span>
               {isActive && (
-                <span className="text-sm text-muted-foreground flex items-center gap-1">
-                  <Clock className="h-3.5 w-3.5" /> {elapsed}
-                </span>
+                sseConnected ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-mono text-green-400">
+                    <Wifi className="h-3 w-3 shrink-0" />
+                    Live · {elapsed}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-mono text-muted-foreground">
+                    <WifiOff className="h-3 w-3 shrink-0" />
+                    {elapsed}
+                  </span>
+                )
               )}
-              {sseConnected ? (
-                <span className="inline-flex items-center gap-1.5 text-xs text-green-400">
-                  <Wifi className="h-3 w-3" />
-                  Live updates
-                </span>
-              ) : isActive ? (
-                <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <WifiOff className="h-3 w-3" />
-                  Polling
-                </span>
-              ) : null}
               {analysis?.bpm != null && (
                 <Badge variant="secondary" className="font-mono text-xs">{String(analysis.bpm)} BPM</Badge>
               )}
