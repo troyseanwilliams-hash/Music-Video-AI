@@ -285,6 +285,119 @@ async function handleSubscriptionUpdated(
     .where(eq(usersTable.id, user.id));
 }
 
+/**
+ * Replay recent Stripe events that may have been missed during a server restart.
+ *
+ * Problem: When the api-server restarts it re-registers (or re-finds) the managed
+ * webhook endpoint. Any event that Stripe delivered in the gap between the old
+ * process dying and the new one registering its endpoint is never pushed to us,
+ * so credits would not be granted without a manual retry.
+ *
+ * Solution: On every startup we list the last `lookbackSeconds` worth of Stripe
+ * events for every relevant event type (using full auto-pagination so >100 events
+ * are never silently skipped), sort everything chronologically oldest-first, and
+ * then process them in order through the same handlers used by the live webhook.
+ *
+ * Processing is fully idempotent — `grantCredits` does pre-checks and relies on
+ * unique DB constraints on `stripe_event_id`, `stripe_invoice_id`, and
+ * `stripe_checkout_session_id`, so re-processing an already-handled event is
+ * always a safe no-op.
+ *
+ * See scripts/src/test-stripe-replay.ts for a runnable verification that proves
+ * an event missed during a restart still results in the correct row in
+ * `credit_grants` and the right balance in `credits.credits_remaining`.
+ */
+export async function replayRecentStripeEvents(
+  lookbackSeconds = 1800,
+): Promise<void> {
+  const RELEVANT_EVENT_TYPES = [
+    "checkout.session.completed",
+    "invoice.paid",
+    "customer.subscription.created",
+    "customer.subscription.updated",
+    "customer.subscription.deleted",
+  ] as const;
+
+  const stripe = await getUncachableStripeClient();
+  const since = Math.floor(Date.now() / 1000) - lookbackSeconds;
+
+  logger.info(
+    { lookbackSeconds, since },
+    "Replaying recent Stripe events to recover any missed during restart",
+  );
+
+  // Collect ALL events across all types using auto-pagination so that windows
+  // with more than 100 events per type are never silently truncated.
+  const allEvents: Stripe.Event[] = [];
+  for (const type of RELEVANT_EVENT_TYPES) {
+    try {
+      for await (const event of stripe.events.list({
+        type,
+        created: { gte: since },
+        limit: 100,
+      })) {
+        allEvents.push(event);
+      }
+    } catch (err) {
+      logger.error(
+        { err, eventType: type },
+        "Failed to list Stripe events for replay — skipping this type",
+      );
+    }
+  }
+
+  // Sort oldest-first so subscription state mutations are applied in the
+  // correct order (e.g. created → updated → deleted, not the reverse).
+  allEvents.sort((a, b) => a.created - b.created);
+
+  let replayed = 0;
+  let failed = 0;
+
+  for (const event of allEvents) {
+    try {
+      switch (event.type) {
+        case "invoice.paid":
+          await handleInvoicePaid(event, event.data.object as Stripe.Invoice);
+          replayed++;
+          break;
+        case "checkout.session.completed":
+          await handleCheckoutCompleted(
+            event,
+            event.data.object as Stripe.Checkout.Session,
+          );
+          replayed++;
+          break;
+        case "customer.subscription.created":
+        case "customer.subscription.updated":
+        case "customer.subscription.deleted":
+          await handleSubscriptionUpdated(
+            event.data.object as Stripe.Subscription,
+          );
+          replayed++;
+          break;
+      }
+    } catch (err) {
+      failed++;
+      logger.error(
+        { err, eventType: event.type, eventId: event.id },
+        "Error replaying Stripe event on startup — continuing",
+      );
+    }
+  }
+
+  if (failed > 0) {
+    logger.error(
+      { replayed, failed, total: allEvents.length },
+      "Stripe event replay finished with errors — some credits may need manual review",
+    );
+  } else {
+    logger.info(
+      { replayed, total: allEvents.length },
+      "Stripe event replay complete",
+    );
+  }
+}
+
 export class WebhookHandlers {
   static async processWebhook(
     payload: Buffer,

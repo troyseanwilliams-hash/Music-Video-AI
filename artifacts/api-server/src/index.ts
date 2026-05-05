@@ -3,6 +3,7 @@ import { logger } from "./lib/logger";
 import { startJobProcessor } from "./lib/jobProcessor";
 import { ensureAdminUser } from "./lib/ensureAdminUser";
 import { initStripe } from "./lib/stripeClient";
+import { replayRecentStripeEvents } from "./lib/webhookHandlers";
 
 const rawPort = process.env["PORT"];
 
@@ -30,9 +31,17 @@ app.listen(port, (err) => {
     logger.error({ err }, "Failed to ensure admin user");
   });
 
-  initStripe().catch((err) => {
-    logger.error({ err }, "Failed to initialize Stripe");
-  });
+  initStripe()
+    .then(() => {
+      // Replay recent Stripe events (30-minute window) to recover any credit
+      // grants that were delivered to Stripe while the server was restarting.
+      // All handlers are idempotent via unique DB constraints, so re-processing
+      // an already-handled event is always a safe no-op.
+      return replayRecentStripeEvents();
+    })
+    .catch((err) => {
+      logger.error({ err }, "Failed to initialize Stripe or replay events");
+    });
 
   // In production the dedicated worker artifact runs the job processor.
   // In development (or when explicitly opted in) run it here too.
