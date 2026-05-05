@@ -134,8 +134,8 @@ export const creditGrantsTable = pgTable("credit_grants", {
   source: creditGrantSourceEnum("source").notNull(),
   creditsGranted: integer("credits_granted").notNull(),
   stripeEventId: text("stripe_event_id").unique(),
-  stripeInvoiceId: text("stripe_invoice_id"),
-  stripeCheckoutSessionId: text("stripe_checkout_session_id"),
+  stripeInvoiceId: text("stripe_invoice_id").unique(),
+  stripeCheckoutSessionId: text("stripe_checkout_session_id").unique(),
   stripePriceId: text("stripe_price_id"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

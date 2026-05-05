@@ -28,6 +28,8 @@
     "pg": "^8.20.0",
     "pino": "^9",
     "pino-http": "^10",
+    "stripe": "^22.1.0",
+    "stripe-replit-sync": "^1.0.0",
     "uuid": "^14.0.0"
   },
   "devDependencies": {

@@ -47,6 +47,31 @@ async function grantCredits(params: {
 
   await ensureCreditsRow(params.userId);
 
+  // Defense-in-depth: pre-check for an existing grant on the same invoice or
+  // checkout session even if the stripe_event_id differs (e.g. Stripe fires
+  // two distinct events for the same payment).
+  if (params.stripeInvoiceId) {
+    const [existing] = await db
+      .select({ id: creditGrantsTable.id })
+      .from(creditGrantsTable)
+      .where(eq(creditGrantsTable.stripeInvoiceId, params.stripeInvoiceId))
+      .limit(1);
+    if (existing) return { granted: false, reason: "duplicate invoice" };
+  }
+  if (params.stripeCheckoutSessionId) {
+    const [existing] = await db
+      .select({ id: creditGrantsTable.id })
+      .from(creditGrantsTable)
+      .where(
+        eq(
+          creditGrantsTable.stripeCheckoutSessionId,
+          params.stripeCheckoutSessionId,
+        ),
+      )
+      .limit(1);
+    if (existing) return { granted: false, reason: "duplicate checkout session" };
+  }
+
   try {
     const [grant] = await db
       .insert(creditGrantsTable)
@@ -110,13 +135,35 @@ async function handleInvoicePaid(
     return;
   }
 
+  // Newer Stripe API versions (2025-08-27.basil and later) replaced
+  // `line.price` with `line.pricing.price_details.price` (an ID-only string).
+  // Older versions still surface the expanded `price` object. Support both.
+  type LegacyLine = Stripe.InvoiceLineItem & { price?: Stripe.Price | null };
+  type ModernPricing = {
+    price_details?: { price?: string | null } | null;
+  } | null;
+
+  const stripe = await getUncachableStripeClient();
+  const priceCache = new Map<string, Stripe.Price>();
+  const resolvePrice = async (
+    line: Stripe.InvoiceLineItem,
+  ): Promise<Stripe.Price | null> => {
+    const legacy = (line as LegacyLine).price ?? null;
+    if (legacy) return legacy;
+    const modern = (line as { pricing?: ModernPricing }).pricing;
+    const priceId = modern?.price_details?.price ?? null;
+    if (!priceId) return null;
+    const cached = priceCache.get(priceId);
+    if (cached) return cached;
+    const fetched = await stripe.prices.retrieve(priceId);
+    priceCache.set(priceId, fetched);
+    return fetched;
+  };
+
   let totalCredits = 0;
   let firstPriceId: string | null = null;
   for (const line of invoice.lines.data ?? []) {
-    const lineWithPricing = line as Stripe.InvoiceLineItem & {
-      price?: Stripe.Price | null;
-    };
-    const price = lineWithPricing.price ?? null;
+    const price = await resolvePrice(line);
     if (!price) continue;
     if (!firstPriceId) firstPriceId = price.id;
     const credits = parseCreditsFromMetadata(price.metadata);
@@ -257,7 +304,9 @@ export class WebhookHandlers {
     try {
       switch (event.type) {
         case "invoice.paid":
-        case "invoice.payment_succeeded":
+          // NOTE: do NOT also handle "invoice.payment_succeeded" — Stripe fires
+          // both events for the same paid invoice with different event IDs, and
+          // event-id idempotency alone would let us double-grant credits.
           await handleInvoicePaid(event, event.data.object as Stripe.Invoice);
           break;
         case "checkout.session.completed":
