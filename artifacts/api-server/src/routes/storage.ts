@@ -27,7 +27,25 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
   try {
     const { name, size, contentType } = parsed.data;
 
-    const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+    const CONTENT_TYPE_EXT: Record<string, string> = {
+      "audio/mpeg": "mp3",
+      "audio/mp3": "mp3",
+      "audio/wav": "wav",
+      "audio/x-wav": "wav",
+      "audio/wave": "wav",
+      "audio/mp4": "mp4",
+      "audio/aac": "aac",
+      "audio/ogg": "ogg",
+      "audio/flac": "flac",
+      "audio/webm": "webm",
+      "image/jpeg": "jpg",
+      "image/png": "png",
+      "image/webp": "webp",
+      "image/gif": "gif",
+    };
+    const ext = contentType ? CONTENT_TYPE_EXT[contentType.toLowerCase()] : undefined;
+
+    const uploadURL = await objectStorageService.getObjectEntityUploadURL(ext);
     const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
 
     res.json(

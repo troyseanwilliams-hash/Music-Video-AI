@@ -75,7 +75,9 @@ async function getAudioBuffer(
   try {
     const file = await storageService.getObjectEntityFile(job.audioObjectPath);
     const [buf] = await file.download();
-    const ext = job.audioObjectPath.split(".").pop()?.toLowerCase() ?? "mp3";
+    const audioFilename = job.audioObjectPath.split("/").pop() ?? "";
+    const audioDot = audioFilename.lastIndexOf(".");
+    const ext = audioDot !== -1 ? audioFilename.slice(audioDot + 1).toLowerCase() : "mp3";
     return { buffer: buf, ext };
   } catch (err) {
     logger.warn({ err, jobId: job.id }, "Could not download audio, using defaults");
@@ -177,7 +179,9 @@ async function loadReferenceImageDataUrl(job: JobRow): Promise<string | null> {
   try {
     const file = await storageService.getObjectEntityFile(job.referenceImagePath);
     const [buf] = await file.download();
-    const ext = job.referenceImagePath.split(".").pop()?.toLowerCase() ?? "jpg";
+    const imgFilename = job.referenceImagePath.split("/").pop() ?? "";
+    const imgDot = imgFilename.lastIndexOf(".");
+    const ext = imgDot !== -1 ? imgFilename.slice(imgDot + 1).toLowerCase() : "jpg";
     const mime =
       ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
     return `data:${mime};base64,${buf.toString("base64")}`;
