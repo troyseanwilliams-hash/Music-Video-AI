@@ -5,18 +5,15 @@ import { AUTH_QUERY_KEY, useAuth } from "@/hooks/useAuth";
 import {
   useListBillingPlans,
   useGetBillingSubscription,
-  useListBillingGrants,
   createBillingCheckout,
   createBillingPortalSession,
   getGetBillingSubscriptionQueryKey,
   getGetCreditsQueryKey,
   getGetDashboardStatsQueryKey,
   type BillingSubscriptionResponse,
-  type CreditGrant,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import {
   Check,
@@ -26,39 +23,9 @@ import {
   Sparkles,
   CreditCard,
   ArrowLeft,
-  ExternalLink,
-  History,
 } from "lucide-react";
 
 type Interval = "month" | "year";
-
-const SOURCE_LABELS: Record<CreditGrant["source"], string> = {
-  subscription: "Subscription",
-  topup: "Top-up",
-  trial: "Trial",
-  admin: "Admin grant",
-};
-
-const SOURCE_BADGE_VARIANT: Record<
-  CreditGrant["source"],
-  "default" | "secondary" | "outline"
-> = {
-  subscription: "default",
-  topup: "secondary",
-  trial: "outline",
-  admin: "outline",
-};
-
-function formatGrantDate(iso: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(iso));
-}
-
 
 function formatPrice(amount: number, currency: string): string {
   const formatter = new Intl.NumberFormat("en-US", {
@@ -92,9 +59,6 @@ export default function Pricing() {
 
   const { data: plans, isLoading: plansLoading } = useListBillingPlans();
   const { data: subscription } = useGetBillingSubscription({
-    query: { enabled: isAuthenticated },
-  });
-  const { data: grantsData, isError: grantsError } = useListBillingGrants({
     query: { enabled: isAuthenticated },
   });
 
@@ -490,83 +454,6 @@ export default function Pricing() {
               );
             })}
           </div>
-        </section>
-      )}
-
-      {isAuthenticated && (
-        <section className="mb-16" data-testid="section-credit-history">
-          <div className="flex items-center gap-3 mb-6">
-            <History className="h-5 w-5 text-primary" />
-            <h2 className="text-2xl font-bold">Credit history</h2>
-          </div>
-          {grantsError ? (
-            <Card className="bg-card/30 border-card-border">
-              <CardContent className="py-10 text-center text-muted-foreground">
-                Could not load credit history. Please try again later.
-              </CardContent>
-            </Card>
-          ) : !grantsData ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : grantsData.grants.length === 0 ? (
-            <Card className="bg-card/30 border-card-border">
-              <CardContent className="py-10 text-center text-muted-foreground">
-                No credit grants yet. Purchase a plan or top-up to get started.
-              </CardContent>
-            </Card>
-          ) : (
-            <Card className="bg-card/30 border-card-border overflow-hidden">
-              <div className="divide-y divide-border/50">
-                {grantsData.grants.map((grant) => {
-                  const receiptUrl = grant.receiptUrl ?? null;
-                  return (
-                    <div
-                      key={grant.id}
-                      className="flex items-center justify-between gap-4 px-5 py-4"
-                      data-testid={`grant-row-${grant.id}`}
-                    >
-                      <div className="flex items-center gap-4 min-w-0">
-                        <Badge
-                          variant={SOURCE_BADGE_VARIANT[grant.source]}
-                          className="shrink-0"
-                        >
-                          {SOURCE_LABELS[grant.source]}
-                        </Badge>
-                        <span className="text-sm text-muted-foreground truncate">
-                          {formatGrantDate(grant.createdAt)}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-4 shrink-0">
-                        <span className="font-semibold tabular-nums">
-                          +{grant.creditsGranted}{" "}
-                          <span className="text-muted-foreground font-normal text-sm">
-                            credit{grant.creditsGranted === 1 ? "" : "s"}
-                          </span>
-                        </span>
-                        {receiptUrl ? (
-                          <a
-                            href={receiptUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1 text-xs text-primary hover:underline"
-                            data-testid={`receipt-link-${grant.id}`}
-                          >
-                            Receipt
-                            <ExternalLink className="h-3 w-3" />
-                          </a>
-                        ) : (
-                          <span className="text-xs text-muted-foreground w-14 text-right">
-                            —
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </Card>
-          )}
         </section>
       )}
 
