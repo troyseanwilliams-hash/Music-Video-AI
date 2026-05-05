@@ -635,15 +635,9 @@ function ErrorIcon({ category }: { category: ErrorCategory }) {
 }
 
 function VideoPlayer({ videoId }: { videoId: string }) {
-  const [playing, setPlaying] = useState(false);
   const [errored, setErrored] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
   const videoSrc = `/api/storage/objects/videos/${videoId}.mp4`;
-
-  const handlePlay = () => {
-    setPlaying(true);
-    setTimeout(() => videoRef.current?.play(), 50);
-  };
+  const posterSrc = `/api/storage/objects/thumbnails/${videoId}.jpg`;
 
   if (errored) {
     return (
@@ -658,38 +652,14 @@ function VideoPlayer({ videoId }: { videoId: string }) {
   }
 
   return (
-    <div className="aspect-video relative bg-black flex items-center justify-center">
-      {playing ? (
-        <video
-          ref={videoRef}
-          src={videoSrc}
-          controls
-          autoPlay
-          className="w-full h-full object-contain"
-          onError={() => { setPlaying(false); setErrored(true); }}
-        />
-      ) : (
-        <div className="w-full h-full relative flex items-center justify-center">
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-          <button
-            onClick={handlePlay}
-            className="relative z-10 h-20 w-20 rounded-full bg-primary/90 hover:bg-primary flex items-center justify-center shadow-2xl transition-all hover:scale-105 group"
-            aria-label="Play video"
-          >
-            <Play className="h-9 w-9 text-white ml-1 group-hover:scale-110 transition-transform" />
-          </button>
-          <div className="absolute bottom-4 right-4 z-10">
-            <a
-              href={videoSrc}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs text-white/70 hover:text-white transition-colors"
-            >
-              <ExternalLink className="h-3 w-3" /> Open in new tab
-            </a>
-          </div>
-        </div>
-      )}
+    <div className="aspect-video relative bg-black">
+      <video
+        src={videoSrc}
+        poster={posterSrc}
+        controls
+        className="w-full h-full object-contain"
+        onError={() => setErrored(true)}
+      />
     </div>
   );
 }
