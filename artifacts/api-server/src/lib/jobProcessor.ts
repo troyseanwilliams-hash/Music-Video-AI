@@ -397,9 +397,13 @@ async function processJob(job: JobRow): Promise<void> {
     });
 
     const creditCost = calculateCreditCost(job.requestedDuration);
+    // Deduct from the subscription bucket first, then top-up. This way one-time
+    // top-ups survive any future "reset monthly credits at renewal" behavior.
     await db
       .update(creditsTable)
       .set({
+        subscriptionCredits: sql`GREATEST(subscription_credits - ${creditCost}, 0)`,
+        topupCredits: sql`GREATEST(topup_credits - GREATEST(${creditCost} - subscription_credits, 0), 0)`,
         creditsRemaining: sql`GREATEST(credits_remaining - ${creditCost}, 0)`,
         creditsUsed: sql`credits_used + ${creditCost}`,
         totalGenerations: sql`total_generations + 1`,

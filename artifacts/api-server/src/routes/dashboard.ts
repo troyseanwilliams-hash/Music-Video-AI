@@ -34,8 +34,12 @@ router.get("/dashboard/stats", async (req, res) => {
   ]);
 
   let creditsRemaining = 10;
+  let subscriptionCredits = 10;
+  let topupCredits = 0;
   if (credits[0]) {
     creditsRemaining = credits[0].creditsRemaining;
+    subscriptionCredits = credits[0].subscriptionCredits;
+    topupCredits = credits[0].topupCredits;
   } else {
     try {
       await db
@@ -64,6 +68,8 @@ router.get("/dashboard/stats", async (req, res) => {
     failedJobs,
     totalVideos: totalVideosResult[0]?.count ?? 0,
     creditsRemaining,
+    subscriptionCredits,
+    topupCredits,
     recentJobs,
   });
 });

@@ -177,6 +177,8 @@ router.get("/billing/subscription", async (req, res) => {
     subscriptionStatus: user.subscriptionStatus,
     hasStripeCustomer: Boolean(user.stripeCustomerId),
     creditsRemaining: credits?.creditsRemaining ?? 0,
+    subscriptionCredits: credits?.subscriptionCredits ?? 0,
+    topupCredits: credits?.topupCredits ?? 0,
     planName,
     priceLookupKey,
     renewsAt,

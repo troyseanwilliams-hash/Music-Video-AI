@@ -98,7 +98,13 @@ export const creditsTable = pgTable("credits", {
     .notNull()
     .references(() => usersTable.id, { onDelete: "cascade" })
     .unique(),
+  // creditsRemaining is the sum of subscriptionCredits + topupCredits and is
+  // kept up to date by every grant/consume site so existing callers keep
+  // working. New code should prefer the bucketed columns when it needs to
+  // distinguish source.
   creditsRemaining: integer("credits_remaining").notNull().default(10),
+  subscriptionCredits: integer("subscription_credits").notNull().default(10),
+  topupCredits: integer("topup_credits").notNull().default(0),
   creditsUsed: integer("credits_used").notNull().default(0),
   totalGenerations: integer("total_generations").notNull().default(0),
   updatedAt: timestamp("updated_at", { withTimezone: true })

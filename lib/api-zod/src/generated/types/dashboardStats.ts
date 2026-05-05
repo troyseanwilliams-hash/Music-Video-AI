@@ -14,5 +14,7 @@ export interface DashboardStats {
   failedJobs: number;
   totalVideos: number;
   creditsRemaining: number;
+  subscriptionCredits: number;
+  topupCredits: number;
   recentJobs?: Job[];
 }

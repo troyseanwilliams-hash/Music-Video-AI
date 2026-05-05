@@ -161,12 +161,22 @@ export default function Pricing() {
           every cycle. Top-ups give you a one-time boost.
         </p>
         {isAuthenticated && subscription && (
-          <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-border/50 bg-secondary/40 px-4 py-2 text-sm">
+          <div
+            className="mt-4 inline-flex items-center gap-2 rounded-full border border-border/50 bg-secondary/40 px-4 py-2 text-sm"
+            data-testid="pricing-credits-summary"
+          >
             <Zap className="h-4 w-4 text-primary" />
             <span>
               You have <strong>{subscription.creditsRemaining}</strong> credit
               {subscription.creditsRemaining === 1 ? "" : "s"} remaining
             </span>
+            {(subscription.subscriptionCredits > 0 ||
+              subscription.topupCredits > 0) && (
+              <span className="text-muted-foreground">
+                · {subscription.subscriptionCredits} plan +{" "}
+                {subscription.topupCredits} top-up
+              </span>
+            )}
             {subscription.planName && (
               <span className="text-muted-foreground">
                 · {subscription.planName}

@@ -29,6 +29,8 @@ router.get("/credits", async (req, res) => {
       .returning();
     res.json({
       creditsRemaining: newCredits.creditsRemaining,
+      subscriptionCredits: newCredits.subscriptionCredits,
+      topupCredits: newCredits.topupCredits,
       creditsUsed: newCredits.creditsUsed,
       totalGenerations: newCredits.totalGenerations,
     });
@@ -37,6 +39,8 @@ router.get("/credits", async (req, res) => {
 
   res.json({
     creditsRemaining: credits[0].creditsRemaining,
+    subscriptionCredits: credits[0].subscriptionCredits,
+    topupCredits: credits[0].topupCredits,
     creditsUsed: credits[0].creditsUsed,
     totalGenerations: credits[0].totalGenerations,
   });
@@ -70,11 +74,28 @@ router.post("/admin/credits/set", async (req, res) => {
     return;
   }
 
+  // Admin overrides treat the new balance as a top-up so it survives any
+  // future "reset monthly credits at renewal" behavior. The subscription
+  // bucket is zeroed to make the totals add up.
   const existing = await db.select().from(creditsTable).where(eq(creditsTable.userId, targetUserId)).limit(1);
   if (existing[0]) {
-    await db.update(creditsTable).set({ creditsRemaining: amount, updatedAt: new Date() }).where(eq(creditsTable.userId, targetUserId));
+    await db
+      .update(creditsTable)
+      .set({
+        creditsRemaining: amount,
+        subscriptionCredits: 0,
+        topupCredits: amount,
+        updatedAt: new Date(),
+      })
+      .where(eq(creditsTable.userId, targetUserId));
   } else {
-    await db.insert(creditsTable).values({ id: randomUUID(), userId: targetUserId, creditsRemaining: amount });
+    await db.insert(creditsTable).values({
+      id: randomUUID(),
+      userId: targetUserId,
+      creditsRemaining: amount,
+      subscriptionCredits: 0,
+      topupCredits: amount,
+    });
   }
 
   res.json({ ok: true, userId: targetUserId, creditsRemaining: amount });

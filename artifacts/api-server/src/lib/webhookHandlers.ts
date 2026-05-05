@@ -92,10 +92,17 @@ async function grantCredits(params: {
       return { granted: false, reason: "duplicate event" };
     }
 
+    const bucketColumn =
+      params.source === "topup"
+        ? creditsTable.topupCredits
+        : creditsTable.subscriptionCredits;
+
     await db
       .update(creditsTable)
       .set({
         creditsRemaining: sql`${creditsTable.creditsRemaining} + ${params.credits}`,
+        [params.source === "topup" ? "topupCredits" : "subscriptionCredits"]:
+          sql`${bucketColumn} + ${params.credits}`,
       })
       .where(eq(creditsTable.userId, params.userId));
 

@@ -61,9 +61,18 @@ export function Navbar() {
 
         <div className="flex items-center gap-4">
           {isAuthenticated && stats && (
-            <div className="hidden sm:flex items-center gap-2 rounded-full border border-border/50 bg-secondary/50 px-3 py-1 text-sm font-medium">
+            <div
+              className="hidden sm:flex items-center gap-2 rounded-full border border-border/50 bg-secondary/50 px-3 py-1 text-sm font-medium"
+              title={`Plan: ${stats.subscriptionCredits} · Top-up: ${stats.topupCredits}`}
+              data-testid="navbar-credits"
+            >
               <Wand2 className="h-4 w-4 text-primary" />
               <span>{stats.creditsRemaining} Credits</span>
+              {stats.topupCredits > 0 && (
+                <span className="text-xs text-muted-foreground font-normal">
+                  ({stats.subscriptionCredits} + {stats.topupCredits})
+                </span>
+              )}
             </div>
           )}
 

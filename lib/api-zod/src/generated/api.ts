@@ -560,7 +560,19 @@ export const GetCreditsHeader = zod.object({
 });
 
 export const GetCreditsResponse = zod.object({
-  creditsRemaining: zod.number(),
+  creditsRemaining: zod
+    .number()
+    .describe("Total credits available (subscriptionCredits + topupCredits)"),
+  subscriptionCredits: zod
+    .number()
+    .describe(
+      "Credits granted by the active subscription (or trial). May be reset on renewal.",
+    ),
+  topupCredits: zod
+    .number()
+    .describe(
+      "Credits from one-time top-up purchases. Never reset by renewals.",
+    ),
   creditsUsed: zod.number(),
   totalGenerations: zod.number(),
 });
@@ -647,6 +659,8 @@ export const GetBillingSubscriptionResponse = zod.object({
   subscriptionStatus: zod.string(),
   hasStripeCustomer: zod.boolean(),
   creditsRemaining: zod.number(),
+  subscriptionCredits: zod.number(),
+  topupCredits: zod.number(),
   planName: zod.string().nullish(),
   priceLookupKey: zod.string().nullish(),
   renewsAt: zod.coerce.date().nullish(),
@@ -710,6 +724,8 @@ export const GetDashboardStatsResponse = zod.object({
   failedJobs: zod.number(),
   totalVideos: zod.number(),
   creditsRemaining: zod.number(),
+  subscriptionCredits: zod.number(),
+  topupCredits: zod.number(),
   recentJobs: zod
     .array(
       zod.object({

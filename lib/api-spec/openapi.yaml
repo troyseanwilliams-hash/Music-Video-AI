@@ -884,10 +884,22 @@ components:
 
     CreditsResponse:
       type: object
-      required: [creditsRemaining, creditsUsed, totalGenerations]
+      required:
+        - creditsRemaining
+        - subscriptionCredits
+        - topupCredits
+        - creditsUsed
+        - totalGenerations
       properties:
         creditsRemaining:
           type: integer
+          description: Total credits available (subscriptionCredits + topupCredits)
+        subscriptionCredits:
+          type: integer
+          description: Credits granted by the active subscription (or trial). May be reset on renewal.
+        topupCredits:
+          type: integer
+          description: Credits from one-time top-up purchases. Never reset by renewals.
         creditsUsed:
           type: integer
         totalGenerations:
@@ -951,13 +963,22 @@ components:
 
     BillingSubscriptionResponse:
       type: object
-      required: [subscriptionStatus, hasStripeCustomer, creditsRemaining]
+      required:
+        - subscriptionStatus
+        - hasStripeCustomer
+        - creditsRemaining
+        - subscriptionCredits
+        - topupCredits
       properties:
         subscriptionStatus:
           type: string
         hasStripeCustomer:
           type: boolean
         creditsRemaining:
+          type: integer
+        subscriptionCredits:
+          type: integer
+        topupCredits:
           type: integer
         planName:
           type: [string, 'null']
@@ -1005,7 +1026,15 @@ components:
 
     DashboardStats:
       type: object
-      required: [totalJobs, completedJobs, processingJobs, failedJobs, totalVideos, creditsRemaining]
+      required:
+        - totalJobs
+        - completedJobs
+        - processingJobs
+        - failedJobs
+        - totalVideos
+        - creditsRemaining
+        - subscriptionCredits
+        - topupCredits
       properties:
         totalJobs:
           type: integer
@@ -1018,6 +1047,10 @@ components:
         totalVideos:
           type: integer
         creditsRemaining:
+          type: integer
+        subscriptionCredits:
+          type: integer
+        topupCredits:
           type: integer
         recentJobs:
           type: array
