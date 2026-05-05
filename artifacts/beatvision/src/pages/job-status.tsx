@@ -140,6 +140,7 @@ export default function JobStatus() {
 
   const sseRef = useRef<EventSource | null>(null);
   const [sseConnected, setSseConnected] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const { data: job, isLoading } = useGetJob(id as string, {
     query: {
@@ -232,7 +233,6 @@ export default function JobStatus() {
   }
   const clipHint = inferClipProgress(job.status ?? "", displayPercent, { numClips });
 
-  const [copied, setCopied] = useState(false);
   function copyLink() {
     navigator.clipboard.writeText(window.location.href).then(() => {
       setCopied(true);
