@@ -505,6 +505,28 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
 
+  /billing/grants:
+    get:
+      tags: [Billing]
+      operationId: listBillingGrants
+      summary: List credit grants for the current user
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+      responses:
+        '200':
+          description: List of credit grants
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreditGrantsResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
   /billing/portal:
     post:
       tags: [Billing]
@@ -1023,6 +1045,43 @@ components:
         url:
           type: string
           format: uri
+
+    CreditGrantSource:
+      type: string
+      enum: [subscription, topup, trial, admin]
+
+    CreditGrant:
+      type: object
+      required: [id, source, creditsGranted, createdAt]
+      properties:
+        id:
+          type: string
+        source:
+          $ref: '#/components/schemas/CreditGrantSource'
+        creditsGranted:
+          type: integer
+        stripeInvoiceId:
+          type: [string, 'null']
+        stripeCheckoutSessionId:
+          type: [string, 'null']
+        stripePriceId:
+          type: [string, 'null']
+        receiptUrl:
+          type: [string, 'null']
+          format: uri
+          description: Customer-facing receipt or hosted invoice URL from Stripe
+        createdAt:
+          type: string
+          format: date-time
+
+    CreditGrantsResponse:
+      type: object
+      required: [grants]
+      properties:
+        grants:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreditGrant'
 
     DashboardStats:
       type: object

@@ -1,7 +1,7 @@
 import { Router, type Request } from "express";
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { usersTable, creditsTable } from "@workspace/db";
+import { usersTable, creditsTable, creditGrantsTable } from "@workspace/db";
 import { randomUUID } from "crypto";
 import { getUncachableStripeClient } from "../lib/stripeClient";
 import type Stripe from "stripe";
@@ -273,6 +273,74 @@ router.post("/billing/checkout", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Failed to create checkout session");
     res.status(500).json({ error: "Failed to create checkout session" });
+  }
+});
+
+router.get("/billing/grants", async (req, res) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  try {
+    const grants = await db
+      .select({
+        id: creditGrantsTable.id,
+        source: creditGrantsTable.source,
+        creditsGranted: creditGrantsTable.creditsGranted,
+        stripeInvoiceId: creditGrantsTable.stripeInvoiceId,
+        stripeCheckoutSessionId: creditGrantsTable.stripeCheckoutSessionId,
+        stripePriceId: creditGrantsTable.stripePriceId,
+        createdAt: creditGrantsTable.createdAt,
+      })
+      .from(creditGrantsTable)
+      .where(eq(creditGrantsTable.userId, req.user.id))
+      .orderBy(desc(creditGrantsTable.createdAt))
+      .limit(50);
+
+    const stripe = await getUncachableStripeClient();
+
+    const grantsWithReceipts = await Promise.all(
+      grants.map(async (g) => {
+        let receiptUrl: string | null = null;
+
+        try {
+          if (g.stripeInvoiceId) {
+            const invoice = await stripe.invoices.retrieve(g.stripeInvoiceId);
+            receiptUrl = invoice.hosted_invoice_url ?? null;
+          } else if (g.stripeCheckoutSessionId) {
+            const session = await stripe.checkout.sessions.retrieve(
+              g.stripeCheckoutSessionId,
+              { expand: ["payment_intent.latest_charge"] },
+            );
+            const pi = session.payment_intent as
+              | (Stripe.PaymentIntent & {
+                  latest_charge?: Stripe.Charge | null;
+                })
+              | null;
+            receiptUrl = pi?.latest_charge?.receipt_url ?? null;
+          }
+        } catch {
+          // Non-fatal: receipt URL enrichment failure should not block the response
+        }
+
+        return {
+          id: g.id,
+          source: g.source,
+          creditsGranted: g.creditsGranted,
+          stripeInvoiceId: g.stripeInvoiceId,
+          stripeCheckoutSessionId: g.stripeCheckoutSessionId,
+          stripePriceId: g.stripePriceId,
+          receiptUrl,
+          createdAt: g.createdAt.toISOString(),
+        };
+      }),
+    );
+
+    res.json({ grants: grantsWithReceipts });
+  } catch (err) {
+    req.log.error({ err }, "Failed to list billing grants");
+    res.status(500).json({ error: "Failed to load credit history" });
   }
 });
 

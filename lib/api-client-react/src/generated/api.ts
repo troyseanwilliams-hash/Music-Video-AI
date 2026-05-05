@@ -25,6 +25,7 @@ import type {
   CreateJobRequest,
   CreatePortalRequest,
   CreatePortalResponse,
+  CreditGrantsResponse,
   CreditsResponse,
   DashboardStats,
   ErrorEnvelope,
@@ -1544,6 +1545,81 @@ export const useCreateBillingCheckout = <
 > => {
   return useMutation(getCreateBillingCheckoutMutationOptions(options));
 };
+
+/**
+ * @summary List credit grants for the current user
+ */
+export const getListBillingGrantsUrl = () => {
+  return `/api/billing/grants`;
+};
+
+export const listBillingGrants = async (
+  options?: RequestInit,
+): Promise<CreditGrantsResponse> => {
+  return customFetch<CreditGrantsResponse>(getListBillingGrantsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListBillingGrantsQueryKey = () => {
+  return [`/api/billing/grants`] as const;
+};
+
+export const getListBillingGrantsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listBillingGrants>>,
+  TError = ErrorType<ErrorEnvelope>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listBillingGrants>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListBillingGrantsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listBillingGrants>>
+  > = ({ signal }) => listBillingGrants({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listBillingGrants>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListBillingGrantsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listBillingGrants>>
+>;
+export type ListBillingGrantsQueryError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary List credit grants for the current user
+ */
+
+export function useListBillingGrants<
+  TData = Awaited<ReturnType<typeof listBillingGrants>>,
+  TError = ErrorType<ErrorEnvelope>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listBillingGrants>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListBillingGrantsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Create a Stripe Billing Portal session for the current user

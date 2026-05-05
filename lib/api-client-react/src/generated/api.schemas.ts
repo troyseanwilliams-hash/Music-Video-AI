@@ -457,6 +457,38 @@ export interface CreatePortalResponse {
   url: string;
 }
 
+export type CreditGrantSource =
+  (typeof CreditGrantSource)[keyof typeof CreditGrantSource];
+
+export const CreditGrantSource = {
+  subscription: "subscription",
+  topup: "topup",
+  trial: "trial",
+  admin: "admin",
+} as const;
+
+export interface CreditGrant {
+  id: string;
+  source: CreditGrantSource;
+  creditsGranted: number;
+  /** @nullable */
+  stripeInvoiceId?: string | null;
+  /** @nullable */
+  stripeCheckoutSessionId?: string | null;
+  /** @nullable */
+  stripePriceId?: string | null;
+  /**
+   * Customer-facing receipt or hosted invoice URL from Stripe
+   * @nullable
+   */
+  receiptUrl?: string | null;
+  createdAt: string;
+}
+
+export interface CreditGrantsResponse {
+  grants: CreditGrant[];
+}
+
 export interface DashboardStats {
   totalJobs: number;
   completedJobs: number;

@@ -688,6 +688,35 @@ export const CreateBillingCheckoutResponse = zod.object({
 });
 
 /**
+ * @summary List credit grants for the current user
+ */
+export const ListBillingGrantsHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const ListBillingGrantsResponse = zod.object({
+  grants: zod.array(
+    zod.object({
+      id: zod.string(),
+      source: zod.enum(["subscription", "topup", "trial", "admin"]),
+      creditsGranted: zod.number(),
+      stripeInvoiceId: zod.string().nullish(),
+      stripeCheckoutSessionId: zod.string().nullish(),
+      stripePriceId: zod.string().nullish(),
+      receiptUrl: zod
+        .string()
+        .url()
+        .nullish()
+        .describe("Customer-facing receipt or hosted invoice URL from Stripe"),
+      createdAt: zod.coerce.date(),
+    }),
+  ),
+});
+
+/**
  * @summary Create a Stripe Billing Portal session for the current user
  */
 export const CreateBillingPortalSessionHeader = zod.object({
