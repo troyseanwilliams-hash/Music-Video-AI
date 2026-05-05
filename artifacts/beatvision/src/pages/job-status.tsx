@@ -465,24 +465,8 @@ export default function JobStatus() {
               className="rounded-2xl border border-primary/30 bg-black overflow-hidden shadow-2xl shadow-primary/10"
             >
               <VideoPlayer jobId={job.id} videoId={job.videoId} videoUrl={(job as Record<string, unknown>).videoUrl as string | undefined} />
-              <div className="p-4 bg-card flex justify-between items-center border-t border-border gap-3 flex-wrap">
-                <div>
-                  <p className="font-medium text-sm">Your beat-synced video is ready</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{job.prompt?.slice(0, 80)}</p>
-                </div>
-                <div className="flex gap-2">
-                  <a href={`/api/jobs/${job.id}/video/download`} download={`beatvision-${job.id}.mp4`}>
-                    <Button variant="outline" size="sm">
-                      <Download className="mr-1.5 h-4 w-4" /> Download
-                    </Button>
-                  </a>
-                  <Link href="/gallery">
-                    <Button className="bg-gradient-electric text-white shadow-glow" size="sm">
-                      View Gallery
-                    </Button>
-                  </Link>
-                </div>
-              </div>
+              <DownloadBar jobId={job.id} prompt={job.prompt} />
+
             </motion.div>
           )}
         </AnimatePresence>
@@ -638,6 +622,66 @@ function ErrorIcon({ category }: { category: ErrorCategory }) {
     case "timeout": return <WifiOff className={cls} />;
     default:        return <AlertCircle className={cls} />;
   }
+}
+
+function DownloadBar({ jobId, prompt }: { jobId: string; prompt?: string | null }) {
+  const [status, setStatus] = useState<"idle" | "downloading" | "error">("idle");
+
+  async function handleDownload() {
+    if (status === "downloading") return;
+    setStatus("downloading");
+    try {
+      const r = await fetch(`/api/jobs/${jobId}/video-url`);
+      if (!r.ok) throw new Error("url");
+      const { url } = await r.json() as { url: string };
+      // Fetch video blob directly from GCS — CORS is open (access-control-allow-origin: *)
+      const vr = await fetch(url);
+      if (!vr.ok) throw new Error("fetch");
+      const blob = await vr.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = `beatvision-${jobId}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+      setStatus("idle");
+    } catch {
+      setStatus("error");
+      setTimeout(() => setStatus("idle"), 3000);
+    }
+  }
+
+  return (
+    <div className="p-4 bg-card flex justify-between items-center border-t border-border gap-3 flex-wrap">
+      <div>
+        <p className="font-medium text-sm">Your beat-synced video is ready</p>
+        <p className="text-xs text-muted-foreground mt-0.5">{prompt?.slice(0, 80)}</p>
+      </div>
+      <div className="flex gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleDownload}
+          disabled={status === "downloading"}
+        >
+          {status === "downloading" ? (
+            <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Downloading…</>
+          ) : status === "error" ? (
+            <><AlertCircle className="mr-1.5 h-4 w-4 text-destructive" /> Failed — retry</>
+          ) : (
+            <><Download className="mr-1.5 h-4 w-4" /> Download</>
+          )}
+        </Button>
+        <Link href="/gallery">
+          <Button className="bg-gradient-electric text-white shadow-glow" size="sm">
+            View Gallery
+          </Button>
+        </Link>
+      </div>
+    </div>
+  );
 }
 
 function VideoPlayer({ jobId, videoId, videoUrl: initialVideoUrl }: { jobId: string; videoId: string; videoUrl?: string }) {

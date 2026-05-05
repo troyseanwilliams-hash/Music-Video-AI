@@ -1,4 +1,5 @@
 import { Router } from "express";
+import https from "https";
 import { Client } from "pg";
 import { db } from "@workspace/db";
 import { jobsTable, creditsTable, usersTable } from "@workspace/db";
@@ -360,26 +361,35 @@ router.get("/jobs/:id/video/download", async (req, res) => {
 
   const storageService = new ObjectStorageService();
   const signedUrl = await storageService.getVideoSignedUrl(job.videoId);
-  // No timeout — large video files need time to stream fully
-  const upstream = await fetch(signedUrl);
-  if (!upstream.ok) {
-    res.status(502).json({ error: "Failed to fetch video from storage" });
-    return;
-  }
 
-  res.setHeader("Content-Type", "video/mp4");
-  res.setHeader("Content-Disposition", `attachment; filename="beatvision-${job.id}.mp4"`);
-  const contentLength = upstream.headers.get("Content-Length");
-  if (contentLength) res.setHeader("Content-Length", contentLength);
-
-  const { Readable } = await import("stream");
-  const readable = Readable.fromWeb(upstream.body as import("stream/web").ReadableStream);
-  readable.on("error", (err) => {
-    req.log.error({ err }, "Video download stream error");
-    if (!res.headersSent) res.status(500).json({ error: "Stream error" });
-    else res.destroy();
+  // Stream via native https — avoids Readable.fromWeb and AbortSignal issues
+  await new Promise<void>((resolve, reject) => {
+    https.get(signedUrl, (upstream) => {
+      if (upstream.statusCode !== 200) {
+        upstream.resume();
+        res.status(502).json({ error: "Failed to fetch video from storage" });
+        resolve();
+        return;
+      }
+      res.setHeader("Content-Type", "video/mp4");
+      res.setHeader("Content-Disposition", `attachment; filename="beatvision-${job.id}.mp4"`);
+      const cl = upstream.headers["content-length"];
+      if (cl) res.setHeader("Content-Length", cl);
+      upstream.pipe(res);
+      upstream.on("end", resolve);
+      upstream.on("error", (err) => {
+        req.log.error({ err }, "Video download upstream error");
+        if (!res.headersSent) res.status(500).json({ error: "Stream error" });
+        else res.destroy();
+        resolve();
+      });
+      res.on("close", () => { upstream.destroy(); resolve(); });
+    }).on("error", (err) => {
+      req.log.error({ err }, "Video download request error");
+      if (!res.headersSent) res.status(500).json({ error: "Stream error" });
+      resolve();
+    });
   });
-  readable.pipe(res);
 });
 
 router.get("/jobs/:id/video-url", async (req, res) => {
