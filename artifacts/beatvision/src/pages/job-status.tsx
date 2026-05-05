@@ -496,7 +496,7 @@ export default function JobStatus() {
                       <dt className="text-sm text-muted-foreground">Duration</dt>
                       <dd className="text-lg font-medium font-mono">
                         {analysis.durationSeconds
-                          ? `${Math.floor(Number(analysis.durationSeconds) / 60)}:${String(Math.floor(Number(analysis.durationSeconds) % 60)).padStart(2, "0")}`
+                          ? `${Math.floor(Number(analysis.durationSeconds) / 60)}:${(Number(analysis.durationSeconds) % 60).toFixed(2).padStart(5, "0")}`
                           : "N/A"}
                       </dd>
                     </div>

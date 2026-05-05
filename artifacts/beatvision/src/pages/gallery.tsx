@@ -138,7 +138,7 @@ export default function Gallery() {
 
                 {video.durationSeconds && (
                   <div className="absolute bottom-2 right-2 bg-black/80 px-2 py-1 rounded text-xs font-medium text-white backdrop-blur-sm">
-                    {Math.floor(video.durationSeconds / 60)}:{(video.durationSeconds % 60).toString().padStart(2, "0")}
+                    {Math.floor(video.durationSeconds / 60)}:{(video.durationSeconds % 60).toFixed(2).padStart(5, "0")}
                   </div>
                 )}
               </Link>

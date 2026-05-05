@@ -28,8 +28,8 @@ interface AudioWaveformSelectorProps {
 
 function fmt(sec: number): string {
   const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
+  const s = sec % 60;
+  return `${m}:${s.toFixed(2).padStart(5, "0")}`;
 }
 
 const SAMPLES = 200;
