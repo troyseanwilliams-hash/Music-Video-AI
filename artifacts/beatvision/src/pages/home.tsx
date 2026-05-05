@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Play, Sparkles, Zap, Music, MonitorPlay, ExternalLink } from "lucide-react";
+import { Play, Sparkles, Zap, Music, MonitorPlay, ExternalLink, ScanLine, ImagePlus } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function Home() {
@@ -121,6 +121,49 @@ export default function Home() {
                 ))}
               </div>
             </motion.div>
+          </div>
+        </section>
+
+        {/* Sneaky Feature Spotlight */}
+        <section className="py-14 border-t border-border/30">
+          <div className="container px-4 md:px-6 mx-auto">
+            <div className="grid md:grid-cols-2 gap-6">
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.4 }}
+                className="flex gap-5 p-6 rounded-2xl bg-card border border-card-border"
+              >
+                <div className="flex-shrink-0 h-12 w-12 rounded-xl bg-accent/20 flex items-center justify-center">
+                  <ScanLine className="h-6 w-6 text-accent" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold mb-1">Pick the exact moment</h3>
+                  <p className="text-muted-foreground text-sm leading-relaxed">
+                    Scrub through your track's waveform and pin the generator to any 5 or 10-second window — your drop, your hook, your key lyric — not just the beginning.
+                  </p>
+                </div>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.4, delay: 0.1 }}
+                className="flex gap-5 p-6 rounded-2xl bg-card border border-card-border"
+              >
+                <div className="flex-shrink-0 h-12 w-12 rounded-xl bg-pink-500/20 flex items-center justify-center">
+                  <ImagePlus className="h-6 w-6 text-pink-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold mb-1">Start from your album art</h3>
+                  <p className="text-muted-foreground text-sm leading-relaxed">
+                    Upload a reference image — existing artwork, a photo, a mood board — and the AI uses it alongside your prompt to keep the visuals on-brand from the first frame.
+                  </p>
+                </div>
+              </motion.div>
+            </div>
           </div>
         </section>
 
