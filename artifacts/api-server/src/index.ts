@@ -31,13 +31,30 @@ app.listen(port, (err) => {
     logger.error({ err }, "Failed to ensure admin user");
   });
 
+  const rawLookback = process.env["STRIPE_REPLAY_LOOKBACK_SECONDS"];
+  let replayLookbackSeconds = 1800;
+  if (rawLookback !== undefined && rawLookback !== "") {
+    const parsed = parseInt(rawLookback, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      logger.warn(
+        { rawLookback },
+        "STRIPE_REPLAY_LOOKBACK_SECONDS is not a valid positive integer — defaulting to 1800",
+      );
+    } else {
+      replayLookbackSeconds = parsed;
+    }
+  }
+
   initStripe()
     .then(() => {
-      // Replay recent Stripe events (30-minute window) to recover any credit
-      // grants that were delivered to Stripe while the server was restarting.
-      // All handlers are idempotent via unique DB constraints, so re-processing
-      // an already-handled event is always a safe no-op.
-      return replayRecentStripeEvents();
+      // Replay recent Stripe events to recover any credit grants that were
+      // delivered to Stripe while the server was restarting.  The lookback
+      // window defaults to 30 minutes (1800 s) but can be extended via the
+      // STRIPE_REPLAY_LOOKBACK_SECONDS environment variable for longer
+      // outages (e.g. deployments or scheduled maintenance).
+      // All handlers are idempotent via unique DB constraints, so
+      // re-processing an already-handled event is always a safe no-op.
+      return replayRecentStripeEvents(replayLookbackSeconds);
     })
     .catch((err) => {
       logger.error({ err }, "Failed to initialize Stripe or replay events");
