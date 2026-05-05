@@ -35,28 +35,36 @@ export function Navbar() {
             </span>
           </Link>
 
-          {isAuthenticated && (
-            <nav className="hidden md:flex items-center gap-6">
-              <Link 
-                href="/generate" 
-                className={`text-sm font-medium transition-colors hover:text-primary ${location === '/generate' ? 'text-foreground' : 'text-muted-foreground'}`}
-              >
-                Generate
-              </Link>
-              <Link 
-                href="/dashboard" 
-                className={`text-sm font-medium transition-colors hover:text-primary ${location === '/dashboard' ? 'text-foreground' : 'text-muted-foreground'}`}
-              >
-                Dashboard
-              </Link>
-              <Link 
-                href="/gallery" 
-                className={`text-sm font-medium transition-colors hover:text-primary ${location === '/gallery' ? 'text-foreground' : 'text-muted-foreground'}`}
-              >
-                Gallery
-              </Link>
-            </nav>
-          )}
+          <nav className="hidden md:flex items-center gap-6">
+            {isAuthenticated && (
+              <>
+                <Link 
+                  href="/generate" 
+                  className={`text-sm font-medium transition-colors hover:text-primary ${location === '/generate' ? 'text-foreground' : 'text-muted-foreground'}`}
+                >
+                  Generate
+                </Link>
+                <Link 
+                  href="/dashboard" 
+                  className={`text-sm font-medium transition-colors hover:text-primary ${location === '/dashboard' ? 'text-foreground' : 'text-muted-foreground'}`}
+                >
+                  Dashboard
+                </Link>
+                <Link 
+                  href="/gallery" 
+                  className={`text-sm font-medium transition-colors hover:text-primary ${location === '/gallery' ? 'text-foreground' : 'text-muted-foreground'}`}
+                >
+                  Gallery
+                </Link>
+              </>
+            )}
+            <Link 
+              href="/pricing" 
+              className={`text-sm font-medium transition-colors hover:text-primary ${location === '/pricing' ? 'text-foreground' : 'text-muted-foreground'}`}
+            >
+              Pricing
+            </Link>
+          </nav>
         </div>
 
         <div className="flex items-center gap-4">
