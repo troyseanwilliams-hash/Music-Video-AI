@@ -207,7 +207,12 @@ router.get("/jobs/:id", async (req, res) => {
     return;
   }
 
-  res.json(job[0]);
+  const jobData: Record<string, unknown> = { ...job[0] };
+  if (job[0].videoId && job[0].status === "ready") {
+    const storageService = new ObjectStorageService();
+    jobData.videoUrl = await storageService.getVideoSignedUrl(job[0].videoId);
+  }
+  res.json(jobData);
 });
 
 router.get("/jobs/:id/events", async (req, res) => {

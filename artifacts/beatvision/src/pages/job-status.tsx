@@ -170,7 +170,10 @@ export default function JobStatus() {
   }, [isAuthenticated, id, queryClient]);
 
   useEffect(() => {
-    if (!isAuthLoading && !isAuthenticated) setLocation("/login");
+    if (!isAuthLoading && !isAuthenticated) {
+      const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
+      setLocation(`/login?from=${returnTo}`);
+    }
   }, [isAuthenticated, isAuthLoading, setLocation]);
 
   const handleRetry = async () => {
@@ -458,7 +461,7 @@ export default function JobStatus() {
               animate={{ opacity: 1, scale: 1 }}
               className="rounded-2xl border border-primary/30 bg-black overflow-hidden shadow-2xl shadow-primary/10"
             >
-              <VideoPlayer jobId={job.id} videoId={job.videoId} />
+              <VideoPlayer jobId={job.id} videoId={job.videoId} videoUrl={(job as Record<string, unknown>).videoUrl as string | undefined} />
               <div className="p-4 bg-card flex justify-between items-center border-t border-border gap-3 flex-wrap">
                 <div>
                   <p className="font-medium text-sm">Your beat-synced video is ready</p>
@@ -634,13 +637,14 @@ function ErrorIcon({ category }: { category: ErrorCategory }) {
   }
 }
 
-function VideoPlayer({ jobId, videoId }: { jobId: string; videoId: string }) {
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+function VideoPlayer({ jobId, videoId, videoUrl: initialVideoUrl }: { jobId: string; videoId: string; videoUrl?: string }) {
+  const [videoUrl, setVideoUrl] = useState<string | null>(initialVideoUrl ?? null);
   const [errored, setErrored] = useState(false);
   const posterSrc = `/api/storage/objects/thumbnails/${videoId}.jpg`;
   const fallbackHref = `/api/jobs/${jobId}/video`;
 
   useEffect(() => {
+    if (initialVideoUrl) return;
     let cancelled = false;
     fetch(`/api/jobs/${jobId}/video-url`)
       .then((r) => {
@@ -654,7 +658,7 @@ function VideoPlayer({ jobId, videoId }: { jobId: string; videoId: string }) {
         if (!cancelled) setErrored(true);
       });
     return () => { cancelled = true; };
-  }, [jobId]);
+  }, [jobId, initialVideoUrl]);
 
   if (errored) {
     return (

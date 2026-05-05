@@ -32,7 +32,7 @@ const features = [
 
 export default function Login() {
   const { login, isLoading: isAuthLoading } = useAuth();
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -53,7 +53,9 @@ export default function Login() {
     setIsSubmitting(true);
     try {
       await login(email, password);
-      setLocation("/dashboard");
+      const params = new URLSearchParams(location.split("?")[1] ?? "");
+      const from = params.get("from");
+      setLocation(from ? decodeURIComponent(from) : "/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
