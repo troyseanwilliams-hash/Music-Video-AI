@@ -3,7 +3,7 @@ import { resolveSunoUrl } from "../lib/sunoResolver.js";
 
 const router = Router();
 
-router.get("/api/suno/resolve", async (req, res) => {
+router.get("/suno/resolve", async (req, res) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: "Not authenticated" });
     return;

@@ -1,6 +1,12 @@
 /**
  * Resolves a Suno share URL to a direct audio CDN URL + metadata.
- * Parses the __NEXT_DATA__ blob embedded in the share page HTML.
+ *
+ * Suno pages are now fully JS-rendered (no __NEXT_DATA__ in static HTML),
+ * so we skip scraping entirely. Suno CDN URLs follow a predictable pattern:
+ *   https://cdn1.suno.ai/{songId}.mp3
+ *
+ * We verify the file exists with a HEAD request, then return the URL.
+ * A best-effort attempt to fetch the og:title is also made for display.
  */
 
 export interface SunoTrack {
@@ -14,58 +20,57 @@ export function extractSunoId(url: string): string | null {
   return match?.[1] ?? null;
 }
 
+const BROWSER_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.9",
+};
+
 export async function resolveSunoUrl(url: string): Promise<SunoTrack> {
   const songId = extractSunoId(url);
   if (!songId) throw new Error("Not a valid Suno share URL");
 
-  const pageRes = await fetch(`https://suno.com/song/${songId}`, {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-      Accept: "text/html,application/xhtml+xml",
-    },
-  });
+  const audioUrl = `https://cdn1.suno.ai/${songId}.mp3`;
 
-  if (!pageRes.ok) {
-    throw new Error(`Suno page returned ${pageRes.status}`);
+  // Verify the audio file exists on the CDN
+  const headRes = await fetch(audioUrl, { method: "HEAD" });
+  if (!headRes.ok) {
+    throw new Error(
+      `Track not found on Suno CDN (status ${headRes.status}). Make sure the song is public.`,
+    );
   }
 
-  const html = await pageRes.text();
+  // Best-effort: fetch og:title from the share page for a nicer display name.
+  // If this fails we just fall back to the song ID — audio still works fine.
+  let title = songId;
+  let artist = "Suno";
 
-  // Primary: __NEXT_DATA__ JSON blob
-  const nextMatch = html.match(
-    /<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/,
-  );
-  if (nextMatch?.[1]) {
-    const nextData = JSON.parse(nextMatch[1]) as Record<string, unknown>;
-    const pageProps = (nextData as Record<string, Record<string, unknown>>)
-      ?.props?.pageProps as Record<string, unknown> | undefined;
+  try {
+    const pageRes = await fetch(`https://suno.com/song/${songId}`, {
+      headers: BROWSER_HEADERS,
+      signal: AbortSignal.timeout(6000),
+    });
 
-    // Shape A: pageProps.initialData.clips[]
-    const clips = (
-      pageProps?.initialData as Record<string, unknown> | undefined
-    )?.clips as Array<Record<string, unknown>> | undefined;
-    const clip = clips?.[0] ?? (pageProps?.clip as Record<string, unknown> | undefined);
+    if (pageRes.ok) {
+      const html = await pageRes.text();
 
-    if (clip?.audio_url) {
-      return {
-        audioUrl: clip.audio_url as string,
-        title: (clip.title as string | undefined) ?? "Untitled",
-        artist: (clip.display_name as string | undefined) ?? "Unknown",
-      };
+      const ogTitle = html.match(
+        /<meta[^>]+property="og:title"[^>]+content="([^"]+)"/,
+      );
+      if (ogTitle?.[1]) title = ogTitle[1];
+
+      const ogDesc = html.match(
+        /<meta[^>]+name="description"[^>]+content="([^"]+)"/,
+      );
+      if (ogDesc?.[1]) {
+        const byMatch = ogDesc[1].match(/by ([^.]+)/i);
+        if (byMatch?.[1]) artist = byMatch[1].trim();
+      }
     }
+  } catch {
+    // Metadata fetch failed — not fatal, audio URL is already verified.
   }
 
-  // Fallback: og:audio meta tag
-  const ogAudio = html.match(/<meta[^>]+property="og:audio"[^>]+content="([^"]+)"/);
-  const ogTitle = html.match(/<meta[^>]+property="og:title"[^>]+content="([^"]+)"/);
-  if (ogAudio?.[1]) {
-    return {
-      audioUrl: ogAudio[1],
-      title: ogTitle?.[1] ?? "Untitled",
-      artist: "Unknown",
-    };
-  }
-
-  throw new Error("Could not extract audio URL from Suno page");
+  return { audioUrl, title, artist };
 }
