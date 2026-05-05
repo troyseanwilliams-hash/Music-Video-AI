@@ -4,11 +4,36 @@ import { useAuth } from "@/hooks/useAuth";
 import { useGetDashboardStats } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus, Film, CheckCircle2, Clock, AlertCircle, Crown, Play } from "lucide-react";
+import { Loader2, Plus, Film, CheckCircle2, Clock, AlertCircle, Crown, Play, Coins } from "lucide-react";
 
 function daysUntil(dateStr: string | null | undefined): number {
   if (!dateStr) return 0;
   return Math.max(0, Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86_400_000));
+}
+
+// Mirrors server-side calculateCreditCost — must stay in sync with creditCost.ts
+const MAX_CLIPS_PER_JOB = 3;
+const RUNWAY_TOKENS_PER_5S = 330;
+const RUNWAY_TOKENS_PER_10S = 660;
+const RUNWAY_USD_PER_TOKEN = 0.01;
+const MARKUP = 2;
+const USD_PER_CREDIT = 0.10;
+
+function estimateCreditCost(requestedDuration: string | null | undefined): number {
+  const dur = requestedDuration ?? "full";
+  let clipDurationSec: 5 | 10;
+  let numClips: number;
+  if (dur === "full") {
+    clipDurationSec = 10;
+    numClips = MAX_CLIPS_PER_JOB;
+  } else {
+    const durSec = parseInt(dur, 10);
+    clipDurationSec = durSec <= 5 ? 5 : 10;
+    numClips = Math.max(1, Math.ceil(durSec / clipDurationSec));
+  }
+  const tokensPerClip = clipDurationSec === 5 ? RUNWAY_TOKENS_PER_5S : RUNWAY_TOKENS_PER_10S;
+  const chargeUSD = numClips * tokensPerClip * RUNWAY_USD_PER_TOKEN * MARKUP;
+  return Math.ceil(chargeUSD / USD_PER_CREDIT);
 }
 
 export default function Dashboard() {
@@ -155,22 +180,25 @@ export default function Dashboard() {
             {stats.recentJobs && stats.recentJobs.length > 0 ? (
               <div className="rounded-xl border border-border bg-card/30 overflow-hidden">
                 <div className="grid grid-cols-12 gap-4 p-4 border-b border-border/50 bg-muted/20 text-sm font-medium text-muted-foreground">
-                  <div className="col-span-6 md:col-span-5">Prompt</div>
-                  <div className="col-span-3 md:col-span-2">Style</div>
-                  <div className="col-span-3 md:col-span-3">Status</div>
-                  <div className="hidden md:block col-span-2 text-right">Date</div>
+                  <div className="col-span-5 md:col-span-3">Prompt</div>
+                  <div className="hidden md:block md:col-span-2">Style</div>
+                  <div className="col-span-4 md:col-span-3">Status</div>
+                  <div className="col-span-3 md:col-span-2 text-right">Cost</div>
+                  <div className="hidden md:block md:col-span-2 text-right">Date</div>
                 </div>
                 
                 <div className="divide-y divide-border/50">
-                  {stats.recentJobs.map((job) => (
+                  {stats.recentJobs.map((job) => {
+                    const cost = estimateCreditCost((job as { requestedDuration?: string | null }).requestedDuration);
+                    return (
                     <div key={job.id} className="grid grid-cols-12 gap-4 p-4 hover:bg-muted/10 transition-colors items-center">
-                      <div className="col-span-5 md:col-span-4 truncate pr-4 font-medium">
+                      <div className="col-span-5 md:col-span-3 truncate pr-2 font-medium text-sm">
                         {job.prompt || "Untitled generation"}
                       </div>
-                      <div className="col-span-3 md:col-span-2 capitalize text-sm text-muted-foreground">
+                      <div className="hidden md:block md:col-span-2 capitalize text-sm text-muted-foreground truncate">
                         {job.style}
                       </div>
-                      <div className="col-span-4 md:col-span-4 flex items-center gap-2">
+                      <div className="col-span-4 md:col-span-3 flex items-center gap-2">
                         {job.status === 'ready' ? (
                           <>
                             <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
@@ -202,11 +230,16 @@ export default function Dashboard() {
                           </>
                         )}
                       </div>
-                      <div className="hidden md:block col-span-2 text-right text-sm text-muted-foreground">
+                      <div className="col-span-3 md:col-span-2 flex items-center justify-end gap-1 text-sm font-medium text-accent">
+                        <Coins className="h-3.5 w-3.5 shrink-0" />
+                        <span>{cost}</span>
+                      </div>
+                      <div className="hidden md:block md:col-span-2 text-right text-sm text-muted-foreground">
                         {new Date(job.createdAt).toLocaleDateString()}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ) : (
