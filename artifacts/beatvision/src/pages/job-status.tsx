@@ -161,7 +161,10 @@ export default function JobStatus() {
     es.onmessage = (evt) => {
       try {
         const updated = JSON.parse(evt.data);
-        queryClient.setQueryData(getGetJobQueryKey(id), updated);
+        // Merge instead of replace so REST-provided fields like videoUrl are not lost
+        queryClient.setQueryData(getGetJobQueryKey(id), (old: unknown) =>
+          old && typeof old === "object" ? { ...(old as object), ...updated } : updated
+        );
         if (TERMINAL_STATUSES.has(updated.status)) { es.close(); setSseConnected(false); }
       } catch {}
     };
@@ -468,7 +471,7 @@ export default function JobStatus() {
                   <p className="text-xs text-muted-foreground mt-0.5">{job.prompt?.slice(0, 80)}</p>
                 </div>
                 <div className="flex gap-2">
-                  <a href={`/api/jobs/${job.id}/video`} download target="_blank" rel="noopener noreferrer">
+                  <a href={`/api/jobs/${job.id}/video/download`} download={`beatvision-${job.id}.mp4`}>
                     <Button variant="outline" size="sm">
                       <Download className="mr-1.5 h-4 w-4" /> Download
                     </Button>

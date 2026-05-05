@@ -332,6 +332,49 @@ router.get("/jobs/:id/video", async (req, res) => {
   res.redirect(302, signedUrl);
 });
 
+// Proxy the video through the server with Content-Disposition so browsers download it
+router.get("/jobs/:id/video/download", async (req, res) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const jobId = req.params.id;
+  const [job] = await db
+    .select()
+    .from(jobsTable)
+    .where(
+      and(eq(jobsTable.id, jobId), eq(jobsTable.userId, req.user.id)),
+    )
+    .limit(1);
+
+  if (!job) {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
+
+  if (!job.videoId) {
+    res.status(404).json({ error: "Video not ready yet" });
+    return;
+  }
+
+  const storageService = new ObjectStorageService();
+  const signedUrl = await storageService.getVideoSignedUrl(job.videoId);
+  const upstream = await fetch(signedUrl, { signal: AbortSignal.timeout(30_000) });
+  if (!upstream.ok) {
+    res.status(502).json({ error: "Failed to fetch video from storage" });
+    return;
+  }
+
+  res.setHeader("Content-Type", "video/mp4");
+  res.setHeader("Content-Disposition", `attachment; filename="beatvision-${job.id}.mp4"`);
+  const contentLength = upstream.headers.get("Content-Length");
+  if (contentLength) res.setHeader("Content-Length", contentLength);
+
+  const { Readable } = await import("stream");
+  Readable.fromWeb(upstream.body as import("stream/web").ReadableStream).pipe(res);
+});
+
 router.get("/jobs/:id/video-url", async (req, res) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: "Unauthorized" });
