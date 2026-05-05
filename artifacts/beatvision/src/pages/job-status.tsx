@@ -10,7 +10,7 @@ import {
   Loader2, Music, CheckCircle2, AlertCircle, ArrowLeft,
   Play, RefreshCw, Download, ExternalLink, Clock,
   AudioWaveform, Clapperboard, Scissors, Sparkles, RotateCcw,
-  WifiOff, Wifi, FileAudio, Server, Zap, Plus,
+  WifiOff, Wifi, FileAudio, Server, Zap, Plus, Link2, Check,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from "recharts";
 import { motion, AnimatePresence } from "framer-motion";
@@ -226,13 +226,27 @@ export default function JobStatus() {
   }
   const clipHint = inferClipProgress(job.status ?? "", displayPercent, { numClips });
 
+  const [copied, setCopied] = useState(false);
+  function copyLink() {
+    navigator.clipboard.writeText(window.location.href).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl">
-      <Link href="/dashboard">
-        <Button variant="ghost" className="mb-6 pl-0 text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="mr-2 h-4 w-4" /> Back
+      <div className="flex items-center justify-between mb-6">
+        <Link href="/dashboard">
+          <Button variant="ghost" className="pl-0 text-muted-foreground hover:text-foreground">
+            <ArrowLeft className="mr-2 h-4 w-4" /> Back
+          </Button>
+        </Link>
+        <Button variant="outline" size="sm" onClick={copyLink} className="gap-2 text-muted-foreground">
+          {copied ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Link2 className="h-3.5 w-3.5" />}
+          {copied ? "Copied!" : "Copy link"}
         </Button>
-      </Link>
+      </div>
 
       <div className="space-y-8">
 
