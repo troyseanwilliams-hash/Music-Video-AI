@@ -1,6 +1,7 @@
 import { db } from "@workspace/db";
-import { jobsTable, videosTable } from "@workspace/db";
+import { jobsTable, videosTable, creditsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
+import { calculateCreditCost } from "./creditCost";
 import { randomUUID } from "crypto";
 import { exec } from "child_process";
 import { promisify } from "util";
@@ -394,6 +395,18 @@ async function processJob(job: JobRow): Promise<void> {
       prompt: job.prompt,
       shareToken: randomUUID().replace(/-/g, "").slice(0, 16),
     });
+
+    const creditCost = calculateCreditCost(job.requestedDuration);
+    await db
+      .update(creditsTable)
+      .set({
+        creditsRemaining: sql`GREATEST(credits_remaining - ${creditCost}, 0)`,
+        creditsUsed: sql`credits_used + ${creditCost}`,
+        totalGenerations: sql`total_generations + 1`,
+        updatedAt: new Date(),
+      })
+      .where(eq(creditsTable.userId, job.userId));
+    logger.info({ jobId: job.id, userId: job.userId, creditCost }, "Credits deducted on success");
 
     await updateJobStatus(job.id, { status: "ready", progressPercent: 100, videoId });
     logger.info({ jobId: job.id, videoId, provider: getActiveProvider() }, "Job completed");
