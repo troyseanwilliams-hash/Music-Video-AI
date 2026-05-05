@@ -3,26 +3,133 @@ import { useRoute, useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { useGetJob, getGetJobQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Loader2, Music, CheckCircle2, AlertCircle, ArrowLeft,
-  Play, RefreshCw, Download, ExternalLink,
+  Play, RefreshCw, Download, ExternalLink, Clock,
+  AudioWaveform, Clapperboard, Scissors, Sparkles, RotateCcw,
+  WifiOff, Wifi, FileAudio, Server, Zap, Plus,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from "recharts";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 
 const TERMINAL_STATUSES = new Set(["ready", "failed"]);
 
-const STATUS_STEPS = [
-  { key: "queued",     label: "In Queue",        pct: 0   },
-  { key: "analyzing",  label: "Analyzing Audio",  pct: 20  },
-  { key: "generating", label: "Generating Clips", pct: 50  },
-  { key: "stitching",  label: "Stitching Video",  pct: 85  },
-  { key: "ready",      label: "Complete",         pct: 100 },
+const STAGES = [
+  {
+    key: "queued",
+    label: "Queued",
+    icon: Clock,
+    description: "Waiting for a worker to pick up your job…",
+  },
+  {
+    key: "analyzing",
+    label: "Analysing",
+    icon: AudioWaveform,
+    description: "Decoding audio, detecting BPM, key, mood and song sections…",
+  },
+  {
+    key: "generating",
+    label: "Generating",
+    icon: Clapperboard,
+    description: "Creating AI video clips for each beat section via Runway Gen-4.5…",
+  },
+  {
+    key: "stitching",
+    label: "Stitching",
+    icon: Scissors,
+    description: "Compositing clips, mixing audio and burning captions…",
+  },
+  {
+    key: "ready",
+    label: "Complete",
+    icon: Sparkles,
+    description: "Your beat-synced video is ready.",
+  },
 ];
+
+// Infer which clip is being generated from progressPercent (mirrors worker logic)
+function inferClipProgress(
+  status: string,
+  pct: number,
+  plan?: { numClips?: number },
+): string | null {
+  if (status !== "generating") return null;
+  const n = plan?.numClips ?? 3;
+  // Worker: pct goes from 30 to 30+(i/n)*40 per clip
+  if (pct < 30) return `Starting clip generation…`;
+  const clipIdx = Math.min(n - 1, Math.floor(((pct - 30) / 40) * n));
+  return `Generating clip ${clipIdx + 1} of ${n}…`;
+}
+
+// Categorise error messages into user-friendly buckets
+type ErrorCategory = "api" | "audio" | "quota" | "timeout" | "unknown";
+
+function categoriseError(msg: string | null | undefined): {
+  category: ErrorCategory;
+  headline: string;
+  detail: string;
+  canRetry: boolean;
+} {
+  const m = (msg ?? "").toLowerCase();
+
+  if (m.includes("runway") || m.includes("api error") || m.includes("api key")) {
+    return {
+      category: "api",
+      headline: "AI generation service error",
+      detail: "The Runway API returned an unexpected response. This is usually transient — retrying often fixes it.",
+      canRetry: true,
+    };
+  }
+  if (m.includes("ffmpeg") || m.includes("audio") || m.includes("pcm") || m.includes("decode")) {
+    return {
+      category: "audio",
+      headline: "Audio processing failed",
+      detail: "We couldn't decode your audio file. Make sure it's a valid MP3, WAV, FLAC, or AAC file and try again.",
+      canRetry: false,
+    };
+  }
+  if (m.includes("quota") || m.includes("rate limit") || m.includes("429")) {
+    return {
+      category: "quota",
+      headline: "Rate limit reached",
+      detail: "The generation service is temporarily rate-limited. Your job will automatically retry in a few minutes.",
+      canRetry: true,
+    };
+  }
+  if (m.includes("timeout") || m.includes("timed out") || m.includes("econnreset")) {
+    return {
+      category: "timeout",
+      headline: "Connection timed out",
+      detail: "The request to the AI service timed out. This can happen during high-traffic periods — retrying should work.",
+      canRetry: true,
+    };
+  }
+  return {
+    category: "unknown",
+    headline: "An unexpected error occurred",
+    detail: "Something went wrong during processing. The full error has been logged. Please try again or start a new generation.",
+    canRetry: true,
+  };
+}
+
+function isAutoRetrying(msg: string | null | undefined): boolean {
+  return /retry \d+\/\d+ in \d+m/.test(msg ?? "");
+}
+
+function useElapsed(active: boolean): string {
+  const [secs, setSecs] = useState(0);
+  useEffect(() => {
+    if (!active) { setSecs(0); return; }
+    const id = setInterval(() => setSecs((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, [active]);
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return m > 0 ? `${m}m ${String(s).padStart(2, "0")}s` : `${s}s`;
+}
 
 export default function JobStatus() {
   const [match, params] = useRoute("/jobs/:id");
@@ -33,7 +140,6 @@ export default function JobStatus() {
 
   const sseRef = useRef<EventSource | null>(null);
   const [sseConnected, setSseConnected] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
 
   const { data: job, isLoading } = useGetJob(id as string, {
     query: {
@@ -49,7 +155,6 @@ export default function JobStatus() {
 
   useEffect(() => {
     if (!isAuthenticated || !id) return;
-
     const es = new EventSource(`/api/jobs/${id}/events`, { withCredentials: true });
     sseRef.current = es;
     es.onopen = () => setSseConnected(true);
@@ -57,10 +162,7 @@ export default function JobStatus() {
       try {
         const updated = JSON.parse(evt.data);
         queryClient.setQueryData(getGetJobQueryKey(id), updated);
-        if (TERMINAL_STATUSES.has(updated.status)) {
-          es.close();
-          setSseConnected(false);
-        }
+        if (TERMINAL_STATUSES.has(updated.status)) { es.close(); setSseConnected(false); }
       } catch {}
     };
     es.onerror = () => { es.close(); setSseConnected(false); };
@@ -75,12 +177,11 @@ export default function JobStatus() {
     if (!id) return;
     try {
       const res = await fetch(`/api/jobs/${id}/retry`, { method: "POST", credentials: "include" });
-      if (res.ok) {
-        const updated = await res.json();
-        queryClient.setQueryData(getGetJobQueryKey(id), updated);
-      }
+      if (res.ok) queryClient.setQueryData(getGetJobQueryKey(id), await res.json());
     } catch {}
   };
+
+  const elapsed = useElapsed(!!(job && !TERMINAL_STATUSES.has(job.status ?? "")));
 
   if (isAuthLoading || !isAuthenticated || !id) return null;
 
@@ -95,20 +196,35 @@ export default function JobStatus() {
   if (!job) {
     return (
       <div className="container mx-auto px-4 py-12 text-center">
-        <h1 className="text-2xl font-bold">Job not found</h1>
-        <Button variant="link" onClick={() => setLocation("/dashboard")}>Back to Dashboard</Button>
+        <AlertCircle className="h-10 w-10 text-muted-foreground mx-auto mb-4" />
+        <h1 className="text-2xl font-bold mb-2">Job not found</h1>
+        <p className="text-muted-foreground mb-6">This job may have been deleted or the link is incorrect.</p>
+        <Button variant="outline" onClick={() => setLocation("/dashboard")}>Back to Dashboard</Button>
       </div>
     );
   }
 
   const isComplete = job.status === "ready";
   const isFailed = job.status === "failed";
+  const autoRetrying = isFailed && isAutoRetrying(job.errorMessage);
   const isActive = !isComplete && !isFailed;
-  const displayPercent = isComplete ? 100 : (job.progressPercent ?? 0);
-  const currentStepIndex = STATUS_STEPS.findIndex((s) => s.key === job.status);
+  const displayPercent = isComplete ? 100 : Math.max(0, Math.min(100, job.progressPercent ?? 0));
+
+  const currentStageIdx = STAGES.findIndex((s) => s.key === job.status);
+  const currentStage = STAGES[currentStageIdx] ?? STAGES[0];
 
   const analysis = job.audioAnalysis as Record<string, unknown> | null | undefined;
-  const videoPath = analysis ? null : null;
+  const errInfo = categoriseError(job.errorMessage);
+
+  // Estimate number of clips for the progress hint
+  const durVal = (job as { requestedDuration?: string | null }).requestedDuration;
+  let numClips = 3;
+  if (durVal && durVal !== "full") {
+    const d = parseInt(durVal, 10);
+    const clipSec = d <= 5 ? 5 : 10;
+    numClips = Math.max(1, Math.ceil(d / clipSec));
+  }
+  const clipHint = inferClipProgress(job.status ?? "", displayPercent, { numClips });
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl">
@@ -119,172 +235,253 @@ export default function JobStatus() {
       </Link>
 
       <div className="space-y-8">
+
+        {/* ── Header ── */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight mb-2">
-              {isComplete ? "Video Ready" : isFailed ? "Generation Failed" : "Processing Video"}
+              {isComplete ? "Video Ready" : isFailed && !autoRetrying ? "Generation Failed" : "Processing Video"}
             </h1>
             <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-muted-foreground">
+              <span className="text-muted-foreground text-sm">
                 Style: <span className="capitalize text-foreground font-medium">{job.style}</span>
               </span>
-              {sseConnected && (
-                <span className="inline-flex items-center gap-1.5 text-xs text-green-400">
-                  <span className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
-                  Live
+              {isActive && (
+                <span className="text-sm text-muted-foreground flex items-center gap-1">
+                  <Clock className="h-3.5 w-3.5" /> {elapsed}
                 </span>
               )}
-              {analysis?.bpm && (
-                <Badge variant="secondary" className="font-mono text-xs">
-                  {String(analysis.bpm)} BPM
-                </Badge>
+              {sseConnected ? (
+                <span className="inline-flex items-center gap-1.5 text-xs text-green-400">
+                  <Wifi className="h-3 w-3" />
+                  Live updates
+                </span>
+              ) : isActive ? (
+                <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <WifiOff className="h-3 w-3" />
+                  Polling
+                </span>
+              ) : null}
+              {analysis?.bpm != null && (
+                <Badge variant="secondary" className="font-mono text-xs">{String(analysis.bpm)} BPM</Badge>
               )}
-              {analysis?.mood && (
-                <Badge variant="outline" className="capitalize text-xs">
-                  {String(analysis.mood)}
-                </Badge>
+              {analysis?.mood != null && (
+                <Badge variant="outline" className="capitalize text-xs">{String(analysis.mood)}</Badge>
               )}
             </div>
           </div>
 
-          <div className="inline-flex items-center rounded-full border px-4 py-1.5 text-sm font-medium capitalize bg-card">
-            {isComplete ? (
-              <><CheckCircle2 className="mr-2 h-4 w-4 text-green-500" /> Ready</>
-            ) : isFailed ? (
-              <><AlertCircle className="mr-2 h-4 w-4 text-destructive" /> Failed</>
-            ) : (
-              <><Loader2 className="mr-2 h-4 w-4 text-primary animate-spin" /> {job.status}</>
-            )}
-          </div>
+          <StatusBadge status={job.status ?? "queued"} autoRetrying={autoRetrying} />
         </div>
 
-        {isActive && (
-          <Card className="bg-card/50">
-            <CardContent className="pt-6 space-y-5">
-              <div>
-                <div className="flex justify-between text-sm font-medium mb-2">
-                  <span className="text-muted-foreground capitalize">
-                    {STATUS_STEPS[currentStepIndex]?.label ?? job.status}
-                  </span>
-                  <span>{displayPercent}%</span>
-                </div>
-                <Progress value={displayPercent} className="h-3" />
-              </div>
+        {/* ── Active: progress card ── */}
+        <AnimatePresence>
+          {(isActive || autoRetrying) && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+            >
+              <Card className="bg-card/50 border-border overflow-hidden">
+                <CardContent className="pt-6 space-y-6">
 
-              <div className="flex items-center justify-between pt-1">
-                {STATUS_STEPS.filter((s) => s.key !== "queued").map((step) => {
-                  const stepIdx = STATUS_STEPS.findIndex((s) => s.key === step.key);
-                  const done = currentStepIndex > stepIdx;
-                  const active = step.key === job.status;
-                  return (
-                    <div key={step.key} className="flex flex-col items-center gap-1.5 flex-1">
-                      <div
-                        className={`h-2 w-2 rounded-full transition-colors ${
-                          done ? "bg-primary" : active ? "bg-primary animate-pulse" : "bg-border"
-                        }`}
-                      />
-                      <span
-                        className={`text-[10px] text-center leading-tight ${
-                          active ? "text-foreground font-medium" : "text-muted-foreground"
-                        }`}
-                      >
-                        {step.label}
+                  {/* Animated progress bar */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm font-medium">
+                      <span className="text-muted-foreground">
+                        {clipHint ?? currentStage?.label ?? job.status}
                       </span>
+                      <span className="tabular-nums font-mono">{displayPercent}%</span>
                     </div>
-                  );
-                })}
-              </div>
+                    <div className="relative h-3 rounded-full bg-secondary/60 overflow-hidden">
+                      <motion.div
+                        className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-primary via-accent to-primary bg-[length:200%_100%]"
+                        animate={{
+                          width: `${displayPercent}%`,
+                          backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"],
+                        }}
+                        transition={{
+                          width: { duration: 0.6, ease: "easeOut" },
+                          backgroundPosition: { duration: 3, repeat: Infinity, ease: "linear" },
+                        }}
+                      />
+                      {/* shimmer overlay */}
+                      <motion.div
+                        className="absolute inset-y-0 w-20 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+                        animate={{ left: ["-10%", "110%"] }}
+                        transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut", repeatDelay: 0.5 }}
+                      />
+                    </div>
+                  </div>
 
-              {job.status === "analyzing" && (
-                <p className="text-xs text-muted-foreground text-center">
-                  Decoding audio PCM, detecting BPM and song sections…
-                </p>
-              )}
-              {job.status === "generating" && (
-                <p className="text-xs text-muted-foreground text-center">
-                  Generating beat-synced clips for each song section via AI…
-                </p>
-              )}
-              {job.status === "stitching" && (
-                <p className="text-xs text-muted-foreground text-center">
-                  Stitching clips, mixing audio{(job as { lyricsText?: string | null }).lyricsText ? ", overlaying lyrics" : ""}…
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        )}
+                  {/* Stage timeline */}
+                  <div className="relative">
+                    {/* connector line */}
+                    <div className="absolute top-4 left-[10%] right-[10%] h-0.5 bg-border/60 -z-0" />
+                    <div className="flex items-start justify-between">
+                      {STAGES.filter((s) => s.key !== "queued").map((stage, i) => {
+                        const stageIdx = STAGES.findIndex((s) => s.key === stage.key);
+                        const done = currentStageIdx > stageIdx;
+                        const active = stage.key === job.status;
+                        const Icon = stage.icon;
+                        return (
+                          <div key={stage.key} className="flex flex-col items-center gap-2 flex-1 z-10">
+                            <div
+                              className={`h-8 w-8 rounded-full flex items-center justify-center border-2 transition-all duration-500 ${
+                                done
+                                  ? "bg-primary border-primary text-primary-foreground"
+                                  : active
+                                    ? "bg-card border-primary text-primary shadow-[0_0_12px_hsl(var(--primary)/0.4)]"
+                                    : "bg-card border-border text-muted-foreground"
+                              }`}
+                            >
+                              {done ? (
+                                <CheckCircle2 className="h-4 w-4" />
+                              ) : active ? (
+                                <motion.div
+                                  animate={{ rotate: 360 }}
+                                  transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                                >
+                                  <Icon className="h-3.5 w-3.5" />
+                                </motion.div>
+                              ) : (
+                                <Icon className="h-3.5 w-3.5" />
+                              )}
+                            </div>
+                            <span
+                              className={`text-[10px] text-center leading-tight font-medium ${
+                                active ? "text-foreground" : done ? "text-primary" : "text-muted-foreground"
+                              }`}
+                            >
+                              {stage.label}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
 
-        {isFailed && (
-          <Card className="border-destructive/50 bg-destructive/10">
-            <CardContent className="pt-6 flex items-start gap-4">
-              <AlertCircle className="h-6 w-6 text-destructive shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <h3 className="font-semibold text-destructive mb-1">Processing failed</h3>
-                <p className="text-sm text-destructive/90 mb-4">
-                  {job.errorMessage || "An unknown error occurred during processing."}
-                </p>
-                <div className="flex gap-3">
-                  <Button
-                    variant="outline"
-                    className="border-destructive/30 hover:bg-destructive/20"
-                    onClick={handleRetry}
-                  >
-                    <RefreshCw className="mr-2 h-4 w-4" /> Retry Job
-                  </Button>
-                  <Button variant="outline" onClick={() => setLocation("/generate")}>
-                    New Generation
-                  </Button>
+                  {/* Active stage description */}
+                  <AnimatePresence mode="wait">
+                    <motion.p
+                      key={job.status}
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -4 }}
+                      className="text-xs text-muted-foreground text-center pb-1"
+                    >
+                      {autoRetrying
+                        ? "Automatically retrying after a transient error…"
+                        : currentStage?.description}
+                    </motion.p>
+                  </AnimatePresence>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ── Failed (not auto-retrying) ── */}
+        <AnimatePresence>
+          {isFailed && !autoRetrying && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+            >
+              <Card className="border-destructive/40 bg-destructive/5">
+                <CardContent className="pt-6 space-y-4">
+                  <div className="flex items-start gap-4">
+                    <div className="h-10 w-10 rounded-full bg-destructive/15 flex items-center justify-center shrink-0">
+                      <ErrorIcon category={errInfo.category} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-destructive mb-1">{errInfo.headline}</h3>
+                      <p className="text-sm text-muted-foreground mb-3">{errInfo.detail}</p>
+
+                      {/* Raw error — collapsed by default */}
+                      {job.errorMessage && (
+                        <details className="mb-4 group">
+                          <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground select-none">
+                            Show technical details
+                          </summary>
+                          <pre className="mt-2 text-[11px] bg-secondary/60 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-all text-muted-foreground leading-relaxed">
+                            {job.errorMessage}
+                          </pre>
+                        </details>
+                      )}
+
+                      <div className="flex flex-wrap gap-3">
+                        {errInfo.canRetry && (
+                          <Button
+                            variant="outline"
+                            className="border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                            onClick={handleRetry}
+                          >
+                            <RefreshCw className="mr-2 h-4 w-4" /> Retry this job
+                          </Button>
+                        )}
+                        <Button variant="outline" onClick={() => setLocation("/generate")}>
+                          <Plus className="mr-2 h-4 w-4" /> New generation
+                        </Button>
+                        <Button variant="ghost" onClick={() => setLocation("/dashboard")}>
+                          Dashboard
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ── Complete: video player ── */}
+        <AnimatePresence>
+          {isComplete && job.videoId && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.97 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="rounded-2xl border border-primary/30 bg-black overflow-hidden shadow-2xl shadow-primary/10"
+            >
+              <VideoPlayer videoId={job.videoId} />
+              <div className="p-4 bg-card flex justify-between items-center border-t border-border gap-3 flex-wrap">
+                <div>
+                  <p className="font-medium text-sm">Your beat-synced video is ready</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{job.prompt?.slice(0, 80)}</p>
+                </div>
+                <div className="flex gap-2">
+                  <a href={`/api/jobs/${job.id}/video`} download target="_blank" rel="noopener noreferrer">
+                    <Button variant="outline" size="sm">
+                      <Download className="mr-1.5 h-4 w-4" /> Download
+                    </Button>
+                  </a>
+                  <Link href="/gallery">
+                    <Button className="bg-gradient-electric text-white shadow-glow" size="sm">
+                      View Gallery
+                    </Button>
+                  </Link>
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        )}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        {isComplete && job.videoId && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.97 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="rounded-2xl border border-primary/30 bg-black overflow-hidden shadow-2xl shadow-primary/10"
-          >
-            <VideoPlayer videoId={job.videoId} />
-            <div className="p-4 bg-card flex justify-between items-center border-t border-border gap-3 flex-wrap">
-              <div>
-                <p className="font-medium text-sm">Your beat-synced video is ready</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{job.prompt?.slice(0, 80)}</p>
-              </div>
-              <div className="flex gap-2">
-                <a href={`/api/jobs/${job.id}/video`} download target="_blank" rel="noopener noreferrer">
-                  <Button variant="outline" size="sm">
-                    <Download className="mr-1.5 h-4 w-4" /> Download
-                  </Button>
-                </a>
-                <Link href="/gallery">
-                  <Button className="bg-gradient-electric text-white shadow-glow" size="sm">
-                    View Gallery
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </motion.div>
-        )}
-
+        {/* ── Audio analysis ── */}
         {analysis && (
           <div className="grid md:grid-cols-3 gap-6">
-            <div className="md:col-span-1 space-y-6">
+            <div className="md:col-span-1">
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base font-semibold flex items-center gap-2">
-                    <Music className="h-4 w-4 text-primary" />
-                    Audio Profile
+                    <Music className="h-4 w-4 text-primary" /> Audio Profile
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <dl className="space-y-4">
                     <div>
                       <dt className="text-sm text-muted-foreground">BPM / Tempo</dt>
-                      <dd className="text-2xl font-bold font-mono">
-                        {analysis.bpm?.toString() ?? "N/A"}
-                      </dd>
+                      <dd className="text-2xl font-bold font-mono">{analysis.bpm?.toString() ?? "N/A"}</dd>
                     </div>
                     <div>
                       <dt className="text-sm text-muted-foreground">Musical Key</dt>
@@ -292,9 +489,7 @@ export default function JobStatus() {
                     </div>
                     <div>
                       <dt className="text-sm text-muted-foreground">Detected Mood</dt>
-                      <dd className="text-lg font-medium capitalize">
-                        {analysis.mood?.toString() ?? "N/A"}
-                      </dd>
+                      <dd className="text-lg font-medium capitalize">{analysis.mood?.toString() ?? "N/A"}</dd>
                     </div>
                     <div>
                       <dt className="text-sm text-muted-foreground">Duration</dt>
@@ -305,13 +500,15 @@ export default function JobStatus() {
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-sm text-muted-foreground">Energy Level</dt>
-                      <dd className="flex items-center gap-2 mt-1">
-                        <Progress
-                          value={Number(analysis.energy ?? 0) * 100}
-                          className="flex-1 h-2"
-                        />
-                        <span className="text-sm font-medium w-8 text-right">
+                      <dt className="text-sm text-muted-foreground mb-1">Energy Level</dt>
+                      <dd className="flex items-center gap-2">
+                        <div className="relative flex-1 h-2 rounded-full bg-secondary/60 overflow-hidden">
+                          <div
+                            className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-primary to-accent"
+                            style={{ width: `${Math.round(Number(analysis.energy ?? 0) * 100)}%` }}
+                          />
+                        </div>
+                        <span className="text-sm font-medium w-8 text-right tabular-nums">
                           {Math.round(Number(analysis.energy ?? 0) * 100)}%
                         </span>
                       </dd>
@@ -348,10 +545,7 @@ export default function JobStatus() {
                               borderRadius: "8px",
                               fontSize: "12px",
                             }}
-                            formatter={(value: number) => [
-                              `${Math.round(value * 100)}% energy`,
-                              "Intensity",
-                            ]}
+                            formatter={(value: number) => [`${Math.round(value * 100)}% energy`, "Intensity"]}
                             labelStyle={{ color: "hsl(var(--muted-foreground))", marginBottom: "4px" }}
                           />
                           <Bar dataKey="energy" radius={[4, 4, 0, 0]}>
@@ -386,16 +580,68 @@ export default function JobStatus() {
   );
 }
 
+function StatusBadge({ status, autoRetrying }: { status: string; autoRetrying: boolean }) {
+  if (status === "ready") {
+    return (
+      <span className="inline-flex items-center gap-2 rounded-full border border-green-500/30 bg-green-500/10 px-4 py-1.5 text-sm font-medium text-green-400">
+        <CheckCircle2 className="h-4 w-4" /> Ready
+      </span>
+    );
+  }
+  if (status === "failed" && !autoRetrying) {
+    return (
+      <span className="inline-flex items-center gap-2 rounded-full border border-destructive/40 bg-destructive/10 px-4 py-1.5 text-sm font-medium text-destructive">
+        <AlertCircle className="h-4 w-4" /> Failed
+      </span>
+    );
+  }
+  if (autoRetrying) {
+    return (
+      <span className="inline-flex items-center gap-2 rounded-full border border-yellow-500/30 bg-yellow-500/10 px-4 py-1.5 text-sm font-medium text-yellow-400">
+        <RotateCcw className="h-4 w-4 animate-spin" /> Auto-retrying
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary capitalize">
+      <Loader2 className="h-4 w-4 animate-spin" /> {status}
+    </span>
+  );
+}
+
+function ErrorIcon({ category }: { category: ErrorCategory }) {
+  const cls = "h-5 w-5 text-destructive";
+  switch (category) {
+    case "api":     return <Server className={cls} />;
+    case "audio":   return <FileAudio className={cls} />;
+    case "quota":   return <Zap className={cls} />;
+    case "timeout": return <WifiOff className={cls} />;
+    default:        return <AlertCircle className={cls} />;
+  }
+}
+
 function VideoPlayer({ videoId }: { videoId: string }) {
   const [playing, setPlaying] = useState(false);
+  const [errored, setErrored] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
-
   const videoSrc = `/api/storage/objects/videos/${videoId}.mp4`;
 
   const handlePlay = () => {
     setPlaying(true);
     setTimeout(() => videoRef.current?.play(), 50);
   };
+
+  if (errored) {
+    return (
+      <div className="aspect-video bg-black flex flex-col items-center justify-center gap-3 text-muted-foreground">
+        <AlertCircle className="h-8 w-8" />
+        <p className="text-sm">Video could not be loaded.</p>
+        <a href={videoSrc} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">
+          Try opening directly
+        </a>
+      </div>
+    );
+  }
 
   return (
     <div className="aspect-video relative bg-black flex items-center justify-center">
@@ -406,7 +652,7 @@ function VideoPlayer({ videoId }: { videoId: string }) {
           controls
           autoPlay
           className="w-full h-full object-contain"
-          onError={() => setPlaying(false)}
+          onError={() => { setPlaying(false); setErrored(true); }}
         />
       ) : (
         <div className="w-full h-full relative flex items-center justify-center">
