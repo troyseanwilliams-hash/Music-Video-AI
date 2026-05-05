@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { useGetDashboardStats } from "@workspace/api-client-react";
@@ -14,7 +14,22 @@ function daysUntil(dateStr: string | null | undefined): number {
 export default function Dashboard() {
   const [, setLocation] = useLocation();
   const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
-  
+  const [watchingJobId, setWatchingJobId] = useState<string | null>(null);
+
+  async function handleWatch(jobId: string) {
+    setWatchingJobId(jobId);
+    try {
+      const r = await fetch(`/api/jobs/${jobId}/video-url`);
+      if (!r.ok) throw new Error("url");
+      const { url } = await r.json() as { url: string };
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch {
+      // silently fail
+    } finally {
+      setWatchingJobId(null);
+    }
+  }
+
   const { data: stats, isLoading: statsLoading } = useGetDashboardStats({
     query: {
       enabled: isAuthenticated,
@@ -159,11 +174,17 @@ export default function Dashboard() {
                         {job.status === 'ready' ? (
                           <>
                             <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
-                            <Link href={`/jobs/${job.id}`}>
-                              <Button size="sm" className="h-7 text-xs bg-gradient-electric text-white shadow-glow px-3">
-                                <Play className="h-3 w-3 mr-1" /> Watch
-                              </Button>
-                            </Link>
+                            <Button
+                              size="sm"
+                              className="h-7 text-xs bg-gradient-electric text-white shadow-glow px-3"
+                              disabled={watchingJobId === job.id}
+                              onClick={() => handleWatch(job.id)}
+                            >
+                              {watchingJobId === job.id
+                                ? <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                : <Play className="h-3 w-3 mr-1" />}
+                              Watch
+                            </Button>
                           </>
                         ) : job.status === 'failed' ? (
                           <>

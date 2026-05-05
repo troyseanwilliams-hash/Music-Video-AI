@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { useListVideos, useDeleteVideo, getListVideosQueryKey } from "@workspace/api-client-react";
@@ -18,11 +18,53 @@ import {
 } from "@/components/ui/alert-dialog";
 import { motion } from "framer-motion";
 
+async function getSignedVideoUrl(jobId: string): Promise<string> {
+  const r = await fetch(`/api/jobs/${jobId}/video-url`);
+  if (!r.ok) throw new Error("url");
+  const { url } = await r.json() as { url: string };
+  return url;
+}
+
 export default function Gallery() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const queryClient = useQueryClient();
-  
+  const [loadingAction, setLoadingAction] = useState<Record<string, "watch" | "download" | undefined>>({});
+
+  async function handleWatch(jobId: string) {
+    setLoadingAction(prev => ({ ...prev, [jobId]: "watch" }));
+    try {
+      const url = await getSignedVideoUrl(jobId);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch {
+      // silently fail — signed URL unavailable
+    } finally {
+      setLoadingAction(prev => ({ ...prev, [jobId]: undefined }));
+    }
+  }
+
+  async function handleDownload(jobId: string, title?: string | null) {
+    setLoadingAction(prev => ({ ...prev, [jobId]: "download" }));
+    try {
+      const url = await getSignedVideoUrl(jobId);
+      const vr = await fetch(url);
+      if (!vr.ok) throw new Error("fetch");
+      const blob = await vr.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = `beatvision-${title || jobId}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+    } catch {
+      // silently fail
+    } finally {
+      setLoadingAction(prev => ({ ...prev, [jobId]: undefined }));
+    }
+  }
+
   const { data, isLoading } = useListVideos(
     { limit: 20 },
     { query: { enabled: isAuthenticated } }
@@ -121,17 +163,30 @@ export default function Gallery() {
                 </div>
 
                 <div className="flex items-center gap-2 mt-auto pt-1">
-                  <Link href={`/jobs/${video.jobId}`} className="flex-1">
-                    <Button size="sm" className="w-full bg-gradient-electric text-white shadow-glow text-xs h-8">
-                      <Play className="h-3.5 w-3.5 mr-1.5" /> Watch
-                    </Button>
-                  </Link>
+                  <Button
+                    size="sm"
+                    className="flex-1 bg-gradient-electric text-white shadow-glow text-xs h-8"
+                    disabled={!!loadingAction[video.jobId]}
+                    onClick={() => handleWatch(video.jobId)}
+                  >
+                    {loadingAction[video.jobId] === "watch"
+                      ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                      : <Play className="h-3.5 w-3.5 mr-1.5" />}
+                    Watch
+                  </Button>
 
-                  <a href={`/api/storage${video.videoObjectPath}`} download target="_blank" rel="noopener noreferrer">
-                    <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" title="Download video">
-                      <Download className="h-3.5 w-3.5" />
-                    </Button>
-                  </a>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    title="Download video"
+                    disabled={!!loadingAction[video.jobId]}
+                    onClick={() => handleDownload(video.jobId, video.title || video.prompt)}
+                  >
+                    {loadingAction[video.jobId] === "download"
+                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      : <Download className="h-3.5 w-3.5" />}
+                  </Button>
 
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
