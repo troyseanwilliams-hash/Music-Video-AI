@@ -190,8 +190,12 @@ export default function Dashboard() {
                 <div className="divide-y divide-border/50">
                   {stats.recentJobs.map((job) => {
                     const cost = estimateCreditCost((job as { requestedDuration?: string | null }).requestedDuration);
+                    const isReady = job.status === 'ready';
+                    const isFailed = job.status === 'failed';
+                    const isProcessing = !isReady && !isFailed;
                     return (
-                    <div key={job.id} className="grid grid-cols-12 gap-4 p-4 hover:bg-muted/10 transition-colors items-center">
+                    <Link key={job.id} href={`/jobs/${job.id}`}>
+                    <div className={`grid grid-cols-12 gap-4 p-4 transition-colors items-center ${isProcessing || isFailed ? "cursor-pointer hover:bg-muted/10" : "hover:bg-muted/5"}`}>
                       <div className="col-span-5 md:col-span-3 truncate pr-2 font-medium text-sm">
                         {job.prompt || "Untitled generation"}
                       </div>
@@ -199,14 +203,14 @@ export default function Dashboard() {
                         {job.style}
                       </div>
                       <div className="col-span-4 md:col-span-3 flex items-center gap-2">
-                        {job.status === 'ready' ? (
+                        {isReady ? (
                           <>
                             <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
                             <Button
                               size="sm"
                               className="h-7 text-xs bg-gradient-electric text-white shadow-glow px-3"
                               disabled={watchingJobId === job.id}
-                              onClick={() => handleWatch(job.id)}
+                              onClick={(e) => { e.preventDefault(); handleWatch(job.id); }}
                             >
                               {watchingJobId === job.id
                                 ? <Loader2 className="h-3 w-3 mr-1 animate-spin" />
@@ -214,20 +218,16 @@ export default function Dashboard() {
                               Watch
                             </Button>
                           </>
-                        ) : job.status === 'failed' ? (
-                          <>
-                            <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
-                            <Link href={`/jobs/${job.id}`}>
-                              <span className="text-sm text-destructive">Failed</span>
-                            </Link>
-                          </>
+                        ) : isFailed ? (
+                          <span className="flex items-center gap-1.5 text-sm text-destructive">
+                            <AlertCircle className="h-4 w-4 shrink-0" />
+                            Failed
+                          </span>
                         ) : (
-                          <>
-                            <Loader2 className="h-4 w-4 text-primary animate-spin shrink-0" />
-                            <Link href={`/jobs/${job.id}`}>
-                              <span className="text-sm capitalize text-primary">{job.status}…</span>
-                            </Link>
-                          </>
+                          <span className="flex items-center gap-1.5 text-sm text-primary">
+                            <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                            <span className="capitalize">{job.status}…</span>
+                          </span>
                         )}
                       </div>
                       <div className="col-span-3 md:col-span-2 flex items-center justify-end gap-1 text-sm font-medium text-accent">
@@ -238,6 +238,7 @@ export default function Dashboard() {
                         {new Date(job.createdAt).toLocaleDateString()}
                       </div>
                     </div>
+                    </Link>
                     );
                   })}
                 </div>
