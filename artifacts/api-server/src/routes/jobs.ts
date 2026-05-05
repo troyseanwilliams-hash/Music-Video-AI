@@ -360,7 +360,8 @@ router.get("/jobs/:id/video/download", async (req, res) => {
 
   const storageService = new ObjectStorageService();
   const signedUrl = await storageService.getVideoSignedUrl(job.videoId);
-  const upstream = await fetch(signedUrl, { signal: AbortSignal.timeout(30_000) });
+  // No timeout — large video files need time to stream fully
+  const upstream = await fetch(signedUrl);
   if (!upstream.ok) {
     res.status(502).json({ error: "Failed to fetch video from storage" });
     return;
@@ -372,7 +373,13 @@ router.get("/jobs/:id/video/download", async (req, res) => {
   if (contentLength) res.setHeader("Content-Length", contentLength);
 
   const { Readable } = await import("stream");
-  Readable.fromWeb(upstream.body as import("stream/web").ReadableStream).pipe(res);
+  const readable = Readable.fromWeb(upstream.body as import("stream/web").ReadableStream);
+  readable.on("error", (err) => {
+    req.log.error({ err }, "Video download stream error");
+    if (!res.headersSent) res.status(500).json({ error: "Stream error" });
+    else res.destroy();
+  });
+  readable.pipe(res);
 });
 
 router.get("/jobs/:id/video-url", async (req, res) => {
