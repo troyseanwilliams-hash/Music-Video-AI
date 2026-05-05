@@ -101,6 +101,7 @@ router.get("/storage/public-objects/*filePath", async (req: Request, res: Respon
  * Serve object entities from PRIVATE_OBJECT_DIR.
  * These are served from a separate path from /public-objects and can optionally
  * be protected with authentication or ACL checks based on the use case.
+ * Supports HTTP Range requests for video streaming.
  */
 router.get("/storage/objects/*path", async (req: Request, res: Response) => {
   try {
@@ -124,7 +125,19 @@ router.get("/storage/objects/*path", async (req: Request, res: Response) => {
     //   return;
     // }
 
-    const response = await objectStorageService.downloadObject(objectFile);
+    const rangeHeader = req.headers.range;
+    let parsedRange: { start: number; end?: number } | undefined;
+    if (rangeHeader) {
+      const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+      if (match) {
+        parsedRange = {
+          start: parseInt(match[1], 10),
+          end: match[2] ? parseInt(match[2], 10) : undefined,
+        };
+      }
+    }
+
+    const response = await objectStorageService.downloadObject(objectFile, 3600, parsedRange);
 
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
