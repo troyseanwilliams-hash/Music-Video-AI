@@ -236,8 +236,9 @@ export default function Pricing() {
           Choose your plan
         </h1>
         <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-          Each video uses 1 credit. Subscriptions auto-renew with fresh credits
-          every cycle. Top-ups give you a one-time boost.
+          Each video uses 1 credit. Subscriptions auto-renew each cycle with a
+          fresh allotment — unused plan credits reset and do not roll over.
+          Top-up credits are separate and never expire.
         </p>
         {isAuthenticated && subscription && (
           <div

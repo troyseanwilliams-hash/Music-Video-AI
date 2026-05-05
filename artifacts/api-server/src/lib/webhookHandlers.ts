@@ -123,6 +123,97 @@ async function grantCredits(params: {
   }
 }
 
+/**
+ * Reset the subscription credit bucket to the plan's allotment.
+ *
+ * Called on every invoice.paid for a recurring subscription line item.
+ * Unlike grantCredits (which adds to the existing bucket), this function
+ * *replaces* subscriptionCredits with the new plan amount so unused plan
+ * credits from the previous cycle do not roll over.  topupCredits are never
+ * touched.  creditsRemaining is recomputed as subscriptionCredits + topupCredits.
+ *
+ * The grant is still written to credit_grants for a full audit trail, and the
+ * same idempotency guards (stripe_event_id / stripe_invoice_id uniqueness) are
+ * applied so replaying events is always safe.
+ */
+async function resetSubscriptionCredits(params: {
+  userId: string;
+  credits: number;
+  stripeEventId: string;
+  stripeInvoiceId?: string | null;
+  stripePriceId?: string | null;
+}): Promise<{ granted: boolean; reason?: string }> {
+  if (params.credits <= 0) {
+    return { granted: false, reason: "no credits to grant" };
+  }
+
+  await ensureCreditsRow(params.userId);
+
+  if (params.stripeInvoiceId) {
+    const [existing] = await db
+      .select({ id: creditGrantsTable.id })
+      .from(creditGrantsTable)
+      .where(eq(creditGrantsTable.stripeInvoiceId, params.stripeInvoiceId))
+      .limit(1);
+    if (existing) return { granted: false, reason: "duplicate invoice" };
+  }
+
+  try {
+    // Wrap the ledger insert and balance update in a single transaction so
+    // that a partial failure (insert succeeds, update fails) never leaves a
+    // stale ledger row that would block subsequent idempotent retries.
+    const granted = await db.transaction(async (tx) => {
+      const [grant] = await tx
+        .insert(creditGrantsTable)
+        .values({
+          id: randomUUID(),
+          userId: params.userId,
+          source: "subscription",
+          creditsGranted: params.credits,
+          stripeEventId: params.stripeEventId,
+          stripeInvoiceId: params.stripeInvoiceId ?? null,
+          stripeCheckoutSessionId: null,
+          stripePriceId: params.stripePriceId ?? null,
+        })
+        .onConflictDoNothing({ target: creditGrantsTable.stripeEventId })
+        .returning();
+
+      if (!grant) return false;
+
+      // Replace subscriptionCredits with the plan amount; add topupCredits on
+      // top so creditsRemaining stays consistent without touching the top-up
+      // bucket.
+      await tx
+        .update(creditsTable)
+        .set({
+          subscriptionCredits: params.credits,
+          creditsRemaining: sql`${params.credits} + ${creditsTable.topupCredits}`,
+        })
+        .where(eq(creditsTable.userId, params.userId));
+
+      return true;
+    });
+
+    if (!granted) {
+      return { granted: false, reason: "duplicate event" };
+    }
+
+    logger.info(
+      {
+        userId: params.userId,
+        credits: params.credits,
+        stripeEventId: params.stripeEventId,
+      },
+      "Reset subscription credits for renewal",
+    );
+
+    return { granted: true };
+  } catch (err) {
+    logger.error({ err, params }, "Failed to reset subscription credits");
+    return { granted: false, reason: "error" };
+  }
+}
+
 async function handleInvoicePaid(
   event: Stripe.Event,
   invoice: Stripe.Invoice,
@@ -167,31 +258,133 @@ async function handleInvoicePaid(
     return fetched;
   };
 
+  // Stripe API versions before 2025-08-27.basil used top-level `line.type`
+  // and `line.proration` booleans.  The 2025-08-27.basil+ API moved these
+  // into `line.parent.type` and `line.parent.<type>_item_details.proration`.
+  // We support both shapes via type-cast helpers so the filter logic reads
+  // cleanly regardless of which API version the webhook payload came from.
+  type LegacyLineExtra = { type?: string; proration?: boolean };
+  type ModernParent = {
+    type?: string;
+    subscription_item_details?: { proration?: boolean } | null;
+    invoice_item_details?: { proration?: boolean } | null;
+  } | null;
+
+  const isSubscriptionLine = (line: Stripe.InvoiceLineItem): boolean => {
+    // Modern API: parent.type === 'subscription_item_details'
+    const parent = (line as unknown as { parent?: ModernParent }).parent;
+    if (parent?.type) return parent.type === "subscription_item_details";
+    // Legacy API: line.type === 'subscription'
+    return (line as LegacyLineExtra).type === "subscription";
+  };
+
+  const isProrationLine = (line: Stripe.InvoiceLineItem): boolean => {
+    // Modern API: proration flag lives inside the parent details object
+    const parent = (line as unknown as { parent?: ModernParent }).parent;
+    if (parent?.subscription_item_details) {
+      return Boolean(parent.subscription_item_details.proration);
+    }
+    if (parent?.invoice_item_details) {
+      return Boolean(parent.invoice_item_details.proration);
+    }
+    // Legacy API: top-level proration boolean
+    return Boolean((line as LegacyLineExtra).proration);
+  };
+
+  // Resolve the subscription ID from the invoice.
+  // Modern API: invoice.parent.subscription_details.subscription
+  // Legacy API: invoice.subscription
+  const resolveSubscriptionId = (inv: Stripe.Invoice): string | null => {
+    type ModernInvoiceParent = {
+      subscription_details?: { subscription?: string | { id: string } | null } | null;
+    } | null;
+    const parent = (inv as unknown as { parent?: ModernInvoiceParent }).parent;
+    const fromParent = parent?.subscription_details?.subscription;
+    if (fromParent) {
+      return typeof fromParent === "string" ? fromParent : fromParent.id;
+    }
+    // Legacy field
+    const legacy = (inv as unknown as { subscription?: string | { id: string } | null })
+      .subscription;
+    if (!legacy) return null;
+    return typeof legacy === "string" ? legacy : legacy.id;
+  };
+
+  // Determine the subscription credit allotment for this invoice.
+  //
+  // We only look at non-proration subscription lines because:
+  // - Standard renewal invoices have exactly one non-proration subscription
+  //   line for the new billing period — that is the canonical plan allotment.
+  // - Mid-cycle upgrade/downgrade invoices contain ONLY proration lines
+  //   (credit for unused time on old plan + charge for remaining time on new
+  //   plan), so filtering them out leaves nothing; we then fall back to
+  //   retrieving the subscription's current items to get the new plan amount.
+  //
+  // This prevents double-counting proration lines and ensures the bucket is
+  // always set to exactly the new plan's full-period credit allotment.
   let totalCredits = 0;
   let firstPriceId: string | null = null;
+
   for (const line of invoice.lines.data ?? []) {
+    // Skip proration lines and non-subscription (one-time) lines.
+    if (!isSubscriptionLine(line)) continue;
+    if (isProrationLine(line)) continue;
+
     const price = await resolvePrice(line);
     if (!price) continue;
     if (!firstPriceId) firstPriceId = price.id;
     const credits = parseCreditsFromMetadata(price.metadata);
     if (credits > 0) {
+      // Subscription lines always have quantity 1 at the plan level, but
+      // respect the field in case a plan is configured differently.
       const quantity = line.quantity ?? 1;
       totalCredits += credits * quantity;
+    }
+  }
+
+  // Fallback: all invoice lines were proration lines (mid-cycle
+  // upgrade/downgrade).  Retrieve the subscription's current items to obtain
+  // the new plan's credit allotment.
+  if (totalCredits === 0) {
+    const subscriptionId = resolveSubscriptionId(invoice);
+
+    if (subscriptionId) {
+      try {
+        const sub = await stripe.subscriptions.retrieve(subscriptionId, {
+          expand: ["items.data.price"],
+        });
+        for (const item of sub.items.data) {
+          const price = item.price;
+          if (!price) continue;
+          if (!firstPriceId) firstPriceId = price.id;
+          const credits = parseCreditsFromMetadata(price.metadata);
+          if (credits > 0) {
+            totalCredits += credits * (item.quantity ?? 1);
+          }
+        }
+      } catch (err) {
+        logger.error(
+          { err, subscriptionId, invoiceId: invoice.id },
+          "invoice.paid: failed to retrieve subscription for proration-only invoice",
+        );
+      }
     }
   }
 
   if (totalCredits === 0) {
     logger.info(
       { invoiceId: invoice.id },
-      "invoice.paid: no credit metadata found on line items",
+      "invoice.paid: no credit metadata found on line items or subscription",
     );
     return;
   }
 
-  await grantCredits({
+  // Use reset (replace) semantics for subscription credits so unused plan
+  // credits from the previous cycle do not roll over.  Top-up credits are
+  // preserved automatically by resetSubscriptionCredits.
+  await resetSubscriptionCredits({
     userId: user.id,
     credits: totalCredits,
-    source: "subscription",
     stripeEventId: event.id,
     stripeInvoiceId: invoice.id ?? null,
     stripePriceId: firstPriceId,
