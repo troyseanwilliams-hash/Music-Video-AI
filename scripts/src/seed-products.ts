@@ -248,10 +248,17 @@ async function findOrCreatePrice(
 }
 
 async function seedFirstPurchasePromo(stripe: Stripe): Promise<void> {
-  const promoCode = "FIRST25";
-  const couponName = "25% off first credit pack purchase";
+  const promoCode = "FIRST15";
+  const couponName = "15% off first credit pack purchase";
 
-  // Check if promo code already exists
+  // Deactivate old FIRST25 code if it exists
+  const old25 = await stripe.promotionCodes.list({ code: "FIRST25", active: true, limit: 1 });
+  if (old25.data.length > 0) {
+    await stripe.promotionCodes.update(old25.data[0]!.id, { active: false });
+    console.log(`- Deactivated old promo code: FIRST25`);
+  }
+
+  // Check if new promo code already exists
   const existing = await stripe.promotionCodes.list({ code: promoCode, active: true, limit: 1 });
   if (existing.data.length > 0) {
     console.log(`✓ Promo code exists: ${promoCode} (${existing.data[0]!.id})`);
@@ -261,10 +268,10 @@ async function seedFirstPurchasePromo(stripe: Stripe): Promise<void> {
   // Create the coupon
   const coupon = await stripe.coupons.create({
     name: couponName,
-    percent_off: 25,
+    percent_off: 15,
     duration: "once",
     currency: "usd",
-    applies_to: { products: [] }, // applies to all products
+    applies_to: { products: [] },
   });
   console.log(`+ Created coupon: ${couponName} (${coupon.id})`);
 
@@ -274,7 +281,7 @@ async function seedFirstPurchasePromo(stripe: Stripe): Promise<void> {
     code: promoCode,
     restrictions: { first_time_transaction: true },
   });
-  console.log(`+ Created promo code: ${promoCode} (${promo.id}) — 25% off, first purchase only`);
+  console.log(`+ Created promo code: ${promoCode} (${promo.id}) — 15% off, first purchase only`);
 }
 
 async function main(): Promise<void> {
