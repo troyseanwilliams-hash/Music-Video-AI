@@ -2,13 +2,19 @@ import Stripe from "stripe";
 import { getUncachableStripeClient } from "./stripeClient.js";
 
 // ── Pricing constants (keep in sync with creditCost.ts) ────────────────────
-// Each credit = $0.10 face value (MARKUP = 1.5 over Runway cost)
-// Bundles offer volume discounts to drive down the Stripe $0.30 flat fee impact.
+// RUNWAY_USD_PER_TOKEN = $0.01  →  $10 per 1000 Runway tokens
+// USD_PER_CREDIT       = $0.02  →  1 credit = 1 Runway token, sold at 2×
+// MARKUP               = 2      →  customers pay 2× Runway cost per video
 //
-// Bundle math (Stripe fee = 2.9% + $0.30):
-//   Starter  100cr @ $10.00 → $0.10/cr, Stripe fee 5.9% of revenue
-//   Growth   500cr @ $44.00 → $0.088/cr (12% off), Stripe fee 3.4%
-//   Studio  2000cr @ $160.00 → $0.08/cr (20% off), Stripe fee 3.2%
+// Video credit costs (MARKUP=2, USD_PER_CREDIT=0.02):
+//   5s clip : ceil(330 × 0.01 × 2 / 0.02) = 330 credits  ($6.60)
+//  10s clip : ceil(660 × 0.01 × 2 / 0.02) = 660 credits  ($13.20)
+//  Full (3×10s): 1980 credits ($39.60)
+//
+// Top-up bundle math (Stripe fee = 2.9% + $0.30):
+//   Starter  1000cr @ $20.00  →  $0.020/cr (face value), Stripe fee ~4.4%
+//   Growth   5000cr @ $85.00  →  $0.017/cr (15% off),   Stripe fee ~3.3%
+//   Studio  20000cr @ $300.00 →  $0.015/cr (25% off),   Stripe fee ~2.9%
 
 interface PriceSpec {
   nickname: string;
@@ -28,9 +34,11 @@ interface ProductSpec {
 
 const PRODUCTS: ProductSpec[] = [
   // ── Subscriptions ──────────────────────────────────────────────────────────
+  // Credits scaled so subscribers get equivalent video value vs old pricing.
+  // Old: 5s video = 50 credits; New: 5s video = 330 credits (6.6× scale).
   {
     name: "Starter",
-    description: "60 credits per month — best for casual creators",
+    description: "400 credits per month — best for casual creators",
     metadata: { tier: "starter", kind: "subscription" },
     prices: [
       {
@@ -38,7 +46,7 @@ const PRODUCTS: ProductSpec[] = [
         unitAmount: 900,
         currency: "usd",
         recurring: { interval: "month" },
-        credits: 60,
+        credits: 400,
         lookupKey: "starter_monthly",
       },
       {
@@ -46,14 +54,14 @@ const PRODUCTS: ProductSpec[] = [
         unitAmount: 9000,
         currency: "usd",
         recurring: { interval: "year" },
-        credits: 720,
+        credits: 4800,
         lookupKey: "starter_yearly",
       },
     ],
   },
   {
     name: "Pro",
-    description: "250 credits per month — for serious creators",
+    description: "1650 credits per month — for serious creators",
     metadata: { tier: "pro", kind: "subscription", popular: "true" },
     prices: [
       {
@@ -61,7 +69,7 @@ const PRODUCTS: ProductSpec[] = [
         unitAmount: 2900,
         currency: "usd",
         recurring: { interval: "month" },
-        credits: 250,
+        credits: 1650,
         lookupKey: "pro_monthly",
       },
       {
@@ -69,14 +77,14 @@ const PRODUCTS: ProductSpec[] = [
         unitAmount: 29000,
         currency: "usd",
         recurring: { interval: "year" },
-        credits: 3000,
+        credits: 19800,
         lookupKey: "pro_yearly",
       },
     ],
   },
   {
     name: "Studio",
-    description: "800 credits per month — for production teams",
+    description: "5000 credits per month — for production teams",
     metadata: { tier: "studio", kind: "subscription" },
     prices: [
       {
@@ -84,7 +92,7 @@ const PRODUCTS: ProductSpec[] = [
         unitAmount: 7900,
         currency: "usd",
         recurring: { interval: "month" },
-        credits: 800,
+        credits: 5000,
         lookupKey: "studio_monthly",
       },
       {
@@ -92,61 +100,64 @@ const PRODUCTS: ProductSpec[] = [
         unitAmount: 79000,
         currency: "usd",
         recurring: { interval: "year" },
-        credits: 9600,
+        credits: 60000,
         lookupKey: "studio_yearly",
       },
     ],
   },
 
-  // ── Credit Buckets (one-time top-ups) ──────────────────────────────────────
-  // Priced to amortize Stripe's $0.30 flat fee across more credits.
-  // Larger buckets = lower effective Stripe fee % = better margin for us.
+  // ── Credit Packs (one-time top-ups) ────────────────────────────────────────
+  // Face value: $0.02/credit ($20 per 1000) = 2× Runway cost.
+  // Larger packs get volume discounts to reduce Stripe fee impact.
   {
     name: "Credit Pack — Starter",
-    description: "100 credits · one-time purchase · never expires",
+    description: "1,000 credits · one-time purchase · never expires",
     metadata: { kind: "topup" },
     prices: [
       {
-        nickname: "100 Credits",
-        unitAmount: 1000,   // $10.00 — $0.10/credit (face value)
+        nickname: "1000 Credits",
+        unitAmount: 2000,  // $20.00 — $0.020/credit (face value)
         currency: "usd",
-        credits: 100,
-        lookupKey: "topup_100",
+        credits: 1000,
+        lookupKey: "topup_1000",
       },
     ],
   },
   {
     name: "Credit Pack — Growth",
-    description: "500 credits · one-time purchase · never expires · save 12%",
+    description: "5,000 credits · one-time purchase · never expires · save 15%",
     metadata: { kind: "topup", popular: "true" },
     prices: [
       {
-        nickname: "500 Credits",
-        unitAmount: 4400,   // $44.00 — $0.088/credit (12% off face value)
+        nickname: "5000 Credits",
+        unitAmount: 8500,  // $85.00 — $0.017/credit (15% off face value)
         currency: "usd",
-        credits: 500,
-        lookupKey: "topup_500",
+        credits: 5000,
+        lookupKey: "topup_5000",
       },
     ],
   },
   {
     name: "Credit Pack — Studio",
-    description: "2000 credits · one-time purchase · never expires · save 20%",
+    description: "20,000 credits · one-time purchase · never expires · save 25%",
     metadata: { kind: "topup" },
     prices: [
       {
-        nickname: "2000 Credits",
-        unitAmount: 16000,  // $160.00 — $0.08/credit (20% off face value)
+        nickname: "20000 Credits",
+        unitAmount: 30000,  // $300.00 — $0.015/credit (25% off face value)
         currency: "usd",
-        credits: 2000,
-        lookupKey: "topup_2000",
+        credits: 20000,
+        lookupKey: "topup_20000",
       },
     ],
   },
 ];
 
 async function archiveOldTopups(stripe: Stripe): Promise<void> {
-  const oldLookupKeys = ["topup_50", "topup_200", "topup_600"];
+  const oldLookupKeys = [
+    "topup_50", "topup_200", "topup_600",  // v1 buckets
+    "topup_100", "topup_500", "topup_2000", // v2 buckets
+  ];
   for (const key of oldLookupKeys) {
     const existing = await stripe.prices.list({
       lookup_keys: [key],
@@ -157,7 +168,6 @@ async function archiveOldTopups(stripe: Stripe): Promise<void> {
       const price = existing.data[0]!;
       await stripe.prices.update(price.id, { active: false });
       console.log(`- Archived old price: ${key} (${price.id})`);
-      // Archive the product if it has no other active prices
       const remaining = await stripe.prices.list({
         product: price.product as string,
         active: true,
@@ -258,9 +268,14 @@ async function main(): Promise<void> {
   );
 
   console.log("\n── Credit Pack summary ──");
-  console.log("  Starter  100cr  $10.00  →  $0.100/cr  (Stripe fee ~5.9%)");
-  console.log("  Growth   500cr  $44.00  →  $0.088/cr  (Stripe fee ~3.4%)  12% off");
-  console.log("  Studio  2000cr $160.00  →  $0.080/cr  (Stripe fee ~3.2%)  20% off");
+  console.log("  Face value: $0.02/credit  ($20 per 1000 credits = 2× Runway cost)");
+  console.log("  Starter   1000cr  $20.00  →  $0.020/cr  (Stripe fee ~4.4%)  face value");
+  console.log("  Growth    5000cr  $85.00  →  $0.017/cr  (Stripe fee ~3.3%)  15% off");
+  console.log("  Studio   20000cr $300.00  →  $0.015/cr  (Stripe fee ~2.9%)  25% off");
+  console.log("\n── Video cost at MARKUP=2 ──");
+  console.log("   5s clip :  330 credits  ($6.60 / Runway cost $3.30)");
+  console.log("  10s clip :  660 credits  ($13.20 / Runway cost $6.60)");
+  console.log("  Full(3×10s): 1980 credits ($39.60 / Runway cost $19.80)");
 }
 
 main().catch((err) => {
