@@ -635,18 +635,43 @@ function ErrorIcon({ category }: { category: ErrorCategory }) {
 }
 
 function VideoPlayer({ jobId, videoId }: { jobId: string; videoId: string }) {
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [errored, setErrored] = useState(false);
-  const videoSrc = `/api/jobs/${jobId}/video`;
   const posterSrc = `/api/storage/objects/thumbnails/${videoId}.jpg`;
+  const fallbackHref = `/api/jobs/${jobId}/video`;
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/jobs/${jobId}/video-url`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`${r.status}`);
+        return r.json() as Promise<{ url: string }>;
+      })
+      .then((data) => {
+        if (!cancelled) setVideoUrl(data.url);
+      })
+      .catch(() => {
+        if (!cancelled) setErrored(true);
+      });
+    return () => { cancelled = true; };
+  }, [jobId]);
 
   if (errored) {
     return (
       <div className="aspect-video bg-black flex flex-col items-center justify-center gap-3 text-muted-foreground">
         <AlertCircle className="h-8 w-8" />
         <p className="text-sm">Video could not be loaded.</p>
-        <a href={videoSrc} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">
+        <a href={fallbackHref} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">
           Try opening directly
         </a>
+      </div>
+    );
+  }
+
+  if (!videoUrl) {
+    return (
+      <div className="aspect-video bg-black flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -654,7 +679,7 @@ function VideoPlayer({ jobId, videoId }: { jobId: string; videoId: string }) {
   return (
     <div className="aspect-video relative bg-black">
       <video
-        src={videoSrc}
+        src={videoUrl}
         poster={posterSrc}
         controls
         className="w-full h-full object-contain"

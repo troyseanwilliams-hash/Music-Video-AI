@@ -327,6 +327,36 @@ router.get("/jobs/:id/video", async (req, res) => {
   res.redirect(302, signedUrl);
 });
 
+router.get("/jobs/:id/video-url", async (req, res) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const jobId = req.params.id;
+  const [job] = await db
+    .select()
+    .from(jobsTable)
+    .where(
+      and(eq(jobsTable.id, jobId), eq(jobsTable.userId, req.user.id)),
+    )
+    .limit(1);
+
+  if (!job) {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
+
+  if (!job.videoId) {
+    res.status(404).json({ error: "Video not ready yet" });
+    return;
+  }
+
+  const storageService = new ObjectStorageService();
+  const url = await storageService.getVideoSignedUrl(job.videoId);
+  res.json({ url });
+});
+
 router.post("/jobs/:id/retry", async (req, res) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: "Unauthorized" });
