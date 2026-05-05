@@ -12,6 +12,7 @@ import Generate from "@/pages/generate";
 import Dashboard from "@/pages/dashboard";
 import Gallery from "@/pages/gallery";
 import JobStatus from "@/pages/job-status";
+import Pricing from "@/pages/pricing";
 
 const queryClient = new QueryClient();
 
@@ -28,6 +29,7 @@ function Router() {
           <Route path="/dashboard" component={Dashboard} />
           <Route path="/gallery" component={Gallery} />
           <Route path="/jobs/:id" component={JobStatus} />
+          <Route path="/pricing" component={Pricing} />
           <Route component={NotFound} />
         </Switch>
       </main>

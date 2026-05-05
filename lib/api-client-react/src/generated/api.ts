@@ -18,7 +18,13 @@ import type {
 
 import type {
   AuthUserEnvelope,
+  BillingPlansResponse,
+  BillingSubscriptionResponse,
+  CreateCheckoutRequest,
+  CreateCheckoutResponse,
   CreateJobRequest,
+  CreatePortalRequest,
+  CreatePortalResponse,
   CreditsResponse,
   DashboardStats,
   ErrorEnvelope,
@@ -1298,6 +1304,333 @@ export function useGetCredits<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary List available subscription plans and top-up packs
+ */
+export const getListBillingPlansUrl = () => {
+  return `/api/billing/plans`;
+};
+
+export const listBillingPlans = async (
+  options?: RequestInit,
+): Promise<BillingPlansResponse> => {
+  return customFetch<BillingPlansResponse>(getListBillingPlansUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListBillingPlansQueryKey = () => {
+  return [`/api/billing/plans`] as const;
+};
+
+export const getListBillingPlansQueryOptions = <
+  TData = Awaited<ReturnType<typeof listBillingPlans>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listBillingPlans>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListBillingPlansQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listBillingPlans>>
+  > = ({ signal }) => listBillingPlans({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listBillingPlans>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListBillingPlansQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listBillingPlans>>
+>;
+export type ListBillingPlansQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List available subscription plans and top-up packs
+ */
+
+export function useListBillingPlans<
+  TData = Awaited<ReturnType<typeof listBillingPlans>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listBillingPlans>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListBillingPlansQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get the current user's subscription summary
+ */
+export const getGetBillingSubscriptionUrl = () => {
+  return `/api/billing/subscription`;
+};
+
+export const getBillingSubscription = async (
+  options?: RequestInit,
+): Promise<BillingSubscriptionResponse> => {
+  return customFetch<BillingSubscriptionResponse>(
+    getGetBillingSubscriptionUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetBillingSubscriptionQueryKey = () => {
+  return [`/api/billing/subscription`] as const;
+};
+
+export const getGetBillingSubscriptionQueryOptions = <
+  TData = Awaited<ReturnType<typeof getBillingSubscription>>,
+  TError = ErrorType<ErrorEnvelope>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getBillingSubscription>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetBillingSubscriptionQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getBillingSubscription>>
+  > = ({ signal }) => getBillingSubscription({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getBillingSubscription>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetBillingSubscriptionQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getBillingSubscription>>
+>;
+export type GetBillingSubscriptionQueryError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Get the current user's subscription summary
+ */
+
+export function useGetBillingSubscription<
+  TData = Awaited<ReturnType<typeof getBillingSubscription>>,
+  TError = ErrorType<ErrorEnvelope>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getBillingSubscription>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetBillingSubscriptionQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a Stripe Checkout session for a subscription or top-up
+ */
+export const getCreateBillingCheckoutUrl = () => {
+  return `/api/billing/checkout`;
+};
+
+export const createBillingCheckout = async (
+  createCheckoutRequest: CreateCheckoutRequest,
+  options?: RequestInit,
+): Promise<CreateCheckoutResponse> => {
+  return customFetch<CreateCheckoutResponse>(getCreateBillingCheckoutUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createCheckoutRequest),
+  });
+};
+
+export const getCreateBillingCheckoutMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createBillingCheckout>>,
+    TError,
+    { data: BodyType<CreateCheckoutRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createBillingCheckout>>,
+  TError,
+  { data: BodyType<CreateCheckoutRequest> },
+  TContext
+> => {
+  const mutationKey = ["createBillingCheckout"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createBillingCheckout>>,
+    { data: BodyType<CreateCheckoutRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createBillingCheckout(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateBillingCheckoutMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createBillingCheckout>>
+>;
+export type CreateBillingCheckoutMutationBody = BodyType<CreateCheckoutRequest>;
+export type CreateBillingCheckoutMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Create a Stripe Checkout session for a subscription or top-up
+ */
+export const useCreateBillingCheckout = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createBillingCheckout>>,
+    TError,
+    { data: BodyType<CreateCheckoutRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createBillingCheckout>>,
+  TError,
+  { data: BodyType<CreateCheckoutRequest> },
+  TContext
+> => {
+  return useMutation(getCreateBillingCheckoutMutationOptions(options));
+};
+
+/**
+ * @summary Create a Stripe Billing Portal session for the current user
+ */
+export const getCreateBillingPortalSessionUrl = () => {
+  return `/api/billing/portal`;
+};
+
+export const createBillingPortalSession = async (
+  createPortalRequest?: CreatePortalRequest,
+  options?: RequestInit,
+): Promise<CreatePortalResponse> => {
+  return customFetch<CreatePortalResponse>(getCreateBillingPortalSessionUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createPortalRequest),
+  });
+};
+
+export const getCreateBillingPortalSessionMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createBillingPortalSession>>,
+    TError,
+    { data: BodyType<CreatePortalRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createBillingPortalSession>>,
+  TError,
+  { data: BodyType<CreatePortalRequest> },
+  TContext
+> => {
+  const mutationKey = ["createBillingPortalSession"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createBillingPortalSession>>,
+    { data: BodyType<CreatePortalRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createBillingPortalSession(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateBillingPortalSessionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createBillingPortalSession>>
+>;
+export type CreateBillingPortalSessionMutationBody =
+  BodyType<CreatePortalRequest>;
+export type CreateBillingPortalSessionMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Create a Stripe Billing Portal session for the current user
+ */
+export const useCreateBillingPortalSession = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createBillingPortalSession>>,
+    TError,
+    { data: BodyType<CreatePortalRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createBillingPortalSession>>,
+  TError,
+  { data: BodyType<CreatePortalRequest> },
+  TContext
+> => {
+  return useMutation(getCreateBillingPortalSessionMutationOptions(options));
+};
 
 /**
  * @summary Get dashboard summary stats for the current user

@@ -50,15 +50,17 @@ export default function Dashboard() {
                 : <>Free trial — <strong>{trialDaysLeft} day{trialDaysLeft !== 1 ? "s" : ""}</strong> remaining.</>}
             </span>
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            className={`shrink-0 ${trialExpired ? "border-destructive/40 text-destructive hover:bg-destructive/10" : "border-primary/40 text-primary hover:bg-primary/10"}`}
-            onClick={() => alert("Subscription billing coming soon!")}
-          >
-            <Crown className="mr-1.5 h-3.5 w-3.5" />
-            Upgrade
-          </Button>
+          <Link href="/pricing">
+            <Button
+              size="sm"
+              variant="outline"
+              className={`shrink-0 ${trialExpired ? "border-destructive/40 text-destructive hover:bg-destructive/10" : "border-primary/40 text-primary hover:bg-primary/10"}`}
+              data-testid="button-dashboard-upgrade"
+            >
+              <Crown className="mr-1.5 h-3.5 w-3.5" />
+              Upgrade
+            </Button>
+          </Link>
         </div>
       )}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">

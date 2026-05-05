@@ -360,6 +360,96 @@ export interface CreditsResponse {
   totalGenerations: number;
 }
 
+/**
+ * Recurring interval, or null for one-time top-ups
+ * @nullable
+ */
+export type BillingPriceInterval =
+  | (typeof BillingPriceInterval)[keyof typeof BillingPriceInterval]
+  | null;
+
+export const BillingPriceInterval = {
+  month: "month",
+  year: "year",
+} as const;
+
+export interface BillingPrice {
+  id: string;
+  /** @nullable */
+  lookupKey: string | null;
+  /** @nullable */
+  nickname: string | null;
+  /** Price in the smallest currency unit (e.g. cents) */
+  unitAmount: number;
+  currency: string;
+  /** Credits granted by this price (from price metadata) */
+  credits: number;
+  /**
+   * Recurring interval, or null for one-time top-ups
+   * @nullable
+   */
+  interval: BillingPriceInterval;
+}
+
+export type BillingPlanKind =
+  (typeof BillingPlanKind)[keyof typeof BillingPlanKind];
+
+export const BillingPlanKind = {
+  subscription: "subscription",
+  topup: "topup",
+} as const;
+
+export interface BillingPlan {
+  id: string;
+  name: string;
+  /** @nullable */
+  description: string | null;
+  kind: BillingPlanKind;
+  popular: boolean;
+  prices: BillingPrice[];
+}
+
+export interface BillingPlansResponse {
+  subscriptions: BillingPlan[];
+  topups: BillingPlan[];
+}
+
+export interface BillingSubscriptionResponse {
+  subscriptionStatus: string;
+  hasStripeCustomer: boolean;
+  creditsRemaining: number;
+  /** @nullable */
+  planName?: string | null;
+  /** @nullable */
+  priceLookupKey?: string | null;
+  /** @nullable */
+  renewsAt?: string | null;
+  /** @nullable */
+  cancelAtPeriodEnd?: boolean | null;
+}
+
+export interface CreateCheckoutRequest {
+  /** Stripe price ID to checkout */
+  priceId: string;
+  /** @nullable */
+  successUrl?: string | null;
+  /** @nullable */
+  cancelUrl?: string | null;
+}
+
+export interface CreateCheckoutResponse {
+  url: string;
+}
+
+export interface CreatePortalRequest {
+  /** @nullable */
+  returnUrl?: string | null;
+}
+
+export interface CreatePortalResponse {
+  url: string;
+}
+
 export interface DashboardStats {
   totalJobs: number;
   completedJobs: number;

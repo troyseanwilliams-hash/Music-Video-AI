@@ -34,7 +34,8 @@ Full-stack AI music video generator (similar to freebeat.ai).
 - **Background Processing**: Atomic job claiming via `FOR UPDATE SKIP LOCKED` (safe for multiple concurrent workers)
 - **Retry Logic**: Failed jobs retry up to 3× with exponential backoff (2min, 4min, 8min)
 - **Real-time Updates**: SSE endpoint (`GET /api/jobs/:id/events`) using pg LISTEN/NOTIFY; frontend falls back to 3s polling if SSE unavailable
-- **Credits System**: per-user credit tracking in DB
+- **Credits System**: per-user credit tracking in DB; webhook-driven grants from Stripe (idempotent via `credit_grants.stripe_event_id`)
+- **Billing**: Stripe subscriptions (Starter $9 / Pro $29 / Studio $79 monthly+yearly) and one-time top-ups (50/200/600 credits). Powered by `stripe-replit-sync` (managed webhooks + local `stripe.*` schema mirror). See `artifacts/api-server/src/lib/stripeClient.ts`, `webhookHandlers.ts`, `routes/billing.ts`. Seed prices via `pnpm --filter @workspace/scripts run seed-stripe`. **Note**: `stripe-replit-sync` MUST be in esbuild `external` array (it loads migration .sql files via `__dirname`).
 - **Video Gallery**: grid view with inline playback and deletion
 - **Dashboard**: stats overview + recent job activity
 

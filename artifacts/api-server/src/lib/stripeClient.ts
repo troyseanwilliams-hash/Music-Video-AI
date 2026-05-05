@@ -1,0 +1,142 @@
+import Stripe from "stripe";
+import type { StripeSync } from "stripe-replit-sync";
+import { logger } from "./logger";
+
+interface StripeConnectionSettings {
+  publishable?: string;
+  secret?: string;
+}
+
+interface StripeConnectionItem {
+  settings: StripeConnectionSettings;
+}
+
+async function getCredentials(): Promise<{
+  publishableKey: string;
+  secretKey: string;
+}> {
+  const hostname = process.env["REPLIT_CONNECTORS_HOSTNAME"];
+  const xReplitToken = process.env["REPL_IDENTITY"]
+    ? "repl " + process.env["REPL_IDENTITY"]
+    : process.env["WEB_REPL_RENEWAL"]
+      ? "depl " + process.env["WEB_REPL_RENEWAL"]
+      : null;
+
+  if (!hostname || !xReplitToken) {
+    throw new Error(
+      "Missing Replit environment variables. Ensure the Stripe integration is connected.",
+    );
+  }
+
+  const isProduction = process.env["REPLIT_DEPLOYMENT"] === "1";
+  const targetEnvironment = isProduction ? "production" : "development";
+
+  const url = new URL(`https://${hostname}/api/v2/connection`);
+  url.searchParams.set("include_secrets", "true");
+  url.searchParams.set("connector_names", "stripe");
+  url.searchParams.set("environment", targetEnvironment);
+
+  const response = await fetch(url.toString(), {
+    headers: {
+      Accept: "application/json",
+      X_REPLIT_TOKEN: xReplitToken,
+    },
+    signal: AbortSignal.timeout(10_000),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch Stripe credentials: ${response.status} ${response.statusText}`,
+    );
+  }
+
+  const data = (await response.json()) as { items?: StripeConnectionItem[] };
+  const settings = data.items?.[0]?.settings;
+
+  if (!settings?.publishable || !settings?.secret) {
+    throw new Error(
+      `Stripe ${targetEnvironment} connection not found or missing credentials.`,
+    );
+  }
+
+  return {
+    publishableKey: settings.publishable,
+    secretKey: settings.secret,
+  };
+}
+
+export async function getUncachableStripeClient(): Promise<Stripe> {
+  const { secretKey } = await getCredentials();
+  return new Stripe(secretKey, {
+    apiVersion: "2025-08-27.basil",
+  });
+}
+
+export async function getStripePublishableKey(): Promise<string> {
+  const { publishableKey } = await getCredentials();
+  return publishableKey;
+}
+
+let stripeSync: StripeSync | null = null;
+
+export async function getStripeSync(): Promise<StripeSync> {
+  if (stripeSync) return stripeSync;
+
+  const databaseUrl = process.env["DATABASE_URL"];
+  if (!databaseUrl) {
+    throw new Error("DATABASE_URL environment variable is required");
+  }
+
+  const { secretKey } = await getCredentials();
+  const { StripeSync } = await import("stripe-replit-sync");
+
+  stripeSync = new StripeSync({
+    poolConfig: {
+      connectionString: databaseUrl,
+      max: 2,
+    },
+    stripeSecretKey: secretKey,
+  });
+
+  return stripeSync;
+}
+
+export async function initStripe(): Promise<void> {
+  const databaseUrl = process.env["DATABASE_URL"];
+  if (!databaseUrl) {
+    throw new Error("DATABASE_URL is required for Stripe initialization");
+  }
+
+  try {
+    const { runMigrations } = await import("stripe-replit-sync");
+
+    logger.info("Initializing Stripe schema");
+    await runMigrations({ databaseUrl });
+    logger.info("Stripe schema ready");
+
+    const sync = await getStripeSync();
+
+    const replitDomain = process.env["REPLIT_DOMAINS"]?.split(",")[0];
+    if (replitDomain) {
+      const webhookUrl = `https://${replitDomain}/api/stripe/webhook`;
+      logger.info({ webhookUrl }, "Setting up managed Stripe webhook");
+      const result = await sync.findOrCreateManagedWebhook(webhookUrl);
+      logger.info(
+        { url: result?.webhook?.url },
+        "Stripe webhook configured",
+      );
+    } else {
+      logger.warn("REPLIT_DOMAINS not set — skipping managed webhook setup");
+    }
+
+    sync
+      .syncBackfill()
+      .then(() => logger.info("Stripe data backfill complete"))
+      .catch((err: unknown) => {
+        logger.error({ err }, "Stripe syncBackfill failed");
+      });
+  } catch (err) {
+    logger.error({ err }, "Failed to initialize Stripe");
+    throw err;
+  }
+}

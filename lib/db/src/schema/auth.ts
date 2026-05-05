@@ -24,6 +24,8 @@ export const usersTable = pgTable("users", {
     .default(sql`NOW() + INTERVAL '7 days'`),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   isDisabled: boolean("is_disabled").notNull().default(false),
+  stripeCustomerId: varchar("stripe_customer_id"),
+  stripeSubscriptionId: varchar("stripe_subscription_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

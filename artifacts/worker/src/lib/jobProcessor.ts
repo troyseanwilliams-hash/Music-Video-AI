@@ -139,9 +139,10 @@ async function getAudioBuffer(
   try {
     const file = await storageService.getObjectEntityFile(job.audioObjectPath);
     const [buf] = await file.download();
-    const audioFilename = job.audioObjectPath.split("/").pop() ?? "";
-    const audioDot = audioFilename.lastIndexOf(".");
-    const ext = audioDot !== -1 ? audioFilename.slice(audioDot + 1).toLowerCase() : "mp3";
+    const filename = job.audioObjectPath.split("/").pop() ?? "";
+    const dotIndex = filename.lastIndexOf(".");
+    const rawExt = dotIndex !== -1 ? filename.slice(dotIndex + 1).toLowerCase() : "";
+    const ext = rawExt.length > 0 && rawExt.length <= 5 ? rawExt : "mp3";
     return { buffer: buf, ext };
   } catch (err) {
     logger.warn({ err, jobId: job.id }, "Could not download audio, using defaults");

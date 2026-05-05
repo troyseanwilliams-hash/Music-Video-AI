@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { AudioWaveformSelector } from "@/components/AudioWaveformSelector";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import {
   useCreateJob,
@@ -24,13 +24,30 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { motion } from "framer-motion";
 import {
   Upload, Link as LinkIcon, Music, Sparkles, Loader2, CheckCircle2, XCircle,
   Users, Clapperboard, Layers, Zap, Film, Wand2, Video as VideoIcon, FileText,
   ChevronDown, User, Maximize2, Captions, Diamond, Pencil, MonitorPlay, ImageIcon,
-  Lock, Clock, Crown, Coins,
+  Lock, Clock, Crown, Coins, AlertTriangle, CreditCard,
 } from "lucide-react";
+
+type ErrorDialogState = {
+  open: boolean;
+  title: string;
+  message: string;
+  code?: string;
+  creditsRequired?: number;
+  creditsRemaining?: number;
+};
 
 const STYLES = [
   { id: VideoStyle.realistic, label: "Realistic", icon: Users },
@@ -127,6 +144,7 @@ export default function Generate() {
   const [requestedDuration, setRequestedDuration] = useState<CreateJobRequestRequestedDuration>(CreateJobRequestRequestedDuration.NUMBER_10);
   const [clipStartTime, setClipStartTime] = useState(0);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [errorDialog, setErrorDialog] = useState<ErrorDialogState>({ open: false, title: "", message: "" });
 
   // Reference image
   const refImageInputRef = useRef<HTMLInputElement>(null);
@@ -168,7 +186,7 @@ export default function Generate() {
 
   const durationToSeconds = useCallback((dur: CreateJobRequestRequestedDuration): number | null => {
     if (dur === CreateJobRequestRequestedDuration.full) return null;
-    return parseInt(dur, 10);
+    return parseInt(dur as string, 10);
   }, []);
 
   const handleDurationChange = useCallback((dur: CreateJobRequestRequestedDuration) => {
@@ -347,15 +365,42 @@ export default function Generate() {
       },
       {
         onSuccess: (job) => setLocation(`/jobs/${job.id}`),
-        onError: (err) => {
-          const msg = (err as { message?: string })?.message ?? "Something went wrong. Please try again.";
-          toast({ title: "Submission failed", description: msg, variant: "destructive" });
+        onError: async (err: unknown) => {
+          let title = "Generation failed";
+          let message = "Something went wrong. Please try again.";
+          let code: string | undefined;
+          let creditsRequired: number | undefined;
+          let creditsRemaining: number | undefined;
+
+          try {
+            const res = (err as { response?: Response })?.response;
+            if (res) {
+              const body = await res.clone().json().catch(() => null);
+              if (body) {
+                message = body.error ?? message;
+                code = body.code;
+                creditsRequired = body.creditsRequired;
+                creditsRemaining = body.creditsRemaining;
+              }
+            } else {
+              message = (err as { message?: string })?.message ?? message;
+            }
+          } catch {
+            message = (err as { message?: string })?.message ?? message;
+          }
+
+          if (code === "INSUFFICIENT_CREDITS") title = "Not enough credits";
+          else if (code === "TRIAL_EXPIRED") title = "Trial expired";
+          else if (code === "SUBSCRIPTION_REQUIRED") title = "Subscription required";
+
+          setErrorDialog({ open: true, title, message, code, creditsRequired, creditsRemaining });
         },
       },
     );
   };
 
   return (
+    <>
     <div className="container mx-auto px-4 py-12 max-w-4xl">
       {subStatus === "trial" && !isAdmin && (
         <div className="mb-6 flex items-center justify-between gap-4 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-sm">
@@ -806,15 +851,23 @@ export default function Generate() {
               ref={promptRef}
               id="prompt"
               placeholder="Describe the visual style, subject matter, and mood you want..."
-              className={`min-h-[100px] resize-none bg-background/50 ${fieldErrors.prompt ? "border-destructive" : "border-input"}`}
+              className={`min-h-[100px] resize-none bg-background/50 ${fieldErrors.prompt || prompt.length > 1000 ? "border-destructive" : "border-input"}`}
               value={prompt}
+              maxLength={1000}
               onChange={(e) => { setPrompt(e.target.value); setFieldErrors((fe) => ({ ...fe, prompt: undefined })); }}
             />
-            {fieldErrors.prompt && (
-              <p className="flex items-center gap-1.5 text-sm font-medium text-destructive">
-                <XCircle className="h-4 w-4 shrink-0" /> {fieldErrors.prompt}
-              </p>
-            )}
+            <div className="flex items-center justify-between">
+              <div>
+                {fieldErrors.prompt && (
+                  <p className="flex items-center gap-1.5 text-sm font-medium text-destructive">
+                    <XCircle className="h-4 w-4 shrink-0" /> {fieldErrors.prompt}
+                  </p>
+                )}
+              </div>
+              <span className={`text-xs tabular-nums ${prompt.length >= 950 ? (prompt.length >= 1000 ? "text-destructive font-medium" : "text-yellow-500") : "text-muted-foreground"}`}>
+                {prompt.length} / 1000
+              </span>
+            </div>
           </div>
 
           {/* ── Visual Style ── */}
@@ -947,5 +1000,67 @@ export default function Generate() {
         </div>
       </motion.div>
     </div>
+
+    {/* ── Error Dialog ── */}
+    <Dialog open={errorDialog.open} onOpenChange={(open) => setErrorDialog((s) => ({ ...s, open }))}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <div className="flex items-center gap-3 mb-1">
+            {errorDialog.code === "INSUFFICIENT_CREDITS" ? (
+              <div className="h-10 w-10 rounded-full bg-yellow-500/15 flex items-center justify-center shrink-0">
+                <CreditCard className="h-5 w-5 text-yellow-500" />
+              </div>
+            ) : errorDialog.code === "TRIAL_EXPIRED" || errorDialog.code === "SUBSCRIPTION_REQUIRED" ? (
+              <div className="h-10 w-10 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
+                <Crown className="h-5 w-5 text-primary" />
+              </div>
+            ) : (
+              <div className="h-10 w-10 rounded-full bg-destructive/15 flex items-center justify-center shrink-0">
+                <AlertTriangle className="h-5 w-5 text-destructive" />
+              </div>
+            )}
+            <DialogTitle className="text-left">{errorDialog.title}</DialogTitle>
+          </div>
+          <DialogDescription className="text-left text-sm leading-relaxed">
+            {errorDialog.message}
+          </DialogDescription>
+
+          {errorDialog.code === "INSUFFICIENT_CREDITS" && errorDialog.creditsRequired !== undefined && (
+            <div className="mt-3 rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm space-y-1">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Credits needed</span>
+                <span className="font-medium">{errorDialog.creditsRequired}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Your balance</span>
+                <span className="font-medium text-destructive">{errorDialog.creditsRemaining ?? 0}</span>
+              </div>
+            </div>
+          )}
+        </DialogHeader>
+
+        <DialogFooter className="flex-col sm:flex-row gap-2 mt-2">
+          <Button
+            variant="outline"
+            className="sm:order-1"
+            onClick={() => setErrorDialog((s) => ({ ...s, open: false }))}
+          >
+            Dismiss
+          </Button>
+
+          {(errorDialog.code === "INSUFFICIENT_CREDITS" ||
+            errorDialog.code === "TRIAL_EXPIRED" ||
+            errorDialog.code === "SUBSCRIPTION_REQUIRED") && (
+            <Link href="/pricing">
+              <Button className="w-full sm:w-auto bg-gradient-electric text-white shadow-glow border-0 sm:order-2">
+                <Crown className="mr-2 h-4 w-4" />
+                View Plans
+              </Button>
+            </Link>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

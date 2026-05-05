@@ -20,6 +20,8 @@ tags:
     description: Generated videos gallery
   - name: Credits
     description: User credits and usage
+  - name: Billing
+    description: Stripe subscriptions, top-ups, and customer portal
 paths:
   /healthz:
     get:
@@ -434,6 +436,109 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
 
+  /billing/plans:
+    get:
+      tags: [Billing]
+      operationId: listBillingPlans
+      summary: List available subscription plans and top-up packs
+      responses:
+        '200':
+          description: Available plans
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingPlansResponse'
+
+  /billing/subscription:
+    get:
+      tags: [Billing]
+      operationId: getBillingSubscription
+      summary: Get the current user's subscription summary
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+      responses:
+        '200':
+          description: Subscription summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingSubscriptionResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /billing/checkout:
+    post:
+      tags: [Billing]
+      operationId: createBillingCheckout
+      summary: Create a Stripe Checkout session for a subscription or top-up
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCheckoutRequest'
+      responses:
+        '200':
+          description: Checkout session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateCheckoutResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /billing/portal:
+    post:
+      tags: [Billing]
+      operationId: createBillingPortalSession
+      summary: Create a Stripe Billing Portal session for the current user
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePortalRequest'
+      responses:
+        '200':
+          description: Portal session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatePortalResponse'
+        '400':
+          description: User has no Stripe customer record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
   /dashboard/stats:
     get:
       tags: [Jobs]
@@ -787,6 +892,116 @@ components:
           type: integer
         totalGenerations:
           type: integer
+
+    BillingPrice:
+      type: object
+      required: [id, lookupKey, nickname, unitAmount, currency, credits, interval]
+      properties:
+        id:
+          type: string
+        lookupKey:
+          type: [string, 'null']
+        nickname:
+          type: [string, 'null']
+        unitAmount:
+          type: integer
+          description: Price in the smallest currency unit (e.g. cents)
+        currency:
+          type: string
+        credits:
+          type: integer
+          description: Credits granted by this price (from price metadata)
+        interval:
+          type: [string, 'null']
+          enum: [month, year, null]
+          description: Recurring interval, or null for one-time top-ups
+
+    BillingPlan:
+      type: object
+      required: [id, name, description, kind, prices, popular]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: [string, 'null']
+        kind:
+          type: string
+          enum: [subscription, topup]
+        popular:
+          type: boolean
+        prices:
+          type: array
+          items:
+            $ref: '#/components/schemas/BillingPrice'
+
+    BillingPlansResponse:
+      type: object
+      required: [subscriptions, topups]
+      properties:
+        subscriptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/BillingPlan'
+        topups:
+          type: array
+          items:
+            $ref: '#/components/schemas/BillingPlan'
+
+    BillingSubscriptionResponse:
+      type: object
+      required: [subscriptionStatus, hasStripeCustomer, creditsRemaining]
+      properties:
+        subscriptionStatus:
+          type: string
+        hasStripeCustomer:
+          type: boolean
+        creditsRemaining:
+          type: integer
+        planName:
+          type: [string, 'null']
+        priceLookupKey:
+          type: [string, 'null']
+        renewsAt:
+          type: [string, 'null']
+          format: date-time
+        cancelAtPeriodEnd:
+          type: [boolean, 'null']
+
+    CreateCheckoutRequest:
+      type: object
+      required: [priceId]
+      properties:
+        priceId:
+          type: string
+          description: Stripe price ID to checkout
+        successUrl:
+          type: [string, 'null']
+        cancelUrl:
+          type: [string, 'null']
+
+    CreateCheckoutResponse:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          format: uri
+
+    CreatePortalRequest:
+      type: object
+      properties:
+        returnUrl:
+          type: [string, 'null']
+
+    CreatePortalResponse:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          format: uri
 
     DashboardStats:
       type: object

@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { startJobProcessor } from "./lib/jobProcessor";
 import { ensureAdminUser } from "./lib/ensureAdminUser";
+import { initStripe } from "./lib/stripeClient";
 
 const rawPort = process.env["PORT"];
 
@@ -27,6 +28,10 @@ app.listen(port, (err) => {
 
   ensureAdminUser().catch((err) => {
     logger.error({ err }, "Failed to ensure admin user");
+  });
+
+  initStripe().catch((err) => {
+    logger.error({ err }, "Failed to initialize Stripe");
   });
 
   // In production the dedicated worker artifact runs the job processor.

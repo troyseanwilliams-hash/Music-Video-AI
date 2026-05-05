@@ -118,3 +118,28 @@ export type Video = typeof videosTable.$inferSelect;
 export const insertCreditSchema = createInsertSchema(creditsTable);
 export type InsertCredit = z.infer<typeof insertCreditSchema>;
 export type Credit = typeof creditsTable.$inferSelect;
+
+export const creditGrantSourceEnum = pgEnum("credit_grant_source", [
+  "subscription",
+  "topup",
+  "trial",
+  "admin",
+]);
+
+export const creditGrantsTable = pgTable("credit_grants", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => usersTable.id, { onDelete: "cascade" }),
+  source: creditGrantSourceEnum("source").notNull(),
+  creditsGranted: integer("credits_granted").notNull(),
+  stripeEventId: text("stripe_event_id").unique(),
+  stripeInvoiceId: text("stripe_invoice_id"),
+  stripeCheckoutSessionId: text("stripe_checkout_session_id"),
+  stripePriceId: text("stripe_price_id"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type CreditGrant = typeof creditGrantsTable.$inferSelect;

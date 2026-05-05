@@ -566,6 +566,132 @@ export const GetCreditsResponse = zod.object({
 });
 
 /**
+ * @summary List available subscription plans and top-up packs
+ */
+export const ListBillingPlansResponse = zod.object({
+  subscriptions: zod.array(
+    zod.object({
+      id: zod.string(),
+      name: zod.string(),
+      description: zod.string().nullable(),
+      kind: zod.enum(["subscription", "topup"]),
+      popular: zod.boolean(),
+      prices: zod.array(
+        zod.object({
+          id: zod.string(),
+          lookupKey: zod.string().nullable(),
+          nickname: zod.string().nullable(),
+          unitAmount: zod
+            .number()
+            .describe("Price in the smallest currency unit (e.g. cents)"),
+          currency: zod.string(),
+          credits: zod
+            .number()
+            .describe("Credits granted by this price (from price metadata)"),
+          interval: zod
+            .union([
+              zod.literal("month"),
+              zod.literal("year"),
+              zod.literal(null),
+            ])
+            .nullable()
+            .describe("Recurring interval, or null for one-time top-ups"),
+        }),
+      ),
+    }),
+  ),
+  topups: zod.array(
+    zod.object({
+      id: zod.string(),
+      name: zod.string(),
+      description: zod.string().nullable(),
+      kind: zod.enum(["subscription", "topup"]),
+      popular: zod.boolean(),
+      prices: zod.array(
+        zod.object({
+          id: zod.string(),
+          lookupKey: zod.string().nullable(),
+          nickname: zod.string().nullable(),
+          unitAmount: zod
+            .number()
+            .describe("Price in the smallest currency unit (e.g. cents)"),
+          currency: zod.string(),
+          credits: zod
+            .number()
+            .describe("Credits granted by this price (from price metadata)"),
+          interval: zod
+            .union([
+              zod.literal("month"),
+              zod.literal("year"),
+              zod.literal(null),
+            ])
+            .nullable()
+            .describe("Recurring interval, or null for one-time top-ups"),
+        }),
+      ),
+    }),
+  ),
+});
+
+/**
+ * @summary Get the current user's subscription summary
+ */
+export const GetBillingSubscriptionHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const GetBillingSubscriptionResponse = zod.object({
+  subscriptionStatus: zod.string(),
+  hasStripeCustomer: zod.boolean(),
+  creditsRemaining: zod.number(),
+  planName: zod.string().nullish(),
+  priceLookupKey: zod.string().nullish(),
+  renewsAt: zod.coerce.date().nullish(),
+  cancelAtPeriodEnd: zod.boolean().nullish(),
+});
+
+/**
+ * @summary Create a Stripe Checkout session for a subscription or top-up
+ */
+export const CreateBillingCheckoutHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const CreateBillingCheckoutBody = zod.object({
+  priceId: zod.string().describe("Stripe price ID to checkout"),
+  successUrl: zod.string().nullish(),
+  cancelUrl: zod.string().nullish(),
+});
+
+export const CreateBillingCheckoutResponse = zod.object({
+  url: zod.string().url(),
+});
+
+/**
+ * @summary Create a Stripe Billing Portal session for the current user
+ */
+export const CreateBillingPortalSessionHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const CreateBillingPortalSessionBody = zod.object({
+  returnUrl: zod.string().nullish(),
+});
+
+export const CreateBillingPortalSessionResponse = zod.object({
+  url: zod.string().url(),
+});
+
+/**
  * @summary Get dashboard summary stats for the current user
  */
 export const GetDashboardStatsHeader = zod.object({
