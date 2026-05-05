@@ -236,9 +236,11 @@ export default function Pricing() {
           Choose your plan
         </h1>
         <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-          Each video uses 1 credit. Subscriptions auto-renew each cycle with a
-          fresh allotment — unused plan credits reset and do not roll over.
-          Top-up credits are separate and never expire.
+          Credits are consumed per video generated. A 5-second clip costs{" "}
+          <strong className="text-foreground">330 credits</strong>, a
+          10-second clip costs{" "}
+          <strong className="text-foreground">660 credits</strong>. Plan
+          credits reset each cycle — top-up credits never expire.
         </p>
         {isAuthenticated && subscription && (
           <div
@@ -355,8 +357,12 @@ export default function Pricing() {
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                     <span>
-                      {price.credits} video generations per{" "}
-                      {price.interval === "year" ? "year" : "month"}
+                      {price.credits.toLocaleString()} credits per{" "}
+                      {price.interval === "year" ? "year" : "month"}{" "}
+                      <span className="text-muted-foreground">
+                        (~{Math.floor(price.credits / 330)} × 5s clips or{" "}
+                        {Math.floor(price.credits / 660)} × 10s clips)
+                      </span>
                     </span>
                   </li>
                   <li className="flex items-start gap-2">
@@ -418,13 +424,14 @@ export default function Pricing() {
               const price = plan.prices[0];
               if (!price) return null;
 
-              const faceValueCents = price.credits * 10; // $0.10/credit face value
+              // Face value: $0.02/credit = 2 cents/credit
+              const faceValueCents = price.credits * 2;
               const savingsPct = faceValueCents > 0
                 ? Math.round((1 - price.unitAmount / faceValueCents) * 100)
                 : 0;
               const perCreditCents = price.unitAmount / price.credits;
-              // Estimate videos: a typical 10s video costs 99 credits
-              const estVideos = Math.floor(price.credits / 99);
+              // Estimate clips: a 10s clip costs 660 credits
+              const estClips = Math.floor(price.credits / 660);
 
               return (
                 <Card
@@ -447,7 +454,7 @@ export default function Pricing() {
                       {price.credits.toLocaleString()} credits
                     </CardTitle>
                     <p className="text-sm text-muted-foreground">
-                      ≈ {estVideos} videos · never expires
+                      ≈ {estClips} × 10s clips · never expires
                     </p>
                   </CardHeader>
                   <CardContent className="space-y-4">

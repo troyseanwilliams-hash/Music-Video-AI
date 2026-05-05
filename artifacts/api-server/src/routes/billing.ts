@@ -25,82 +25,163 @@ function parseCredits(meta: Stripe.Metadata | null | undefined): number {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+// Known topup lookup keys in ascending price order.
+// Fetch these directly so we don't depend on Stripe product active-status or metadata.
+const TOPUP_LOOKUP_KEYS = ["topup_1000", "topup_5000", "topup_20000"] as const;
+
+const TOPUP_META: Record<
+  string,
+  { name: string; description: string; popular: boolean }
+> = {
+  topup_1000: {
+    name: "1,000 Credits",
+    description: "1,000 credits · one-time purchase · never expires",
+    popular: false,
+  },
+  topup_5000: {
+    name: "5,000 Credits",
+    description: "5,000 credits · one-time purchase · never expires · save 15%",
+    popular: true,
+  },
+  topup_20000: {
+    name: "20,000 Credits",
+    description:
+      "20,000 credits · one-time purchase · never expires · save 25%",
+    popular: false,
+  },
+};
+
+// ── In-memory cache for billing plans (60 s TTL) ─────────────────────────────
+let plansCache: { data: unknown; expiresAt: number } | null = null;
+const PLANS_CACHE_TTL_MS = 60_000;
+
 router.get("/billing/plans", async (req, res) => {
   try {
-    const stripe = await getUncachableStripeClient();
-    const products = await stripe.products.list({ active: true, limit: 100 });
+    // Return cached data if still fresh
+    if (plansCache && Date.now() < plansCache.expiresAt) {
+      res.json(plansCache.data);
+      return;
+    }
 
-    const subscriptions: Array<{
+    const stripe = await getUncachableStripeClient();
+
+    // Two parallel Stripe calls — one round-trip total:
+    // 1. All active recurring prices (subscriptions) with product expanded
+    // 2. Topup prices by lookup key (bypasses product active-status)
+    const [recurringPrices, topupPrices] = await Promise.all([
+      stripe.prices.list({
+        active: true,
+        limit: 100,
+        type: "recurring",
+        expand: ["data.product"],
+      }),
+      stripe.prices.list({
+        lookup_keys: [...TOPUP_LOOKUP_KEYS],
+        active: true,
+        limit: 20,
+      }),
+    ]);
+
+    type PriceEntry = {
       id: string;
-      name: string;
-      description: string | null;
-      kind: "subscription";
-      popular: boolean;
-      prices: Array<{
+      lookupKey: string | null;
+      nickname: string | null;
+      unitAmount: number;
+      currency: string;
+      credits: number;
+      interval: string | null;
+    };
+
+    // ── Build subscriptions from recurring prices ───────────────────────────
+    const subscriptionMap = new Map<
+      string,
+      {
         id: string;
-        lookupKey: string | null;
-        nickname: string | null;
-        unitAmount: number;
-        currency: string;
-        credits: number;
-        interval: string | null;
-      }>;
-    }> = [];
+        name: string;
+        description: string | null;
+        popular: boolean;
+        prices: PriceEntry[];
+      }
+    >();
+
+    for (const price of recurringPrices.data) {
+      if (price.unit_amount === null) continue;
+      const product =
+        typeof price.product === "string"
+          ? null
+          : (price.product as import("stripe").default.Product);
+      if (!product || product.active === false) continue;
+
+      const priceEntry: PriceEntry = {
+        id: price.id,
+        lookupKey: price.lookup_key ?? null,
+        nickname: price.nickname ?? null,
+        unitAmount: price.unit_amount,
+        currency: price.currency,
+        credits: parseCredits(price.metadata),
+        interval: price.recurring?.interval ?? null,
+      };
+
+      if (!subscriptionMap.has(product.id)) {
+        subscriptionMap.set(product.id, {
+          id: product.id,
+          name: product.name,
+          description: product.description ?? null,
+          popular: product.metadata?.["popular"] === "true",
+          prices: [],
+        });
+      }
+      subscriptionMap.get(product.id)!.prices.push(priceEntry);
+    }
+
+    // Sort each product's prices: monthly first, then yearly
+    for (const sub of subscriptionMap.values()) {
+      sub.prices.sort((a, b) => {
+        const order = { month: 0, year: 1 };
+        return (
+          (order[a.interval as keyof typeof order] ?? 99) -
+          (order[b.interval as keyof typeof order] ?? 99)
+        );
+      });
+    }
+
+    const subscriptions = [...subscriptionMap.values()].map((s) => ({
+      ...s,
+      kind: "subscription" as const,
+    }));
+
+    // ── Build topups from lookup-key prices ──────────────────────────────────
     const topups: Array<{
       id: string;
       name: string;
       description: string | null;
       kind: "topup";
       popular: boolean;
-      prices: Array<{
-        id: string;
-        lookupKey: string | null;
-        nickname: string | null;
-        unitAmount: number;
-        currency: string;
-        credits: number;
-        interval: string | null;
-      }>;
+      prices: PriceEntry[];
     }> = [];
 
-    for (const product of products.data) {
-      const kind =
-        product.metadata?.["kind"] === "topup" ? "topup" : "subscription";
-      const popular = product.metadata?.["popular"] === "true";
-
-      const prices = await stripe.prices.list({
-        product: product.id,
-        active: true,
-        limit: 20,
+    for (const price of topupPrices.data) {
+      if (!price.lookup_key || price.unit_amount === null) continue;
+      const meta = TOPUP_META[price.lookup_key];
+      if (!meta) continue;
+      topups.push({
+        id: price.id,
+        name: meta.name,
+        description: meta.description,
+        popular: meta.popular,
+        kind: "topup",
+        prices: [
+          {
+            id: price.id,
+            lookupKey: price.lookup_key,
+            nickname: price.nickname ?? null,
+            unitAmount: price.unit_amount,
+            currency: price.currency,
+            credits: parseCredits(price.metadata),
+            interval: null,
+          },
+        ],
       });
-
-      const mappedPrices = prices.data
-        .filter((p) => p.unit_amount !== null)
-        .map((p) => ({
-          id: p.id,
-          lookupKey: p.lookup_key ?? null,
-          nickname: p.nickname ?? null,
-          unitAmount: p.unit_amount ?? 0,
-          currency: p.currency,
-          credits: parseCredits(p.metadata),
-          interval: p.recurring?.interval ?? null,
-        }));
-
-      if (mappedPrices.length === 0) continue;
-
-      const entry = {
-        id: product.id,
-        name: product.name,
-        description: product.description ?? null,
-        popular,
-        prices: mappedPrices,
-      };
-
-      if (kind === "topup") {
-        topups.push({ ...entry, kind: "topup" });
-      } else {
-        subscriptions.push({ ...entry, kind: "subscription" });
-      }
     }
 
     const tierOrder = ["starter", "pro", "studio"];
@@ -114,7 +195,9 @@ router.get("/billing/plans", async (req, res) => {
         (a.prices[0]?.unitAmount ?? 0) - (b.prices[0]?.unitAmount ?? 0),
     );
 
-    res.json({ subscriptions, topups });
+    const responseData = { subscriptions, topups };
+    plansCache = { data: responseData, expiresAt: Date.now() + PLANS_CACHE_TTL_MS };
+    res.json(responseData);
   } catch (err) {
     req.log.error({ err }, "Failed to list billing plans");
     res.status(500).json({ error: "Failed to load plans" });
