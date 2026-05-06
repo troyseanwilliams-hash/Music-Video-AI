@@ -200,10 +200,9 @@ export default function Pricing() {
           Choose your plan
         </h1>
         <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-          Credits are consumed per video generated. A 5-second clip costs{" "}
-          <strong className="text-foreground">330 credits</strong>, a
-          10-second clip costs{" "}
-          <strong className="text-foreground">660 credits</strong>. Plan
+          Credits are consumed per video generated. Both 5-second and
+          10-second clips cost{" "}
+          <strong className="text-foreground">330 credits</strong>. Plan
           credits reset each cycle — top-up credits never expire.
         </p>
         {isAuthenticated && subscription && (
@@ -324,8 +323,7 @@ export default function Pricing() {
                       {price.credits.toLocaleString()} credits per{" "}
                       {price.interval === "year" ? "year" : "month"}{" "}
                       <span className="text-muted-foreground">
-                        (~{Math.floor(price.credits / 330)} × 5s clips or{" "}
-                        {Math.floor(price.credits / 660)} × 10s clips)
+                        (~{Math.floor(price.credits / 330)} × clips)
                       </span>
                     </span>
                   </li>
@@ -394,8 +392,7 @@ export default function Pricing() {
                 ? Math.round((1 - price.unitAmount / faceValueCents) * 100)
                 : 0;
               const perCreditCents = price.unitAmount / price.credits;
-              // Estimate clips: a 10s clip costs 660 credits
-              const estClips = Math.floor(price.credits / 660);
+              const estClips = Math.floor(price.credits / 330);
 
               return (
                 <Card
