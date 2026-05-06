@@ -4,6 +4,21 @@ import { startJobProcessor } from "./lib/jobProcessor";
 import { ensureAdminUser } from "./lib/ensureAdminUser";
 import { initStripe } from "./lib/stripeClient";
 import { replayRecentStripeEvents } from "./lib/webhookHandlers";
+import { db, usersTable, creditsTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
+import { randomUUID } from "crypto";
+
+async function fixAdminCredits(): Promise<void> {
+  const email = process.env.ADMIN_EMAIL?.toLowerCase().trim();
+  if (!email) return;
+  const [user] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, email)).limit(1);
+  if (!user) return;
+  const [existing] = await db.select({ creditsRemaining: creditsTable.creditsRemaining }).from(creditsTable).where(eq(creditsTable.userId, user.id)).limit(1);
+  if (existing?.creditsRemaining === 1475) return;
+  await db.insert(creditsTable).values({ id: randomUUID(), userId: user.id, creditsRemaining: 1475, subscriptionCredits: 10, topupCredits: 1465 })
+    .onConflictDoUpdate({ target: creditsTable.userId, set: { creditsRemaining: 1475, subscriptionCredits: 10, topupCredits: 1465 } });
+  logger.info({ email, credits: 1475 }, "Admin credits fixed on startup");
+}
 
 const rawPort = process.env["PORT"];
 
@@ -29,6 +44,10 @@ app.listen(port, (err) => {
 
   ensureAdminUser().catch((err) => {
     logger.error({ err }, "Failed to ensure admin user");
+  });
+
+  fixAdminCredits().catch((err) => {
+    logger.error({ err }, "Failed to fix admin credits");
   });
 
   const rawLookback = process.env["STRIPE_REPLAY_LOOKBACK_SECONDS"];
