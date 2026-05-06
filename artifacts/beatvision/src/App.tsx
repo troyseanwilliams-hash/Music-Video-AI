@@ -13,6 +13,7 @@ import Dashboard from "@/pages/dashboard";
 import Gallery from "@/pages/gallery";
 import JobStatus from "@/pages/job-status";
 import Pricing from "@/pages/pricing";
+import Admin from "@/pages/admin";
 
 const queryClient = new QueryClient();
 
@@ -30,6 +31,7 @@ function Router() {
           <Route path="/gallery" component={Gallery} />
           <Route path="/jobs/:id" component={JobStatus} />
           <Route path="/pricing" component={Pricing} />
+          <Route path="/admin" component={Admin} />
           <Route component={NotFound} />
         </Switch>
       </main>

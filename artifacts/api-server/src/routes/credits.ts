@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { creditsTable, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, ilike, or, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 function isAdmin(email: string | null | undefined): boolean {
@@ -44,6 +44,62 @@ router.get("/credits", async (req, res) => {
     creditsUsed: credits[0].creditsUsed,
     totalGenerations: credits[0].totalGenerations,
   });
+});
+
+router.get("/admin/users", async (req, res) => {
+  if (!req.isAuthenticated() || !isAdmin(req.user.email)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const { search } = req.query as { search?: string };
+
+  const allUsers = await db
+    .select({
+      id: usersTable.id,
+      email: usersTable.email,
+      firstName: usersTable.firstName,
+      lastName: usersTable.lastName,
+      subscriptionStatus: usersTable.subscriptionStatus,
+      createdAt: usersTable.createdAt,
+    })
+    .from(usersTable)
+    .where(
+      search
+        ? or(
+            ilike(usersTable.email, `%${search}%`),
+            ilike(usersTable.firstName, `%${search}%`),
+            ilike(usersTable.lastName, `%${search}%`),
+          )
+        : undefined,
+    )
+    .orderBy(desc(usersTable.createdAt))
+    .limit(200);
+
+  const userIds = allUsers.map((u) => u.id);
+  const creditRows =
+    userIds.length > 0
+      ? await db
+          .select()
+          .from(creditsTable)
+          .where(or(...userIds.map((id) => eq(creditsTable.userId, id))))
+      : [];
+
+  const creditMap = new Map(creditRows.map((c) => [c.userId, c]));
+
+  const users = allUsers.map((u) => {
+    const c = creditMap.get(u.id);
+    return {
+      ...u,
+      creditsRemaining: c?.creditsRemaining ?? 0,
+      subscriptionCredits: c?.subscriptionCredits ?? 0,
+      topupCredits: c?.topupCredits ?? 0,
+      creditsUsed: c?.creditsUsed ?? 0,
+      totalGenerations: c?.totalGenerations ?? 0,
+    };
+  });
+
+  res.json({ users });
 });
 
 router.post("/admin/credits/set", async (req, res) => {

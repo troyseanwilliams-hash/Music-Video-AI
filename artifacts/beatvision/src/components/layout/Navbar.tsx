@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { useGetDashboardStats } from "@workspace/api-client-react";
-import { Video, LayoutDashboard, Wand2, LogOut, Loader2 } from "lucide-react";
+import { Video, LayoutDashboard, Wand2, LogOut, Loader2, ShieldCheck } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -120,6 +120,17 @@ export function Navbar() {
                     <span>Dashboard</span>
                   </Link>
                 </DropdownMenuItem>
+                {user.isAdmin && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link href="/admin" className="cursor-pointer flex items-center">
+                        <ShieldCheck className="mr-2 h-4 w-4 text-primary" />
+                        <span>Admin</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  </>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => logout()} className="text-destructive focus:text-destructive cursor-pointer">
                   <LogOut className="mr-2 h-4 w-4" />
