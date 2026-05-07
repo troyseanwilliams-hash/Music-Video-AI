@@ -165,7 +165,7 @@ router.post("/jobs", async (req, res) => {
     .returning();
 
   req.log.info(
-    { userId: req.user.id, requestedDuration, creditCost, creditsRemaining: userCredits.creditsRemaining },
+    { userId: req.user.id, requestedDuration, creditCost, isAdmin },
     "Job queued — credits will be deducted on success",
   );
 
