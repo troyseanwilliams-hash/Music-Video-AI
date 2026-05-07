@@ -70,12 +70,12 @@ const STATIC_PLANS = {
     {
       id: "pro",
       name: "Pro",
-      description: "1650 credits per month — for serious creators",
+      description: "2,500 credits per month — for serious creators",
       kind: "subscription" as const,
       popular: true,
       prices: [
-        { id: "pro_monthly", lookupKey: "pro_monthly", nickname: "Pro Monthly", unitAmount: 2900, currency: "usd", credits: 1650, interval: "month" },
-        { id: "pro_yearly", lookupKey: "pro_yearly", nickname: "Pro Yearly", unitAmount: 29000, currency: "usd", credits: 19800, interval: "year" },
+        { id: "pro_monthly", lookupKey: "pro_monthly", nickname: "Pro Monthly", unitAmount: 4500, currency: "usd", credits: 2500, interval: "month" },
+        { id: "pro_yearly", lookupKey: "pro_yearly", nickname: "Pro Yearly", unitAmount: 45000, currency: "usd", credits: 30000, interval: "year" },
       ],
     },
     {

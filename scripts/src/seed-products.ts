@@ -61,23 +61,23 @@ const PRODUCTS: ProductSpec[] = [
   },
   {
     name: "Pro",
-    description: "1650 credits per month — for serious creators",
+    description: "2,500 credits per month — for serious creators",
     metadata: { tier: "pro", kind: "subscription", popular: "true" },
     prices: [
       {
         nickname: "Pro Monthly",
-        unitAmount: 2900,
+        unitAmount: 4500,
         currency: "usd",
         recurring: { interval: "month" },
-        credits: 1650,
+        credits: 2500,
         lookupKey: "pro_monthly",
       },
       {
         nickname: "Pro Yearly",
-        unitAmount: 29000,
+        unitAmount: 45000,
         currency: "usd",
         recurring: { interval: "year" },
-        credits: 19800,
+        credits: 30000,
         lookupKey: "pro_yearly",
       },
     ],
@@ -222,12 +222,23 @@ async function findOrCreatePrice(
 
   if (existingByLookup.data.length > 0) {
     const price = existingByLookup.data[0]!;
-    await stripe.prices.update(price.id, {
-      nickname: spec.nickname,
-      metadata: { credits: String(spec.credits) },
-    });
-    console.log(`✓ Price exists: ${spec.lookupKey} (${price.id})`);
-    return price;
+
+    // Stripe prices are immutable — if amount or credits changed, archive and recreate.
+    const creditsMatch = price.metadata?.credits === String(spec.credits);
+    const amountMatch = price.unit_amount === spec.unitAmount;
+
+    if (amountMatch && creditsMatch) {
+      await stripe.prices.update(price.id, { nickname: spec.nickname });
+      console.log(`✓ Price exists: ${spec.lookupKey} (${price.id})`);
+      return price;
+    }
+
+    // Archive old price and create a new one, transferring the lookup key.
+    console.log(
+      `~ Price changed (${spec.lookupKey}): $${(price.unit_amount ?? 0) / 100} → $${spec.unitAmount / 100}, ` +
+      `credits ${price.metadata?.credits ?? "?"} → ${spec.credits}. Archiving old price…`,
+    );
+    await stripe.prices.update(price.id, { active: false });
   }
 
   const params: Stripe.PriceCreateParams = {
@@ -236,6 +247,7 @@ async function findOrCreatePrice(
     currency: spec.currency,
     nickname: spec.nickname,
     lookup_key: spec.lookupKey,
+    transfer_lookup_key: true,
     metadata: { credits: String(spec.credits) },
   };
   if (spec.recurring) {
