@@ -248,7 +248,19 @@ export default function Generate() {
     }
   }, [isAuthLoading, isAuthenticated, setLocation]);
 
-  if (isAuthLoading || !isAuthenticated) return null;
+  if (isAuthLoading) {
+    return (
+      <div className="container mx-auto max-w-4xl px-4 py-10 space-y-6">
+        <div className="h-8 w-48 rounded-lg bg-secondary/50 animate-pulse" />
+        <div className="h-4 w-72 rounded bg-secondary/40 animate-pulse" />
+        <div className="h-48 rounded-2xl bg-secondary/30 animate-pulse mt-6" />
+        <div className="h-32 rounded-2xl bg-secondary/30 animate-pulse" />
+        <div className="h-12 w-40 rounded-xl bg-secondary/40 animate-pulse" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) return null;
 
   const isAdmin = user?.isAdmin ?? false;
   const subStatus = user?.subscriptionStatus ?? "none";
@@ -1026,7 +1038,7 @@ export default function Generate() {
           {(() => {
             const cost = estimateCreditCost(requestedDuration);
             const balance = statsData?.creditsRemaining ?? null;
-            const canAfford = balance === null || balance >= cost;
+            const canAfford = isAdmin || balance === null || balance >= cost;
             return (
               <div className="space-y-2">
                 <Button
@@ -1047,12 +1059,18 @@ export default function Generate() {
                 <div className={`flex items-center justify-center gap-1.5 text-xs ${canAfford ? "text-muted-foreground" : "text-destructive font-medium"}`}>
                   <Coins className="h-3.5 w-3.5" />
                   <span>
-                    Costs <strong>{cost} credits</strong>
-                    {balance !== null && (
-                      <> — you have <strong className={canAfford ? "" : "text-destructive"}>{balance} remaining</strong></>
+                    {isAdmin ? (
+                      <>Unlimited generation — admin account</>
+                    ) : (
+                      <>
+                        Costs <strong>{cost} credits</strong>
+                        {balance !== null && (
+                          <> — you have <strong className={canAfford ? "" : "text-destructive"}>{balance} remaining</strong></>
+                        )}
+                      </>
                     )}
                   </span>
-                  {!canAfford && (
+                  {!canAfford && !isAdmin && (
                     <span className="ml-1">— insufficient balance</span>
                   )}
                 </div>
