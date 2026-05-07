@@ -1,6 +1,6 @@
 import http from "http";
-import { startJobProcessor } from "./lib/jobProcessor";
-import { logger } from "./lib/logger";
+import { startJobProcessor } from "./lib/jobProcessor.js";
+import { logger } from "./lib/logger.js";
 
 const port = Number(process.env.PORT ?? 9000);
 
@@ -17,7 +17,7 @@ const server = http.createServer((req, res) => {
 server.listen(port, () => {
   logger.info({ port }, "Worker health server listening");
 
-  startJobProcessor().catch((err) => {
+  startJobProcessor().catch((err: unknown) => {
     logger.error({ err }, "Job processor failed to start — exiting");
     process.exit(1);
   });

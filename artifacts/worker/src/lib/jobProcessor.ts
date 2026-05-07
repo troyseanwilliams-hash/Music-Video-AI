@@ -7,11 +7,11 @@ import { promisify } from "util";
 import { writeFile, unlink } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
-import { logger } from "./logger";
-import { ObjectStorageService } from "./objectStorage";
-import { analyzeAudioBuffer, type AudioAnalysis, type AudioSection } from "./audioAnalysis";
-import { generateClip, downloadClip, getActiveProvider } from "./videoApis";
-import { stitchVideoClips, extractVideoThumbnail } from "./videoStitcher";
+import { logger } from "./logger.js";
+import { ObjectStorageService } from "./objectStorage.js";
+import { analyzeAudioBuffer, type AudioAnalysis, type AudioSection } from "./audioAnalysis.js";
+import { generateClip, downloadClip, getActiveProvider } from "./videoApis.js";
+import { stitchVideoClips, extractVideoThumbnail } from "./videoStitcher.js";
 
 const execAsync = promisify(exec);
 const MAX_RETRIES = 3;
@@ -112,7 +112,7 @@ async function claimNextJob(): Promise<JobRow | null> {
     RETURNING id
   `);
 
-  const rows = (result as { rows: { id: string }[] }).rows;
+  const rows = (result as unknown as { rows: { id: string }[] }).rows;
   const claimedId = rows[0]?.id;
   if (!claimedId) return null;
 
