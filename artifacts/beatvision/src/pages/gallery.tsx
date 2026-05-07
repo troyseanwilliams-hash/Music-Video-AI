@@ -204,7 +204,7 @@ export default function Gallery() {
                       <AlertDialogFooter>
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
                         <AlertDialogAction
-                          onClick={() => deleteVideo.mutate({ query: { id: video.id } })}
+                          onClick={() => deleteVideo.mutate({ id: video.id })}
                           className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                         >
                           Delete
