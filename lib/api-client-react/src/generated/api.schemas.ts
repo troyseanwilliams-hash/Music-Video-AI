@@ -162,6 +162,8 @@ export const JobRequestedDuration = {
   NUMBER_10: "10",
   NUMBER_30: "30",
   NUMBER_60: "60",
+  NUMBER_90: "90",
+  NUMBER_120: "120",
   full: "full",
 } as const;
 
@@ -247,7 +249,7 @@ export const CreateJobRequestResolution = {
 } as const;
 
 /**
- * Requested output video length. '5'/'8'/'10' = short clip, '30'/'60' = multi-clip stitch, 'full' = full audio length (default)
+ * Requested output video length. '5'/'8'/'10' = short clip, '30'/'60'/'90'/'120' = multi-clip stitch, 'full' = full audio length (default)
  * @nullable
  */
 export type CreateJobRequestRequestedDuration =
@@ -260,6 +262,8 @@ export const CreateJobRequestRequestedDuration = {
   NUMBER_10: "10",
   NUMBER_30: "30",
   NUMBER_60: "60",
+  NUMBER_90: "90",
+  NUMBER_120: "120",
   full: "full",
 } as const;
 
@@ -308,7 +312,7 @@ export interface CreateJobRequest {
    */
   referenceImagePath?: string | null;
   /**
-   * Requested output video length. '5'/'8'/'10' = short clip, '30'/'60' = multi-clip stitch, 'full' = full audio length (default)
+   * Requested output video length. '5'/'8'/'10' = short clip, '30'/'60'/'90'/'120' = multi-clip stitch, 'full' = full audio length (default)
    * @nullable
    */
   requestedDuration?: CreateJobRequestRequestedDuration;

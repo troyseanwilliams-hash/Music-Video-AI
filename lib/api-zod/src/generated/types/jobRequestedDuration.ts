@@ -20,5 +20,7 @@ export const JobRequestedDuration = {
   NUMBER_10: "10",
   NUMBER_30: "30",
   NUMBER_60: "60",
+  NUMBER_90: "90",
+  NUMBER_120: "120",
   full: "full",
 } as const;

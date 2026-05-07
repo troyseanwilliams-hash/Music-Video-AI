@@ -181,18 +181,22 @@ async function createSimulationClip(durationSec: number): Promise<Buffer> {
   }
 }
 
-async function selectSections(sections: AudioSection[]): Promise<AudioSection[]> {
-  if (sections.length <= MAX_CLIPS_PER_JOB) return sections;
+async function selectSections(sections: AudioSection[], maxClips: number): Promise<AudioSection[]> {
+  if (sections.length <= maxClips) return sections;
   const sorted = [...sections].sort((a, b) => b.energy - a.energy);
   const selected = new Set<number>();
   selected.add(sections.indexOf(sorted[0]!));
   selected.add(0);
   selected.add(sections.length - 1);
-  const result = Array.from(selected)
+  // Fill remaining slots with next highest-energy sections
+  for (const s of sorted) {
+    if (selected.size >= maxClips) break;
+    selected.add(sections.indexOf(s));
+  }
+  return Array.from(selected)
     .sort((a, b) => a - b)
     .map((i) => sections[i]!)
-    .slice(0, MAX_CLIPS_PER_JOB);
-  return result;
+    .slice(0, maxClips);
 }
 
 async function loadReferenceImageDataUrl(job: JobRow): Promise<string | null> {
@@ -223,7 +227,7 @@ async function generateClips(
   // Use the same clip plan as the credit formula so the number of Runway calls
   // matches exactly what was charged.
   const { numClips: maxClips } = getClipPlan(requestedDur);
-  const allSections = await selectSections(analysis.sections);
+  const allSections = await selectSections(analysis.sections, maxClips);
   const sections = allSections.slice(0, maxClips);
 
   const clips: { buffer: Buffer; targetDuration: number }[] = [];

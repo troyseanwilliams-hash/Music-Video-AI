@@ -482,23 +482,35 @@ export default function Generate() {
                 <DropdownMenuTrigger asChild>
                   <button className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 px-3 py-1.5 text-sm font-medium transition-colors">
                     <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span>{durationToSeconds(requestedDuration) ?? 10}s</span>
+                    <span>{durationToSeconds(requestedDuration) ?? "full"}s</span>
                     <ChevronDown className="h-3 w-3 text-muted-foreground ml-0.5" />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-36">
+                <DropdownMenuContent align="start" className="w-52">
                   {([
-                    { value: CreateJobRequestRequestedDuration.NUMBER_5, label: "5 seconds" },
-                    { value: CreateJobRequestRequestedDuration.NUMBER_10, label: "10 seconds" },
-                  ] as const).map(({ value, label }) => (
+                    { value: CreateJobRequestRequestedDuration.NUMBER_5, label: "5 seconds", note: null },
+                    { value: CreateJobRequestRequestedDuration.NUMBER_10, label: "10 seconds", note: null },
+                    { value: CreateJobRequestRequestedDuration.NUMBER_30, label: "30 seconds", note: null },
+                    { value: CreateJobRequestRequestedDuration.NUMBER_60, label: "60 seconds", note: null },
+                    { value: CreateJobRequestRequestedDuration.NUMBER_90, label: "90 seconds", note: "~15 min" },
+                    { value: CreateJobRequestRequestedDuration.NUMBER_120, label: "120 seconds", note: "~20 min" },
+                  ] as const).map(({ value, label, note }) => (
                     <DropdownMenuItem
                       key={value}
                       onClick={() => handleDurationChange(value)}
-                      className={requestedDuration === value ? "text-primary font-medium" : ""}
+                      className={`flex items-center justify-between gap-3 ${requestedDuration === value ? "text-primary font-medium" : ""}`}
                     >
-                      {label}
+                      <span>{label}</span>
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        {estimateCreditCost(value)} cr{note ? ` · ${note}` : ""}
+                      </span>
                     </DropdownMenuItem>
                   ))}
+                  <div className="px-2 pt-1 pb-1.5">
+                    <p className="text-[10px] text-muted-foreground/60 leading-tight">
+                      Longer videos use more clips and take more time to generate.
+                    </p>
+                  </div>
                 </DropdownMenuContent>
               </DropdownMenu>
 
@@ -993,7 +1005,7 @@ export default function Generate() {
           {/* ── Settings Summary ── */}
           <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
             <span className="rounded-full border border-border/40 bg-secondary/30 px-2.5 py-1">
-              {aspectRatio} · {resolution} · {requestedDuration}s
+              {aspectRatio} · {resolution} · {durationToSeconds(requestedDuration) ?? "full"}s
             </span>
             {character !== "none" && (
               <span className="rounded-full border border-border/40 bg-secondary/30 px-2.5 py-1">

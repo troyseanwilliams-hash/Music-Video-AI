@@ -253,6 +253,8 @@ export const ListJobsResponse = zod.object({
           zod.literal("10"),
           zod.literal("30"),
           zod.literal("60"),
+          zod.literal("90"),
+          zod.literal("120"),
           zod.literal("full"),
           zod.literal(null),
         ])
@@ -349,12 +351,14 @@ export const CreateJobBody = zod.object({
       zod.literal("10"),
       zod.literal("30"),
       zod.literal("60"),
+      zod.literal("90"),
+      zod.literal("120"),
       zod.literal("full"),
       zod.literal(null),
     ])
     .nullish()
     .describe(
-      "Requested output video length. '5'\/'8'\/'10' = short clip, '30'\/'60' = multi-clip stitch, 'full' = full audio length (default)",
+      "Requested output video length. '5'\/'8'\/'10' = short clip, '30'\/'60'\/'90'\/'120' = multi-clip stitch, 'full' = full audio length (default)",
     ),
   clipStartTime: zod
     .number()
@@ -442,6 +446,8 @@ export const GetJobResponse = zod.object({
       zod.literal("10"),
       zod.literal("30"),
       zod.literal("60"),
+      zod.literal("90"),
+      zod.literal("120"),
       zod.literal("full"),
       zod.literal(null),
     ])
@@ -818,6 +824,8 @@ export const GetDashboardStatsResponse = zod.object({
             zod.literal("10"),
             zod.literal("30"),
             zod.literal("60"),
+            zod.literal("90"),
+            zod.literal("120"),
             zod.literal("full"),
             zod.literal(null),
           ])
