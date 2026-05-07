@@ -38,23 +38,23 @@ const PRODUCTS: ProductSpec[] = [
   // Old: 5s video = 50 credits; New: 5s video = 330 credits (6.6× scale).
   {
     name: "Starter",
-    description: "400 credits per month — best for casual creators",
+    description: "1,000 credits per month — best for casual creators",
     metadata: { tier: "starter", kind: "subscription" },
     prices: [
       {
         nickname: "Starter Monthly",
-        unitAmount: 900,
+        unitAmount: 2000,
         currency: "usd",
         recurring: { interval: "month" },
-        credits: 400,
+        credits: 1000,
         lookupKey: "starter_monthly",
       },
       {
         nickname: "Starter Yearly",
-        unitAmount: 9000,
+        unitAmount: 20000,
         currency: "usd",
         recurring: { interval: "year" },
-        credits: 4800,
+        credits: 12000,
         lookupKey: "starter_yearly",
       },
     ],

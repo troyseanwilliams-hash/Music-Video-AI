@@ -298,14 +298,15 @@ export default function Generate() {
               <span>Priority processing queue</span>
             </div>
           </div>
-          <Button
-            size="lg"
-            className="w-full bg-gradient-electric text-white shadow-glow text-base"
-            onClick={() => alert("Subscription billing coming soon — check back shortly!")}
-          >
-            <Crown className="mr-2 h-5 w-5" />
-            Upgrade to Pro
-          </Button>
+          <Link href="/pricing" className="w-full">
+            <Button
+              size="lg"
+              className="w-full bg-gradient-electric text-white shadow-glow text-base"
+            >
+              <Crown className="mr-2 h-5 w-5" />
+              View Plans
+            </Button>
+          </Link>
           <p className="text-xs text-muted-foreground">
             Contact support if you believe this is an error.
           </p>
@@ -437,15 +438,16 @@ export default function Generate() {
               Free trial — <strong>{trialDaysLeft} day{trialDaysLeft !== 1 ? "s" : ""}</strong> remaining.
             </span>
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            className="border-primary/40 text-primary hover:bg-primary/10 shrink-0"
-            onClick={() => alert("Subscription billing coming soon!")}
-          >
-            <Crown className="mr-1.5 h-3.5 w-3.5" />
-            Upgrade
-          </Button>
+          <Link href="/pricing">
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-primary/40 text-primary hover:bg-primary/10 shrink-0"
+            >
+              <Crown className="mr-1.5 h-3.5 w-3.5" />
+              Upgrade
+            </Button>
+          </Link>
         </div>
       )}
       <motion.div
