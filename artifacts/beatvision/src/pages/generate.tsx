@@ -482,7 +482,7 @@ export default function Generate() {
                 <DropdownMenuTrigger asChild>
                   <button className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 px-3 py-1.5 text-sm font-medium transition-colors">
                     <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span>{durationToSeconds(requestedDuration) ?? "full"}s</span>
+                    <span>{requestedDuration === CreateJobRequestRequestedDuration.full ? "full" : `${durationToSeconds(requestedDuration)}s`}</span>
                     <ChevronDown className="h-3 w-3 text-muted-foreground ml-0.5" />
                   </button>
                 </DropdownMenuTrigger>
@@ -1005,7 +1005,7 @@ export default function Generate() {
           {/* ── Settings Summary ── */}
           <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
             <span className="rounded-full border border-border/40 bg-secondary/30 px-2.5 py-1">
-              {aspectRatio} · {resolution} · {durationToSeconds(requestedDuration) ?? "full"}s
+              {aspectRatio} · {resolution} · {requestedDuration === CreateJobRequestRequestedDuration.full ? "full" : `${durationToSeconds(requestedDuration)}s`}
             </span>
             {character !== "none" && (
               <span className="rounded-full border border-border/40 bg-secondary/30 px-2.5 py-1">

@@ -227,8 +227,13 @@ async function generateClips(
   // Use the same clip plan as the credit formula so the number of Runway calls
   // matches exactly what was charged.
   const { numClips: maxClips } = getClipPlan(requestedDur);
-  const allSections = await selectSections(analysis.sections, maxClips);
-  const sections = allSections.slice(0, maxClips);
+  // selectSections picks the best unique sections; cycle through them to fill
+  // the required clip count (matches worker's buildGenerationPlan approach).
+  const baseSections = await selectSections(analysis.sections, maxClips);
+  const sections: AudioSection[] = [];
+  for (let i = 0; i < maxClips; i++) {
+    sections.push(baseSections[i % baseSections.length]!);
+  }
 
   const clips: { buffer: Buffer; targetDuration: number }[] = [];
   const refImageDataUrl = await loadReferenceImageDataUrl(job);
