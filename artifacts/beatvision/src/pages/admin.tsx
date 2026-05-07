@@ -1,14 +1,20 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Search, ShieldCheck, Coins, Check, X } from "lucide-react";
+import {
+  Loader2, Search, ShieldCheck, Coins, Check, X,
+  MessageSquare, Users, ChevronDown, ChevronUp,
+  CircleDot, Clock, CheckCircle2, XCircle,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
+/* ─── User management types ─── */
 interface AdminUser {
   id: string;
   email: string | null;
@@ -46,10 +52,10 @@ async function setUserCredits(userId: string, amount: number): Promise<void> {
 
 function statusColor(status: string) {
   switch (status) {
-    case "active": return "bg-green-500/15 text-green-600 border-green-500/30";
-    case "trial": return "bg-blue-500/15 text-blue-600 border-blue-500/30";
+    case "active":    return "bg-green-500/15 text-green-600 border-green-500/30";
+    case "trial":     return "bg-blue-500/15 text-blue-600 border-blue-500/30";
     case "cancelled": return "bg-red-500/15 text-red-500 border-red-500/30";
-    default: return "bg-muted text-muted-foreground border-border";
+    default:          return "bg-muted text-muted-foreground border-border";
   }
 }
 
@@ -121,26 +127,200 @@ function CreditCell({ user, onSaved }: { user: AdminUser; onSaved: () => void })
   );
 }
 
+/* ─── Support ticket types ─── */
+type TicketStatus = "open" | "in_progress" | "resolved" | "closed";
+type TicketCategory = "billing" | "technical" | "content" | "other";
+
+interface AdminTicket {
+  id: string;
+  userId: string;
+  subject: string;
+  message: string;
+  category: TicketCategory;
+  status: TicketStatus;
+  jobId: string | null;
+  adminNotes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  userEmail: string | null;
+  userFirstName: string | null;
+  userLastName: string | null;
+}
+
+function ticketStatusConfig(status: TicketStatus) {
+  switch (status) {
+    case "open":        return { label: "Open",        icon: CircleDot,    cls: "bg-blue-500/15 text-blue-400 border-blue-500/30" };
+    case "in_progress": return { label: "In Progress", icon: Clock,        cls: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30" };
+    case "resolved":    return { label: "Resolved",    icon: CheckCircle2, cls: "bg-green-500/15 text-green-400 border-green-500/30" };
+    case "closed":      return { label: "Closed",      icon: XCircle,      cls: "bg-muted text-muted-foreground border-border" };
+  }
+}
+
+const TICKET_STATUSES: TicketStatus[] = ["open", "in_progress", "resolved", "closed"];
+
+function TicketRow({ ticket, onUpdate }: { ticket: AdminTicket; onUpdate: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const [notes, setNotes] = useState(ticket.adminNotes ?? "");
+  const [status, setStatus] = useState<TicketStatus>(ticket.status);
+  const { toast } = useToast();
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/admin/support/${ticket.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ status, adminNotes: notes }),
+      });
+      if (!res.ok) throw new Error("Failed to update");
+    },
+    onSuccess: () => {
+      toast({ title: "Ticket updated" });
+      onUpdate();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const { label, icon: Icon, cls } = ticketStatusConfig(ticket.status);
+  const userName = [ticket.userFirstName, ticket.userLastName].filter(Boolean).join(" ") || ticket.userEmail || "Unknown";
+
+  return (
+    <div className="border border-border/50 rounded-xl overflow-hidden">
+      <button
+        className="w-full flex items-start gap-3 p-4 text-left hover:bg-muted/10 transition-colors"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <span className="font-medium text-sm truncate max-w-xs">{ticket.subject}</span>
+            <Badge variant="outline" className={`text-xs shrink-0 ${cls}`}>
+              <Icon className="h-3 w-3 mr-1" />
+              {label}
+            </Badge>
+            <span className="text-xs text-muted-foreground capitalize">{ticket.category}</span>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+            <span>{userName}</span>
+            <span>·</span>
+            <span>{new Date(ticket.createdAt).toLocaleString()}</span>
+            {ticket.jobId && (
+              <>
+                <span>·</span>
+                <Link href={`/jobs/${ticket.jobId}`} className="text-primary hover:underline font-mono" onClick={(e) => e.stopPropagation()}>
+                  job
+                </Link>
+              </>
+            )}
+          </div>
+        </div>
+        <div className="shrink-0 text-muted-foreground mt-0.5">
+          {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="px-4 pb-4 space-y-4 border-t border-border/40 pt-3">
+          <div>
+            <p className="text-xs font-medium text-muted-foreground mb-1">User message</p>
+            <p className="text-sm whitespace-pre-wrap bg-muted/20 rounded-lg p-3">{ticket.message}</p>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Status</label>
+              <div className="flex flex-wrap gap-1.5">
+                {TICKET_STATUSES.map((s) => {
+                  const cfg = ticketStatusConfig(s);
+                  return (
+                    <button
+                      key={s}
+                      onClick={() => setStatus(s)}
+                      className={`px-2.5 py-1 rounded-lg text-xs border transition-colors ${
+                        status === s ? cfg.cls : "bg-card border-border text-muted-foreground hover:border-border"
+                      }`}
+                    >
+                      {cfg.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="text-xs text-muted-foreground space-y-1">
+              <p><span className="font-medium">From:</span> {ticket.userEmail}</p>
+              <p><span className="font-medium">User ID:</span> <span className="font-mono">{ticket.userId.slice(0, 16)}…</span></p>
+              {ticket.jobId && <p><span className="font-medium">Job ID:</span> <span className="font-mono">{ticket.jobId.slice(0, 16)}…</span></p>}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+              Response / Admin notes <span className="font-normal">(visible to user)</span>
+            </label>
+            <Textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Type a response or internal note…"
+              rows={3}
+              className="resize-none text-sm"
+              maxLength={2000}
+            />
+          </div>
+
+          <Button
+            size="sm"
+            className="bg-gradient-electric text-white"
+            disabled={mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
+            {mutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Check className="h-3.5 w-3.5 mr-1.5" />}
+            Save changes
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Main admin page ─── */
+type Tab = "users" | "support";
+
 export default function AdminPage() {
   const [, setLocation] = useLocation();
   const { user, isLoading: isAuthLoading } = useAuth();
+  const [tab, setTab] = useState<Tab>("users");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [ticketSearch, setTicketSearch] = useState("");
+  const [ticketStatus, setTicketStatus] = useState("open");
   const queryClient = useQueryClient();
 
   const isAdmin = user?.isAdmin ?? false;
 
-  const { data: users, isLoading, error, refetch } = useQuery({
+  const { data: users, isLoading: usersLoading, error: usersError, refetch: refetchUsers } = useQuery({
     queryKey: ["admin", "users", debouncedSearch],
     queryFn: () => fetchAdminUsers(debouncedSearch),
-    enabled: isAdmin,
+    enabled: isAdmin && tab === "users",
+    staleTime: 30_000,
+  });
+
+  const { data: ticketsData, isLoading: ticketsLoading, refetch: refetchTickets } = useQuery<{ tickets: AdminTicket[] }>({
+    queryKey: ["admin", "support", ticketStatus, ticketSearch],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (ticketSearch) params.set("search", ticketSearch);
+      if (ticketStatus && ticketStatus !== "all") params.set("status", ticketStatus);
+      const res = await fetch(`/api/admin/support?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    enabled: isAdmin && tab === "support",
     staleTime: 30_000,
   });
 
   useEffect(() => {
-    if (!isAuthLoading && !isAdmin) {
-      setLocation("/");
-    }
+    if (!isAuthLoading && !isAdmin) setLocation("/");
   }, [isAuthLoading, isAdmin, setLocation]);
 
   if (isAuthLoading || (!isAdmin && !isAuthLoading)) {
@@ -159,6 +339,8 @@ export default function AdminPage() {
     }, 350);
   }
 
+  const openCount = ticketsData?.tickets.filter((t) => t.status === "open").length ?? 0;
+
   return (
     <div className="container mx-auto px-4 py-12 max-w-6xl">
       <div className="flex items-center gap-3 mb-8">
@@ -167,92 +349,176 @@ export default function AdminPage() {
         </div>
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Admin</h1>
-          <p className="text-sm text-muted-foreground">Manage user accounts and credits</p>
+          <p className="text-sm text-muted-foreground">Manage users, credits, and support tickets</p>
         </div>
       </div>
 
-      <Card className="bg-card/50 border-card-border">
-        <CardHeader className="pb-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <CardTitle className="text-lg">Users</CardTitle>
-              <CardDescription>
-                {users ? `${users.length} user${users.length !== 1 ? "s" : ""}${debouncedSearch ? " matching" : ""}` : "Loading…"}
-              </CardDescription>
+      {/* Tab bar */}
+      <div className="flex gap-1 mb-6 border-b border-border/50">
+        <button
+          onClick={() => setTab("users")}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            tab === "users"
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Users className="h-4 w-4" />
+          Users
+        </button>
+        <button
+          onClick={() => setTab("support")}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            tab === "support"
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <MessageSquare className="h-4 w-4" />
+          Support
+          {openCount > 0 && (
+            <span className="ml-1 px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground text-xs font-mono leading-none">
+              {openCount}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* ── Users tab ── */}
+      {tab === "users" && (
+        <Card className="bg-card/50 border-card-border">
+          <CardHeader className="pb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <CardTitle className="text-lg">Users</CardTitle>
+                <CardDescription>
+                  {users ? `${users.length} user${users.length !== 1 ? "s" : ""}${debouncedSearch ? " matching" : ""}` : "Loading…"}
+                </CardDescription>
+              </div>
+              <div className="relative w-full sm:w-72">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                <Input
+                  className="pl-9"
+                  placeholder="Search by email or name…"
+                  value={search}
+                  onChange={handleSearchChange}
+                />
+              </div>
             </div>
-            <div className="relative w-full sm:w-72">
+          </CardHeader>
+          <CardContent className="p-0">
+            {usersLoading ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : usersError ? (
+              <div className="py-12 text-center text-sm text-destructive">
+                Failed to load users.{" "}
+                <button onClick={() => refetchUsers()} className="underline">Retry</button>
+              </div>
+            ) : !users || users.length === 0 ? (
+              <div className="py-12 text-center text-sm text-muted-foreground">
+                {debouncedSearch ? "No users match your search." : "No users found."}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border/50 bg-muted/20">
+                      <th className="px-4 py-3 text-left font-medium text-muted-foreground">User</th>
+                      <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden md:table-cell">Status</th>
+                      <th className="px-4 py-3 text-left font-medium text-muted-foreground">Credits</th>
+                      <th className="px-4 py-3 text-right font-medium text-muted-foreground hidden lg:table-cell">Generations</th>
+                      <th className="px-4 py-3 text-right font-medium text-muted-foreground hidden lg:table-cell">Joined</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/30">
+                    {users.map((u) => (
+                      <tr key={u.id} className="hover:bg-muted/10 transition-colors">
+                        <td className="px-4 py-3">
+                          <div className="font-medium truncate max-w-[200px]">
+                            {u.firstName || u.lastName
+                              ? [u.firstName, u.lastName].filter(Boolean).join(" ")
+                              : <span className="text-muted-foreground italic">No name</span>}
+                          </div>
+                          <div className="text-xs text-muted-foreground truncate max-w-[200px]">{u.email}</div>
+                        </td>
+                        <td className="px-4 py-3 hidden md:table-cell">
+                          <Badge variant="outline" className={`capitalize text-xs ${statusColor(u.subscriptionStatus)}`}>
+                            {u.subscriptionStatus}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3">
+                          <CreditCell
+                            user={u}
+                            onSaved={() => queryClient.invalidateQueries({ queryKey: ["admin", "users"] })}
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-right text-muted-foreground hidden lg:table-cell">
+                          {u.totalGenerations}
+                        </td>
+                        <td className="px-4 py-3 text-right text-muted-foreground hidden lg:table-cell">
+                          {new Date(u.createdAt).toLocaleDateString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Support tab ── */}
+      {tab === "support" && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+            <div className="flex flex-wrap gap-1.5">
+              {["all", "open", "in_progress", "resolved", "closed"].map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setTicketStatus(s)}
+                  className={`px-3 py-1.5 rounded-lg text-xs border transition-colors capitalize ${
+                    ticketStatus === s
+                      ? "bg-primary/15 border-primary/40 text-primary font-medium"
+                      : "bg-card border-border text-muted-foreground hover:border-primary/30"
+                  }`}
+                >
+                  {s === "in_progress" ? "In Progress" : s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
+                </button>
+              ))}
+            </div>
+            <div className="relative w-full sm:w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
               <Input
-                className="pl-9"
-                placeholder="Search by email or name…"
-                value={search}
-                onChange={handleSearchChange}
+                className="pl-9 h-9 text-sm"
+                placeholder="Search tickets…"
+                value={ticketSearch}
+                onChange={(e) => setTicketSearch(e.target.value)}
               />
             </div>
           </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          {isLoading ? (
+
+          {ticketsLoading ? (
             <div className="flex items-center justify-center py-16">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : error ? (
-            <div className="py-12 text-center text-sm text-destructive">
-              Failed to load users.{" "}
-              <button onClick={() => refetch()} className="underline">Retry</button>
-            </div>
-          ) : !users || users.length === 0 ? (
-            <div className="py-12 text-center text-sm text-muted-foreground">
-              {debouncedSearch ? "No users match your search." : "No users found."}
+          ) : !ticketsData?.tickets.length ? (
+            <div className="text-center py-20 border border-dashed border-border rounded-2xl bg-card/30">
+              <MessageSquare className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-20" />
+              <p className="text-muted-foreground text-sm">No tickets found.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border/50 bg-muted/20">
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">User</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden md:table-cell">Status</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Credits</th>
-                    <th className="px-4 py-3 text-right font-medium text-muted-foreground hidden lg:table-cell">Generations</th>
-                    <th className="px-4 py-3 text-right font-medium text-muted-foreground hidden lg:table-cell">Joined</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/30">
-                  {users.map((u) => (
-                    <tr key={u.id} className="hover:bg-muted/10 transition-colors">
-                      <td className="px-4 py-3">
-                        <div className="font-medium truncate max-w-[200px]">
-                          {u.firstName || u.lastName
-                            ? [u.firstName, u.lastName].filter(Boolean).join(" ")
-                            : <span className="text-muted-foreground italic">No name</span>}
-                        </div>
-                        <div className="text-xs text-muted-foreground truncate max-w-[200px]">{u.email}</div>
-                      </td>
-                      <td className="px-4 py-3 hidden md:table-cell">
-                        <Badge variant="outline" className={`capitalize text-xs ${statusColor(u.subscriptionStatus)}`}>
-                          {u.subscriptionStatus}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3">
-                        <CreditCell
-                          user={u}
-                          onSaved={() => queryClient.invalidateQueries({ queryKey: ["admin", "users"] })}
-                        />
-                      </td>
-                      <td className="px-4 py-3 text-right text-muted-foreground hidden lg:table-cell">
-                        {u.totalGenerations}
-                      </td>
-                      <td className="px-4 py-3 text-right text-muted-foreground hidden lg:table-cell">
-                        {new Date(u.createdAt).toLocaleDateString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">{ticketsData.tickets.length} ticket{ticketsData.tickets.length !== 1 ? "s" : ""}</p>
+              {ticketsData.tickets.map((t) => (
+                <TicketRow key={t.id} ticket={t} onUpdate={() => refetchTickets()} />
+              ))}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      )}
     </div>
   );
 }

@@ -125,6 +125,42 @@ export const insertCreditSchema = createInsertSchema(creditsTable);
 export type InsertCredit = z.infer<typeof insertCreditSchema>;
 export type Credit = typeof creditsTable.$inferSelect;
 
+export const ticketCategoryEnum = pgEnum("ticket_category", [
+  "billing",
+  "technical",
+  "content",
+  "other",
+]);
+
+export const ticketStatusEnum = pgEnum("ticket_status", [
+  "open",
+  "in_progress",
+  "resolved",
+  "closed",
+]);
+
+export const supportTicketsTable = pgTable("support_tickets", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => usersTable.id, { onDelete: "cascade" }),
+  subject: text("subject").notNull(),
+  message: text("message").notNull(),
+  category: ticketCategoryEnum("category").notNull().default("other"),
+  status: ticketStatusEnum("status").notNull().default("open"),
+  jobId: text("job_id"),
+  adminNotes: text("admin_notes"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
+
+export type SupportTicket = typeof supportTicketsTable.$inferSelect;
+
 export const creditGrantSourceEnum = pgEnum("credit_grant_source", [
   "subscription",
   "topup",

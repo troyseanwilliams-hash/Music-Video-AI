@@ -12,6 +12,9 @@ export function Footer() {
           <Link href="/dmca" className="hover:text-foreground transition-colors">
             DMCA / Copyright
           </Link>
+          <Link href="/support" className="hover:text-foreground transition-colors">
+            Support
+          </Link>
           <a href="mailto:legal@aibeatsync.com" className="hover:text-foreground transition-colors">
             Contact
           </a>

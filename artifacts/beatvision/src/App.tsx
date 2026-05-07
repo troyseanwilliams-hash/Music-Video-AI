@@ -17,6 +17,7 @@ import Pricing from "@/pages/pricing";
 import Admin from "@/pages/admin";
 import Terms from "@/pages/terms";
 import Dmca from "@/pages/dmca";
+import Support from "@/pages/support";
 
 const queryClient = new QueryClient();
 
@@ -37,6 +38,7 @@ function Router() {
           <Route path="/admin" component={Admin} />
           <Route path="/terms" component={Terms} />
           <Route path="/dmca" component={Dmca} />
+          <Route path="/support" component={Support} />
           <Route component={NotFound} />
         </Switch>
       </main>

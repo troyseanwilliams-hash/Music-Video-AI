@@ -8,6 +8,7 @@ import creditsRouter from "./credits";
 import dashboardRouter from "./dashboard";
 import billingRouter from "./billing";
 import sunoRouter from "./suno";
+import supportRouter from "./support";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use(creditsRouter);
 router.use(dashboardRouter);
 router.use(billingRouter);
 router.use(sunoRouter);
+router.use(supportRouter);
 
 export default router;
