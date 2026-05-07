@@ -59,12 +59,12 @@ const STATIC_PLANS = {
     {
       id: "starter",
       name: "Starter",
-      description: "400 credits per month — best for casual creators",
+      description: "1,000 credits per month — best for casual creators",
       kind: "subscription" as const,
       popular: false,
       prices: [
-        { id: "starter_monthly", lookupKey: "starter_monthly", nickname: "Starter Monthly", unitAmount: 900, currency: "usd", credits: 400, interval: "month" },
-        { id: "starter_yearly", lookupKey: "starter_yearly", nickname: "Starter Yearly", unitAmount: 9000, currency: "usd", credits: 4800, interval: "year" },
+        { id: "starter_monthly", lookupKey: "starter_monthly", nickname: "Starter Monthly", unitAmount: 2000, currency: "usd", credits: 1000, interval: "month" },
+        { id: "starter_yearly", lookupKey: "starter_yearly", nickname: "Starter Yearly", unitAmount: 20000, currency: "usd", credits: 12000, interval: "year" },
       ],
     },
     {
