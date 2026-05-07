@@ -17,7 +17,6 @@ import { stitchVideoClips, extractVideoThumbnail } from "./videoStitcher";
 const execAsync = promisify(exec);
 const MAX_RETRIES = 3;
 const POLL_INTERVAL_MS = 5000;
-const MAX_CLIPS_PER_JOB = 3;
 
 const storageService = new ObjectStorageService();
 type JobRow = typeof jobsTable.$inferSelect;

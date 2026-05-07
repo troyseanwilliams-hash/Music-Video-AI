@@ -16,7 +16,11 @@ import { stitchVideoClips, extractVideoThumbnail } from "./videoStitcher";
 const execAsync = promisify(exec);
 const MAX_RETRIES = 3;
 const POLL_INTERVAL_MS = 5000;
-const MAX_CLIPS_PER_JOB = 3;
+// For "full" mode only: cap at 3 clips to keep costs predictable.
+// Numeric durations (5/10/30/60/90/120s) derive their clip count dynamically
+// via Math.ceil(durSec / clipDurationSec) and cycle sections as needed —
+// so 90s → 9 clips and 120s → 12 clips work correctly without this cap.
+const FULL_MODE_MAX_CLIPS = 3;
 
 async function extractAudioClip(
   audio: { buffer: Buffer; ext: string },
@@ -55,7 +59,7 @@ function buildGenerationPlan(
   const dur = requestedDuration ?? "full";
 
   if (dur === "full") {
-    const selected = sections.length <= MAX_CLIPS_PER_JOB
+    const selected = sections.length <= FULL_MODE_MAX_CLIPS
       ? sections
       : (() => {
           const sorted = [...sections].sort((a, b) => b.energy - a.energy);
@@ -63,7 +67,7 @@ function buildGenerationPlan(
           picked.add(sections.indexOf(sorted[0]!));
           picked.add(0);
           picked.add(sections.length - 1);
-          return Array.from(picked).sort((a, b) => a - b).map((i) => sections[i]!).slice(0, MAX_CLIPS_PER_JOB);
+          return Array.from(picked).sort((a, b) => a - b).map((i) => sections[i]!).slice(0, FULL_MODE_MAX_CLIPS);
         })();
     return { sections: selected, clipDurationSec: 10, targetOutputDuration: audioDurationSec };
   }
