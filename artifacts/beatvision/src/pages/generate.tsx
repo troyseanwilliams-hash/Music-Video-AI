@@ -90,8 +90,8 @@ function daysUntil(dateStr: string | null): number {
 
 // Mirrors server-side calculateCreditCost — must stay in sync with creditCost.ts
 const MAX_CLIPS_PER_JOB = 3;
-const RUNWAY_TOKENS_PER_5S = 330;
-const RUNWAY_TOKENS_PER_10S = 660;
+const RUNWAY_TOKENS_PER_5S = 165;
+const RUNWAY_TOKENS_PER_10S = 330;
 const RUNWAY_USD_PER_TOKEN = 0.01;
 const MARKUP = 2;
 const USD_PER_CREDIT = 0.02;
@@ -149,6 +149,7 @@ export default function Generate() {
   const [clipStartTime, setClipStartTime] = useState(0);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [errorDialog, setErrorDialog] = useState<ErrorDialogState>({ open: false, title: "", message: "" });
+  const [copyrightAcknowledged, setCopyrightAcknowledged] = useState(false);
 
   // Reference image
   const refImageInputRef = useRef<HTMLInputElement>(null);
@@ -1036,6 +1037,23 @@ export default function Generate() {
             )}
           </div>
 
+          {/* ── Copyright Acknowledgment ── */}
+          <label className="flex items-start gap-3 cursor-pointer group">
+            <input
+              type="checkbox"
+              checked={copyrightAcknowledged}
+              onChange={(e) => setCopyrightAcknowledged(e.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-primary cursor-pointer"
+            />
+            <span className="text-xs text-muted-foreground leading-relaxed group-hover:text-foreground/80 transition-colors">
+              I confirm that I own the rights to the audio I'm uploading, or have obtained the necessary licenses to use it. I understand that uploading copyrighted music without permission violates the{" "}
+              <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline" onClick={(e) => e.stopPropagation()}>
+                Terms of Service
+              </a>{" "}
+              and may result in account termination.
+            </span>
+          </label>
+
           {/* ── Generate ── */}
           {(() => {
             const cost = estimateCreditCost(requestedDuration);
@@ -1046,7 +1064,7 @@ export default function Generate() {
                 <Button
                   size="lg"
                   className="w-full h-14 text-lg bg-gradient-electric text-white shadow-glow mt-2"
-                  disabled={createJob.isPending || !canAfford}
+                  disabled={createJob.isPending || !canAfford || !copyrightAcknowledged}
                   onClick={handleGenerate}
                 >
                   {createJob.isPending ? (
