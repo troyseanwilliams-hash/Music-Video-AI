@@ -19,9 +19,8 @@ export const usersTable = pgTable("users", {
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
-  subscriptionStatus: varchar("subscription_status").notNull().default("trial"),
-  trialEndsAt: timestamp("trial_ends_at", { withTimezone: true })
-    .default(sql`NOW() + INTERVAL '7 days'`),
+  subscriptionStatus: varchar("subscription_status").notNull().default("none"),
+  trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   isDisabled: boolean("is_disabled").notNull().default(false),
   stripeCustomerId: varchar("stripe_customer_id"),

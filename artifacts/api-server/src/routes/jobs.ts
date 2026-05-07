@@ -89,17 +89,7 @@ router.post("/jobs", async (req, res) => {
 
   if (!isAdmin) {
     const status = userRecord?.subscriptionStatus ?? "none";
-    const trialEndsAt = userRecord?.trialEndsAt;
-
-    if (status === "trial") {
-      if (!trialEndsAt || new Date() > trialEndsAt) {
-        res.status(403).json({
-          error: "Your free trial has expired. Upgrade to continue creating videos.",
-          code: "TRIAL_EXPIRED",
-        });
-        return;
-      }
-    } else if (status !== "active") {
+    if (status !== "active") {
       res.status(403).json({
         error: "A subscription is required to create videos.",
         code: "SUBSCRIPTION_REQUIRED",

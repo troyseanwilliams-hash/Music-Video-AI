@@ -16,8 +16,8 @@ function buildUserPayload(user: typeof usersTable.$inferSelect) {
     firstName: user.firstName,
     lastName: user.lastName,
     profileImageUrl: user.profileImageUrl,
-    subscriptionStatus: (user.subscriptionStatus ?? "trial") as "trial" | "active" | "cancelled" | "none",
-    trialEndsAt: user.trialEndsAt?.toISOString() ?? null,
+    subscriptionStatus: (user.subscriptionStatus ?? "none") as "trial" | "active" | "cancelled" | "none",
+    trialEndsAt: null as string | null,
     isAdmin: isAdminEmail(user.email),
   };
 }
@@ -84,8 +84,6 @@ router.post("/auth/register", async (req: Request, res: Response) => {
   const firstName = nameParts[0] ?? name.trim();
   const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : null;
 
-  const trialEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
   const [user] = await db
     .insert(usersTable)
     .values({
@@ -94,8 +92,7 @@ router.post("/auth/register", async (req: Request, res: Response) => {
       passwordHash,
       firstName,
       lastName,
-      subscriptionStatus: "trial",
-      trialEndsAt,
+      subscriptionStatus: "none",
       lastLoginAt: new Date(),
     })
     .returning();

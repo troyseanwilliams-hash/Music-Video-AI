@@ -37,7 +37,7 @@ import {
   Upload, Link as LinkIcon, Music, Sparkles, Loader2, CheckCircle2, XCircle,
   Users, Clapperboard, Layers, Zap, Film, Wand2, Video as VideoIcon, FileText,
   ChevronDown, User, Maximize2, Captions, Diamond, Pencil, MonitorPlay, ImageIcon,
-  Lock, Clock, Crown, Coins, AlertTriangle, CreditCard,
+  Lock, Crown, Coins, AlertTriangle, CreditCard,
 } from "lucide-react";
 
 type ErrorDialogState = {
@@ -82,11 +82,6 @@ const CHARACTERS = [
   { value: "an animal", label: "Animal" },
 ] as const;
 type CharacterValue = (typeof CHARACTERS)[number]["value"];
-
-function daysUntil(dateStr: string | null): number {
-  if (!dateStr) return 0;
-  return Math.max(0, Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86_400_000));
-}
 
 // Mirrors server-side calculateCreditCost — must stay in sync with creditCost.ts
 const MAX_CLIPS_PER_JOB = 3;
@@ -257,9 +252,7 @@ export default function Generate() {
 
   const isAdmin = user?.isAdmin ?? false;
   const subStatus = user?.subscriptionStatus ?? "none";
-  const trialDaysLeft = daysUntil(user?.trialEndsAt ?? null);
-  const trialExpired = subStatus === "trial" && trialDaysLeft === 0;
-  const canCreate = isAdmin || subStatus === "active" || (subStatus === "trial" && !trialExpired);
+  const canCreate = isAdmin || subStatus === "active";
 
   if (!canCreate) {
     return (
@@ -267,21 +260,15 @@ export default function Generate() {
         <div className="max-w-md w-full text-center space-y-6">
           <div className="flex justify-center">
             <div className="h-20 w-20 rounded-full bg-primary/10 flex items-center justify-center">
-              {trialExpired ? (
-                <Clock className="h-10 w-10 text-primary" />
-              ) : (
-                <Lock className="h-10 w-10 text-primary" />
-              )}
+              <Lock className="h-10 w-10 text-primary" />
             </div>
           </div>
           <div>
             <h2 className="text-3xl font-bold tracking-tight mb-3">
-              {trialExpired ? "Your Trial Has Ended" : "Subscription Required"}
+              Subscription Required
             </h2>
             <p className="text-muted-foreground text-lg">
-              {trialExpired
-                ? "Your 7-day free trial has expired. Upgrade to Pro to keep creating AI music videos."
-                : "You need an active subscription to create videos."}
+              You need an active subscription to create videos.
             </p>
           </div>
           <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-left space-y-3">
@@ -418,7 +405,6 @@ export default function Generate() {
           }
 
           if (code === "INSUFFICIENT_CREDITS") title = "Not enough credits";
-          else if (code === "TRIAL_EXPIRED") title = "Trial expired";
           else if (code === "SUBSCRIPTION_REQUIRED") title = "Subscription required";
 
           setErrorDialog({ open: true, title, message, code, creditsRequired, creditsRemaining });
@@ -430,26 +416,6 @@ export default function Generate() {
   return (
     <>
     <div className="container mx-auto px-4 py-12 max-w-4xl">
-      {subStatus === "trial" && !isAdmin && (
-        <div className="mb-6 flex items-center justify-between gap-4 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-sm">
-          <div className="flex items-center gap-2">
-            <Clock className="h-4 w-4 text-primary shrink-0" />
-            <span>
-              Free trial — <strong>{trialDaysLeft} day{trialDaysLeft !== 1 ? "s" : ""}</strong> remaining.
-            </span>
-          </div>
-          <Link href="/pricing">
-            <Button
-              size="sm"
-              variant="outline"
-              className="border-primary/40 text-primary hover:bg-primary/10 shrink-0"
-            >
-              <Crown className="mr-1.5 h-3.5 w-3.5" />
-              Upgrade
-            </Button>
-          </Link>
-        </div>
-      )}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -1106,7 +1072,7 @@ export default function Generate() {
               <div className="h-10 w-10 rounded-full bg-yellow-500/15 flex items-center justify-center shrink-0">
                 <CreditCard className="h-5 w-5 text-yellow-500" />
               </div>
-            ) : errorDialog.code === "TRIAL_EXPIRED" || errorDialog.code === "SUBSCRIPTION_REQUIRED" ? (
+            ) : errorDialog.code === "SUBSCRIPTION_REQUIRED" ? (
               <div className="h-10 w-10 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
                 <Crown className="h-5 w-5 text-primary" />
               </div>
@@ -1145,7 +1111,6 @@ export default function Generate() {
           </Button>
 
           {(errorDialog.code === "INSUFFICIENT_CREDITS" ||
-            errorDialog.code === "TRIAL_EXPIRED" ||
             errorDialog.code === "SUBSCRIPTION_REQUIRED") && (
             <Link href="/pricing">
               <Button className="w-full sm:w-auto bg-gradient-electric text-white shadow-glow border-0 sm:order-2">
