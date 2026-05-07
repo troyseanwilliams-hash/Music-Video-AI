@@ -90,11 +90,21 @@ async function generateWithRunway(req: ClipRequest): Promise<string> {
     const task = (await pollRes.json()) as {
       status: string;
       output?: string[];
-      failure?: { message?: string };
+      failure?: string | { message?: string; [key: string]: unknown };
     };
     if (task.status === "SUCCEEDED" && task.output?.[0]) return task.output[0];
-    if (task.status === "FAILED")
-      throw new Error(`Runway task failed: ${task.failure?.message}`);
+    if (task.status === "FAILED") {
+      const fail = task.failure;
+      const failMsg =
+        typeof fail === "string"
+          ? fail
+          : fail?.message
+            ? fail.message
+            : fail
+              ? JSON.stringify(fail).slice(0, 300)
+              : "no details provided";
+      throw new Error(`Runway task failed: ${failMsg}`);
+    }
   }
   throw new Error("Runway task timed out after 10 minutes");
 }

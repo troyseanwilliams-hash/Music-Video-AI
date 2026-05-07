@@ -10,7 +10,7 @@ import {
   Loader2, Music, CheckCircle2, AlertCircle, ArrowLeft,
   Play, RefreshCw, Download, ExternalLink, Clock,
   AudioWaveform, Clapperboard, Scissors, Sparkles, RotateCcw,
-  WifiOff, Wifi, FileAudio, Server, Zap, Plus, Link2, Check,
+  WifiOff, Wifi, FileAudio, Server, Zap, Plus, Link2, Check, ShieldAlert,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from "recharts";
 import { motion, AnimatePresence } from "framer-motion";
@@ -65,7 +65,7 @@ function inferClipProgress(
 }
 
 // Categorise error messages into user-friendly buckets
-type ErrorCategory = "api" | "audio" | "quota" | "timeout" | "unknown";
+type ErrorCategory = "api" | "audio" | "quota" | "timeout" | "content" | "unknown";
 
 function categoriseError(msg: string | null | undefined): {
   category: ErrorCategory;
@@ -75,6 +75,25 @@ function categoriseError(msg: string | null | undefined): {
 } {
   const m = (msg ?? "").toLowerCase();
 
+  // Content policy / safety filter — check before generic "runway" match
+  if (
+    m.includes("content") ||
+    m.includes("moderat") ||
+    m.includes("nsfw") ||
+    m.includes("safety") ||
+    m.includes("violat") ||
+    m.includes("explicit") ||
+    m.includes("inappropriate") ||
+    m.includes("policy")
+  ) {
+    return {
+      category: "content",
+      headline: "Prompt flagged by content filter",
+      detail:
+        "Your prompt or reference image was rejected by the AI safety filter. Try rephrasing your prompt — avoid explicit, violent, or trademarked content — and generate again.",
+      canRetry: false,
+    };
+  }
   if (m.includes("runway") || m.includes("api error") || m.includes("api key")) {
     return {
       category: "api",
@@ -617,6 +636,7 @@ function ErrorIcon({ category }: { category: ErrorCategory }) {
     case "audio":   return <FileAudio className={cls} />;
     case "quota":   return <Zap className={cls} />;
     case "timeout": return <WifiOff className={cls} />;
+    case "content": return <ShieldAlert className={cls} />;
     default:        return <AlertCircle className={cls} />;
   }
 }
