@@ -1,7 +1,76 @@
+import { useState, useRef } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Play, Sparkles, Zap, Music, MonitorPlay, ExternalLink, ScanLine, ImagePlus } from "lucide-react";
+import { Play, Sparkles, Zap, Music, MonitorPlay, ExternalLink, ScanLine, ImagePlus, Volume2, VolumeX } from "lucide-react";
 import { motion } from "framer-motion";
+
+const SAMPLES = [
+  { src: "/sample1.mp4", label: "Cinematic" },
+  { src: "/sample2.mp4", label: "Neon Glow" },
+  { src: "/sample3.mp4", label: "Abstract" },
+];
+
+function SampleVideo({ src, label }: { src: string; label: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [muted, setMuted] = useState(true);
+  const [playing, setPlaying] = useState(false);
+
+  const toggle = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) { v.play(); setPlaying(true); }
+    else { v.pause(); setPlaying(false); }
+  };
+
+  const toggleMute = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const v = videoRef.current;
+    if (!v) return;
+    v.muted = !v.muted;
+    setMuted(v.muted);
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ duration: 0.5 }}
+      className="group relative rounded-2xl overflow-hidden bg-black border border-white/10 cursor-pointer shadow-xl"
+      style={{ aspectRatio: "16/9" }}
+      onClick={toggle}
+    >
+      <video
+        ref={videoRef}
+        src={src}
+        className="w-full h-full object-cover"
+        loop
+        muted
+        playsInline
+        preload="metadata"
+      />
+      {/* Overlay */}
+      <div className={`absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity duration-200 ${playing ? "opacity-0 group-hover:opacity-100" : "opacity-100"}`}>
+        <div className="h-14 w-14 rounded-full bg-white/20 backdrop-blur-sm border border-white/30 flex items-center justify-center">
+          <Play className="h-6 w-6 text-white fill-white ml-0.5" />
+        </div>
+      </div>
+      {/* Label */}
+      <div className="absolute bottom-3 left-3 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-sm text-xs font-semibold text-white/90 border border-white/15">
+        {label}
+      </div>
+      {/* Mute toggle */}
+      {playing && (
+        <button
+          onClick={toggleMute}
+          className="absolute bottom-3 right-3 h-8 w-8 rounded-full bg-black/60 backdrop-blur-sm border border-white/15 flex items-center justify-center text-white/80 hover:text-white transition-colors"
+        >
+          {muted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+        </button>
+      )}
+    </motion.div>
+  );
+}
 
 export default function Home() {
   return (
@@ -47,6 +116,54 @@ export default function Home() {
                 </Link>
               </div>
             </motion.div>
+          </div>
+        </section>
+
+        {/* Sample Videos Section */}
+        <section className="py-20 border-t border-border/30 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-primary/5 to-transparent pointer-events-none" />
+          <div className="container px-4 md:px-6 mx-auto relative z-10">
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5 }}
+              className="text-center mb-12"
+            >
+              <div className="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-sm font-medium text-primary mb-4 backdrop-blur-sm">
+                <Sparkles className="mr-2 h-3.5 w-3.5" />
+                Real AI-generated examples
+              </div>
+              <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-3">
+                See what AI Beat Sync creates
+              </h2>
+              <p className="text-muted-foreground text-lg max-w-xl mx-auto">
+                Every video below was generated from a real audio track — click any to play.
+              </p>
+            </motion.div>
+
+            <div className="grid md:grid-cols-3 gap-5">
+              {SAMPLES.map((s, i) => (
+                <motion.div
+                  key={s.src}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.5, delay: i * 0.1 }}
+                >
+                  <SampleVideo src={s.src} label={s.label} />
+                </motion.div>
+              ))}
+            </div>
+
+            <div className="text-center mt-10">
+              <Link href="/register">
+                <Button size="lg" className="bg-gradient-electric text-white shadow-glow border-0 hover:opacity-90">
+                  <Play className="mr-2 h-4 w-4" />
+                  Create your own
+                </Button>
+              </Link>
+            </div>
           </div>
         </section>
 
