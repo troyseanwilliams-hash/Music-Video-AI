@@ -98,31 +98,33 @@ router.post("/jobs", async (req, res) => {
     }
   }
 
-  const credits = await db
-    .select()
-    .from(creditsTable)
-    .where(eq(creditsTable.userId, req.user.id))
-    .limit(1);
-
-  let userCredits = credits[0];
-  if (!userCredits) {
-    const [newCredits] = await db
-      .insert(creditsTable)
-      .values({ id: randomUUID(), userId: req.user.id })
-      .returning();
-    userCredits = newCredits;
-  }
-
   const creditCost = calculateCreditCost(requestedDuration);
 
-  if (userCredits.creditsRemaining < creditCost) {
-    res.status(402).json({
-      error: `Insufficient credits — this job costs ${creditCost} credits but you only have ${userCredits.creditsRemaining} remaining.`,
-      code: "INSUFFICIENT_CREDITS",
-      creditsRequired: creditCost,
-      creditsRemaining: userCredits.creditsRemaining,
-    });
-    return;
+  if (!isAdmin) {
+    const credits = await db
+      .select()
+      .from(creditsTable)
+      .where(eq(creditsTable.userId, req.user.id))
+      .limit(1);
+
+    let userCredits = credits[0];
+    if (!userCredits) {
+      const [newCredits] = await db
+        .insert(creditsTable)
+        .values({ id: randomUUID(), userId: req.user.id })
+        .returning();
+      userCredits = newCredits;
+    }
+
+    if (userCredits.creditsRemaining < creditCost) {
+      res.status(402).json({
+        error: `Insufficient credits — this job costs ${creditCost} credits but you only have ${userCredits.creditsRemaining} remaining.`,
+        code: "INSUFFICIENT_CREDITS",
+        creditsRequired: creditCost,
+        creditsRemaining: userCredits.creditsRemaining,
+      });
+      return;
+    }
   }
 
   const jobId = randomUUID();

@@ -26,16 +26,15 @@ export async function ensureAdminUser(): Promise<void> {
       passwordHash: hash,
       firstName: nameParts[0] ?? "Admin",
       lastName: nameParts.length > 1 ? nameParts.slice(1).join(" ") : null,
-      subscriptionStatus: "trial",
-      trialEndsAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      subscriptionStatus: "active",
       lastLoginAt: new Date(),
     });
     logger.info({ email }, "Admin user created on startup");
   } else {
     await db
       .update(usersTable)
-      .set({ passwordHash: hash })
+      .set({ passwordHash: hash, subscriptionStatus: "active" })
       .where(eq(usersTable.email, email));
-    logger.info({ email }, "Admin user password synced on startup");
+    logger.info({ email }, "Admin user password and status synced on startup");
   }
 }
