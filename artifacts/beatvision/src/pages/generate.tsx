@@ -37,7 +37,7 @@ import {
   Upload, Link as LinkIcon, Music, Sparkles, Loader2, CheckCircle2, XCircle,
   Users, Clapperboard, Layers, Zap, Film, Wand2, Video as VideoIcon, FileText,
   ChevronDown, User, Maximize2, Captions, Diamond, Pencil, MonitorPlay, ImageIcon,
-  Lock, Crown, Coins, AlertTriangle, CreditCard,
+  Lock, Crown, Coins, AlertTriangle, CreditCard, Clock,
 } from "lucide-react";
 
 type ErrorDialogState = {
@@ -248,6 +248,24 @@ export default function Generate() {
     }
   }, [isAuthLoading, isAuthenticated, setLocation]);
 
+  const handleSunoResolve = useCallback(async () => {
+    if (!sunoInputUrl.trim() || sunoResolving) return;
+    setSunoResolving(true);
+    setSunoError(null);
+    setSunoResolved(null);
+    try {
+      const res = await fetch(`/api/suno/resolve?url=${encodeURIComponent(sunoInputUrl)}`);
+      const data = await res.json() as { audioUrl?: string; title?: string; artist?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Failed to load track");
+      setSunoResolved({ audioUrl: data.audioUrl!, title: data.title ?? "Untitled", artist: data.artist ?? "" });
+      setFieldErrors((fe) => ({ ...fe, audio: undefined }));
+    } catch (err) {
+      setSunoError(err instanceof Error ? err.message : "Could not load track");
+    } finally {
+      setSunoResolving(false);
+    }
+  }, [sunoInputUrl, sunoResolving]);
+
   if (isAuthLoading) {
     return (
       <div className="container mx-auto max-w-4xl px-4 py-10 space-y-6">
@@ -315,24 +333,6 @@ export default function Generate() {
   }
 
   const characterLabel = CHARACTERS.find((c) => c.value === character)?.label ?? "None";
-
-  const handleSunoResolve = useCallback(async () => {
-    if (!sunoInputUrl.trim() || sunoResolving) return;
-    setSunoResolving(true);
-    setSunoError(null);
-    setSunoResolved(null);
-    try {
-      const res = await fetch(`/api/suno/resolve?url=${encodeURIComponent(sunoInputUrl)}`);
-      const data = await res.json() as { audioUrl?: string; title?: string; artist?: string; error?: string };
-      if (!res.ok) throw new Error(data.error ?? "Failed to load track");
-      setSunoResolved({ audioUrl: data.audioUrl!, title: data.title ?? "Untitled", artist: data.artist ?? "" });
-      setFieldErrors((fe) => ({ ...fe, audio: undefined }));
-    } catch (err) {
-      setSunoError(err instanceof Error ? err.message : "Could not load track");
-    } finally {
-      setSunoResolving(false);
-    }
-  }, [sunoInputUrl, sunoResolving]);
 
   const handleGenerate = () => {
     const errors: { prompt?: string; audio?: string } = {};
