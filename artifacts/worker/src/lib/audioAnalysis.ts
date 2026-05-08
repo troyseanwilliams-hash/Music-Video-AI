@@ -47,8 +47,8 @@ async function decodeAudioToPCM(
     const duration = parseFloat(probeOut.trim()) || 0;
 
     await execAsync(
-      `ffmpeg -y -i "${inFile}" -f f32le -acodec pcm_f32le -ar ${SAMPLE_RATE} -ac 1 "${outFile}"`,
-      { timeout: 120_000 },
+      `ffmpeg -y -loglevel error -i "${inFile}" -f f32le -acodec pcm_f32le -ar ${SAMPLE_RATE} -ac 1 "${outFile}"`,
+      { timeout: 120_000, maxBuffer: 50 * 1024 * 1024 },
     );
 
     const raw = await readFile(outFile);
