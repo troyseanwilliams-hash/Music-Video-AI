@@ -320,6 +320,17 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
   const errMsg = err instanceof Error ? err.message : String(err);
   logger.error({ err, jobId: job.id, retryCount: job.retryCount }, "Job failed");
 
+  // Moderation / content-policy failures will never succeed on retry — fail fast.
+  if (/moderation|content policy|safety system/i.test(errMsg)) {
+    logger.warn({ jobId: job.id }, "Permanent failure: content moderation rejection, skipping retries");
+    await updateJobStatus(job.id, {
+      status: "failed",
+      errorMessage:
+        "Your prompt was rejected by the AI provider's content policy. Please edit your prompt and try again.",
+    });
+    return;
+  }
+
   const nextRetry = (job.retryCount ?? 0) + 1;
 
   if (nextRetry < MAX_RETRIES) {
