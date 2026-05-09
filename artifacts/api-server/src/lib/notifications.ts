@@ -1,5 +1,4 @@
 import { Resend } from "resend";
-import twilio from "twilio";
 import { logger } from "./logger.js";
 
 interface JobInfo {
@@ -10,21 +9,21 @@ interface JobInfo {
   userEmail?: string | null;
 }
 
-export async function sendApprovalEmail(job: JobInfo): Promise<void> {
+export function notifyJobPendingApproval(job: JobInfo): void {
   const apiKey = process.env.RESEND_API_KEY;
   const adminEmail = process.env.ADMIN_EMAIL;
   if (!apiKey || !adminEmail) return;
 
-  try {
-    const resend = new Resend(apiKey);
-    const durationLabel =
-      job.requestedDuration === "full"
-        ? "Full track"
-        : job.requestedDuration
-          ? `${job.requestedDuration}s`
-          : "Unknown";
+  const resend = new Resend(apiKey);
+  const durationLabel =
+    job.requestedDuration === "full"
+      ? "Full track"
+      : job.requestedDuration
+        ? `${job.requestedDuration}s`
+        : "—";
 
-    await resend.emails.send({
+  resend.emails
+    .send({
       from: "AI Beat Sync <notifications@aibeatsync.com>",
       to: adminEmail,
       subject: `New job awaiting approval — ${job.id.slice(0, 8)}`,
@@ -45,39 +44,7 @@ export async function sendApprovalEmail(job: JobInfo): Promise<void> {
           </p>
         </div>
       `,
-    });
-
-    logger.info({ jobId: job.id }, "Approval email sent");
-  } catch (err) {
-    logger.error({ err, jobId: job.id }, "Failed to send approval email");
-  }
-}
-
-export async function sendApprovalSms(job: JobInfo): Promise<void> {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const fromNumber = process.env.TWILIO_FROM_NUMBER;
-  const adminPhone = process.env.ADMIN_PHONE;
-  if (!accountSid || !authToken || !fromNumber || !adminPhone) return;
-
-  try {
-    const client = twilio(accountSid, authToken);
-    const body = `AI Beat Sync: New job awaiting approval\nJob: ${job.id.slice(0, 8)}\nUser: ${job.userEmail ?? "unknown"}\nStyle: ${job.style ?? "—"}\nDuration: ${job.requestedDuration === "full" ? "Full track" : (job.requestedDuration ? job.requestedDuration + "s" : "—")}\nReview: aibeatsync.com/admin`;
-
-    await client.messages.create({
-      body,
-      from: fromNumber,
-      to: adminPhone,
-    });
-
-    logger.info({ jobId: job.id }, "Approval SMS sent");
-  } catch (err) {
-    logger.error({ err, jobId: job.id }, "Failed to send approval SMS");
-  }
-}
-
-export function notifyJobPendingApproval(job: JobInfo): void {
-  Promise.all([sendApprovalEmail(job), sendApprovalSms(job)]).catch((err) => {
-    logger.error({ err, jobId: job.id }, "Unexpected error in approval notifications");
-  });
+    })
+    .then(() => logger.info({ jobId: job.id }, "Approval email sent"))
+    .catch((err: unknown) => logger.error({ err, jobId: job.id }, "Failed to send approval email"));
 }
