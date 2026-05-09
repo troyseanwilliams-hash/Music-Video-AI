@@ -170,17 +170,12 @@ router.post("/jobs", async (req, res) => {
   );
 
   // Fire-and-forget: notify admin of pending approval (never blocks or errors the response)
-  const [userRow] = await db
-    .select({ email: usersTable.email })
-    .from(usersTable)
-    .where(eq(usersTable.id, req.user.id))
-    .limit(1);
   notifyJobPendingApproval({
     id: job.id,
     prompt: job.prompt,
     style: job.style,
     requestedDuration: job.requestedDuration,
-    userEmail: userRow?.email ?? null,
+    userEmail: userRecord?.email ?? null,
   });
 
   res.status(201).json(job);
