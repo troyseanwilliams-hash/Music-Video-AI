@@ -117,6 +117,16 @@ router.get("/storage/objects/*path", async (req: Request, res: Response) => {
       return;
     }
 
+    // For thumbnail images: redirect to a signed GCS URL for fast direct delivery.
+    // Avoids proxying the image bytes through the API server, which is especially
+    // slow on mobile networks.
+    if (wildcardPath.startsWith("thumbnails/") && wildcardPath.endsWith(".jpg")) {
+      const videoId = wildcardPath.slice("thumbnails/".length, -".jpg".length);
+      const signedUrl = await objectStorageService.getThumbnailSignedUrl(videoId, 3600);
+      res.redirect(302, signedUrl);
+      return;
+    }
+
     const objectPath = `/objects/${wildcardPath}`;
     const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
 

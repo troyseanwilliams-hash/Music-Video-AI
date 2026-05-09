@@ -18,6 +18,30 @@ import {
 } from "@/components/ui/alert-dialog";
 import { motion } from "framer-motion";
 
+function VideoThumbnail({ src, alt }: { src: string; alt: string }) {
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
+  return (
+    <>
+      <div
+        className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${loaded && !error ? "opacity-0" : "opacity-100"}`}
+      >
+        <Film className="h-12 w-12 text-muted-foreground/50" />
+      </div>
+      {!error && (
+        <img
+          src={src}
+          alt={alt}
+          loading="eager"
+          className={`object-cover w-full h-full transition-all duration-500 group-hover:scale-105 ${loaded ? "opacity-100" : "opacity-0"}`}
+          onLoad={() => setLoaded(true)}
+          onError={() => setError(true)}
+        />
+      )}
+    </>
+  );
+}
+
 async function getSignedVideoUrl(jobId: string): Promise<string> {
   const r = await fetch(`/api/jobs/${jobId}/video-url`);
   if (!r.ok) throw new Error("url");
@@ -118,14 +142,13 @@ export default function Gallery() {
               {/* Thumbnail — clicking anywhere on it goes to the job page */}
               <Link href={`/jobs/${video.jobId}`} className="block relative aspect-video bg-muted overflow-hidden">
                 {video.thumbnailObjectPath ? (
-                  <img
+                  <VideoThumbnail
                     src={`/api/storage${video.thumbnailObjectPath}`}
                     alt={video.title || "Video thumbnail"}
-                    className="object-cover w-full h-full transition-transform duration-300 group-hover:scale-105"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <Film className="h-12 w-12 text-muted-foreground/30" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <Film className="h-12 w-12 text-muted-foreground/50" />
                   </div>
                 )}
 
