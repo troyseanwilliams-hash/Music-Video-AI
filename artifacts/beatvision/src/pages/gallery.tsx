@@ -152,9 +152,9 @@ export default function Gallery() {
                   </div>
                 )}
 
-                {/* Always-visible play overlay */}
-                <div className="absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity duration-200 group-hover:bg-black/60">
-                  <div className="h-14 w-14 rounded-full bg-primary/90 hover:bg-primary flex items-center justify-center shadow-2xl transition-transform duration-200 group-hover:scale-110">
+                {/* Play overlay — transparent bg on mobile, dark on desktop hover */}
+                <div className="absolute inset-0 bg-transparent group-hover:bg-black/50 flex items-center justify-center transition-all duration-200">
+                  <div className="h-14 w-14 rounded-full bg-primary/90 flex items-center justify-center shadow-2xl transition-transform duration-200 group-hover:scale-110">
                     <Play className="h-7 w-7 text-white ml-1" />
                   </div>
                 </div>
