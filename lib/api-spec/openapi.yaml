@@ -831,9 +831,6 @@ components:
           type: [string, 'null']
           maxLength: 100
           description: Optional character type to feature in the video
-        removeWatermark:
-          type: [boolean, 'null']
-          description: Whether to remove the provider watermark from generated clips
         referenceImagePath:
           type: [string, 'null']
           description: Object storage path for an optional reference image used as Runway starting frame

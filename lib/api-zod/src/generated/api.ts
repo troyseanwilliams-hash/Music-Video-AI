@@ -334,10 +334,6 @@ export const CreateJobBody = zod.object({
     .max(createJobBodyCharacterMax)
     .nullish()
     .describe("Optional character type to feature in the video"),
-  removeWatermark: zod
-    .boolean()
-    .nullish()
-    .describe("Whether to remove the provider watermark from generated clips"),
   referenceImagePath: zod
     .string()
     .nullish()

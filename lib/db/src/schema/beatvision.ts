@@ -57,7 +57,6 @@ export const jobsTable = pgTable("jobs", {
   aspectRatio: text("aspect_ratio"),
   resolution: text("resolution"),
   character: text("character"),
-  removeWatermark: boolean("remove_watermark").notNull().default(false),
   referenceImagePath: text("reference_image_path"),
   requestedDuration: text("requested_duration").default("full"),
   clipStartTime: real("clip_start_time"),

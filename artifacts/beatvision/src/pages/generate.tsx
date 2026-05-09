@@ -36,7 +36,7 @@ import { motion } from "framer-motion";
 import {
   Upload, Link as LinkIcon, Music, Sparkles, Loader2, CheckCircle2, XCircle,
   Users, Clapperboard, Layers, Zap, Film, Wand2, Video as VideoIcon, FileText,
-  ChevronDown, User, Maximize2, Captions, Diamond, Pencil, MonitorPlay, ImageIcon,
+  ChevronDown, User, Maximize2, Captions, Pencil, MonitorPlay, ImageIcon,
   Lock, Crown, Coins, AlertTriangle, CreditCard, Clock,
 } from "lucide-react";
 
@@ -139,7 +139,6 @@ export default function Generate() {
   const [aspectRatio, setAspectRatio] = useState<CreateJobRequestAspectRatio>(CreateJobRequestAspectRatio["16:9"]);
   const [resolution, setResolution] = useState<CreateJobRequestResolution>(CreateJobRequestResolution["720p"]);
   const [character, setCharacter] = useState<CharacterValue>("none");
-  const [removeWatermark, setRemoveWatermark] = useState(false);
   const [requestedDuration, setRequestedDuration] = useState<CreateJobRequestRequestedDuration>(CreateJobRequestRequestedDuration.NUMBER_10);
   const [clipStartTime, setClipStartTime] = useState(0);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -379,7 +378,6 @@ export default function Generate() {
           aspectRatio,
           resolution,
           character: character !== "none" ? character : null,
-          removeWatermark,
           referenceImagePath: refImageObjectPath ?? null,
           requestedDuration,
           clipStartTime:
@@ -582,31 +580,6 @@ export default function Generate() {
               >
                 <Captions className="h-3.5 w-3.5" />
                 <span>Captions</span>
-              </button>
-
-              <div className="hidden sm:block h-5 w-px bg-border/40 mx-0.5" />
-
-              {/* Remove watermark */}
-              <button
-                onClick={() => setRemoveWatermark((v) => !v)}
-                className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
-                  removeWatermark
-                    ? "border-primary/40 bg-primary/10 text-primary"
-                    : "border-border/50 bg-secondary/40 hover:bg-secondary/70"
-                }`}
-              >
-                <Diamond className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Remove watermark</span>
-                <span className="sm:hidden">Watermark</span>
-                <div className={`ml-1 h-4 w-4 rounded flex items-center justify-center border transition-colors ${
-                  removeWatermark ? "bg-primary border-primary" : "border-border/60 bg-transparent"
-                }`}>
-                  {removeWatermark && (
-                    <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 10 10">
-                      <path d="M2 5l2.5 2.5L8 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  )}
-                </div>
               </button>
 
               {/* Spacer + Edit prompt */}
@@ -1014,11 +987,6 @@ export default function Generate() {
             {character !== "none" && (
               <span className="rounded-full border border-border/40 bg-secondary/30 px-2.5 py-1">
                 {characterLabel}
-              </span>
-            )}
-            {removeWatermark && (
-              <span className="rounded-full border border-primary/30 bg-primary/10 text-primary px-2.5 py-1">
-                Watermark removed
               </span>
             )}
             {lyricsEnabled && (

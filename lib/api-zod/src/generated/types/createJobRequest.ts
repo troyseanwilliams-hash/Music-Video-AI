@@ -46,11 +46,6 @@ export interface CreateJobRequest {
    */
   character?: string | null;
   /**
-   * Whether to remove the provider watermark from generated clips
-   * @nullable
-   */
-  removeWatermark?: boolean | null;
-  /**
    * Object storage path for an optional reference image used as Runway starting frame
    * @nullable
    */

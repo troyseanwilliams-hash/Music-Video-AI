@@ -4,7 +4,6 @@ export interface ClipRequest {
   prompt: string;
   durationSeconds: number;
   aspectRatio?: string;
-  removeWatermark?: boolean;
   imageDataUrl?: string;
 }
 
@@ -68,7 +67,6 @@ async function generateWithRunway(req: ClipRequest): Promise<string> {
       promptText: req.prompt.slice(0, 1000),
       duration,
       ratio: RUNWAY_RATIOS[req.aspectRatio ?? "16:9"] ?? "1280:768",
-      watermark: req.removeWatermark === true ? false : undefined,
     }),
     signal: AbortSignal.timeout(30_000),
   });

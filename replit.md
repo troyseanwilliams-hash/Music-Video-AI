@@ -59,13 +59,12 @@ The generate page includes a compact settings toolbar with:
 - **Resolution** — dropdown: 720p (default), 1080p
 - **Style** — scrolls to the visual style grid below
 - **Captions** — toggles the lyrics/subtitle overlay section
-- **Remove Watermark** — sends `watermark: false` to Runway API when enabled
 - **Edit** — focuses the prompt textarea
 
 Reference image (optional): users can upload a JPG/PNG/WebP that becomes the `promptImage` for every Runway clip (replaces the 1×1 dummy pixel). Stored in object storage, loaded as base64 data URL at job processing time.
 
-DB columns: `aspect_ratio`, `resolution`, `character`, `remove_watermark`, `reference_image_path` on `jobs` table.
-OpenAPI fields: `aspectRatio`, `resolution`, `character`, `removeWatermark`, `referenceImagePath` on `CreateJobRequest`.
+DB columns: `aspect_ratio`, `resolution`, `character`, `reference_image_path` on `jobs` table.
+OpenAPI fields: `aspectRatio`, `resolution`, `character`, `referenceImagePath` on `CreateJobRequest`.
 
 Runway ratio mapping (`videoApis.ts`): `16:9→1280:768`, `9:16→768:1280`, `4:3→1104:832`, `1:1→960:960`, `21:9→1584:672`.
 

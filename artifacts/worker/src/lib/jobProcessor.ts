@@ -296,7 +296,6 @@ async function generateClips(
         prompt,
         durationSeconds: clipDuration,
         aspectRatio: job.aspectRatio ?? "16:9",
-        removeWatermark: job.removeWatermark ?? false,
         imageDataUrl: refImageDataUrl ?? undefined,
       });
       if (!result) {
