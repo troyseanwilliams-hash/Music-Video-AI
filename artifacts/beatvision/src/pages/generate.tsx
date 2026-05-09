@@ -144,6 +144,7 @@ export default function Generate() {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [errorDialog, setErrorDialog] = useState<ErrorDialogState>({ open: false, title: "", message: "" });
   const [copyrightAcknowledged, setCopyrightAcknowledged] = useState(false);
+  const [durationWarningOpen, setDurationWarningOpen] = useState(false);
 
   // Reference image
   const refImageInputRef = useRef<HTMLInputElement>(null);
@@ -333,36 +334,7 @@ export default function Generate() {
 
   const characterLabel = CHARACTERS.find((c) => c.value === character)?.label ?? "None";
 
-  const handleGenerate = () => {
-    const errors: { prompt?: string; audio?: string } = {};
-
-    if (!prompt.trim()) {
-      errors.prompt = "Please describe the visuals you want.";
-    }
-    if (sourceType === CreateJobRequestAudioSourceType.upload && !objectPath) {
-      errors.audio = isUploading ? "Still uploading — wait a moment." : "Please upload an audio file.";
-    }
-    if (sourceType === CreateJobRequestAudioSourceType.youtube && !audioUrl.trim()) {
-      errors.audio = "Please paste a YouTube URL.";
-    }
-    if (sourceType === CreateJobRequestAudioSourceType.suno && !sunoResolved) {
-      errors.audio = sunoResolving ? "Loading track — wait a moment." : "Please load a Suno track first.";
-    }
-
-    if (Object.keys(errors).length > 0) {
-      setFieldErrors(errors);
-      // Scroll to the first error field
-      if (errors.audio) {
-        audioSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-      } else if (errors.prompt) {
-        promptRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-        promptRef.current?.focus();
-      }
-      return;
-    }
-
-    setFieldErrors({});
-
+  const submitJob = () => {
     createJob.mutate(
       {
         data: {
@@ -421,6 +393,47 @@ export default function Generate() {
         },
       },
     );
+  };
+
+  const handleGenerate = () => {
+    const errors: { prompt?: string; audio?: string } = {};
+
+    if (!prompt.trim()) {
+      errors.prompt = "Please describe the visuals you want.";
+    }
+    if (sourceType === CreateJobRequestAudioSourceType.upload && !objectPath) {
+      errors.audio = isUploading ? "Still uploading — wait a moment." : "Please upload an audio file.";
+    }
+    if (sourceType === CreateJobRequestAudioSourceType.youtube && !audioUrl.trim()) {
+      errors.audio = "Please paste a YouTube URL.";
+    }
+    if (sourceType === CreateJobRequestAudioSourceType.suno && !sunoResolved) {
+      errors.audio = sunoResolving ? "Loading track — wait a moment." : "Please load a Suno track first.";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      if (errors.audio) {
+        audioSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      } else if (errors.prompt) {
+        promptRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+        promptRef.current?.focus();
+      }
+      return;
+    }
+
+    setFieldErrors({});
+
+    const durSec = requestedDuration === CreateJobRequestRequestedDuration.full
+      ? null
+      : parseInt(requestedDuration as string, 10);
+
+    if (durSec === 90 || durSec === 120) {
+      setDurationWarningOpen(true);
+      return;
+    }
+
+    submitJob();
   };
 
   return (
@@ -1065,6 +1078,83 @@ export default function Generate() {
         </div>
       </motion.div>
     </div>
+
+    {/* ── Duration Warning Dialog ── */}
+    {(() => {
+      const durSec = requestedDuration === CreateJobRequestRequestedDuration.full
+        ? null
+        : parseInt(requestedDuration as string, 10);
+      const isLong = durSec === 90 || durSec === 120;
+      if (!isLong) return null;
+      const numClips = Math.ceil((durSec as number) / 10);
+      const estimatedMin = durSec === 90 ? "~15 minutes" : "~20 minutes";
+      const creditCost = estimateCreditCost(requestedDuration);
+      return (
+        <Dialog open={durationWarningOpen} onOpenChange={setDurationWarningOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <div className="flex items-center gap-3 mb-1">
+                <div className="h-10 w-10 rounded-full bg-yellow-500/15 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                </div>
+                <DialogTitle className="text-left">Long video — heads up!</DialogTitle>
+              </div>
+              <DialogDescription asChild>
+                <div className="text-left space-y-3 mt-1">
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    A <strong className="text-foreground">{durSec}-second</strong> video requires{" "}
+                    <strong className="text-foreground">{numClips} separate AI clip generations</strong> and
+                    typically takes <strong className="text-foreground">{estimatedMin}</strong> to complete.
+                    The job may appear idle for several minutes — this is normal.
+                  </p>
+                  <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm space-y-1.5">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Estimated time</span>
+                      <span className="font-medium">{estimatedMin}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">AI clips generated</span>
+                      <span className="font-medium">{numClips} clips</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Credit cost</span>
+                      <span className="font-medium">{creditCost} credits</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    You can monitor progress on the job page. Don't close the tab — it will finish in the background.
+                  </p>
+                </div>
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex-col sm:flex-row gap-2 mt-2">
+              <Button
+                variant="outline"
+                className="sm:order-1"
+                onClick={() => setDurationWarningOpen(false)}
+              >
+                Go back
+              </Button>
+              <Button
+                className="bg-gradient-electric text-white shadow-glow border-0 sm:order-2"
+                disabled={createJob.isPending}
+                onClick={() => {
+                  setDurationWarningOpen(false);
+                  submitJob();
+                }}
+              >
+                {createJob.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="mr-2 h-4 w-4" />
+                )}
+                Start generation
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      );
+    })()}
 
     {/* ── Error Dialog ── */}
     <Dialog open={errorDialog.open} onOpenChange={(open) => setErrorDialog((s) => ({ ...s, open }))}>
