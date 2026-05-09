@@ -19,26 +19,22 @@ import {
 import { motion } from "framer-motion";
 
 function VideoThumbnail({ src, alt }: { src: string; alt: string }) {
-  const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
-  return (
-    <>
-      <div
-        className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${loaded && !error ? "opacity-0 pointer-events-none" : "opacity-100"}`}
-      >
+  if (error) {
+    return (
+      <div className="absolute inset-0 flex items-center justify-center">
         <Film className="h-12 w-12 text-muted-foreground/50" />
       </div>
-      {!error && (
-        <img
-          src={src}
-          alt={alt}
-          loading="eager"
-          className={`absolute inset-0 object-cover w-full h-full transition-opacity duration-500 ${loaded ? "opacity-100" : "opacity-0"}`}
-          onLoad={() => setLoaded(true)}
-          onError={() => setError(true)}
-        />
-      )}
-    </>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt={alt}
+      loading="eager"
+      className="absolute inset-0 object-cover w-full h-full"
+      onError={() => setError(true)}
+    />
   );
 }
 
