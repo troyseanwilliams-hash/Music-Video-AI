@@ -11,6 +11,7 @@ import {
   Play, RefreshCw, Download, ExternalLink, Clock,
   AudioWaveform, Clapperboard, Scissors, Sparkles, RotateCcw,
   WifiOff, Wifi, FileAudio, Server, Zap, Plus, Link2, Check, ShieldAlert,
+  TriangleAlert, X,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from "recharts";
 import { motion, AnimatePresence } from "framer-motion";
@@ -150,6 +151,41 @@ function useElapsed(active: boolean): string {
   return m > 0 ? `${m}m ${String(s).padStart(2, "0")}s` : `${s}s`;
 }
 
+/** Returns elapsed milliseconds since a given ISO timestamp, updating every 5 seconds. */
+function useWallElapsedMs(startIso: string | null | undefined, active: boolean): number {
+  const getMs = () => (startIso ? Math.max(0, Date.now() - new Date(startIso).getTime()) : 0);
+  const [ms, setMs] = useState(getMs);
+  useEffect(() => {
+    if (!active || !startIso) { setMs(0); return; }
+    setMs(getMs());
+    const id = setInterval(() => setMs(getMs()), 5000);
+    return () => clearInterval(id);
+  }, [active, startIso]);
+  return ms;
+}
+
+/**
+ * Returns the "taking too long" warning threshold in milliseconds based on the
+ * requested video duration.
+ *
+ * - "full" / 90 s / 120 s → 25 min  (long-video tier)
+ * - Shorter durations scale proportionally from the 90 s tier down to a 5 min floor
+ *   so that a 30 s job doesn't wait 25 minutes before surfacing a warning.
+ */
+function getThresholdMs(requestedDuration: string | null | undefined): number {
+  const LONG_MIN = 25;
+  const FLOOR_MIN = 5;
+  const LONG_TIER_SEC = 90;
+  if (!requestedDuration || requestedDuration === "full") {
+    return LONG_MIN * 60_000;
+  }
+  const durSec = parseInt(requestedDuration, 10);
+  if (isNaN(durSec) || durSec <= 0) return LONG_MIN * 60_000;
+  if (durSec >= LONG_TIER_SEC) return LONG_MIN * 60_000;
+  const minutes = Math.max(FLOOR_MIN, Math.round((LONG_MIN * durSec) / LONG_TIER_SEC));
+  return minutes * 60_000;
+}
+
 export default function JobStatus() {
   const [match, params] = useRoute("/jobs/:id");
   const id = params?.id;
@@ -160,6 +196,9 @@ export default function JobStatus() {
   const sseRef = useRef<EventSource | null>(null);
   const [sseConnected, setSseConnected] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [warningDismissed, setWarningDismissed] = useState(false);
+
+  useEffect(() => { setWarningDismissed(false); }, [id]);
 
   const { data: job, isLoading } = useGetJob(id as string, {
     query: {
@@ -209,6 +248,15 @@ export default function JobStatus() {
 
   const elapsed = useElapsed(!!(job && !TERMINAL_STATUSES.has(job.status ?? "")));
 
+  const durVal = (job as { requestedDuration?: string | null } | undefined)?.requestedDuration;
+  const jobIsActive = !!(job && !TERMINAL_STATUSES.has(job.status ?? ""));
+  const wallElapsedMs = useWallElapsedMs(
+    (job as { createdAt?: string | null } | undefined)?.createdAt,
+    jobIsActive,
+  );
+  const thresholdMs = getThresholdMs(durVal);
+  const showSlowWarning = jobIsActive && !warningDismissed && wallElapsedMs >= thresholdMs;
+
   if (isAuthLoading || !isAuthenticated || !id) return null;
 
   if (isLoading && !job) {
@@ -243,7 +291,6 @@ export default function JobStatus() {
   const errInfo = categoriseError(job.errorMessage);
 
   // Estimate number of clips for the progress hint
-  const durVal = (job as { requestedDuration?: string | null }).requestedDuration;
   let numClips = 3;
   if (durVal && durVal !== "full") {
     const d = parseInt(durVal, 10);
@@ -410,6 +457,43 @@ export default function JobStatus() {
                         ? "Automatically retrying after a transient error…"
                         : currentStage?.description}
                     </motion.p>
+                  </AnimatePresence>
+
+                  {/* ── Slow-job warning ── */}
+                  <AnimatePresence>
+                    {showSlowWarning && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 flex items-start gap-3"
+                      >
+                        <TriangleAlert className="h-4 w-4 text-yellow-400 shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-yellow-300 leading-snug">
+                            Taking longer than expected
+                          </p>
+                          <p className="text-xs text-yellow-400/80 mt-0.5 leading-relaxed">
+                            This is taking longer than usual. Generation occasionally stalls — if it
+                            hasn't moved in a while,{" "}
+                            <a
+                              href="mailto:support@aibeatSync.com"
+                              className="underline underline-offset-2 hover:text-yellow-300 transition-colors"
+                            >
+                              contact support
+                            </a>{" "}
+                            and we'll look into it.
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => setWarningDismissed(true)}
+                          className="text-yellow-400/60 hover:text-yellow-300 transition-colors shrink-0 mt-0.5"
+                          aria-label="Dismiss warning"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </motion.div>
+                    )}
                   </AnimatePresence>
                 </CardContent>
               </Card>
