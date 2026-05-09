@@ -24,7 +24,7 @@ function VideoThumbnail({ src, alt }: { src: string; alt: string }) {
   return (
     <>
       <div
-        className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${loaded && !error ? "opacity-0" : "opacity-100"}`}
+        className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${loaded && !error ? "opacity-0 pointer-events-none" : "opacity-100"}`}
       >
         <Film className="h-12 w-12 text-muted-foreground/50" />
       </div>
@@ -33,7 +33,7 @@ function VideoThumbnail({ src, alt }: { src: string; alt: string }) {
           src={src}
           alt={alt}
           loading="eager"
-          className={`object-cover w-full h-full transition-all duration-500 group-hover:scale-105 ${loaded ? "opacity-100" : "opacity-0"}`}
+          className={`absolute inset-0 object-cover w-full h-full transition-opacity duration-500 ${loaded ? "opacity-100" : "opacity-0"}`}
           onLoad={() => setLoaded(true)}
           onError={() => setError(true)}
         />
