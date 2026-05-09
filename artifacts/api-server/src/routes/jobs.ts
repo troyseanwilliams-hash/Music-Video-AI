@@ -12,6 +12,7 @@ import {
 } from "@workspace/api-zod";
 import { calculateCreditCost } from "../lib/creditCost.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { notifyJobPendingApproval } from "../lib/notifications.js";
 
 const router = Router();
 
@@ -167,6 +168,20 @@ router.post("/jobs", async (req, res) => {
     { userId: req.user.id, requestedDuration, creditCost, isAdmin },
     "Job queued — credits will be deducted on success",
   );
+
+  // Fire-and-forget: notify admin of pending approval (never blocks or errors the response)
+  const [userRow] = await db
+    .select({ email: usersTable.email })
+    .from(usersTable)
+    .where(eq(usersTable.id, req.user.id))
+    .limit(1);
+  notifyJobPendingApproval({
+    id: job.id,
+    prompt: job.prompt,
+    style: job.style,
+    requestedDuration: job.requestedDuration,
+    userEmail: userRow?.email ?? null,
+  });
 
   res.status(201).json(job);
 });
