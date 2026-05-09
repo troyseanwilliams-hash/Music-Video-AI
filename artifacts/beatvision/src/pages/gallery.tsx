@@ -87,11 +87,11 @@ export default function Gallery() {
   if (isAuthLoading || !isAuthenticated) return null;
 
   return (
-    <div className="container mx-auto px-4 py-12 max-w-7xl">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
+    <div className="container mx-auto px-4 py-6 sm:py-12 max-w-7xl">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 sm:mb-10 gap-4">
         <div>
-          <h1 className="text-4xl font-bold tracking-tight">Your Gallery</h1>
-          <p className="text-muted-foreground mt-1">All your generated AI music videos.</p>
+          <h1 className="text-2xl sm:text-4xl font-bold tracking-tight">Your Gallery</h1>
+          <p className="text-sm sm:text-base text-muted-foreground mt-1">All your generated AI music videos.</p>
         </div>
         
         <Link href="/generate">
@@ -218,8 +218,8 @@ export default function Gallery() {
           ))}
         </div>
       ) : (
-        <div className="text-center py-32 border border-dashed border-border rounded-2xl bg-card/30">
-          <Film className="h-16 w-16 text-muted-foreground mx-auto mb-6 opacity-20" />
+        <div className="text-center py-16 sm:py-32 border border-dashed border-border rounded-2xl bg-card/30">
+          <Film className="h-12 w-12 sm:h-16 sm:w-16 text-muted-foreground mx-auto mb-4 sm:mb-6 opacity-20" />
           <h3 className="text-xl font-medium mb-2">Your gallery is empty</h3>
           <p className="text-muted-foreground mb-8 max-w-md mx-auto">
             You haven't generated any videos yet. Start creating your first AI music video now.
