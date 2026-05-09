@@ -709,7 +709,7 @@ components:
 
     JobStatus:
       type: string
-      enum: [queued, analyzing, generating, stitching, ready, failed]
+      enum: [pending_approval, queued, analyzing, generating, stitching, ready, failed]
 
     VideoStyle:
       type: string

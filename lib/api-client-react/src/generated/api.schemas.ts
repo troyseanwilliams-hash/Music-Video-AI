@@ -92,6 +92,7 @@ export interface UploadUrlResponse {
 export type JobStatus = (typeof JobStatus)[keyof typeof JobStatus];
 
 export const JobStatus = {
+  pending_approval: "pending_approval",
   queued: "queued",
   analyzing: "analyzing",
   generating: "generating",

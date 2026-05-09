@@ -37,7 +37,7 @@ import {
   Upload, Link as LinkIcon, Music, Sparkles, Loader2, CheckCircle2, XCircle,
   Users, Clapperboard, Layers, Zap, Film, Wand2, Video as VideoIcon, FileText,
   ChevronDown, User, Maximize2, Captions, Pencil, MonitorPlay, ImageIcon,
-  Lock, Crown, Coins, AlertTriangle, CreditCard, Clock,
+  Lock, Crown, Coins, AlertTriangle, CreditCard, Clock, ShieldAlert,
 } from "lucide-react";
 
 type ErrorDialogState = {
@@ -145,6 +145,7 @@ export default function Generate() {
   const [errorDialog, setErrorDialog] = useState<ErrorDialogState>({ open: false, title: "", message: "" });
   const [copyrightAcknowledged, setCopyrightAcknowledged] = useState(false);
   const [durationWarningOpen, setDurationWarningOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   // Reference image
   const refImageInputRef = useRef<HTMLInputElement>(null);
@@ -433,7 +434,7 @@ export default function Generate() {
       return;
     }
 
-    submitJob();
+    setConfirmOpen(true);
   };
 
   return (
@@ -1140,7 +1141,7 @@ export default function Generate() {
                 disabled={createJob.isPending}
                 onClick={() => {
                   setDurationWarningOpen(false);
-                  submitJob();
+                  setConfirmOpen(true);
                 }}
               >
                 {createJob.isPending ? (
@@ -1155,6 +1156,69 @@ export default function Generate() {
         </Dialog>
       );
     })()}
+
+    {/* ── Confirm Generation Dialog ── */}
+    <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <div className="flex items-center gap-3 mb-1">
+            <div className="h-10 w-10 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
+              <ShieldAlert className="h-5 w-5 text-primary" />
+            </div>
+            <DialogTitle className="text-left">Confirm Video Generation</DialogTitle>
+          </div>
+          <DialogDescription asChild>
+            <div className="text-left space-y-3 mt-1">
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Review the details below. Once confirmed, the job will be submitted for admin approval before Runway processes it.
+              </p>
+              <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Style</span>
+                  <span className="font-medium capitalize">{STYLES.find((s) => s.id === selectedStyle)?.label ?? selectedStyle}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Duration</span>
+                  <span className="font-medium">
+                    {requestedDuration === CreateJobRequestRequestedDuration.full
+                      ? "Full track"
+                      : `${requestedDuration}s`}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Credit cost</span>
+                  <span className="font-medium">{estimateCreditCost(requestedDuration)} credits</span>
+                </div>
+              </div>
+            </div>
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="flex-col sm:flex-row gap-2 mt-2">
+          <Button
+            variant="outline"
+            className="sm:order-1"
+            onClick={() => setConfirmOpen(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            className="bg-gradient-electric text-white shadow-glow border-0 sm:order-2"
+            disabled={createJob.isPending}
+            onClick={() => {
+              setConfirmOpen(false);
+              submitJob();
+            }}
+          >
+            {createJob.isPending ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <ShieldAlert className="mr-2 h-4 w-4" />
+            )}
+            Confirm &amp; Generate
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     {/* ── Error Dialog ── */}
     <Dialog open={errorDialog.open} onOpenChange={(open) => setErrorDialog((s) => ({ ...s, open }))}>

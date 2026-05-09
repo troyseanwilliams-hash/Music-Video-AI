@@ -9,6 +9,7 @@ import dashboardRouter from "./dashboard.js";
 import billingRouter from "./billing.js";
 import sunoRouter from "./suno.js";
 import supportRouter from "./support.js";
+import adminJobsRouter from "./admin-jobs.js";
 
 const router: IRouter = Router();
 
@@ -22,5 +23,6 @@ router.use(dashboardRouter);
 router.use(billingRouter);
 router.use(sunoRouter);
 router.use(supportRouter);
+router.use(adminJobsRouter);
 
 export default router;

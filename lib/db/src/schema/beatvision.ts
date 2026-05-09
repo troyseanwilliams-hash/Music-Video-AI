@@ -13,6 +13,7 @@ import { z } from "zod/v4";
 import { usersTable } from "./auth";
 
 export const jobStatusEnum = pgEnum("job_status", [
+  "pending_approval",
   "queued",
   "analyzing",
   "generating",

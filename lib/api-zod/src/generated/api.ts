@@ -196,6 +196,7 @@ export const ListJobsResponse = zod.object({
       id: zod.string(),
       userId: zod.string(),
       status: zod.enum([
+        "pending_approval",
         "queued",
         "analyzing",
         "generating",
@@ -385,6 +386,7 @@ export const GetJobResponse = zod.object({
   id: zod.string(),
   userId: zod.string(),
   status: zod.enum([
+    "pending_approval",
     "queued",
     "analyzing",
     "generating",
@@ -763,6 +765,7 @@ export const GetDashboardStatsResponse = zod.object({
         id: zod.string(),
         userId: zod.string(),
         status: zod.enum([
+          "pending_approval",
           "queued",
           "analyzing",
           "generating",

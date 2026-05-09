@@ -283,12 +283,26 @@ function TicketRow({ ticket, onUpdate }: { ticket: AdminTicket; onUpdate: () => 
   );
 }
 
+/* ─── Pending jobs types ─── */
+interface PendingJob {
+  id: string;
+  userId: string;
+  email: string | null;
+  status: string;
+  prompt: string | null;
+  style: string | null;
+  requestedDuration: string | null;
+  audioSourceType: string | null;
+  createdAt: string;
+}
+
 /* ─── Main admin page ─── */
-type Tab = "users" | "support";
+type Tab = "users" | "support" | "jobs";
 
 export default function AdminPage() {
   const [, setLocation] = useLocation();
   const { user, isLoading: isAuthLoading } = useAuth();
+  const { toast } = useToast();
   const [tab, setTab] = useState<Tab>("users");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -303,6 +317,48 @@ export default function AdminPage() {
     queryFn: () => fetchAdminUsers(debouncedSearch),
     enabled: isAdmin && tab === "users",
     staleTime: 30_000,
+  });
+
+  const { data: pendingJobsData, isLoading: pendingJobsLoading, refetch: refetchPendingJobs } = useQuery<{ jobs: PendingJob[] }>({
+    queryKey: ["admin", "jobs", "pending"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/jobs/pending", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    enabled: isAdmin && tab === "jobs",
+    staleTime: 10_000,
+    refetchInterval: tab === "jobs" ? 15_000 : false,
+  });
+
+  const approveMutation = useMutation({
+    mutationFn: async (jobId: string) => {
+      const res = await fetch(`/api/admin/jobs/${jobId}/approve`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to approve");
+    },
+    onSuccess: () => {
+      toast({ title: "Job approved", description: "Job moved to queue and will process shortly." });
+      refetchPendingJobs();
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: async (jobId: string) => {
+      const res = await fetch(`/api/admin/jobs/${jobId}/reject`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to reject");
+    },
+    onSuccess: () => {
+      toast({ title: "Job rejected", description: "Job has been marked as failed." });
+      refetchPendingJobs();
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const { data: ticketsData, isLoading: ticketsLoading, refetch: refetchTickets } = useQuery<{ tickets: AdminTicket[] }>({
@@ -379,6 +435,22 @@ export default function AdminPage() {
           {openCount > 0 && (
             <span className="ml-1 px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground text-xs font-mono leading-none">
               {openCount}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setTab("jobs")}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            tab === "jobs"
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <ShieldCheck className="h-4 w-4" />
+          Job Approvals
+          {pendingJobsData && pendingJobsData.jobs.length > 0 && (
+            <span className="ml-1 px-1.5 py-0.5 rounded-full bg-yellow-500 text-black text-xs font-mono leading-none">
+              {pendingJobsData.jobs.length}
             </span>
           )}
         </button>
@@ -468,6 +540,85 @@ export default function AdminPage() {
             )}
           </CardContent>
         </Card>
+      )}
+
+      {/* ── Job Approvals tab ── */}
+      {tab === "jobs" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">Pending Job Approvals</h2>
+              <p className="text-sm text-muted-foreground">
+                Each video generation waits here until you approve it. Approved jobs are sent to Runway for processing.
+              </p>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => refetchPendingJobs()}>
+              Refresh
+            </Button>
+          </div>
+
+          {pendingJobsLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : !pendingJobsData?.jobs.length ? (
+            <div className="text-center py-20 border border-dashed border-border rounded-2xl bg-card/30">
+              <ShieldCheck className="h-12 w-12 text-green-500 mx-auto mb-4 opacity-40" />
+              <p className="text-foreground font-medium mb-1">All clear</p>
+              <p className="text-muted-foreground text-sm">No jobs are waiting for approval.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {pendingJobsData.jobs.map((job) => (
+                <Card key={job.id} className="bg-card/50 border-card-border">
+                  <CardContent className="p-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-mono text-muted-foreground">{job.id.slice(0, 8)}…</span>
+                          <span className="text-xs text-muted-foreground">•</span>
+                          <span className="text-xs text-muted-foreground">{job.email ?? job.userId}</span>
+                        </div>
+                        <p className="text-sm font-medium truncate">{job.prompt ?? <span className="italic text-muted-foreground">No prompt</span>}</p>
+                        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                          {job.style && <span className="capitalize bg-muted px-1.5 py-0.5 rounded">{job.style}</span>}
+                          {job.requestedDuration && (
+                            <span className="bg-muted px-1.5 py-0.5 rounded">
+                              {job.requestedDuration === "full" ? "Full track" : `${job.requestedDuration}s`}
+                            </span>
+                          )}
+                          {job.audioSourceType && <span className="bg-muted px-1.5 py-0.5 rounded capitalize">{job.audioSourceType}</span>}
+                          <span className="bg-muted px-1.5 py-0.5 rounded">{new Date(job.createdAt).toLocaleString()}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                          disabled={rejectMutation.isPending || approveMutation.isPending}
+                          onClick={() => rejectMutation.mutate(job.id)}
+                        >
+                          <X className="h-3.5 w-3.5 mr-1" />
+                          Reject
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="bg-green-600 hover:bg-green-700 text-white border-0"
+                          disabled={approveMutation.isPending || rejectMutation.isPending}
+                          onClick={() => approveMutation.mutate(job.id)}
+                        >
+                          <Check className="h-3.5 w-3.5 mr-1" />
+                          Approve
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {/* ── Support tab ── */}

@@ -133,7 +133,7 @@ router.post("/jobs", async (req, res) => {
     .values({
       id: jobId,
       userId: req.user.id,
-      status: "queued",
+      status: "pending_approval",
       audioSourceType: audioSourceType as
         | "upload"
         | "youtube"
