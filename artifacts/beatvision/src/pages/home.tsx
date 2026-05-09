@@ -47,7 +47,10 @@ function SampleVideo({ src, label }: { src: string; label: string }) {
         loop
         muted
         playsInline
-        preload="metadata"
+        autoPlay
+        preload="auto"
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
       />
       {/* Overlay */}
       <div className={`absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity duration-200 ${playing ? "opacity-0 group-hover:opacity-100" : "opacity-100"}`}>
