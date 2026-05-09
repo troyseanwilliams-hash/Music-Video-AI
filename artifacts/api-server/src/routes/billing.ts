@@ -3,7 +3,7 @@ import { eq, desc } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { usersTable, creditsTable, creditGrantsTable } from "@workspace/db";
 import { randomUUID } from "crypto";
-import { getUncachableStripeClient } from "../lib/stripeClient";
+import { getUncachableStripeClient } from "../lib/stripeClient.js";
 import type Stripe from "stripe";
 
 const router = Router();
@@ -265,7 +265,7 @@ router.post("/billing/checkout", async (req, res) => {
 
     const price = await stripe.prices.retrieve(resolvedPriceId);
     const priceId = resolvedPriceId;
-    const mode: Stripe.Checkout.SessionCreateParams.Mode = price.recurring
+    const mode: "subscription" | "payment" = price.recurring
       ? "subscription"
       : "payment";
 

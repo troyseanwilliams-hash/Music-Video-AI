@@ -3,8 +3,8 @@ import { db } from "@workspace/db";
 import { creditsTable, creditGrantsTable, usersTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { getStripeSync, getUncachableStripeClient } from "./stripeClient";
-import { logger } from "./logger";
+import { getStripeSync, getUncachableStripeClient } from "./stripeClient.js";
+import { logger } from "./logger.js";
 
 function parseCreditsFromMetadata(
   metadata: Stripe.Metadata | null | undefined,

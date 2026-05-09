@@ -2,7 +2,7 @@ import bcrypt from "bcrypt";
 import crypto from "crypto";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.js";
 
 export async function ensureAdminUser(): Promise<void> {
   const email = process.env.ADMIN_EMAIL?.toLowerCase().trim();

@@ -17,7 +17,7 @@ function buildUserPayload(user: typeof usersTable.$inferSelect) {
     lastName: user.lastName,
     profileImageUrl: user.profileImageUrl,
     subscriptionStatus: (user.subscriptionStatus ?? "none") as "trial" | "active" | "cancelled" | "none",
-    trialEndsAt: null as string | null,
+    trialEndsAt: null as Date | null,
     isAdmin: isAdminEmail(user.email),
   };
 }
@@ -29,7 +29,7 @@ import {
   SESSION_COOKIE,
   SESSION_TTL,
   type SessionData,
-} from "../lib/auth";
+} from "../lib/auth.js";
 
 const SALT_ROUNDS = 12;
 

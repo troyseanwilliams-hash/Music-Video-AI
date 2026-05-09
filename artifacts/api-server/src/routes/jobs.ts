@@ -10,8 +10,8 @@ import {
   ListJobsQueryParams,
   GetJobParams,
 } from "@workspace/api-zod";
-import { calculateCreditCost } from "../lib/creditCost";
-import { ObjectStorageService } from "../lib/objectStorage";
+import { calculateCreditCost } from "../lib/creditCost.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 
 const router = Router();
 

@@ -1,14 +1,14 @@
 import { Router, type IRouter } from "express";
-import healthRouter from "./health";
-import authRouter from "./auth";
-import storageRouter from "./storage";
-import jobsRouter from "./jobs";
-import videosRouter from "./videos";
-import creditsRouter from "./credits";
-import dashboardRouter from "./dashboard";
-import billingRouter from "./billing";
-import sunoRouter from "./suno";
-import supportRouter from "./support";
+import healthRouter from "./health.js";
+import authRouter from "./auth.js";
+import storageRouter from "./storage.js";
+import jobsRouter from "./jobs.js";
+import videosRouter from "./videos.js";
+import creditsRouter from "./credits.js";
+import dashboardRouter from "./dashboard.js";
+import billingRouter from "./billing.js";
+import sunoRouter from "./suno.js";
+import supportRouter from "./support.js";
 
 const router: IRouter = Router();
 

@@ -1,9 +1,9 @@
-import app from "./app";
-import { logger } from "./lib/logger";
-import { startJobProcessor } from "./lib/jobProcessor";
-import { ensureAdminUser } from "./lib/ensureAdminUser";
-import { initStripe } from "./lib/stripeClient";
-import { replayRecentStripeEvents } from "./lib/webhookHandlers";
+import app from "./app.js";
+import { logger } from "./lib/logger.js";
+import { startJobProcessor } from "./lib/jobProcessor.js";
+import { ensureAdminUser } from "./lib/ensureAdminUser.js";
+import { initStripe } from "./lib/stripeClient.js";
+import { replayRecentStripeEvents } from "./lib/webhookHandlers.js";
 import { db, usersTable, creditsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";

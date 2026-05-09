@@ -1,18 +1,18 @@
 import { db } from "@workspace/db";
 import { jobsTable, videosTable, creditsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
-import { calculateCreditCost, getClipPlan } from "./creditCost";
+import { calculateCreditCost, getClipPlan } from "./creditCost.js";
 import { randomUUID } from "crypto";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { writeFile, unlink } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
-import { logger } from "./logger";
-import { ObjectStorageService } from "./objectStorage";
-import { analyzeAudioBuffer, type AudioAnalysis, type AudioSection } from "./audioAnalysis";
-import { generateClip, downloadClip, getActiveProvider } from "./videoApis";
-import { stitchVideoClips, extractVideoThumbnail } from "./videoStitcher";
+import { logger } from "./logger.js";
+import { ObjectStorageService } from "./objectStorage.js";
+import { analyzeAudioBuffer, type AudioAnalysis, type AudioSection } from "./audioAnalysis.js";
+import { generateClip, downloadClip, getActiveProvider } from "./videoApis.js";
+import { stitchVideoClips, extractVideoThumbnail } from "./videoStitcher.js";
 
 const execAsync = promisify(exec);
 const MAX_RETRIES = 3;
@@ -31,7 +31,7 @@ async function notifyJobUpdate(jobId: string): Promise<void> {
 }
 
 async function claimNextJob(): Promise<JobRow | null> {
-  const result = await db.execute(sql`
+  const result = await db.execute<{ id: string }>(sql`
     UPDATE jobs
     SET status = 'analyzing', claimed_at = NOW(), updated_at = NOW()
     WHERE id = (
@@ -44,8 +44,7 @@ async function claimNextJob(): Promise<JobRow | null> {
     RETURNING id
   `);
 
-  const rows = (result as { rows: { id: string }[] }).rows;
-  const claimedId = rows[0]?.id;
+  const claimedId = result.rows[0]?.id;
   if (!claimedId) return null;
 
   const [job] = await db
@@ -489,7 +488,7 @@ const STALE_CHECK_INTERVAL_MS = 5 * 60 * 1000; // check every 5 minutes
 async function recoverStaleJobs(): Promise<void> {
   try {
     const cutoff = new Date(Date.now() - STALE_THRESHOLD_MS);
-    const stale = await db.execute(sql`
+    const stale = await db.execute<{ id: string }>(sql`
       UPDATE jobs
       SET
         status    = 'queued',
@@ -503,7 +502,7 @@ async function recoverStaleJobs(): Promise<void> {
         AND retry_count < ${MAX_RETRIES}
       RETURNING id
     `);
-    const recovered = (stale as { rows: { id: string }[] }).rows;
+    const recovered = stale.rows;
     if (recovered.length > 0) {
       logger.warn({ recovered: recovered.map((r) => r.id) }, "Recovered stale jobs");
       for (const { id } of recovered) await notifyJobUpdate(id);

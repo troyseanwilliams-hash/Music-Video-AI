@@ -1,6 +1,6 @@
 import Stripe from "stripe";
 import type { StripeSync } from "stripe-replit-sync";
-import { logger } from "./logger";
+import { logger } from "./logger.js";
 
 interface StripeConnectionSettings {
   publishable?: string;
@@ -68,7 +68,7 @@ async function getCredentials(): Promise<{
 export async function getUncachableStripeClient(): Promise<Stripe> {
   const { secretKey } = await getCredentials();
   return new Stripe(secretKey, {
-    apiVersion: "2025-08-27.basil",
+    apiVersion: "2026-04-22.dahlia",
   });
 }
 
@@ -122,7 +122,7 @@ export async function initStripe(): Promise<void> {
       logger.info({ webhookUrl }, "Setting up managed Stripe webhook");
       const result = await sync.findOrCreateManagedWebhook(webhookUrl);
       logger.info(
-        { url: result?.webhook?.url },
+        { url: result?.url },
         "Stripe webhook configured",
       );
     } else {

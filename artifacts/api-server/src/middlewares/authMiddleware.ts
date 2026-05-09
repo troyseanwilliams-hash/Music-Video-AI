@@ -1,6 +1,6 @@
 import { type Request, type Response, type NextFunction } from "express";
 import type { AuthUser } from "@workspace/api-zod";
-import { clearSession, getSessionId, getSession } from "../lib/auth";
+import { clearSession, getSessionId, getSession } from "../lib/auth.js";
 
 declare global {
   namespace Express {
