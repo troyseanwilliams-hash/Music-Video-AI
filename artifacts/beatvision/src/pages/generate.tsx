@@ -427,20 +427,20 @@ export default function Generate() {
 
   return (
     <>
-    <div className="container mx-auto px-4 py-12 max-w-4xl">
+    <div className="container mx-auto px-4 py-6 sm:py-12 max-w-4xl">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="space-y-8"
+        className="space-y-6 sm:space-y-8"
       >
         <div>
-          <h1 className="text-4xl font-bold tracking-tight mb-2">Create New Video</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-2xl sm:text-4xl font-bold tracking-tight mb-2">Create New Video</h1>
+          <p className="text-sm sm:text-base text-muted-foreground">
             Upload a track, our AI analyses the beats, and generates a synced music video.
           </p>
         </div>
 
-        <div className="grid gap-8 p-8 rounded-2xl bg-card border border-card-border shadow-lg">
+        <div className="grid gap-5 sm:gap-8 p-4 sm:p-8 rounded-2xl bg-card border border-card-border shadow-lg">
 
           {/* ── Settings Toolbar ── */}
           <div className="rounded-xl border border-border/60 bg-background/40 overflow-hidden">
@@ -450,8 +450,8 @@ export default function Generate() {
               <Maximize2 className="h-3.5 w-3.5 text-muted-foreground/50" />
             </div>
 
-            {/* Pill row */}
-            <div className="flex items-center gap-1 px-3 py-2 flex-wrap">
+            {/* Pill row — scrollable on mobile, wraps on larger screens */}
+            <div className="flex items-center gap-1.5 px-3 py-2 flex-wrap overflow-x-auto scrollbar-none">
 
               {/* Character */}
               <DropdownMenu>
@@ -475,7 +475,7 @@ export default function Generate() {
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              <div className="h-5 w-px bg-border/40 mx-0.5" />
+              <div className="hidden sm:block h-5 w-px bg-border/40 mx-0.5" />
 
               {/* Duration */}
               <DropdownMenu>
@@ -514,7 +514,7 @@ export default function Generate() {
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              <div className="h-5 w-px bg-border/40 mx-0.5" />
+              <div className="hidden sm:block h-5 w-px bg-border/40 mx-0.5" />
 
               {/* Aspect Ratio */}
               <DropdownMenu>
@@ -560,7 +560,7 @@ export default function Generate() {
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              <div className="h-5 w-px bg-border/40 mx-0.5" />
+              <div className="hidden sm:block h-5 w-px bg-border/40 mx-0.5" />
 
               {/* Style */}
               <button
@@ -584,7 +584,7 @@ export default function Generate() {
                 <span>Captions</span>
               </button>
 
-              <div className="h-5 w-px bg-border/40 mx-0.5" />
+              <div className="hidden sm:block h-5 w-px bg-border/40 mx-0.5" />
 
               {/* Remove watermark */}
               <button
@@ -596,7 +596,8 @@ export default function Generate() {
                 }`}
               >
                 <Diamond className="h-3.5 w-3.5" />
-                <span>Remove watermark</span>
+                <span className="hidden sm:inline">Remove watermark</span>
+                <span className="sm:hidden">Watermark</span>
                 <div className={`ml-1 h-4 w-4 rounded flex items-center justify-center border transition-colors ${
                   removeWatermark ? "bg-primary border-primary" : "border-border/60 bg-transparent"
                 }`}>
@@ -631,21 +632,24 @@ export default function Generate() {
             <TabsList className="grid w-full grid-cols-3 mb-6">
               <TabsTrigger
                 value={CreateJobRequestAudioSourceType.upload}
-                className="flex items-center gap-2"
+                className="flex items-center gap-1.5 text-xs sm:text-sm"
               >
-                <Upload className="h-4 w-4" /> Upload Audio
+                <Upload className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+                <span>Audio</span>
               </TabsTrigger>
               <TabsTrigger
                 value={CreateJobRequestAudioSourceType.youtube}
-                className="flex items-center gap-2"
+                className="flex items-center gap-1.5 text-xs sm:text-sm"
               >
-                <LinkIcon className="h-4 w-4" /> YouTube
+                <LinkIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+                <span>YouTube</span>
               </TabsTrigger>
               <TabsTrigger
                 value={CreateJobRequestAudioSourceType.suno}
-                className="flex items-center gap-2"
+                className="flex items-center gap-1.5 text-xs sm:text-sm"
               >
-                <MonitorPlay className="h-4 w-4 text-[#1DB954]" /> Suno
+                <MonitorPlay className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0 text-[#1DB954]" />
+                <span>Suno</span>
               </TabsTrigger>
             </TabsList>
 
@@ -666,7 +670,7 @@ export default function Generate() {
               {/* ── Drop zone — only shown when no file selected yet ── */}
               {!uploadedFile ? (
                 <div
-                  className="border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center transition-colors cursor-pointer border-border hover:border-primary/50 hover:bg-primary/5"
+                  className="border-2 border-dashed rounded-xl p-5 sm:p-8 flex flex-col items-center justify-center text-center transition-colors cursor-pointer border-border hover:border-primary/50 hover:bg-primary/5"
                   onClick={() => fileInputRef.current?.click()}
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={(e) => {
@@ -675,12 +679,12 @@ export default function Generate() {
                     if (file) handleFileSelect(file);
                   }}
                 >
-                  <div className="flex flex-col items-center gap-4">
-                    <div className="h-16 w-16 rounded-full bg-secondary flex items-center justify-center">
-                      <Music className="h-8 w-8 text-muted-foreground" />
+                  <div className="flex flex-col items-center gap-3 sm:gap-4">
+                    <div className="h-12 w-12 sm:h-16 sm:w-16 rounded-full bg-secondary flex items-center justify-center">
+                      <Music className="h-6 w-6 sm:h-8 sm:w-8 text-muted-foreground" />
                     </div>
                     <div>
-                      <p className="font-medium text-lg">Drop your audio here</p>
+                      <p className="font-medium text-base sm:text-lg">Drop your audio here</p>
                       <p className="text-sm text-muted-foreground mt-1">or click to browse files</p>
                       <p className="text-xs text-muted-foreground/60 mt-1">MP3, WAV, FLAC, AAC · up to 50 MB</p>
                     </div>
@@ -748,11 +752,11 @@ export default function Generate() {
               {/* ── Waveform Clip Selector — shown as soon as a file is chosen ── */}
               {uploadedFile && (
                 <div className="rounded-xl border border-primary/30 bg-background/40 p-4 space-y-2">
-                  <div className="flex items-center gap-2 text-sm font-medium text-primary mb-3">
-                    <Clock className="h-4 w-4" />
+                  <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-primary mb-3">
+                    <Clock className="h-4 w-4 shrink-0" />
                     <span>Select clip section</span>
-                    <span className="text-muted-foreground font-normal text-xs ml-auto">
-                      Drag both handles to choose your {durationToSeconds(requestedDuration) ?? 10}s window
+                    <span className="text-muted-foreground font-normal text-xs sm:ml-auto">
+                      Drag to choose your {durationToSeconds(requestedDuration) ?? 10}s window
                     </span>
                   </div>
                   <AudioWaveformSelector
@@ -832,10 +836,10 @@ export default function Generate() {
           {/* ── Reference Image (optional) ── */}
           <div className="rounded-xl border border-border/60 bg-background/30 overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3">
-              <div className="flex items-center gap-2">
-                <ImageIcon className="h-4 w-4 text-primary" />
+              <div className="flex items-center gap-2 min-w-0">
+                <ImageIcon className="h-4 w-4 text-primary shrink-0" />
                 <span className="text-sm font-medium">Reference Image</span>
-                <span className="text-xs text-muted-foreground">— optional, sets the starting frame</span>
+                <span className="text-xs text-muted-foreground hidden sm:inline">— optional, sets the starting frame</span>
               </div>
               {refImageObjectPath && (
                 <button
@@ -966,12 +970,12 @@ export default function Generate() {
           {/* ── Captions / Lyrics ── */}
           <div className="rounded-xl border border-border bg-background/30 p-5 space-y-4">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <FileText className="h-4 w-4 text-primary" />
+              <div className="flex items-center gap-2 min-w-0">
+                <FileText className="h-4 w-4 text-primary shrink-0" />
                 <Label htmlFor="lyrics-toggle" className="cursor-pointer font-medium">
                   Captions / Lyrics Overlay
                 </Label>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-muted-foreground hidden sm:inline">
                   — burns subtitle text onto the video
                 </span>
               </div>
@@ -1064,7 +1068,8 @@ export default function Generate() {
                   ) : (
                     <>
                       <Sparkles className="mr-2 h-5 w-5" />
-                      Generate Beat-Synced Video
+                      <span className="hidden sm:inline">Generate Beat-Synced Video</span>
+                      <span className="sm:hidden">Generate Video</span>
                     </>
                   )}
                 </Button>
