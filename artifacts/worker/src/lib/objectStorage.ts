@@ -59,6 +59,18 @@ export class ObjectStorageService {
     return objectFile;
   }
 
+  async getObjectEntitySignedUrl(objectPath: string, ttlSec: number = 3600): Promise<string> {
+    if (!objectPath.startsWith("/objects/")) throw new ObjectNotFoundError();
+    const parts = objectPath.slice(1).split("/");
+    if (parts.length < 2) throw new ObjectNotFoundError();
+    const entityId = parts.slice(1).join("/");
+    let entityDir = this.getPrivateObjectDir();
+    if (!entityDir.endsWith("/")) entityDir = `${entityDir}/`;
+    const objectEntityPath = `${entityDir}${entityId}`;
+    const { bucketName, objectName } = parseObjectPath(objectEntityPath);
+    return signObjectURL({ bucketName, objectName, method: "GET", ttlSec });
+  }
+
   async uploadVideoBuffer(buffer: Buffer, videoId: string): Promise<string> {
     const privateObjectDir = this.getPrivateObjectDir();
     const objectEntityPath = `${privateObjectDir}/videos/${videoId}.mp4`;
@@ -95,4 +107,38 @@ function parseObjectPath(path: string): { bucketName: string; objectName: string
   const parts = path.split("/");
   if (parts.length < 3) throw new Error("Invalid storage path");
   return { bucketName: parts[1]!, objectName: parts.slice(2).join("/") };
+}
+
+async function signObjectURL({
+  bucketName,
+  objectName,
+  method,
+  ttlSec,
+}: {
+  bucketName: string;
+  objectName: string;
+  method: "GET" | "PUT" | "DELETE" | "HEAD";
+  ttlSec: number;
+}): Promise<string> {
+  const request = {
+    bucket_name: bucketName,
+    object_name: objectName,
+    method,
+    expires_at: new Date(Date.now() + ttlSec * 1000).toISOString(),
+  };
+  const response = await fetch(
+    `${REPLIT_SIDECAR_ENDPOINT}/object-storage/signed-object-url`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+      signal: AbortSignal.timeout(30_000),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      `Failed to sign object URL: ${response.status}`,
+    );
+  }
+  return ((await response.json()) as { signed_url: string }).signed_url;
 }

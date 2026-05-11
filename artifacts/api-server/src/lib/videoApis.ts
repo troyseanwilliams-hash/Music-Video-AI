@@ -4,7 +4,8 @@ export interface ClipRequest {
   prompt: string;
   durationSeconds: number;
   aspectRatio?: string;
-  imageDataUrl?: string;
+  /** HTTPS URL of the reference image (GCS signed URL). When absent, text_to_video is used. */
+  imageUrl?: string;
 }
 
 export interface ClipResult {
@@ -37,12 +38,8 @@ const RUNWAY_BASE = "https://api.dev.runwayml.com/v1";
 const RUNWAY_VERSION = "2024-11-06";
 const RUNWAY_MODEL = "gen4.5";
 
-// Fallback 1×1 dark PNG used when no reference image is provided.
-// Runway Gen-3 requires promptImage; the text prompt drives the visual content.
-const RUNWAY_SEED_IMAGE =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
-
-const RUNWAY_RATIOS: Record<string, string> = {
+// image_to_video supports all ratios; text_to_video only supports landscape/portrait
+const IMAGE_TO_VIDEO_RATIOS: Record<string, string> = {
   "16:9": "1280:720",
   "9:16": "720:1280",
   "4:3": "1104:832",
@@ -50,24 +47,52 @@ const RUNWAY_RATIOS: Record<string, string> = {
   "21:9": "1584:672",
 };
 
+// text_to_video gen4.5 only accepts these two ratios — map others to nearest
+const TEXT_TO_VIDEO_RATIOS: Record<string, "1280:720" | "720:1280"> = {
+  "16:9": "1280:720",
+  "9:16": "720:1280",
+  "4:3": "1280:720",
+  "1:1": "1280:720",
+  "21:9": "1280:720",
+};
+
 async function generateWithRunway(req: ClipRequest): Promise<string> {
   const apiKey = process.env.RUNWAY_API_KEY!;
-  const duration = Math.min(Math.max(Math.ceil(req.durationSeconds), 5), 10) as 5 | 10;
+  const duration = Math.min(Math.max(Math.ceil(req.durationSeconds), 2), 10);
+  const aspectRatio = req.aspectRatio ?? "16:9";
 
-  const genRes = await fetch(`${RUNWAY_BASE}/image_to_video`, {
+  let endpoint: string;
+  let body: Record<string, unknown>;
+
+  if (req.imageUrl) {
+    // image_to_video: use the provided HTTPS reference image URL
+    endpoint = `${RUNWAY_BASE}/image_to_video`;
+    body = {
+      model: RUNWAY_MODEL,
+      promptImage: req.imageUrl,
+      promptText: req.prompt.slice(0, 1000),
+      duration,
+      ratio: IMAGE_TO_VIDEO_RATIOS[aspectRatio] ?? "1280:720",
+    };
+  } else {
+    // text_to_video: no reference image, let the prompt drive everything
+    endpoint = `${RUNWAY_BASE}/text_to_video`;
+    body = {
+      model: RUNWAY_MODEL,
+      promptText: req.prompt.slice(0, 1000),
+      duration,
+      ratio: TEXT_TO_VIDEO_RATIOS[aspectRatio] ?? "1280:720",
+    };
+  }
+
+  const genRes = await fetch(endpoint, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
       "X-Runway-Version": RUNWAY_VERSION,
     },
-    body: JSON.stringify({
-      model: RUNWAY_MODEL,
-      promptImage: req.imageDataUrl ?? RUNWAY_SEED_IMAGE,
-      promptText: req.prompt.slice(0, 1000),
-      duration,
-      ratio: RUNWAY_RATIOS[req.aspectRatio ?? "16:9"] ?? "1280:768",
-    }),
+    body: JSON.stringify(body),
     signal: AbortSignal.timeout(30_000),
   });
 

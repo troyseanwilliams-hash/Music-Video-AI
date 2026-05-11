@@ -197,19 +197,12 @@ async function selectSections(sections: AudioSection[], maxClips: number): Promi
     .slice(0, maxClips);
 }
 
-async function loadReferenceImageDataUrl(job: JobRow): Promise<string | null> {
+async function loadReferenceImageUrl(job: JobRow): Promise<string | null> {
   if (!job.referenceImagePath) return null;
   try {
-    const file = await storageService.getObjectEntityFile(job.referenceImagePath);
-    const [buf] = await file.download();
-    const imgFilename = job.referenceImagePath.split("/").pop() ?? "";
-    const imgDot = imgFilename.lastIndexOf(".");
-    const ext = imgDot !== -1 ? imgFilename.slice(imgDot + 1).toLowerCase() : "jpg";
-    const mime =
-      ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
-    return `data:${mime};base64,${buf.toString("base64")}`;
+    return await storageService.getObjectEntitySignedUrl(job.referenceImagePath, 3600);
   } catch (err) {
-    logger.warn({ err, jobId: job.id }, "Could not load reference image, skipping");
+    logger.warn({ err, jobId: job.id }, "Could not get reference image URL, skipping");
     return null;
   }
 }
@@ -234,7 +227,7 @@ async function generateClips(
   }
 
   const clips: { buffer: Buffer; targetDuration: number }[] = [];
-  const refImageDataUrl = await loadReferenceImageDataUrl(job);
+  const refImageUrl = await loadReferenceImageUrl(job);
 
   logger.info(
     { jobId: job.id, provider, sectionCount: sections.length, maxClips },
@@ -277,7 +270,7 @@ async function generateClips(
         prompt,
         durationSeconds: clipDuration,
         aspectRatio: job.aspectRatio ?? "16:9",
-        imageDataUrl: refImageDataUrl ?? undefined,
+        imageUrl: refImageUrl ?? undefined,
       });
       if (!result) {
         clipBuffer = await createSimulationClip(clipDuration);

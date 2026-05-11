@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Loader2, Search, ShieldCheck, Coins, Check, X,
   MessageSquare, Users, ChevronDown, ChevronUp,
-  CircleDot, Clock, CheckCircle2, XCircle,
+  CircleDot, Clock, CheckCircle2, XCircle, RotateCcw, AlertTriangle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -296,6 +296,12 @@ interface PendingJob {
   createdAt: string;
 }
 
+interface FailedJob extends PendingJob {
+  errorMessage: string | null;
+  retryCount: number | null;
+  updatedAt: string;
+}
+
 /* ─── Main admin page ─── */
 type Tab = "users" | "support" | "jobs";
 
@@ -331,6 +337,17 @@ export default function AdminPage() {
     refetchInterval: tab === "jobs" ? 15_000 : false,
   });
 
+  const { data: failedJobsData, isLoading: failedJobsLoading, refetch: refetchFailedJobs } = useQuery<{ jobs: FailedJob[] }>({
+    queryKey: ["admin", "jobs", "failed"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/jobs/failed", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    enabled: isAdmin && tab === "jobs",
+    staleTime: 30_000,
+  });
+
   const approveMutation = useMutation({
     mutationFn: async (jobId: string) => {
       const res = await fetch(`/api/admin/jobs/${jobId}/approve`, {
@@ -357,6 +374,21 @@ export default function AdminPage() {
     onSuccess: () => {
       toast({ title: "Job rejected", description: "Job has been marked as failed." });
       refetchPendingJobs();
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const retryMutation = useMutation({
+    mutationFn: async (jobId: string) => {
+      const res = await fetch(`/api/admin/jobs/${jobId}/retry`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to retry");
+    },
+    onSuccess: () => {
+      toast({ title: "Job requeued", description: "Job has been reset and will process shortly." });
+      refetchFailedJobs();
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -618,6 +650,77 @@ export default function AdminPage() {
               ))}
             </div>
           )}
+
+          {/* ── Failed jobs ── */}
+          <div className="mt-8">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-destructive" />
+                  Failed Jobs
+                </h2>
+                <p className="text-sm text-muted-foreground">Jobs that exhausted all retries. Use Retry to requeue them.</p>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => refetchFailedJobs()}>
+                Refresh
+              </Button>
+            </div>
+
+            {failedJobsLoading ? (
+              <div className="flex items-center justify-center py-10">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : !failedJobsData?.jobs.length ? (
+              <div className="text-center py-12 border border-dashed border-border rounded-2xl bg-card/30">
+                <CheckCircle2 className="h-10 w-10 text-green-500 mx-auto mb-3 opacity-40" />
+                <p className="text-sm text-muted-foreground">No failed jobs.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {failedJobsData.jobs.map((job) => (
+                  <Card key={job.id} className="bg-card/50 border-destructive/20">
+                    <CardContent className="p-4">
+                      <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-mono text-muted-foreground">{job.id.slice(0, 8)}…</span>
+                            <span className="text-xs text-muted-foreground">•</span>
+                            <span className="text-xs text-muted-foreground">{job.email ?? job.userId}</span>
+                            {job.retryCount != null && (
+                              <Badge variant="outline" className="text-xs border-destructive/40 text-destructive">
+                                {job.retryCount} retries
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-sm font-medium truncate">{job.prompt ?? <span className="italic text-muted-foreground">No prompt</span>}</p>
+                          {job.errorMessage && (
+                            <p className="text-xs text-destructive/80 font-mono bg-destructive/5 rounded px-2 py-1 line-clamp-2">
+                              {job.errorMessage}
+                            </p>
+                          )}
+                          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                            {job.style && <span className="capitalize bg-muted px-1.5 py-0.5 rounded">{job.style}</span>}
+                            {job.audioSourceType && <span className="bg-muted px-1.5 py-0.5 rounded capitalize">{job.audioSourceType}</span>}
+                            <span className="bg-muted px-1.5 py-0.5 rounded">Failed {new Date(job.updatedAt).toLocaleString()}</span>
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="shrink-0"
+                          disabled={retryMutation.isPending}
+                          onClick={() => retryMutation.mutate(job.id)}
+                        >
+                          <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                          Retry
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

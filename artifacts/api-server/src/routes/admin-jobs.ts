@@ -73,6 +73,75 @@ router.post("/admin/jobs/:id/approve", async (req, res) => {
   res.json(updated);
 });
 
+router.get("/admin/jobs/failed", async (req, res) => {
+  if (!req.isAuthenticated() || !isAdmin(req.user.email)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const jobs = await db
+    .select({
+      id: jobsTable.id,
+      userId: jobsTable.userId,
+      email: usersTable.email,
+      status: jobsTable.status,
+      prompt: jobsTable.prompt,
+      style: jobsTable.style,
+      requestedDuration: jobsTable.requestedDuration,
+      audioSourceType: jobsTable.audioSourceType,
+      errorMessage: jobsTable.errorMessage,
+      retryCount: jobsTable.retryCount,
+      createdAt: jobsTable.createdAt,
+      updatedAt: jobsTable.updatedAt,
+    })
+    .from(jobsTable)
+    .leftJoin(usersTable, eq(jobsTable.userId, usersTable.id))
+    .where(eq(jobsTable.status, "failed"))
+    .orderBy(desc(jobsTable.updatedAt))
+    .limit(50);
+
+  res.json({ jobs });
+});
+
+router.post("/admin/jobs/:id/retry", async (req, res) => {
+  if (!req.isAuthenticated() || !isAdmin(req.user.email)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const { id } = req.params;
+  const [job] = await db
+    .select()
+    .from(jobsTable)
+    .where(eq(jobsTable.id, id))
+    .limit(1);
+
+  if (!job) {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
+
+  if (job.status !== "failed") {
+    res.status(400).json({ error: "Only failed jobs can be retried" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(jobsTable)
+    .set({
+      status: "queued",
+      errorMessage: null,
+      retryCount: 0,
+      claimedAt: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(jobsTable.id, id))
+    .returning();
+
+  req.log.info({ jobId: id }, "Admin retried failed job — moving to queued");
+  res.json(updated);
+});
+
 router.post("/admin/jobs/:id/reject", async (req, res) => {
   if (!req.isAuthenticated() || !isAdmin(req.user.email)) {
     res.status(403).json({ error: "Forbidden" });
