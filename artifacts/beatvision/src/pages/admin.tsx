@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Loader2, Search, ShieldCheck, Coins, Check, X,
   MessageSquare, Users, ChevronDown, ChevronUp,
-  CircleDot, Clock, CheckCircle2, XCircle, RotateCcw, AlertTriangle,
+  CircleDot, Clock, CheckCircle2, XCircle, RotateCcw, AlertTriangle, RefreshCw,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -430,19 +430,19 @@ export default function AdminPage() {
   const openCount = ticketsData?.tickets.filter((t) => t.status === "open").length ?? 0;
 
   return (
-    <div className="container mx-auto px-4 py-12 max-w-6xl">
-      <div className="flex items-center gap-3 mb-8">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-          <ShieldCheck className="h-5 w-5 text-primary" />
+    <div className="container mx-auto px-4 py-6 sm:py-12 max-w-6xl">
+      <div className="flex items-center gap-3 mb-6 sm:mb-8">
+        <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-lg bg-primary/10 shrink-0">
+          <ShieldCheck className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
         </div>
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Admin</h1>
-          <p className="text-sm text-muted-foreground">Manage users, credits, and support tickets</p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Admin</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground">Manage users, credits, and support tickets</p>
         </div>
       </div>
 
-      {/* Tab bar */}
-      <div className="flex gap-1 mb-6 border-b border-border/50">
+      {/* Tab bar — scrollable on mobile */}
+      <div className="flex gap-1 mb-6 border-b border-border/50 overflow-x-auto scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
         <button
           onClick={() => setTab("users")}
           className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
@@ -577,16 +577,28 @@ export default function AdminPage() {
       {/* ── Job Approvals tab ── */}
       {tab === "jobs" && (
         <div className="space-y-4">
+          {/* Section header */}
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold">Pending Job Approvals</h2>
-              <p className="text-sm text-muted-foreground">
-                Each video generation waits here until you approve it. Approved jobs are sent to Runway for processing.
+              <h2 className="text-base sm:text-lg font-semibold flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-purple-400" />
+                Pending Approvals
+                {pendingJobsData && pendingJobsData.jobs.length > 0 && (
+                  <span className="text-xs bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full font-medium">
+                    {pendingJobsData.jobs.length}
+                  </span>
+                )}
+              </h2>
+              <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 hidden sm:block">
+                Approved jobs are sent to Runway for processing.
               </p>
             </div>
-            <Button size="sm" variant="outline" onClick={() => refetchPendingJobs()}>
-              Refresh
-            </Button>
+            <button
+              onClick={() => refetchPendingJobs()}
+              className="w-9 h-9 flex items-center justify-center rounded-full bg-muted/60 hover:bg-muted transition-colors"
+            >
+              <RefreshCw className="h-4 w-4 text-muted-foreground" />
+            </button>
           </div>
 
           {pendingJobsLoading ? (
@@ -594,76 +606,78 @@ export default function AdminPage() {
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : !pendingJobsData?.jobs.length ? (
-            <div className="text-center py-20 border border-dashed border-border rounded-2xl bg-card/30">
-              <ShieldCheck className="h-12 w-12 text-green-500 mx-auto mb-4 opacity-40" />
+            <div className="text-center py-16 sm:py-20 border border-dashed border-border rounded-2xl bg-card/30">
+              <ShieldCheck className="h-10 w-10 sm:h-12 sm:w-12 text-green-500 mx-auto mb-3 sm:mb-4 opacity-40" />
               <p className="text-foreground font-medium mb-1">All clear</p>
               <p className="text-muted-foreground text-sm">No jobs are waiting for approval.</p>
             </div>
           ) : (
             <div className="space-y-3">
               {pendingJobsData.jobs.map((job) => (
-                <Card key={job.id} className="bg-card/50 border-card-border">
-                  <CardContent className="p-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                      <div className="flex-1 min-w-0 space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-mono text-muted-foreground">{job.id.slice(0, 8)}…</span>
-                          <span className="text-xs text-muted-foreground">•</span>
-                          <span className="text-xs text-muted-foreground">{job.email ?? job.userId}</span>
-                        </div>
-                        <p className="text-sm font-medium truncate">{job.prompt ?? <span className="italic text-muted-foreground">No prompt</span>}</p>
-                        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                          {job.style && <span className="capitalize bg-muted px-1.5 py-0.5 rounded">{job.style}</span>}
-                          {job.requestedDuration && (
-                            <span className="bg-muted px-1.5 py-0.5 rounded">
-                              {job.requestedDuration === "full" ? "Full track" : `${job.requestedDuration}s`}
-                            </span>
-                          )}
-                          {job.audioSourceType && <span className="bg-muted px-1.5 py-0.5 rounded capitalize">{job.audioSourceType}</span>}
-                          <span className="bg-muted px-1.5 py-0.5 rounded">{new Date(job.createdAt).toLocaleString()}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="border-destructive/40 text-destructive hover:bg-destructive/10"
-                          disabled={rejectMutation.isPending || approveMutation.isPending}
-                          onClick={() => rejectMutation.mutate(job.id)}
-                        >
-                          <X className="h-3.5 w-3.5 mr-1" />
-                          Reject
-                        </Button>
-                        <Button
-                          size="sm"
-                          className="bg-green-600 hover:bg-green-700 text-white border-0"
-                          disabled={approveMutation.isPending || rejectMutation.isPending}
-                          onClick={() => approveMutation.mutate(job.id)}
-                        >
-                          <Check className="h-3.5 w-3.5 mr-1" />
-                          Approve
-                        </Button>
-                      </div>
+                <div key={job.id} className="rounded-2xl overflow-hidden border border-border/60 bg-card/50">
+                  {/* Job info */}
+                  <div className="p-4 space-y-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-mono text-muted-foreground">{job.id.slice(0, 8)}…</span>
+                      <span className="text-xs text-muted-foreground">·</span>
+                      <span className="text-xs text-muted-foreground truncate">{job.email ?? job.userId}</span>
+                      <span className="text-xs text-muted-foreground ml-auto">{new Date(job.createdAt).toLocaleString()}</span>
                     </div>
-                  </CardContent>
-                </Card>
+                    <p className="text-sm font-medium leading-snug line-clamp-3">
+                      {job.prompt ?? <span className="italic text-muted-foreground">No prompt</span>}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {job.style && <span className="capitalize bg-muted text-muted-foreground text-xs px-2 py-0.5 rounded-full">{job.style}</span>}
+                      {job.requestedDuration && (
+                        <span className="bg-muted text-muted-foreground text-xs px-2 py-0.5 rounded-full">
+                          {job.requestedDuration === "full" ? "Full track" : `${job.requestedDuration}s`}
+                        </span>
+                      )}
+                      {job.audioSourceType && <span className="bg-muted text-muted-foreground text-xs px-2 py-0.5 rounded-full capitalize">{job.audioSourceType}</span>}
+                    </div>
+                  </div>
+                  {/* Action bar — full width on mobile, compact on desktop */}
+                  <div className="flex border-t border-border/50">
+                    <button
+                      className="flex-1 flex items-center justify-center gap-2 py-3.5 sm:py-2.5 text-sm font-semibold text-red-400 hover:bg-red-500/10 active:bg-red-500/15 transition-colors border-r border-border/50 disabled:opacity-50"
+                      disabled={rejectMutation.isPending || approveMutation.isPending}
+                      onClick={() => rejectMutation.mutate(job.id)}
+                    >
+                      <X className="h-4 w-4" />
+                      Reject
+                    </button>
+                    <button
+                      className="flex-1 flex items-center justify-center gap-2 py-3.5 sm:py-2.5 text-sm font-semibold text-green-400 hover:bg-green-500/10 active:bg-green-500/15 transition-colors disabled:opacity-50"
+                      disabled={approveMutation.isPending || rejectMutation.isPending}
+                      onClick={() => approveMutation.mutate(job.id)}
+                    >
+                      <Check className="h-4 w-4" />
+                      Approve
+                    </button>
+                  </div>
+                </div>
               ))}
             </div>
           )}
 
           {/* ── Failed jobs ── */}
-          <div className="mt-8">
+          <div className="mt-6 sm:mt-8">
             <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-lg font-semibold flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-destructive" />
-                  Failed Jobs
-                </h2>
-                <p className="text-sm text-muted-foreground">Jobs that exhausted all retries. Use Retry to requeue them.</p>
-              </div>
-              <Button size="sm" variant="outline" onClick={() => refetchFailedJobs()}>
-                Refresh
-              </Button>
+              <h2 className="text-base sm:text-lg font-semibold flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-destructive" />
+                Failed Jobs
+                {failedJobsData && failedJobsData.jobs.length > 0 && (
+                  <span className="text-xs bg-destructive/20 text-destructive px-2 py-0.5 rounded-full font-medium">
+                    {failedJobsData.jobs.length}
+                  </span>
+                )}
+              </h2>
+              <button
+                onClick={() => refetchFailedJobs()}
+                className="w-9 h-9 flex items-center justify-center rounded-full bg-muted/60 hover:bg-muted transition-colors"
+              >
+                <RefreshCw className="h-4 w-4 text-muted-foreground" />
+              </button>
             </div>
 
             {failedJobsLoading ? (
@@ -678,45 +692,45 @@ export default function AdminPage() {
             ) : (
               <div className="space-y-3">
                 {failedJobsData.jobs.map((job) => (
-                  <Card key={job.id} className="bg-card/50 border-destructive/20">
-                    <CardContent className="p-4">
-                      <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-                        <div className="flex-1 min-w-0 space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-mono text-muted-foreground">{job.id.slice(0, 8)}…</span>
-                            <span className="text-xs text-muted-foreground">•</span>
-                            <span className="text-xs text-muted-foreground">{job.email ?? job.userId}</span>
-                            {job.retryCount != null && (
-                              <Badge variant="outline" className="text-xs border-destructive/40 text-destructive">
-                                {job.retryCount} retries
-                              </Badge>
-                            )}
-                          </div>
-                          <p className="text-sm font-medium truncate">{job.prompt ?? <span className="italic text-muted-foreground">No prompt</span>}</p>
-                          {job.errorMessage && (
-                            <p className="text-xs text-destructive/80 font-mono bg-destructive/5 rounded px-2 py-1 line-clamp-2">
-                              {job.errorMessage}
-                            </p>
-                          )}
-                          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                            {job.style && <span className="capitalize bg-muted px-1.5 py-0.5 rounded">{job.style}</span>}
-                            {job.audioSourceType && <span className="bg-muted px-1.5 py-0.5 rounded capitalize">{job.audioSourceType}</span>}
-                            <span className="bg-muted px-1.5 py-0.5 rounded">Failed {new Date(job.updatedAt).toLocaleString()}</span>
-                          </div>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="shrink-0"
-                          disabled={retryMutation.isPending}
-                          onClick={() => retryMutation.mutate(job.id)}
-                        >
-                          <RotateCcw className="h-3.5 w-3.5 mr-1" />
-                          Retry
-                        </Button>
+                  <div key={job.id} className="rounded-2xl overflow-hidden border border-destructive/20 bg-card/50">
+                    <div className="p-4 space-y-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-mono text-muted-foreground">{job.id.slice(0, 8)}…</span>
+                        <span className="text-xs text-muted-foreground">·</span>
+                        <span className="text-xs text-muted-foreground truncate">{job.email ?? job.userId}</span>
+                        {job.retryCount != null && (
+                          <Badge variant="outline" className="text-xs border-destructive/40 text-destructive ml-auto">
+                            {job.retryCount} retries
+                          </Badge>
+                        )}
                       </div>
-                    </CardContent>
-                  </Card>
+                      <p className="text-sm font-medium leading-snug line-clamp-2">
+                        {job.prompt ?? <span className="italic text-muted-foreground">No prompt</span>}
+                      </p>
+                      {job.errorMessage && (
+                        <p className="text-xs text-destructive/80 font-mono bg-destructive/5 rounded-lg px-2.5 py-1.5 line-clamp-2">
+                          {job.errorMessage}
+                        </p>
+                      )}
+                      <div className="flex flex-wrap gap-1.5">
+                        {job.style && <span className="capitalize bg-muted text-muted-foreground text-xs px-2 py-0.5 rounded-full">{job.style}</span>}
+                        {job.audioSourceType && <span className="bg-muted text-muted-foreground text-xs px-2 py-0.5 rounded-full capitalize">{job.audioSourceType}</span>}
+                        <span className="bg-muted text-muted-foreground text-xs px-2 py-0.5 rounded-full">
+                          Failed {new Date(job.updatedAt).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="border-t border-border/50">
+                      <button
+                        className="w-full flex items-center justify-center gap-2 py-3.5 sm:py-2.5 text-sm font-semibold text-muted-foreground hover:bg-muted/30 active:bg-muted/50 transition-colors disabled:opacity-50"
+                        disabled={retryMutation.isPending}
+                        onClick={() => retryMutation.mutate(job.id)}
+                      >
+                        <RotateCcw className="h-4 w-4" />
+                        Retry Job
+                      </button>
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
