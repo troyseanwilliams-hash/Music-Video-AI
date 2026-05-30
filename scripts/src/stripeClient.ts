@@ -26,7 +26,9 @@ async function getCredentials(): Promise<{
     );
   }
 
-  const isProduction = process.env["REPLIT_DEPLOYMENT"] === "1";
+  const isProduction =
+    process.env["STRIPE_ENV"] === "production" ||
+    process.env["REPLIT_DEPLOYMENT"] === "1";
   const targetEnvironment = isProduction ? "production" : "development";
 
   const url = new URL(`https://${hostname}/api/v2/connection`);
