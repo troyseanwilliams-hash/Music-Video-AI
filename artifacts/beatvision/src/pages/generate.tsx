@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useAudioAnalysis } from "@/hooks/useAudioAnalysis";
 import { AudioWaveformSelector } from "@/components/AudioWaveformSelector";
 import { useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
@@ -242,6 +243,9 @@ export default function Generate() {
   const { toast } = useToast();
   const createJob = useCreateJob();
   const { data: statsData } = useGetDashboardStats({});
+  const analysisState = useAudioAnalysis(
+    sourceType === CreateJobRequestAudioSourceType.upload ? uploadedFile : null,
+  );
 
   useEffect(() => {
     if (!isAuthLoading && !isAuthenticated) {
@@ -752,6 +756,62 @@ export default function Generate() {
                     clipStartTime={clipStartTime}
                     onClipStartTimeChange={setClipStartTime}
                   />
+
+                  {/* ── Audio Analysis Badges ── */}
+                  <div className="pt-3 border-t border-border/30 mt-1">
+                    {analysisState.status === "analyzing" && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Loader2 className="h-3.5 w-3.5 text-muted-foreground/60 animate-spin shrink-0" />
+                        <span className="text-xs text-muted-foreground/60">Analysing audio…</span>
+                        {[72, 88, 64, 80].map((w, i) => (
+                          <div
+                            key={i}
+                            className="h-5 rounded-full bg-secondary/60 animate-pulse"
+                            style={{ width: w }}
+                          />
+                        ))}
+                      </div>
+                    )}
+
+                    {analysisState.status === "done" && (() => {
+                      const r = analysisState.result;
+                      const energyPct = Math.round(r.energy * 100);
+                      const energyColor =
+                        energyPct >= 70 ? "text-orange-400 border-orange-500/30 bg-orange-500/10"
+                        : energyPct >= 45 ? "text-primary border-primary/30 bg-primary/10"
+                        : "text-sky-400 border-sky-500/30 bg-sky-500/10";
+                      return (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[10px] text-muted-foreground/50 uppercase tracking-wider mr-0.5">
+                            AI sees
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-secondary/40 px-2.5 py-0.5 text-xs font-medium tabular-nums">
+                            <Music className="h-3 w-3 text-muted-foreground" />
+                            {Math.round(r.bpm)} BPM
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-secondary/40 px-2.5 py-0.5 text-xs font-medium capitalize">
+                            <Sparkles className="h-3 w-3 text-muted-foreground" />
+                            {r.mood}
+                          </span>
+                          <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium ${energyColor}`}>
+                            <Zap className="h-3 w-3" />
+                            {energyPct}% energy
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-secondary/40 px-2.5 py-0.5 text-xs font-medium capitalize">
+                            <Layers className="h-3 w-3 text-muted-foreground" />
+                            {r.dominantSection}-heavy
+                          </span>
+                        </div>
+                      );
+                    })()}
+
+                    {analysisState.status === "error" && (
+                      <div className="flex items-center gap-1.5 text-xs text-amber-500/80">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        Audio analysis unavailable — you can still generate.
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </TabsContent>
@@ -1037,16 +1097,25 @@ export default function Generate() {
             const cost = estimateCreditCost(requestedDuration);
             const balance = statsData?.creditsRemaining ?? null;
             const canAfford = isAdmin || balance === null || balance >= cost;
+            const isAnalyzingAudio =
+              sourceType === CreateJobRequestAudioSourceType.upload &&
+              uploadedFile !== null &&
+              analysisState.status === "analyzing";
             return (
               <div className="space-y-2">
                 <Button
                   size="lg"
                   className="w-full h-14 text-lg bg-gradient-electric text-white shadow-glow mt-2"
-                  disabled={createJob.isPending || !canAfford || !copyrightAcknowledged}
+                  disabled={createJob.isPending || isAnalyzingAudio || !canAfford || !copyrightAcknowledged}
                   onClick={handleGenerate}
                 >
                   {createJob.isPending ? (
                     <Loader2 className="h-6 w-6 animate-spin" />
+                  ) : isAnalyzingAudio ? (
+                    <>
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      <span>Analysing audio…</span>
+                    </>
                   ) : (
                     <>
                       <Sparkles className="mr-2 h-5 w-5" />
