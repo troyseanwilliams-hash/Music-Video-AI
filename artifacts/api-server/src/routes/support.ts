@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { supportTicketsTable, usersTable } from "@workspace/db";
 import { eq, desc, or, ilike } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { notifyNewSupportTicket } from "../lib/notifications.js";
 
 function isAdmin(email: string | null | undefined): boolean {
   return !!(process.env.ADMIN_EMAIL && email && email.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase());
@@ -42,6 +43,16 @@ router.post("/support", async (req, res) => {
       jobId: jobId?.trim() || null,
     })
     .returning();
+
+  if (ticket) {
+    notifyNewSupportTicket({
+      id: ticket.id,
+      subject: ticket.subject,
+      message: ticket.message,
+      category: ticket.category,
+      userEmail: req.user.email,
+    });
+  }
 
   res.status(201).json({ ok: true, ticketId: ticket?.id });
 });
