@@ -244,12 +244,22 @@ export default function Generate() {
   const createJob = useCreateJob();
   const { data: statsData } = useGetDashboardStats({});
   const analyzeAudio = useAnalyzeAudio();
+  // Track which objectPath the current analysis result belongs to.
+  // This prevents stale results from a previous upload being submitted with a new job.
+  const [analysisForPath, setAnalysisForPath] = useState<string | null>(null);
 
-  // Trigger server-side analysis as soon as the upload path is available
+  // Trigger server-side analysis as soon as the upload path is available.
+  // Reset mutation state immediately when objectPath changes so old badges disappear.
   useEffect(() => {
     if (sourceType === CreateJobRequestAudioSourceType.upload && objectPath) {
+      analyzeAudio.reset();
+      setAnalysisForPath(objectPath);
       analyzeAudio.mutate({ data: { objectPath } });
+    } else {
+      analyzeAudio.reset();
+      setAnalysisForPath(null);
     }
+    // analyzeAudio.mutate / analyzeAudio.reset are stable refs — safe to omit
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [objectPath, sourceType]);
 
@@ -370,7 +380,10 @@ export default function Generate() {
               ? clipStartTime
               : null,
           audioAnalysis:
-            sourceType === CreateJobRequestAudioSourceType.upload && analyzeAudio.data
+            sourceType === CreateJobRequestAudioSourceType.upload &&
+            analyzeAudio.isSuccess &&
+            analysisForPath === objectPath &&
+            analyzeAudio.data
               ? analyzeAudio.data
               : null,
         },
@@ -769,7 +782,7 @@ export default function Generate() {
 
                   {/* ── Audio Analysis Badges ── */}
                   <div className="pt-3 border-t border-border/30 mt-1">
-                    {analyzeAudio.isPending && (
+                    {analyzeAudio.isPending && analysisForPath === objectPath && (
                       <div className="flex flex-wrap items-center gap-2">
                         <Loader2 className="h-3.5 w-3.5 text-muted-foreground/60 animate-spin shrink-0" />
                         <span className="text-xs text-muted-foreground/60">Analysing audio…</span>
@@ -783,7 +796,7 @@ export default function Generate() {
                       </div>
                     )}
 
-                    {analyzeAudio.data && (() => {
+                    {analyzeAudio.isSuccess && analysisForPath === objectPath && analyzeAudio.data && (() => {
                       const r = analyzeAudio.data;
                       const energyPct = Math.round((r.energy ?? 0) * 100);
                       const energyColor =
@@ -820,7 +833,7 @@ export default function Generate() {
                       );
                     })()}
 
-                    {analyzeAudio.isError && !analyzeAudio.isPending && (
+                    {analyzeAudio.isError && !analyzeAudio.isPending && analysisForPath === objectPath && (
                       <div className="flex items-center gap-1.5 text-xs text-amber-500/80">
                         <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                         Audio analysis unavailable — you can still generate.
@@ -1115,6 +1128,7 @@ export default function Generate() {
             const isAnalyzingAudio =
               sourceType === CreateJobRequestAudioSourceType.upload &&
               objectPath !== null &&
+              analysisForPath === objectPath &&
               analyzeAudio.isPending;
             return (
               <div className="space-y-2">
