@@ -393,7 +393,7 @@ export default function Pricing() {
               const savingsPct = faceValueCents > 0
                 ? Math.round((1 - price.unitAmount / faceValueCents) * 100)
                 : 0;
-              const perCreditCents = price.unitAmount / price.credits;
+              const perCreditCents = price.unitAmount / 100 / price.credits;
               const estClips = Math.floor(price.credits / 330);
 
               return (
