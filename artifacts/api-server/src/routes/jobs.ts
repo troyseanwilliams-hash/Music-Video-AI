@@ -61,7 +61,7 @@ router.post("/jobs", async (req, res) => {
     return;
   }
 
-  const { prompt, style, audioSourceType, audioObjectPath, audioSourceUrl, lyricsText, aspectRatio, resolution, character, referenceImagePath, requestedDuration, clipStartTime } =
+  const { prompt, style, audioSourceType, audioObjectPath, audioSourceUrl, lyricsText, aspectRatio, resolution, character, referenceImagePath, requestedDuration, clipStartTime, audioAnalysis } =
     parseResult.data;
 
   if (audioSourceType === "upload" && !audioObjectPath) {
@@ -149,6 +149,7 @@ router.post("/jobs", async (req, res) => {
       referenceImagePath: referenceImagePath ?? null,
       requestedDuration: requestedDuration ?? "full",
       clipStartTime: clipStartTime ?? null,
+      audioAnalysis: audioAnalysis as unknown as Record<string, unknown> ?? null,
       prompt,
       style: style as
         | "realistic"

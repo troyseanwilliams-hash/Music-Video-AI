@@ -22,6 +22,8 @@ tags:
     description: User credits and usage
   - name: Billing
     description: Stripe subscriptions, top-ups, and customer portal
+  - name: Audio
+    description: Audio file analysis
 paths:
   /healthz:
     get:
@@ -561,6 +563,53 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
 
+  /audio/analyze:
+    post:
+      tags: [Audio]
+      operationId: analyzeAudio
+      summary: Analyse an uploaded audio file and return BPM, mood, energy, and section structure
+      description: Fetches the audio from object storage and runs server-side ffmpeg + autocorrelation analysis. Call this after the file is uploaded via the presigned URL.
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AudioAnalyzeRequest'
+      responses:
+        '200':
+          description: Audio analysis complete.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AudioAnalysis'
+        '400':
+          description: Invalid request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Audio file not found in object storage.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Audio could not be decoded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
   /dashboard/stats:
     get:
       tags: [Jobs]
@@ -707,6 +756,14 @@ components:
         metadata:
           $ref: '#/components/schemas/UploadUrlRequest'
 
+    AudioAnalyzeRequest:
+      type: object
+      required: [objectPath]
+      properties:
+        objectPath:
+          type: string
+          description: Object storage path of the uploaded audio file (e.g. /objects/uploads/uuid.mp3)
+
     JobStatus:
       type: string
       enum: [pending_approval, queued, analyzing, generating, stitching, ready, failed]
@@ -842,6 +899,11 @@ components:
           type: [number, 'null']
           minimum: 0
           description: Audio clip start time in seconds; null or omit means start from the beginning
+        audioAnalysis:
+          oneOf:
+            - $ref: '#/components/schemas/AudioAnalysis'
+            - type: 'null'
+          description: Pre-computed audio analysis from POST /audio/analyze; when provided the job processor skips re-analysis and uses this result directly
 
     JobListResponse:
       type: object

@@ -5,6 +5,7 @@
  * BeatVision AI API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { AudioAnalysis } from "./audioAnalysis";
 import type { CreateJobRequestAspectRatio } from "./createJobRequestAspectRatio";
 import type { CreateJobRequestAudioSourceType } from "./createJobRequestAudioSourceType";
 import type { CreateJobRequestRequestedDuration } from "./createJobRequestRequestedDuration";
@@ -61,4 +62,6 @@ export interface CreateJobRequest {
    * @nullable
    */
   clipStartTime?: number | null;
+  /** Pre-computed audio analysis from POST /audio/analyze; when provided the job processor skips re-analysis and uses this result directly */
+  audioAnalysis?: AudioAnalysis | null;
 }

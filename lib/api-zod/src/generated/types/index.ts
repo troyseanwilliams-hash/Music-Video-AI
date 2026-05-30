@@ -8,6 +8,7 @@
 
 export * from "./audioAnalysis";
 export * from "./audioAnalysisSectionsItem";
+export * from "./audioAnalyzeRequest";
 export * from "./authorizationSessionHeaderParameter";
 export * from "./authUser";
 export * from "./authUserEnvelope";

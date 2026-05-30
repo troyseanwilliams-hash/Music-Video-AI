@@ -364,6 +364,32 @@ export const CreateJobBody = zod.object({
     .describe(
       "Audio clip start time in seconds; null or omit means start from the beginning",
     ),
+  audioAnalysis: zod
+    .union([
+      zod.object({
+        bpm: zod.number().nullish(),
+        key: zod.string().nullish(),
+        energy: zod.number().nullish(),
+        mood: zod.string().nullish(),
+        durationSeconds: zod.number().nullish(),
+        beatTimestamps: zod.array(zod.number()).optional(),
+        sections: zod
+          .array(
+            zod.object({
+              startTime: zod.number(),
+              endTime: zod.number(),
+              label: zod.string(),
+              energy: zod.number(),
+            }),
+          )
+          .optional(),
+      }),
+      zod.null(),
+    ])
+    .optional()
+    .describe(
+      "Pre-computed audio analysis from POST \/audio\/analyze; when provided the job processor skips re-analysis and uses this result directly",
+    ),
 });
 
 /**
@@ -736,6 +762,44 @@ export const CreateBillingPortalSessionBody = zod.object({
 
 export const CreateBillingPortalSessionResponse = zod.object({
   url: zod.string().url(),
+});
+
+/**
+ * Fetches the audio from object storage and runs server-side ffmpeg + autocorrelation analysis. Call this after the file is uploaded via the presigned URL.
+ * @summary Analyse an uploaded audio file and return BPM, mood, energy, and section structure
+ */
+export const AnalyzeAudioHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const AnalyzeAudioBody = zod.object({
+  objectPath: zod
+    .string()
+    .describe(
+      "Object storage path of the uploaded audio file (e.g. \/objects\/uploads\/uuid.mp3)",
+    ),
+});
+
+export const AnalyzeAudioResponse = zod.object({
+  bpm: zod.number().nullish(),
+  key: zod.string().nullish(),
+  energy: zod.number().nullish(),
+  mood: zod.string().nullish(),
+  durationSeconds: zod.number().nullish(),
+  beatTimestamps: zod.array(zod.number()).optional(),
+  sections: zod
+    .array(
+      zod.object({
+        startTime: zod.number(),
+        endTime: zod.number(),
+        label: zod.string(),
+        energy: zod.number(),
+      }),
+    )
+    .optional(),
 });
 
 /**

@@ -391,7 +391,14 @@ async function processJob(job: JobRow): Promise<void> {
 
     let analysis: AudioAnalysis;
 
-    if (audioData) {
+    const preComputed = job.audioAnalysis as unknown as AudioAnalysis | null;
+    if (preComputed?.bpm && preComputed?.sections?.length) {
+      logger.info(
+        { jobId: job.id, bpm: preComputed.bpm, mood: preComputed.mood },
+        "Using pre-computed audio analysis from job creation — skipping ffmpeg analysis",
+      );
+      analysis = preComputed;
+    } else if (audioData) {
       logger.info({ jobId: job.id }, "Running ffmpeg PCM beat analysis");
       analysis = await analyzeAudioBuffer(audioData.buffer, audioData.ext);
       logger.info(

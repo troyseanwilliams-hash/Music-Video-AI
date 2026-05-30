@@ -17,6 +17,8 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  AudioAnalysis,
+  AudioAnalyzeRequest,
   AuthUserEnvelope,
   BillingPlansResponse,
   BillingSubscriptionResponse,
@@ -1706,6 +1708,93 @@ export const useCreateBillingPortalSession = <
   TContext
 > => {
   return useMutation(getCreateBillingPortalSessionMutationOptions(options));
+};
+
+/**
+ * Fetches the audio from object storage and runs server-side ffmpeg + autocorrelation analysis. Call this after the file is uploaded via the presigned URL.
+ * @summary Analyse an uploaded audio file and return BPM, mood, energy, and section structure
+ */
+export const getAnalyzeAudioUrl = () => {
+  return `/api/audio/analyze`;
+};
+
+export const analyzeAudio = async (
+  audioAnalyzeRequest: AudioAnalyzeRequest,
+  options?: RequestInit,
+): Promise<AudioAnalysis> => {
+  return customFetch<AudioAnalysis>(getAnalyzeAudioUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(audioAnalyzeRequest),
+  });
+};
+
+export const getAnalyzeAudioMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof analyzeAudio>>,
+    TError,
+    { data: BodyType<AudioAnalyzeRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof analyzeAudio>>,
+  TError,
+  { data: BodyType<AudioAnalyzeRequest> },
+  TContext
+> => {
+  const mutationKey = ["analyzeAudio"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof analyzeAudio>>,
+    { data: BodyType<AudioAnalyzeRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return analyzeAudio(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AnalyzeAudioMutationResult = NonNullable<
+  Awaited<ReturnType<typeof analyzeAudio>>
+>;
+export type AnalyzeAudioMutationBody = BodyType<AudioAnalyzeRequest>;
+export type AnalyzeAudioMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Analyse an uploaded audio file and return BPM, mood, energy, and section structure
+ */
+export const useAnalyzeAudio = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof analyzeAudio>>,
+    TError,
+    { data: BodyType<AudioAnalyzeRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof analyzeAudio>>,
+  TError,
+  { data: BodyType<AudioAnalyzeRequest> },
+  TContext
+> => {
+  return useMutation(getAnalyzeAudioMutationOptions(options));
 };
 
 /**

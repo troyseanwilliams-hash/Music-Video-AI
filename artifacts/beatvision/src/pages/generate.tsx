@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { useAudioAnalysis } from "@/hooks/useAudioAnalysis";
 import { AudioWaveformSelector } from "@/components/AudioWaveformSelector";
 import { useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import {
   useCreateJob,
+  useAnalyzeAudio,
   useGetDashboardStats,
   CreateJobRequestAudioSourceType,
   CreateJobRequestAspectRatio,
@@ -243,9 +243,15 @@ export default function Generate() {
   const { toast } = useToast();
   const createJob = useCreateJob();
   const { data: statsData } = useGetDashboardStats({});
-  const analysisState = useAudioAnalysis(
-    sourceType === CreateJobRequestAudioSourceType.upload ? uploadedFile : null,
-  );
+  const analyzeAudio = useAnalyzeAudio();
+
+  // Trigger server-side analysis as soon as the upload path is available
+  useEffect(() => {
+    if (sourceType === CreateJobRequestAudioSourceType.upload && objectPath) {
+      analyzeAudio.mutate({ data: { objectPath } });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [objectPath, sourceType]);
 
   useEffect(() => {
     if (!isAuthLoading && !isAuthenticated) {
@@ -362,6 +368,10 @@ export default function Generate() {
             sourceType === CreateJobRequestAudioSourceType.upload &&
             clipStartTime > 0
               ? clipStartTime
+              : null,
+          audioAnalysis:
+            sourceType === CreateJobRequestAudioSourceType.upload && analyzeAudio.data
+              ? analyzeAudio.data
               : null,
         },
       },
@@ -759,7 +769,7 @@ export default function Generate() {
 
                   {/* ── Audio Analysis Badges ── */}
                   <div className="pt-3 border-t border-border/30 mt-1">
-                    {analysisState.status === "analyzing" && (
+                    {analyzeAudio.isPending && (
                       <div className="flex flex-wrap items-center gap-2">
                         <Loader2 className="h-3.5 w-3.5 text-muted-foreground/60 animate-spin shrink-0" />
                         <span className="text-xs text-muted-foreground/60">Analysing audio…</span>
@@ -773,13 +783,16 @@ export default function Generate() {
                       </div>
                     )}
 
-                    {analysisState.status === "done" && (() => {
-                      const r = analysisState.result;
-                      const energyPct = Math.round(r.energy * 100);
+                    {analyzeAudio.data && (() => {
+                      const r = analyzeAudio.data;
+                      const energyPct = Math.round((r.energy ?? 0) * 100);
                       const energyColor =
                         energyPct >= 70 ? "text-orange-400 border-orange-500/30 bg-orange-500/10"
                         : energyPct >= 45 ? "text-primary border-primary/30 bg-primary/10"
                         : "text-sky-400 border-sky-500/30 bg-sky-500/10";
+                      const dominant = r.sections && r.sections.length > 0
+                        ? r.sections.reduce((a, b) => a.energy > b.energy ? a : b, r.sections[0]!)
+                        : null;
                       return (
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="text-[10px] text-muted-foreground/50 uppercase tracking-wider mr-0.5">
@@ -787,25 +800,27 @@ export default function Generate() {
                           </span>
                           <span className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-secondary/40 px-2.5 py-0.5 text-xs font-medium tabular-nums">
                             <Music className="h-3 w-3 text-muted-foreground" />
-                            {Math.round(r.bpm)} BPM
+                            {Math.round(r.bpm ?? 0)} BPM
                           </span>
                           <span className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-secondary/40 px-2.5 py-0.5 text-xs font-medium capitalize">
                             <Sparkles className="h-3 w-3 text-muted-foreground" />
-                            {r.mood}
+                            {r.mood ?? "—"}
                           </span>
                           <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium ${energyColor}`}>
                             <Zap className="h-3 w-3" />
                             {energyPct}% energy
                           </span>
-                          <span className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-secondary/40 px-2.5 py-0.5 text-xs font-medium capitalize">
-                            <Layers className="h-3 w-3 text-muted-foreground" />
-                            {r.dominantSection}-heavy
-                          </span>
+                          {dominant && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-secondary/40 px-2.5 py-0.5 text-xs font-medium capitalize">
+                              <Layers className="h-3 w-3 text-muted-foreground" />
+                              {dominant.label}-heavy
+                            </span>
+                          )}
                         </div>
                       );
                     })()}
 
-                    {analysisState.status === "error" && (
+                    {analyzeAudio.isError && !analyzeAudio.isPending && (
                       <div className="flex items-center gap-1.5 text-xs text-amber-500/80">
                         <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                         Audio analysis unavailable — you can still generate.
@@ -1099,8 +1114,8 @@ export default function Generate() {
             const canAfford = isAdmin || balance === null || balance >= cost;
             const isAnalyzingAudio =
               sourceType === CreateJobRequestAudioSourceType.upload &&
-              uploadedFile !== null &&
-              analysisState.status === "analyzing";
+              objectPath !== null &&
+              analyzeAudio.isPending;
             return (
               <div className="space-y-2">
                 <Button

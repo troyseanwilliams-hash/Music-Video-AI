@@ -89,6 +89,11 @@ export interface UploadUrlResponse {
   metadata?: UploadUrlRequest;
 }
 
+export interface AudioAnalyzeRequest {
+  /** Object storage path of the uploaded audio file (e.g. /objects/uploads/uuid.mp3) */
+  objectPath: string;
+}
+
 export type JobStatus = (typeof JobStatus)[keyof typeof JobStatus];
 
 export const JobStatus = {
@@ -318,6 +323,8 @@ export interface CreateJobRequest {
    * @nullable
    */
   clipStartTime?: number | null;
+  /** Pre-computed audio analysis from POST /audio/analyze; when provided the job processor skips re-analysis and uses this result directly */
+  audioAnalysis?: AudioAnalysis | null;
 }
 
 export interface JobListResponse {
