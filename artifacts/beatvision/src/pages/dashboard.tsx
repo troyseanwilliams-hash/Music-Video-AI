@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useGetDashboardStats } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus, Film, CheckCircle2, Clock, AlertCircle, Crown, Play, Coins } from "lucide-react";
+import { Loader2, Plus, Film, CheckCircle2, Clock, AlertCircle, Crown, Play, Coins, Zap } from "lucide-react";
 
 function daysUntil(dateStr: string | null | undefined): number {
   if (!dateStr) return 0;
@@ -76,6 +76,25 @@ export default function Dashboard() {
 
   return (
     <div className="container mx-auto px-4 py-12 max-w-6xl">
+      {/* Low credits warning */}
+      {stats && !isAdmin && stats.creditsRemaining < 330 && stats.creditsRemaining >= 0 && subStatus === "active" && (
+        <div className="mb-6 flex items-center justify-between gap-4 rounded-lg border border-yellow-500/30 bg-yellow-500/5 px-4 py-3 text-sm">
+          <div className="flex items-center gap-2">
+            <Zap className="h-4 w-4 shrink-0 text-yellow-500" />
+            <span>
+              You have <strong>{stats.creditsRemaining} credits</strong> left — enough for{" "}
+              {stats.creditsRemaining >= 165 ? "one more 5-second clip" : "less than one clip"}.
+            </span>
+          </div>
+          <Link href="/pricing">
+            <Button size="sm" variant="outline" className="shrink-0 border-yellow-500/40 text-yellow-500 hover:bg-yellow-500/10">
+              <Coins className="mr-1.5 h-3.5 w-3.5" />
+              Top up
+            </Button>
+          </Link>
+        </div>
+      )}
+
       {subStatus === "trial" && !isAdmin && (
         <div className={`mb-6 flex items-center justify-between gap-4 rounded-lg border px-4 py-3 text-sm ${
           trialExpired

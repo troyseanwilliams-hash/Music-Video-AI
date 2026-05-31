@@ -32,7 +32,9 @@ export function Navbar() {
       { href: "/generate", label: "Generate", icon: Wand2 },
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "/gallery", label: "Gallery", icon: Film },
-    ] : []),
+    ] : [
+      { href: "/gallery", label: "Gallery", icon: Film },
+    ]),
     { href: "/pricing", label: "Pricing", icon: CreditCard },
   ];
 
@@ -65,14 +67,14 @@ export function Navbar() {
                   >
                     Dashboard
                   </Link>
-                  <Link
-                    href="/gallery"
-                    className={`text-sm font-medium transition-colors hover:text-primary ${location === '/gallery' ? 'text-foreground' : 'text-muted-foreground'}`}
-                  >
-                    Gallery
-                  </Link>
                 </>
               )}
+              <Link
+                href="/gallery"
+                className={`text-sm font-medium transition-colors hover:text-primary ${location === '/gallery' ? 'text-foreground' : 'text-muted-foreground'}`}
+              >
+                Gallery
+              </Link>
               <Link
                 href="/pricing"
                 className={`text-sm font-medium transition-colors hover:text-primary ${location === '/pricing' ? 'text-foreground' : 'text-muted-foreground'}`}
@@ -188,6 +190,14 @@ export function Navbar() {
                     Get Started
                   </Button>
                 </Link>
+                {/* Mobile hamburger for logged-out users */}
+                <button
+                  className="md:hidden flex items-center justify-center h-9 w-9 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 transition-colors"
+                  onClick={() => setMobileMenuOpen((v) => !v)}
+                  aria-label="Toggle menu"
+                >
+                  {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+                </button>
               </div>
             )}
           </div>
@@ -195,7 +205,7 @@ export function Navbar() {
       </header>
 
       {/* Mobile slide-down nav panel */}
-      {mobileMenuOpen && isAuthenticated && (
+      {mobileMenuOpen && (
         <div className="md:hidden fixed top-16 inset-x-0 z-40 border-b border-border/50 bg-background/95 backdrop-blur shadow-lg">
           <nav className="container mx-auto px-4 py-3 flex flex-col gap-1">
             {navLinks.map(({ href, label, icon: Icon }) => (

@@ -23,6 +23,7 @@ import {
   Sparkles,
   CreditCard,
   ArrowLeft,
+  ChevronDown,
 } from "lucide-react";
 
 type Interval = "month" | "year";
@@ -456,13 +457,56 @@ export default function Pricing() {
         </section>
       )}
 
-      <div className="text-center text-sm text-muted-foreground">
+      <div className="text-center text-sm text-muted-foreground mb-16">
         Need a custom plan?{" "}
-        <Link href="/" className="text-primary hover:underline">
+        <Link href="/support" className="text-primary hover:underline">
           Get in touch
         </Link>
         .
       </div>
+
+      {/* FAQ */}
+      <section className="border-t border-border/30 pt-14">
+        <div className="max-w-2xl mx-auto">
+          <h2 className="text-2xl font-bold text-center mb-8">Billing FAQ</h2>
+          <div className="space-y-4 text-sm">
+            {[
+              {
+                q: "What counts as a credit?",
+                a: "One 5-second clip costs 165 credits; one 10-second clip costs 330 credits. Longer videos chain multiple clips together.",
+              },
+              {
+                q: "Do plan credits roll over?",
+                a: "No — plan credits reset at the start of each billing cycle. Top-up packs are separate and never expire.",
+              },
+              {
+                q: "Can I switch plans?",
+                a: "Yes. Upgrade or downgrade any time. Changes take effect at the next billing cycle; unused credits stay until reset.",
+              },
+              {
+                q: "What payment methods are accepted?",
+                a: "All major credit and debit cards via Stripe. Invoices available on request for annual plans.",
+              },
+              {
+                q: "Is there a free trial?",
+                a: "New accounts start with a limited free trial. Sign up to see your trial credits on the dashboard.",
+              },
+            ].map(({ q, a }) => (
+              <div key={q} className="rounded-xl border border-border/50 overflow-hidden">
+                <details className="group">
+                  <summary className="flex items-center justify-between px-5 py-4 bg-card/40 hover:bg-card/70 transition-colors cursor-pointer list-none">
+                    <span className="font-medium">{q}</span>
+                    <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0 ml-3 group-open:rotate-180 transition-transform" />
+                  </summary>
+                  <div className="px-5 py-4 text-muted-foreground leading-relaxed border-t border-border/30 bg-card/20">
+                    {a}
+                  </div>
+                </details>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
