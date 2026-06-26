@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Play, Sparkles, Zap, Music, MonitorPlay, ExternalLink, ScanLine, ImagePlus, Volume2, VolumeX, Upload, Brain, Download, ChevronDown, ChevronUp } from "lucide-react";
+import { Play, Sparkles, Zap, Music, MonitorPlay, ExternalLink, ScanLine, ImagePlus, Volume2, VolumeX } from "lucide-react";
 import { motion } from "framer-motion";
 
 const SAMPLES = [
@@ -75,53 +75,6 @@ function SampleVideo({ src, label }: { src: string; label: string }) {
   );
 }
 
-const FAQ_ITEMS = [
-  {
-    q: "What audio formats are supported?",
-    a: "MP3, WAV, FLAC, AAC, OGG, and M4A up to 50 MB. You can also paste a YouTube URL or a Suno share link.",
-  },
-  {
-    q: "How long does generation take?",
-    a: "A 5–10 second clip typically finishes in 2–5 minutes. Longer videos (30–120s) can take 10–20 minutes as they require multiple AI rendering passes.",
-  },
-  {
-    q: "Do credits expire?",
-    a: "Plan credits reset each billing cycle. Top-up credit packs never expire — they stay in your account until used.",
-  },
-  {
-    q: "Can I use the videos commercially?",
-    a: "Yes. You own the output videos. Just make sure you have the rights to the audio you're submitting — see our Terms of Service for details.",
-  },
-  {
-    q: "What is Spotify Canvas?",
-    a: "Canvas is Spotify's looping video feature shown in the mobile app while a track plays. A 5-second loop can boost streams and save rate. We generate the exact 9:16 format Canvas requires.",
-  },
-  {
-    q: "Can I cancel my subscription anytime?",
-    a: "Yes, cancel any time from the billing portal. You keep your remaining credits until the end of the billing period.",
-  },
-];
-
-function FAQItem({ q, a }: { q: string; a: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div
-      className="border border-border/50 rounded-xl overflow-hidden cursor-pointer"
-      onClick={() => setOpen((v) => !v)}
-    >
-      <div className="flex items-center justify-between px-5 py-4 bg-card/40 hover:bg-card/70 transition-colors">
-        <span className="font-medium text-sm sm:text-base">{q}</span>
-        {open ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0 ml-3" /> : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0 ml-3" />}
-      </div>
-      {open && (
-        <div className="px-5 py-4 text-sm text-muted-foreground leading-relaxed bg-card/20 border-t border-border/30">
-          {a}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function Home() {
   return (
     <div className="flex flex-col min-h-[calc(100vh-4rem)]">
@@ -166,25 +119,6 @@ export default function Home() {
                 </Link>
               </div>
             </motion.div>
-          </div>
-        </section>
-
-        {/* Stats Bar */}
-        <section className="border-t border-border/30 bg-black/30">
-          <div className="container px-4 md:px-6 mx-auto py-8">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
-              {[
-                { value: "50,000+", label: "Videos Generated" },
-                { value: "12,000+", label: "Artists & Creators" },
-                { value: "8", label: "Visual Styles" },
-                { value: "< 5 min", label: "Avg. Generation Time" },
-              ].map((stat) => (
-                <div key={stat.label}>
-                  <div className="text-2xl md:text-3xl font-extrabold text-gradient-electric">{stat.value}</div>
-                  <div className="text-xs md:text-sm text-muted-foreground mt-1">{stat.label}</div>
-                </div>
-              ))}
-            </div>
           </div>
         </section>
 
@@ -413,104 +347,6 @@ export default function Home() {
                 <p className="text-muted-foreground">Generate 5-second looping clips sized and formatted for Spotify Canvas — ready to upload to Spotify for Artists the moment they're done.</p>
               </div>
             </div>
-          </div>
-        </section>
-        {/* How it Works */}
-        <section className="py-20 border-t border-border/30">
-          <div className="container px-4 md:px-6 mx-auto">
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5 }}
-              className="text-center mb-14"
-            >
-              <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-3">How it works</h2>
-              <p className="text-muted-foreground text-lg max-w-xl mx-auto">
-                From track to visual in three simple steps.
-              </p>
-            </motion.div>
-
-            <div className="relative grid md:grid-cols-3 gap-8">
-              {/* Connector line on desktop */}
-              <div className="hidden md:block absolute top-10 left-[calc(16.6%+1rem)] right-[calc(16.6%+1rem)] h-px bg-gradient-to-r from-primary/40 via-accent/40 to-primary/40" />
-
-              {[
-                {
-                  step: "01",
-                  icon: Upload,
-                  title: "Upload your track",
-                  desc: "Drop an MP3/WAV, paste a YouTube link, or import straight from Suno. We accept virtually any audio source.",
-                  color: "bg-primary/20 text-primary",
-                },
-                {
-                  step: "02",
-                  icon: Brain,
-                  title: "AI analyses the beat",
-                  desc: "Our engine detects BPM, energy, mood, and key moments — then builds a visual timeline perfectly synced to your music.",
-                  color: "bg-accent/20 text-accent",
-                },
-                {
-                  step: "03",
-                  icon: Download,
-                  title: "Download & publish",
-                  desc: "Your full-HD, beat-synced video is ready to download and share — on Spotify Canvas, YouTube, TikTok, or anywhere else.",
-                  color: "bg-pink-500/20 text-pink-400",
-                },
-              ].map(({ step, icon: Icon, title, desc, color }, i) => (
-                <motion.div
-                  key={step}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.5, delay: i * 0.12 }}
-                  className="flex flex-col items-center text-center relative"
-                >
-                  <div className={`relative h-20 w-20 rounded-2xl ${color} flex items-center justify-center mb-5 shadow-lg border border-white/5`}>
-                    <Icon className="h-9 w-9" />
-                    <span className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-background border border-border/60 text-xs font-bold flex items-center justify-center text-muted-foreground">
-                      {step}
-                    </span>
-                  </div>
-                  <h3 className="text-xl font-bold mb-2">{title}</h3>
-                  <p className="text-muted-foreground text-sm leading-relaxed max-w-xs">{desc}</p>
-                </motion.div>
-              ))}
-            </div>
-
-            <div className="text-center mt-12">
-              <Link href="/register">
-                <Button size="lg" className="bg-gradient-electric text-white shadow-glow border-0 hover:opacity-90">
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  Try it free
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </section>
-
-        {/* FAQ */}
-        <section className="py-20 border-t border-border/30 bg-black/30">
-          <div className="container px-4 md:px-6 mx-auto max-w-2xl">
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5 }}
-              className="text-center mb-12"
-            >
-              <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-3">Frequently asked</h2>
-              <p className="text-muted-foreground">Everything you need to know before you start.</p>
-            </motion.div>
-            <div className="space-y-3">
-              {FAQ_ITEMS.map((item) => (
-                <FAQItem key={item.q} q={item.q} a={item.a} />
-              ))}
-            </div>
-            <p className="text-center text-sm text-muted-foreground mt-8">
-              Still have questions?{" "}
-              <Link href="/support" className="text-primary hover:underline">Contact support</Link>.
-            </p>
           </div>
         </section>
       </main>

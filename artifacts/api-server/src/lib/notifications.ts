@@ -12,12 +12,6 @@ function getResend(): Resend | null {
   return process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 }
 
-// All admin/notification emails are delivered to NOTIFY_EMAIL (falls back to ADMIN_EMAIL).
-// The from address still shows notifications@aibeatsync.com so they look official.
-function getNotifyEmail(): string | null {
-  return process.env.NOTIFY_EMAIL ?? process.env.ADMIN_EMAIL ?? null;
-}
-
 interface JobInfo {
   id: string;
   prompt: string | null;
@@ -34,13 +28,13 @@ export function notifyJobPendingApproval(job: JobInfo): void {
         ? `${job.requestedDuration}s`
         : "—";
 
-  const notifyEmail = getNotifyEmail();
+  const adminEmail = process.env.ADMIN_EMAIL;
   const resend = getResend();
-  if (resend && notifyEmail) {
+  if (resend && adminEmail) {
     resend.emails
       .send({
         from: "AI Beat Sync <notifications@aibeatsync.com>",
-        to: notifyEmail,
+        to: adminEmail,
         subject: `New job awaiting approval — ${job.id.slice(0, 8)}`,
         html: `
           <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
@@ -90,13 +84,13 @@ interface SupportTicketInfo {
 }
 
 export function notifyNewSupportTicket(ticket: SupportTicketInfo): void {
-  const notifyEmail = getNotifyEmail();
+  const adminEmail = process.env.ADMIN_EMAIL;
   const resend = getResend();
-  if (resend && notifyEmail) {
+  if (resend && adminEmail) {
     resend.emails
       .send({
         from: "AI Beat Sync <notifications@aibeatsync.com>",
-        to: notifyEmail,
+        to: adminEmail,
         subject: `[Support] ${ticket.subject}`,
         html: `
           <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">

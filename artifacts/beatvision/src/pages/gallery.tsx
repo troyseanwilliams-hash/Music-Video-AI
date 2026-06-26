@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useListVideos, useDeleteVideo, getListVideosQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Loader2, Trash2, Play, Film, Download } from "lucide-react";
+import { Loader2, Trash2, Play, Film, Download, Scissors } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -205,6 +205,29 @@ export default function Gallery() {
                     {loadingAction[video.jobId] === "download"
                       ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       : <Download className="h-3.5 w-3.5" />}
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    title="Edit in Studio"
+                    onClick={() => {
+                      sessionStorage.setItem(
+                        "editor:init",
+                        JSON.stringify({
+                          video: {
+                            objectPath: video.videoObjectPath,
+                            thumbPath: video.thumbnailObjectPath,
+                            durationSec: video.durationSeconds,
+                            name: video.title || video.prompt || "Generated video",
+                          },
+                        }),
+                      );
+                      setLocation("/editor");
+                    }}
+                  >
+                    <Scissors className="h-3.5 w-3.5" />
                   </Button>
 
                   <AlertDialog>

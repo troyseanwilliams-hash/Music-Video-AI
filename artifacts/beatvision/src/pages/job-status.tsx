@@ -41,7 +41,7 @@ const STAGES = [
     key: "generating",
     label: "Generating",
     icon: Clapperboard,
-    description: "Creating AI video clips for each beat section via Runway Gen-4.5…",
+    description: "Creating AI video clips for each beat section…",
   },
   {
     key: "stitching",
@@ -105,7 +105,7 @@ function categoriseError(msg: string | null | undefined): {
     return {
       category: "api",
       headline: "AI generation service error",
-      detail: "The Runway API returned an unexpected response. This is usually transient — retrying often fixes it.",
+      detail: "The AI engine returned an unexpected response. This is usually transient — retrying often fixes it.",
       canRetry: true,
     };
   }
@@ -570,12 +570,51 @@ export default function JobStatus() {
               animate={{ opacity: 1, scale: 1 }}
               className="rounded-2xl border border-primary/30 bg-black overflow-hidden shadow-2xl shadow-primary/10"
             >
-              <VideoPlayer jobId={job.id} videoId={job.videoId} videoUrl={(job as Record<string, unknown>).videoUrl as string | undefined} />
+              <VideoPlayer jobId={job.id} videoId={job.videoId} videoUrl={(job as unknown as Record<string, unknown>).videoUrl as string | undefined} />
               <DownloadBar jobId={job.id} prompt={job.prompt} />
 
             </motion.div>
           )}
         </AnimatePresence>
+
+        {isComplete && job.videoId && (
+          <div className="flex justify-center">
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={async () => {
+                const vid = job.videoId!;
+                let video = {
+                  objectPath: `/objects/videos/${vid}.mp4`,
+                  thumbPath: `/objects/thumbnails/${vid}.jpg`,
+                  durationSec: 8,
+                  name: job.prompt || "Generated video",
+                };
+                try {
+                  const r = await fetch(`/api/videos/${vid}`, { credentials: "include" });
+                  if (r.ok) {
+                    const data = await r.json();
+                    const v = data.video ?? data;
+                    if (v?.videoObjectPath) {
+                      video = {
+                        objectPath: v.videoObjectPath,
+                        thumbPath: v.thumbnailObjectPath ?? video.thumbPath,
+                        durationSec: v.durationSeconds || 8,
+                        name: v.title || job.prompt || "Generated video",
+                      };
+                    }
+                  }
+                } catch {
+                  /* fall back to constructed paths */
+                }
+                sessionStorage.setItem("editor:init", JSON.stringify({ video }));
+                setLocation("/editor");
+              }}
+            >
+              <Scissors className="h-4 w-4" /> Edit in Studio
+            </Button>
+          </div>
+        )}
 
         {/* ── Audio analysis ── */}
         {analysis && (

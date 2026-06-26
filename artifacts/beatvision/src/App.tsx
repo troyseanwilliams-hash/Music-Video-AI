@@ -10,6 +10,7 @@ import Home from "@/pages/home";
 import Login from "@/pages/login";
 import Register from "@/pages/register";
 import Generate from "@/pages/generate";
+import Editor from "@/pages/editor";
 import Dashboard from "@/pages/dashboard";
 import Gallery from "@/pages/gallery";
 import JobStatus from "@/pages/job-status";
@@ -31,6 +32,7 @@ function Router() {
           <Route path="/login" component={Login} />
           <Route path="/register" component={Register} />
           <Route path="/generate" component={Generate} />
+          <Route path="/editor" component={Editor} />
           <Route path="/dashboard" component={Dashboard} />
           <Route path="/gallery" component={Gallery} />
           <Route path="/jobs/:id" component={JobStatus} />

@@ -28,6 +28,9 @@ export const audioSourceTypeEnum = pgEnum("audio_source_type", [
   "suno",
 ]);
 
+// Distinguishes AI-generated jobs from user-driven Studio (editor) renders.
+export const jobTypeEnum = pgEnum("job_type", ["ai", "editor_render"]);
+
 export const videoStyleEnum = pgEnum("video_style", [
   "realistic",
   "anime",
@@ -44,6 +47,10 @@ export const jobsTable = pgTable("jobs", {
   userId: text("user_id")
     .notNull()
     .references(() => usersTable.id, { onDelete: "cascade" }),
+  // "ai" = the AI generation pipeline; "editor_render" = a Studio timeline render.
+  jobType: jobTypeEnum("job_type").notNull().default("ai"),
+  // Studio render manifest (ordered segments, music, transition). Null for AI jobs.
+  manifest: jsonb("manifest"),
   status: jobStatusEnum("status").notNull().default("queued"),
   audioSourceType: audioSourceTypeEnum("audio_source_type"),
   audioObjectPath: text("audio_object_path"),
@@ -124,6 +131,29 @@ export type Video = typeof videosTable.$inferSelect;
 export const insertCreditSchema = createInsertSchema(creditsTable);
 export type InsertCredit = z.infer<typeof insertCreditSchema>;
 export type Credit = typeof creditsTable.$inferSelect;
+
+// Saved Studio (editor) projects so users can reopen and re-export a timeline.
+export const editorProjectsTable = pgTable("editor_projects", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => usersTable.id, { onDelete: "cascade" }),
+  name: text("name").notNull().default("Untitled project"),
+  // Full timeline manifest: { segments: [...], music, transition, transitionDuration, ... }
+  manifest: jsonb("manifest").notNull(),
+  lastVideoId: text("last_video_id"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
+
+export const insertEditorProjectSchema = createInsertSchema(editorProjectsTable);
+export type InsertEditorProject = z.infer<typeof insertEditorProjectSchema>;
+export type EditorProject = typeof editorProjectsTable.$inferSelect;
 
 export const ticketCategoryEnum = pgEnum("ticket_category", [
   "billing",

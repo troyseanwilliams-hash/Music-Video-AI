@@ -1016,29 +1016,6 @@ export default function Generate() {
                 {prompt.length} / 1000
               </span>
             </div>
-            {/* Prompt suggestions */}
-            {!prompt && (
-              <div className="pt-1">
-                <p className="text-xs text-muted-foreground mb-2">Try an example:</p>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    "A lone figure walking through a neon-lit cyberpunk city at night, rain-soaked streets reflecting glowing signs",
-                    "Abstract geometric shapes morphing in sync with the beat, electric blues and purples on black",
-                    "Cinematic close-ups of a musician on a smoky stage, warm amber spotlight, film grain",
-                    "Deep underwater scene with bioluminescent jellyfish floating in slow motion, dreamy and ethereal",
-                  ].map((example) => (
-                    <button
-                      key={example}
-                      type="button"
-                      onClick={() => { setPrompt(example); setFieldErrors((fe) => ({ ...fe, prompt: undefined })); promptRef.current?.focus(); }}
-                      className="text-xs rounded-lg border border-border/50 bg-secondary/30 hover:bg-secondary/60 hover:border-primary/40 px-3 py-1.5 text-muted-foreground hover:text-foreground transition-colors text-left"
-                    >
-                      {example.length > 60 ? example.slice(0, 58) + "…" : example}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
           {/* ── Visual Style ── */}
@@ -1291,7 +1268,7 @@ export default function Generate() {
           <DialogDescription asChild>
             <div className="text-left space-y-3 mt-1">
               <p className="text-sm text-muted-foreground leading-relaxed">
-                Review the details below. Once confirmed, the job will be submitted for admin approval before Runway processes it.
+                Review the details below. Once confirmed, the job will be submitted for admin approval before processing begins.
               </p>
               <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm space-y-1.5">
                 <div className="flex justify-between">

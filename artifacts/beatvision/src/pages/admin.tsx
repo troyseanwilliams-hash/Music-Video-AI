@@ -590,7 +590,7 @@ export default function AdminPage() {
                 )}
               </h2>
               <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 hidden sm:block">
-                Approved jobs are sent to Runway for processing.
+                Approved jobs are sent to the AI engine for processing.
               </p>
             </div>
             <button

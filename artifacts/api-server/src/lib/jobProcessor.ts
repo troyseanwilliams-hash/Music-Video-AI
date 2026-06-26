@@ -13,6 +13,8 @@ import { ObjectStorageService } from "./objectStorage.js";
 import { analyzeAudioBuffer, type AudioAnalysis, type AudioSection } from "./audioAnalysis.js";
 import { generateClip, downloadClip, getActiveProvider } from "./videoApis.js";
 import { stitchVideoClips, extractVideoThumbnail } from "./videoStitcher.js";
+import { stitchEditorTimeline } from "./editorStitcher.js";
+import { calculateEditorCost } from "./editorCost.js";
 
 const execAsync = promisify(exec);
 const MAX_RETRIES = 3;
@@ -337,7 +339,102 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
   }
 }
 
+// Studio (editor) render manifest stored on the job row.
+interface EditorManifest {
+  segments: { objectPath: string; kind: "video" | "photo"; durationSec: number }[];
+  music?: { objectPath: string; mode: "mix" | "replace"; volume: number };
+  transition?: { type: string; durationSec: number };
+  resolution?: string;
+  watermark?: boolean;
+}
+
+// User-driven Studio timeline render — bypasses the AI analyze/generate stages.
+async function processEditorJob(job: JobRow): Promise<void> {
+  logger.info({ jobId: job.id }, "Processing Studio (editor) render");
+  try {
+    const manifest = job.manifest as unknown as EditorManifest | null;
+    if (!manifest || !manifest.segments?.length) {
+      throw new Error("Editor render has an empty manifest");
+    }
+
+    await updateJobStatus(job.id, { status: "stitching", progressPercent: 20 });
+
+    const segments = [];
+    for (const s of manifest.segments) {
+      const file = await storageService.getObjectEntityFile(s.objectPath);
+      const [buf] = await file.download();
+      const ext = (s.objectPath.split(".").pop() || "").toLowerCase();
+      segments.push({ buffer: buf, kind: s.kind, durationSec: s.durationSec, ext });
+    }
+
+    let music;
+    if (manifest.music?.objectPath) {
+      const file = await storageService.getObjectEntityFile(manifest.music.objectPath);
+      const [buf] = await file.download();
+      const ext = (manifest.music.objectPath.split(".").pop() || "mp3").toLowerCase();
+      music = { buffer: buf, ext, mode: manifest.music.mode, volume: manifest.music.volume };
+    }
+
+    const [width, height] = manifest.resolution === "1080p" ? [1920, 1080] : [1280, 720];
+    await updateJobStatus(job.id, { progressPercent: 55 });
+
+    const result = await stitchEditorTimeline({
+      segments,
+      music,
+      transition: manifest.transition,
+      width,
+      height,
+      watermark: manifest.watermark === true,
+    });
+
+    await updateJobStatus(job.id, { progressPercent: 88 });
+
+    const videoId = randomUUID();
+    const [videoObjectPath, thumbnailObjectPath] = await Promise.all([
+      storageService.uploadVideoBuffer(result.videoBuffer, videoId),
+      storageService.uploadThumbnailBuffer(result.thumbnailBuffer, videoId),
+    ]);
+
+    await db.insert(videosTable).values({
+      id: videoId,
+      userId: job.userId,
+      jobId: job.id,
+      videoObjectPath,
+      thumbnailObjectPath,
+      title: "Studio export",
+      durationSeconds: result.durationSeconds,
+      shareToken: randomUUID().replace(/-/g, "").slice(0, 16),
+    });
+
+    if (!manifest.watermark) {
+      const creditCost = calculateEditorCost({
+        durationSec: result.durationSeconds,
+        resolution: manifest.resolution,
+        hasTransitions: !!manifest.transition && manifest.transition.type !== "none",
+      });
+      await db
+        .update(creditsTable)
+        .set({
+          creditsRemaining: sql`GREATEST(credits_remaining - ${creditCost}, 0)`,
+          creditsUsed: sql`credits_used + ${creditCost}`,
+          totalGenerations: sql`total_generations + 1`,
+        })
+        .where(eq(creditsTable.userId, job.userId));
+    }
+
+    await updateJobStatus(job.id, { status: "ready", progressPercent: 100, videoId });
+    logger.info({ jobId: job.id, videoId }, "Editor render completed");
+  } catch (err) {
+    await retryOrFail(job, err);
+  }
+}
+
 async function processJob(job: JobRow): Promise<void> {
+  if (job.jobType === "editor_render") {
+    await processEditorJob(job);
+    return;
+  }
+
   logger.info({ jobId: job.id, style: job.style, provider: getActiveProvider() }, "Processing job");
 
   try {

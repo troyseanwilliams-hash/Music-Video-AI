@@ -1,0 +1,1 @@
+- [esbuild-zod-dep](esbuild-zod-dep.md) — api-server routes that directly import zod must add zod to api-server/package.json
