@@ -50,10 +50,31 @@ const TRANSITIONS = [
   { value: "none", label: "None (hard cut)" },
   { value: "crossfade", label: "Crossfade" },
   { value: "fadeblack", label: "Fade to black" },
-  { value: "wipe", label: "Wipe" },
-  { value: "slide", label: "Slide" },
-  { value: "circle", label: "Circle" },
+  { value: "fadewhite", label: "Fade to white" },
+  { value: "dissolve", label: "Dissolve" },
+  { value: "pixelize", label: "Pixelize" },
+  { value: "wipe", label: "Wipe right" },
+  { value: "wipeleft", label: "Wipe left" },
+  { value: "wipeup", label: "Wipe up" },
+  { value: "wipedown", label: "Wipe down" },
+  { value: "slide", label: "Slide left" },
+  { value: "slideright", label: "Slide right" },
+  { value: "slideup", label: "Slide up" },
+  { value: "slidedown", label: "Slide down" },
+  { value: "circle", label: "Circle open" },
+  { value: "circleclose", label: "Circle close" },
+  { value: "radial", label: "Radial" },
+  { value: "zoomin", label: "Zoom in" },
 ];
+
+// Map each transition to a CSS animation for the in-app preview (the exported
+// MP4 uses FFmpeg's exact xfade; the preview is a close approximation).
+const PREVIEW_ANIM: Record<string, string> = {
+  crossfade: "fade", fadeblack: "fade", fadewhite: "fade", dissolve: "fade", pixelize: "fade",
+  wipe: "wipe", wipeleft: "wipeleft", wipeup: "wipeup", wipedown: "wipedown",
+  slide: "slide", slideright: "slideright", slideup: "slideup", slidedown: "slidedown",
+  circle: "circle", circleclose: "circle", radial: "circle", zoomin: "zoom",
+};
 
 function uid() {
   return Math.random().toString(36).slice(2);
@@ -234,8 +255,8 @@ export default function Editor() {
     if (stageRef.current) stageRef.current.style.setProperty("--bvtd", `${transitionDuration}s`);
     if (tp) tp.style.display = transition === "fadeblack" ? "none" : "block";
     if (incoming) {
-      const cls = `bv-anim-${transition}`;
-      incoming.classList.remove(cls);
+      const cls = `bv-anim-${PREVIEW_ANIM[transition] || "fade"}`;
+      [...incoming.classList].forEach((c) => c.startsWith("bv-anim-") && incoming.classList.remove(c));
       void incoming.offsetWidth;
       incoming.classList.add(cls);
       window.setTimeout(() => {
@@ -452,13 +473,27 @@ export default function Editor() {
     <div className="mx-auto w-full max-w-5xl px-4 py-8">
       <style>{`
         @keyframes bvTrIn{from{opacity:0}to{opacity:1}}
-        @keyframes bvTrSlide{from{transform:translateX(100%)}to{transform:translateX(0)}}
-        @keyframes bvTrWipe{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+        @keyframes bvTrSlideR{from{transform:translateX(100%)}to{transform:translateX(0)}}
+        @keyframes bvTrSlideL{from{transform:translateX(-100%)}to{transform:translateX(0)}}
+        @keyframes bvTrSlideU{from{transform:translateY(100%)}to{transform:translateY(0)}}
+        @keyframes bvTrSlideD{from{transform:translateY(-100%)}to{transform:translateY(0)}}
+        @keyframes bvTrWipeL{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+        @keyframes bvTrWipeR{from{clip-path:inset(0 0 0 100%)}to{clip-path:inset(0 0 0 0)}}
+        @keyframes bvTrWipeU{from{clip-path:inset(100% 0 0 0)}to{clip-path:inset(0 0 0 0)}}
+        @keyframes bvTrWipeD{from{clip-path:inset(0 0 100% 0)}to{clip-path:inset(0 0 0 0)}}
         @keyframes bvTrCircle{from{clip-path:circle(0% at 50% 50%)}to{clip-path:circle(75% at 50% 50%)}}
-        .bv-anim-crossfade,.bv-anim-fadeblack{animation:bvTrIn var(--bvtd,.5s) ease both}
-        .bv-anim-slide{animation:bvTrSlide var(--bvtd,.5s) ease both}
-        .bv-anim-wipe{animation:bvTrWipe var(--bvtd,.5s) ease both}
+        @keyframes bvTrZoom{from{opacity:0;transform:scale(1.3)}to{opacity:1;transform:scale(1)}}
+        .bv-anim-fade{animation:bvTrIn var(--bvtd,.5s) ease both}
+        .bv-anim-slide{animation:bvTrSlideR var(--bvtd,.5s) ease both}
+        .bv-anim-slideright{animation:bvTrSlideL var(--bvtd,.5s) ease both}
+        .bv-anim-slideup{animation:bvTrSlideU var(--bvtd,.5s) ease both}
+        .bv-anim-slidedown{animation:bvTrSlideD var(--bvtd,.5s) ease both}
+        .bv-anim-wipe{animation:bvTrWipeL var(--bvtd,.5s) ease both}
+        .bv-anim-wipeleft{animation:bvTrWipeR var(--bvtd,.5s) ease both}
+        .bv-anim-wipeup{animation:bvTrWipeU var(--bvtd,.5s) ease both}
+        .bv-anim-wipedown{animation:bvTrWipeD var(--bvtd,.5s) ease both}
         .bv-anim-circle{animation:bvTrCircle var(--bvtd,.5s) ease both}
+        .bv-anim-zoom{animation:bvTrZoom var(--bvtd,.5s) ease both}
       `}</style>
 
       <div className="mb-6">

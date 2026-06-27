@@ -26,7 +26,12 @@ const RenderSchema = z.object({
     .optional(),
   transition: z
     .object({
-      type: z.enum(["none", "crossfade", "fadeblack", "wipe", "slide", "circle"]),
+      type: z.enum([
+        "none", "crossfade", "fadeblack", "fadewhite", "dissolve", "pixelize",
+        "wipe", "wipeleft", "wipeup", "wipedown",
+        "slide", "slideright", "slideup", "slidedown",
+        "circle", "circleclose", "radial", "zoomin",
+      ]),
       durationSec: z.number().min(0.2).max(2).default(0.5),
     })
     .optional(),

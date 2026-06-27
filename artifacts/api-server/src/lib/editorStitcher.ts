@@ -48,9 +48,21 @@ const SAR = 48000;
 const XFADE: Record<string, string> = {
   crossfade: "fade",
   fadeblack: "fadeblack",
+  fadewhite: "fadewhite",
+  dissolve: "dissolve",
+  pixelize: "pixelize",
   wipe: "wiperight",
+  wipeleft: "wipeleft",
+  wipeup: "wipeup",
+  wipedown: "wipedown",
   slide: "slideleft",
+  slideright: "slideright",
+  slideup: "slideup",
+  slidedown: "slidedown",
   circle: "circleopen",
+  circleclose: "circleclose",
+  radial: "radial",
+  zoomin: "zoomin",
 };
 
 function run(args: string[]): Promise<void> {
