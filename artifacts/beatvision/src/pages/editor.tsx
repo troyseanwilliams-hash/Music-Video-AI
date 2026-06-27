@@ -338,10 +338,16 @@ export default function Editor() {
   // ---------- intake ----------
   async function addMedia(files: FileList | null) {
     if (!files) return;
+    const VIDEO_EXTS = new Set(["mp4","mov","webm","mkv","avi","wmv","m4v","3gp","ts","mts","m2ts","ogv"]);
+    const IMAGE_EXTS = new Set(["jpg","jpeg","png","gif","webp","bmp","heic","heif","avif","tiff","tif"]);
     for (const file of Array.from(files)) {
-      const isVideo = file.type.startsWith("video/");
-      const isImage = file.type.startsWith("image/");
-      if (!isVideo && !isImage) continue;
+      const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+      const isVideo = file.type.startsWith("video/") || VIDEO_EXTS.has(ext);
+      const isImage = file.type.startsWith("image/") || IMAGE_EXTS.has(ext);
+      if (!isVideo && !isImage) {
+        toast({ title: "Unsupported file", description: `"${file.name}" is not a recognised video or image type.`, variant: "destructive" });
+        continue;
+      }
       const id = uid();
       const localUrl = URL.createObjectURL(file);
       const seg: Segment = {
@@ -519,7 +525,7 @@ export default function Editor() {
 
       {/* Add media */}
       <div className="mb-4 flex flex-wrap gap-3">
-        <input ref={mediaInputRef} type="file" accept="video/*,image/*" multiple hidden onChange={(e) => addMedia(e.target.files)} />
+        <input ref={mediaInputRef} type="file" accept="video/*,image/*,.mp4,.mov,.webm,.mkv,.avi,.wmv,.m4v,.3gp,.ts,.ogv" multiple hidden onChange={(e) => addMedia(e.target.files)} />
         <Button onClick={() => mediaInputRef.current?.click()}>
           <Upload className="mr-2 h-4 w-4" /> Add media
         </Button>
