@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Play, Sparkles, Zap, Music, MonitorPlay, ExternalLink, ScanLine, ImagePlus, Volume2, VolumeX } from "lucide-react";
+import { Play, Sparkles, Zap, Music, MonitorPlay, ExternalLink, ScanLine, ImagePlus, Volume2, VolumeX, Scissors } from "lucide-react";
 import { motion } from "framer-motion";
 
 const SAMPLES = [
@@ -102,23 +102,71 @@ export default function Home() {
               </h1>
               
               <p className="text-lg md:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto">
-                AI Beat Sync analyzes your audio tracks and generates stunning, beat-synced music videos perfectly matched to the mood, energy, and rhythm of your music.
+                Let our AI generate beat-synced music videos from any song — or jump into the Editor to arrange your own clips, photos, music, and transitions into a finished video.
               </p>
-              
+
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <Link href="/generate">
                   <Button size="lg" className="w-full sm:w-auto text-lg h-14 px-8 bg-gradient-electric text-white shadow-glow hover:opacity-90 border-0 transition-all group">
                     <Play className="mr-2 h-5 w-5 group-hover:scale-110 transition-transform" />
-                    Start Creating
+                    Generate with AI
                   </Button>
                 </Link>
-                <Link href="/gallery">
-                  <Button size="lg" variant="outline" className="w-full sm:w-auto text-lg h-14 px-8 border-border/50 bg-secondary/50 hover:bg-secondary/80 backdrop-blur-sm">
-                    View Gallery
+                <Link href="/editor">
+                  <Button size="lg" variant="outline" className="w-full sm:w-auto text-lg h-14 px-8 border-border/50 bg-secondary/50 hover:bg-secondary/80 backdrop-blur-sm group">
+                    <Scissors className="mr-2 h-5 w-5 group-hover:scale-110 transition-transform" />
+                    Open the Editor
                   </Button>
                 </Link>
               </div>
+              <div className="mt-4">
+                <Link href="/gallery" className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-4">
+                  or browse the gallery
+                </Link>
+              </div>
             </motion.div>
+          </div>
+        </section>
+
+        {/* Two ways to create */}
+        <section className="py-16 border-t border-border/30">
+          <div className="container px-4 md:px-6 mx-auto max-w-5xl">
+            <div className="text-center mb-10">
+              <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-3">Two ways to create</h2>
+              <p className="text-muted-foreground max-w-2xl mx-auto">
+                Let AI build a beat-synced video for you, or take full control on the timeline.
+              </p>
+            </div>
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="rounded-2xl border border-card-border bg-card p-8 flex flex-col">
+                <div className="h-12 w-12 rounded-xl bg-primary/15 flex items-center justify-center mb-5">
+                  <Sparkles className="h-6 w-6 text-primary" />
+                </div>
+                <h3 className="text-xl font-bold mb-2">AI Generator</h3>
+                <p className="text-muted-foreground mb-6 flex-1">
+                  Upload a song and our AI analyzes its beat, energy, and mood to generate cinematic, beat-synced
+                  visuals in 8 styles — automatically.
+                </p>
+                <Link href="/generate">
+                  <Button className="bg-gradient-electric text-white border-0 shadow-glow hover:opacity-90">
+                    Generate with AI
+                  </Button>
+                </Link>
+              </div>
+              <div className="rounded-2xl border border-card-border bg-card p-8 flex flex-col">
+                <div className="h-12 w-12 rounded-xl bg-accent/15 flex items-center justify-center mb-5">
+                  <Scissors className="h-6 w-6 text-accent" />
+                </div>
+                <h3 className="text-xl font-bold mb-2">Editor</h3>
+                <p className="text-muted-foreground mb-6 flex-1">
+                  Arrange your own clips and photos on a timeline, add music, choose from 17 transitions, preview,
+                  and export an MP4 — free for 7 days.
+                </p>
+                <Link href="/editor">
+                  <Button variant="outline">Open the Editor</Button>
+                </Link>
+              </div>
+            </div>
           </div>
         </section>
 

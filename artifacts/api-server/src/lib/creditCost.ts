@@ -1,10 +1,18 @@
+// Credit cost for an AI generation. Priced by the requested video size — not by
+// any AI-provider token math. A 5-second clip is the cheapest (about half the
+// cost of a 30-second video) and a full video is the most expensive.
+//
+// Scale: cost = BASE_CREDITS + seconds × CREDITS_PER_SECOND
+//   5s   → 25 credits   (minimum, ≈ ½ of 30s)
+//   10s  → 30 credits
+//   30s  → 50 credits
+//   60s  → 80 credits
+//   full → 140 credits  (max)
 const MAX_CLIPS_PER_JOB = 3;
 
-const RUNWAY_TOKENS_PER_5S = 165;
-const RUNWAY_TOKENS_PER_10S = 330;
-const RUNWAY_USD_PER_TOKEN = 0.01;
-const MARKUP = 2;
-const USD_PER_CREDIT = 0.02;
+const BASE_CREDITS = 20; // floor so a 5s clip ≈ half a 30s clip
+const CREDITS_PER_SECOND = 1; // linear scale on top of the floor
+const FULL_VIDEO_SECONDS = 120; // "full" is billed as the maximum size
 
 export function getClipPlan(requestedDuration: string | null | undefined): {
   numClips: number;
@@ -20,10 +28,18 @@ export function getClipPlan(requestedDuration: string | null | undefined): {
   return { numClips, clipDurationSec };
 }
 
+// Billable duration in seconds, resolved from the requested duration.
+function billableSeconds(requestedDuration: string | null | undefined): number {
+  const dur = requestedDuration ?? "full";
+  if (dur === "full") return FULL_VIDEO_SECONDS;
+  const n = parseInt(dur, 10);
+  if (isNaN(n) || n <= 0) return FULL_VIDEO_SECONDS;
+  return Math.min(n, FULL_VIDEO_SECONDS);
+}
+
+// Estimated == actual cost (the same function backs the pre-flight estimate
+// shown to the customer and the deduction from their balance on success).
 export function calculateCreditCost(requestedDuration: string | null | undefined): number {
-  const { numClips, clipDurationSec } = getClipPlan(requestedDuration);
-  const tokensPerClip = clipDurationSec === 5 ? RUNWAY_TOKENS_PER_5S : RUNWAY_TOKENS_PER_10S;
-  const totalTokens = numClips * tokensPerClip;
-  const chargeUSD = totalTokens * RUNWAY_USD_PER_TOKEN * MARKUP;
-  return Math.ceil(chargeUSD / USD_PER_CREDIT);
+  const secs = billableSeconds(requestedDuration);
+  return BASE_CREDITS + Math.ceil(secs * CREDITS_PER_SECOND);
 }
