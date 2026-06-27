@@ -17,7 +17,7 @@ function buildUserPayload(user: typeof usersTable.$inferSelect) {
     lastName: user.lastName,
     profileImageUrl: user.profileImageUrl,
     subscriptionStatus: (user.subscriptionStatus ?? "none") as "trial" | "active" | "cancelled" | "none",
-    trialEndsAt: null as Date | null,
+    trialEndsAt: user.trialEndsAt ?? null,
     isAdmin: isAdminEmail(user.email),
   };
 }
@@ -92,7 +92,9 @@ router.post("/auth/register", async (req: Request, res: Response) => {
       passwordHash,
       firstName,
       lastName,
-      subscriptionStatus: "none",
+      // New users get a 7-day full-access Editor trial.
+      subscriptionStatus: "trial",
+      trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       lastLoginAt: new Date(),
     })
     .returning();

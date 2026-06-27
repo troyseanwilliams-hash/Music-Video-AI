@@ -4,11 +4,7 @@ import { jobsTable, creditsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { z } from "zod";
-import {
-  calculateEditorCost,
-  EDITOR_FREE_MAX_SECONDS,
-  EDITOR_FREE_RESOLUTION,
-} from "../lib/editorCost.js";
+import { calculateEditorCost } from "../lib/editorCost.js";
 
 const router = Router();
 
@@ -61,39 +57,23 @@ router.post("/studio/render", async (req, res) => {
     process.env.ADMIN_EMAIL &&
     userRecord?.email?.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase()
   );
-  const isPaid = isAdmin || (userRecord?.subscriptionStatus ?? "none") === "active";
+  const isSubscribed = (userRecord?.subscriptionStatus ?? "none") === "active";
+  const trialActive =
+    !!userRecord?.trialEndsAt && new Date(userRecord.trialEndsAt).getTime() > Date.now();
+  // Full, free Editor access during the 7-day trial, with a subscription, or for admins.
+  const fullAccess = isAdmin || isSubscribed || trialActive;
 
-  // Approximate timeline length (sum of segment durations).
   const totalDuration = input.segments.reduce((s, seg) => s + (seg.durationSec || 0), 0);
   const hasTransitions = !!input.transition && input.transition.type !== "none";
 
-  // Enforce tier server-side. Free users get a watermark + limits and pay nothing.
-  let resolution = input.resolution;
-  let transition = input.transition;
-  let watermark = false;
+  const resolution = input.resolution;
+  const transition = input.transition;
+  // Once the trial ends and there's no subscription, each export costs credits.
+  const chargeCredits = !fullAccess;
 
-  if (!isPaid) {
-    watermark = true;
-    resolution = EDITOR_FREE_RESOLUTION as "720p";
-    transition = { type: "none", durationSec: 0.5 };
-    if (totalDuration > EDITOR_FREE_MAX_SECONDS) {
-      res.status(403).json({
-        error: `Free exports are limited to ${EDITOR_FREE_MAX_SECONDS}s. Upgrade to export longer videos without a watermark.`,
-        code: "UPGRADE_REQUIRED",
-        maxSeconds: EDITOR_FREE_MAX_SECONDS,
-      });
-      return;
-    }
-  }
-
-  // Paid renders: estimate cost and check the balance (deducted on success).
   let creditCost = 0;
-  if (!watermark && !isAdmin) {
-    creditCost = calculateEditorCost({
-      durationSec: totalDuration,
-      resolution,
-      hasTransitions,
-    });
+  if (chargeCredits) {
+    creditCost = calculateEditorCost({ durationSec: totalDuration, resolution, hasTransitions });
 
     let [userCredits] = await db
       .select()
@@ -108,8 +88,8 @@ router.post("/studio/render", async (req, res) => {
     }
     if (userCredits.creditsRemaining < creditCost) {
       res.status(402).json({
-        error: `This export costs ${creditCost} credits but you have ${userCredits.creditsRemaining}.`,
-        code: "INSUFFICIENT_CREDITS",
+        error: `Your free trial has ended. Subscribe for unlimited editing — or this export costs ${creditCost} credits (you have ${userCredits.creditsRemaining}).`,
+        code: "TRIAL_ENDED",
         creditsRequired: creditCost,
         creditsRemaining: userCredits.creditsRemaining,
       });
@@ -122,7 +102,8 @@ router.post("/studio/render", async (req, res) => {
     music: input.music,
     transition,
     resolution,
-    watermark,
+    watermark: false,
+    chargeCredits,
   };
 
   const jobId = randomUUID();
@@ -140,11 +121,11 @@ router.post("/studio/render", async (req, res) => {
     .returning();
 
   req.log.info(
-    { userId: req.user.id, jobId, totalDuration, creditCost, watermark, isPaid },
-    "Studio render queued",
+    { userId: req.user.id, jobId, totalDuration, creditCost, fullAccess, trialActive },
+    "Editor render queued",
   );
 
-  res.status(201).json({ job, estimatedCost: creditCost, watermark });
+  res.status(201).json({ job, estimatedCost: creditCost, charged: chargeCredits });
 });
 
 export default router;

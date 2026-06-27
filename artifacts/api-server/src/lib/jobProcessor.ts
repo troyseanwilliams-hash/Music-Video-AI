@@ -358,6 +358,7 @@ interface EditorManifest {
   transition?: { type: string; durationSec: number };
   resolution?: string;
   watermark?: boolean;
+  chargeCredits?: boolean; // true only when trial ended and not subscribed
 }
 
 // User-driven Studio timeline render — bypasses the AI analyze/generate stages.
@@ -418,7 +419,8 @@ async function processEditorJob(job: JobRow): Promise<void> {
       shareToken: randomUUID().replace(/-/g, "").slice(0, 16),
     });
 
-    if (!manifest.watermark) {
+    // Trial/subscription renders are free; post-trial renders deduct credits.
+    if (manifest.chargeCredits) {
       const creditCost = calculateEditorCost({
         durationSec: result.durationSeconds,
         resolution: manifest.resolution,

@@ -381,7 +381,8 @@ interface EditorManifest {
   music?: { objectPath: string; mode: "mix" | "replace"; volume: number };
   transition?: { type: string; durationSec: number };
   resolution?: string; // "720p" | "1080p"
-  watermark?: boolean; // free tier: watermark + no credit charge
+  watermark?: boolean;
+  chargeCredits?: boolean; // true only when trial ended and not subscribed
 }
 
 // User-driven Studio timeline render — bypasses the AI analyze/generate stages.
@@ -446,8 +447,8 @@ async function processEditorJob(job: JobRow): Promise<void> {
       shareToken: randomUUID().replace(/-/g, "").slice(0, 16),
     });
 
-    // Free renders (watermarked) are free; paid renders deduct credits on success.
-    if (!manifest.watermark) {
+    // Trial/subscription renders are free; post-trial renders deduct credits.
+    if (manifest.chargeCredits) {
       const creditCost = calculateEditorCost({
         durationSec: result.durationSeconds,
         resolution: manifest.resolution,

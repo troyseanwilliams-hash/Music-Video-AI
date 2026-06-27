@@ -149,15 +149,15 @@ export default function Editor() {
     segmentsRef.current = segments;
   }, [segments]);
 
-  const isPaid = !!user && (user.isAdmin || user.subscriptionStatus === "active");
+  const trialActive = !!user?.trialEndsAt && new Date(user.trialEndsAt).getTime() > Date.now();
+  const trialDaysLeft = user?.trialEndsAt
+    ? Math.max(0, Math.ceil((new Date(user.trialEndsAt).getTime() - Date.now()) / 86400000))
+    : 0;
+  const fullAccess = !!user && (user.isAdmin || user.subscriptionStatus === "active" || trialActive);
 
   useEffect(() => {
     if (!isAuthLoading && !isAuthenticated) setLocation("/login");
   }, [isAuthLoading, isAuthenticated, setLocation]);
-
-  useEffect(() => {
-    if (!isPaid) setResolution("720p");
-  }, [isPaid]);
 
   // Handoff from Gallery / job page: pre-load a finished video as the first clip.
   useEffect(() => {
@@ -435,7 +435,7 @@ export default function Editor() {
       if (res.status === 402 || res.status === 403) {
         const e = await res.json();
         toast({ title: "Can't export yet", description: e.error, variant: "destructive" });
-        if (e.code === "INSUFFICIENT_CREDITS" || e.code === "UPGRADE_REQUIRED") setLocation("/pricing");
+        if (e.code === "INSUFFICIENT_CREDITS" || e.code === "UPGRADE_REQUIRED" || e.code === "TRIAL_ENDED") setLocation("/pricing");
         return;
       }
       if (!res.ok) throw new Error(`Render request failed (${res.status})`);
@@ -468,13 +468,23 @@ export default function Editor() {
         </p>
       </div>
 
-      {!isPaid && (
+      {trialActive && (
         <Card className="border-primary/30 bg-primary/5 mb-6 p-4 text-sm">
-          You're on the free plan — exports are up to 30s at 720p with a small AI Beat Sync watermark.{" "}
+          Free trial — {trialDaysLeft} day{trialDaysLeft === 1 ? "" : "s"} left. The full Editor is unlocked: 1080p,
+          no watermark, all transitions.{" "}
           <button className="text-primary font-medium underline" onClick={() => setLocation("/pricing")}>
-            Upgrade
+            Subscribe
           </button>{" "}
-          for longer, watermark-free 1080p exports and transitions.
+          to keep it after your trial.
+        </Card>
+      )}
+      {!fullAccess && (
+        <Card className="border-primary/30 bg-primary/5 mb-6 p-4 text-sm">
+          Your free trial has ended.{" "}
+          <button className="text-primary font-medium underline" onClick={() => setLocation("/pricing")}>
+            Subscribe
+          </button>{" "}
+          for unlimited editing — or each export costs credits.
         </Card>
       )}
 
@@ -610,7 +620,7 @@ export default function Editor() {
       <div className="mb-6 grid gap-4 sm:grid-cols-2">
         <Card className="p-4">
           <div className="mb-3 text-sm font-medium">Transition</div>
-          <Select value={transition} onValueChange={setTransition} disabled={!isPaid}>
+          <Select value={transition} onValueChange={setTransition}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -628,7 +638,6 @@ export default function Editor() {
               <Slider min={0.2} max={2} step={0.1} value={[transitionDuration]} onValueChange={(v) => setTransitionDuration(v[0]!)} />
             </div>
           )}
-          {!isPaid && <p className="text-muted-foreground mt-2 text-xs">Transitions are a paid feature.</p>}
         </Card>
 
         <Card className="p-4">
@@ -667,7 +676,7 @@ export default function Editor() {
           )}
           <div className="mt-4">
             <div className="mb-2 text-sm font-medium">Resolution</div>
-            <Select value={resolution} onValueChange={(v) => setResolution(v as "720p" | "1080p")} disabled={!isPaid}>
+            <Select value={resolution} onValueChange={(v) => setResolution(v as "720p" | "1080p")}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
