@@ -107,8 +107,10 @@ function hasAudio(file: string): Promise<boolean> {
 export async function stitchEditorTimeline(
   input: EditorStitchInput,
 ): Promise<EditorStitchResult> {
-  const W = input.width ?? 1280;
-  const H = input.height ?? 720;
+  // Hard-cap at 720p — 1080p encoding exhausts RAM on the production VM.
+  // Raise this limit only after upgrading the deployment to a higher-memory tier.
+  const W = Math.min(input.width ?? 1280, 1280);
+  const H = Math.min(input.height ?? 720, 720);
   const FPS = input.fps ?? 30;
   const vf =
     `scale=${W}:${H}:force_original_aspect_ratio=decrease,` +
@@ -136,7 +138,8 @@ export async function stitchEditorTimeline(
             `anullsrc=channel_layout=stereo:sample_rate=${SAR}`,
             "-vf", vf,
             "-map", "0:v:0", "-map", "1:a:0",
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
+            "-refs", "1", "-bf", "0",
             "-pix_fmt", "yuv420p", "-r", String(FPS),
             "-c:a", "aac", "-ar", String(SAR), "-ac", "2",
             "-video_track_timescale", "30000",
@@ -151,7 +154,8 @@ export async function stitchEditorTimeline(
           args.push(
             "-vf", vf,
             "-map", "0:v:0", "-map", audio ? "0:a:0" : "1:a:0",
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
+            "-refs", "1", "-bf", "0",
             "-pix_fmt", "yuv420p", "-r", String(FPS),
             "-c:a", "aac", "-ar", String(SAR), "-ac", "2",
             "-shortest", "-video_track_timescale", "30000",
@@ -193,7 +197,9 @@ export async function stitchEditorTimeline(
       args.push(
         "-filter_complex", filters.join(";"),
         "-map", `[${prevV}]`, "-map", `[${prevA}]`,
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-r", String(FPS),
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
+        "-refs", "1", "-bf", "0",
+        "-pix_fmt", "yuv420p", "-r", String(FPS),
         "-c:a", "aac", "-ar", String(SAR), "-ac", "2",
         joined,
       );
@@ -236,7 +242,7 @@ export async function stitchEditorTimeline(
         `box=1:boxcolor=black@0.35:boxborderw=8:x=w-text_w-24:y=h-text_h-24`;
       await run([
         "-y", "-i", current, "-vf", draw,
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p",
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-refs", "1", "-bf", "0", "-pix_fmt", "yuv420p",
         "-c:a", "copy", "-movflags", "+faststart", wm,
       ]);
       current = wm;
