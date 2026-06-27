@@ -31,18 +31,23 @@ import type {
   CreditsResponse,
   DashboardStats,
   ErrorEnvelope,
+  GalleryListResponse,
   HealthStatus,
   Job,
   JobListResponse,
+  LikeResponse,
+  ListGalleryParams,
   ListJobsParams,
   ListVideosParams,
   LoginRequest,
   RegisterRequest,
   SuccessResponse,
+  UpdateVisibilityRequest,
   UploadUrlRequest,
   UploadUrlResponse,
   Video,
   VideoListResponse,
+  VideoVisibility,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -1231,6 +1236,356 @@ export const useDeleteVideo = <
   TContext
 > => {
   return useMutation(getDeleteVideoMutationOptions(options));
+};
+
+/**
+ * @summary List public videos (no authentication required)
+ */
+export const getListGalleryUrl = (params?: ListGalleryParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/gallery?${stringifiedParams}`
+    : `/api/gallery`;
+};
+
+export const listGallery = async (
+  params?: ListGalleryParams,
+  options?: RequestInit,
+): Promise<GalleryListResponse> => {
+  return customFetch<GalleryListResponse>(getListGalleryUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListGalleryQueryKey = (params?: ListGalleryParams) => {
+  return [`/api/gallery`, ...(params ? [params] : [])] as const;
+};
+
+export const getListGalleryQueryOptions = <
+  TData = Awaited<ReturnType<typeof listGallery>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListGalleryParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listGallery>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListGalleryQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listGallery>>> = ({
+    signal,
+  }) => listGallery(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listGallery>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListGalleryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listGallery>>
+>;
+export type ListGalleryQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List public videos (no authentication required)
+ */
+
+export function useListGallery<
+  TData = Awaited<ReturnType<typeof listGallery>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListGalleryParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listGallery>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListGalleryQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Toggle a video's public visibility (owner or admin)
+ */
+export const getUpdateVideoVisibilityUrl = (id: string) => {
+  return `/api/videos/${id}/visibility`;
+};
+
+export const updateVideoVisibility = async (
+  id: string,
+  updateVisibilityRequest: UpdateVisibilityRequest,
+  options?: RequestInit,
+): Promise<VideoVisibility> => {
+  return customFetch<VideoVisibility>(getUpdateVideoVisibilityUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateVisibilityRequest),
+  });
+};
+
+export const getUpdateVideoVisibilityMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateVideoVisibility>>,
+    TError,
+    { id: string; data: BodyType<UpdateVisibilityRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateVideoVisibility>>,
+  TError,
+  { id: string; data: BodyType<UpdateVisibilityRequest> },
+  TContext
+> => {
+  const mutationKey = ["updateVideoVisibility"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateVideoVisibility>>,
+    { id: string; data: BodyType<UpdateVisibilityRequest> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateVideoVisibility(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateVideoVisibilityMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateVideoVisibility>>
+>;
+export type UpdateVideoVisibilityMutationBody =
+  BodyType<UpdateVisibilityRequest>;
+export type UpdateVideoVisibilityMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Toggle a video's public visibility (owner or admin)
+ */
+export const useUpdateVideoVisibility = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateVideoVisibility>>,
+    TError,
+    { id: string; data: BodyType<UpdateVisibilityRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateVideoVisibility>>,
+  TError,
+  { id: string; data: BodyType<UpdateVisibilityRequest> },
+  TContext
+> => {
+  return useMutation(getUpdateVideoVisibilityMutationOptions(options));
+};
+
+/**
+ * @summary Like a public video
+ */
+export const getLikeVideoUrl = (id: string) => {
+  return `/api/videos/${id}/like`;
+};
+
+export const likeVideo = async (
+  id: string,
+  options?: RequestInit,
+): Promise<LikeResponse> => {
+  return customFetch<LikeResponse>(getLikeVideoUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getLikeVideoMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof likeVideo>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof likeVideo>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["likeVideo"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof likeVideo>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return likeVideo(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type LikeVideoMutationResult = NonNullable<
+  Awaited<ReturnType<typeof likeVideo>>
+>;
+
+export type LikeVideoMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Like a public video
+ */
+export const useLikeVideo = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof likeVideo>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof likeVideo>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getLikeVideoMutationOptions(options));
+};
+
+/**
+ * @summary Remove a like from a video
+ */
+export const getUnlikeVideoUrl = (id: string) => {
+  return `/api/videos/${id}/like`;
+};
+
+export const unlikeVideo = async (
+  id: string,
+  options?: RequestInit,
+): Promise<LikeResponse> => {
+  return customFetch<LikeResponse>(getUnlikeVideoUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getUnlikeVideoMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof unlikeVideo>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof unlikeVideo>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["unlikeVideo"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof unlikeVideo>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return unlikeVideo(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UnlikeVideoMutationResult = NonNullable<
+  Awaited<ReturnType<typeof unlikeVideo>>
+>;
+
+export type UnlikeVideoMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Remove a like from a video
+ */
+export const useUnlikeVideo = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof unlikeVideo>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof unlikeVideo>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getUnlikeVideoMutationOptions(options));
 };
 
 /**

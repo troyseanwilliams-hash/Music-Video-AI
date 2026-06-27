@@ -525,6 +525,8 @@ export const ListVideosResponse = zod.object({
       style: zod.string().nullish(),
       prompt: zod.string().nullish(),
       shareToken: zod.string().nullish(),
+      isPublic: zod.boolean().optional(),
+      likeCount: zod.number().optional(),
       createdAt: zod.coerce.date(),
     }),
   ),
@@ -558,6 +560,8 @@ export const GetVideoResponse = zod.object({
   style: zod.string().nullish(),
   prompt: zod.string().nullish(),
   shareToken: zod.string().nullish(),
+  isPublic: zod.boolean().optional(),
+  likeCount: zod.number().optional(),
   createdAt: zod.coerce.date(),
 });
 
@@ -577,6 +581,98 @@ export const DeleteVideoHeader = zod.object({
 
 export const DeleteVideoResponse = zod.object({
   success: zod.boolean(),
+});
+
+/**
+ * @summary List public videos (no authentication required)
+ */
+
+export const listGalleryQueryLimitMax = 48;
+
+export const ListGalleryQueryParams = zod.object({
+  page: zod.coerce.number().min(1).optional(),
+  limit: zod.coerce.number().min(1).max(listGalleryQueryLimitMax).optional(),
+});
+
+export const ListGalleryResponse = zod.object({
+  videos: zod.array(
+    zod.object({
+      id: zod.string(),
+      videoObjectPath: zod.string(),
+      thumbnailObjectPath: zod.string().nullish(),
+      title: zod.string().nullish(),
+      durationSeconds: zod.number().nullish(),
+      style: zod.string().nullish(),
+      likeCount: zod.number(),
+      liked: zod.boolean(),
+      creatorName: zod.string().nullish(),
+      createdAt: zod.coerce.date(),
+    }),
+  ),
+  total: zod.number(),
+  page: zod.number(),
+  limit: zod.number(),
+});
+
+/**
+ * @summary Toggle a video's public visibility (owner or admin)
+ */
+export const UpdateVideoVisibilityParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const UpdateVideoVisibilityHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const UpdateVideoVisibilityBody = zod.object({
+  isPublic: zod.boolean(),
+});
+
+export const UpdateVideoVisibilityResponse = zod.object({
+  id: zod.string(),
+  isPublic: zod.boolean(),
+});
+
+/**
+ * @summary Like a public video
+ */
+export const LikeVideoParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const LikeVideoHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const LikeVideoResponse = zod.object({
+  liked: zod.boolean(),
+  likeCount: zod.number(),
+});
+
+/**
+ * @summary Remove a like from a video
+ */
+export const UnlikeVideoParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const UnlikeVideoHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const UnlikeVideoResponse = zod.object({
+  liked: zod.boolean(),
+  likeCount: zod.number(),
 });
 
 /**

@@ -416,6 +416,130 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
 
+  /gallery:
+    get:
+      tags: [Videos]
+      operationId: listGallery
+      summary: List public videos (no authentication required)
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 48
+      responses:
+        '200':
+          description: Public videos sorted by like count then recency.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GalleryListResponse'
+
+  /videos/{id}/visibility:
+    patch:
+      tags: [Videos]
+      operationId: updateVideoVisibility
+      summary: Toggle a video's public visibility (owner or admin)
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateVisibilityRequest'
+      responses:
+        '200':
+          description: Visibility updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VideoVisibility'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Video not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /videos/{id}/like:
+    post:
+      tags: [Videos]
+      operationId: likeVideo
+      summary: Like a public video
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Liked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LikeResponse'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    delete:
+      tags: [Videos]
+      operationId: unlikeVideo
+      summary: Remove a like from a video
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Unliked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LikeResponse'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
   /credits:
     get:
       tags: [Credits]
@@ -944,6 +1068,10 @@ components:
           type: [string, 'null']
         shareToken:
           type: [string, 'null']
+        isPublic:
+          type: boolean
+        likeCount:
+          type: integer
         createdAt:
           type: string
           format: date-time
@@ -961,6 +1089,72 @@ components:
         page:
           type: integer
         limit:
+          type: integer
+
+    GalleryVideo:
+      type: object
+      required: [id, videoObjectPath, likeCount, liked, createdAt]
+      properties:
+        id:
+          type: string
+        videoObjectPath:
+          type: string
+        thumbnailObjectPath:
+          type: [string, 'null']
+        title:
+          type: [string, 'null']
+        durationSeconds:
+          type: [number, 'null']
+        style:
+          type: [string, 'null']
+        likeCount:
+          type: integer
+        liked:
+          type: boolean
+        creatorName:
+          type: [string, 'null']
+        createdAt:
+          type: string
+          format: date-time
+
+    GalleryListResponse:
+      type: object
+      required: [videos, total, page, limit]
+      properties:
+        videos:
+          type: array
+          items:
+            $ref: '#/components/schemas/GalleryVideo'
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    UpdateVisibilityRequest:
+      type: object
+      required: [isPublic]
+      properties:
+        isPublic:
+          type: boolean
+
+    VideoVisibility:
+      type: object
+      required: [id, isPublic]
+      properties:
+        id:
+          type: string
+        isPublic:
+          type: boolean
+
+    LikeResponse:
+      type: object
+      required: [liked, likeCount]
+      properties:
+        liked:
+          type: boolean
+        likeCount:
           type: integer
 
     CreditsResponse:

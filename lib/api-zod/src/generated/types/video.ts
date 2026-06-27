@@ -23,5 +23,7 @@ export interface Video {
   prompt?: string | null;
   /** @nullable */
   shareToken?: string | null;
+  isPublic?: boolean;
+  likeCount?: number;
   createdAt: Date;
 }

@@ -7,6 +7,7 @@ import {
   jsonb,
   pgEnum,
   boolean,
+  primaryKey,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -94,10 +95,34 @@ export const videosTable = pgTable("videos", {
   style: videoStyleEnum("style"),
   prompt: text("prompt"),
   shareToken: text("share_token").unique(),
+  // Public gallery: opt-in visibility + denormalized like count for fast sorting.
+  isPublic: boolean("is_public").notNull().default(false),
+  likeCount: integer("like_count").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
 });
+
+// Per-user likes on public videos. Composite PK prevents double-counting.
+export const videoLikesTable = pgTable(
+  "video_likes",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    videoId: text("video_id")
+      .notNull()
+      .references(() => videosTable.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.videoId] }),
+  }),
+);
+
+export type VideoLike = typeof videoLikesTable.$inferSelect;
 
 export const creditsTable = pgTable("credits", {
   id: text("id").primaryKey(),

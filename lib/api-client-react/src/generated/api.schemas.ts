@@ -351,6 +351,8 @@ export interface Video {
   prompt?: string | null;
   /** @nullable */
   shareToken?: string | null;
+  isPublic?: boolean;
+  likeCount?: number;
   createdAt: string;
 }
 
@@ -359,6 +361,45 @@ export interface VideoListResponse {
   total: number;
   page: number;
   limit: number;
+}
+
+export interface GalleryVideo {
+  id: string;
+  videoObjectPath: string;
+  /** @nullable */
+  thumbnailObjectPath?: string | null;
+  /** @nullable */
+  title?: string | null;
+  /** @nullable */
+  durationSeconds?: number | null;
+  /** @nullable */
+  style?: string | null;
+  likeCount: number;
+  liked: boolean;
+  /** @nullable */
+  creatorName?: string | null;
+  createdAt: string;
+}
+
+export interface GalleryListResponse {
+  videos: GalleryVideo[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface UpdateVisibilityRequest {
+  isPublic: boolean;
+}
+
+export interface VideoVisibility {
+  id: string;
+  isPublic: boolean;
+}
+
+export interface LikeResponse {
+  liked: boolean;
+  likeCount: number;
 }
 
 export interface CreditsResponse {
@@ -533,6 +574,18 @@ export type ListVideosParams = {
   /**
    * @minimum 1
    * @maximum 50
+   */
+  limit?: number;
+};
+
+export type ListGalleryParams = {
+  /**
+   * @minimum 1
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 48
    */
   limit?: number;
 };

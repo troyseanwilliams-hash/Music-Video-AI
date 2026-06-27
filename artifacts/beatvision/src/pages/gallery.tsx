@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useListVideos, useDeleteVideo, getListVideosQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Loader2, Trash2, Play, Film, Download, Scissors } from "lucide-react";
+import { Loader2, Trash2, Play, Film, Download, Scissors, Globe } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -50,6 +50,24 @@ export default function Gallery() {
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const queryClient = useQueryClient();
   const [loadingAction, setLoadingAction] = useState<Record<string, "watch" | "download" | undefined>>({});
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  async function toggleVisibility(videoId: string, makePublic: boolean) {
+    setTogglingId(videoId);
+    try {
+      await fetch(`/api/videos/${videoId}/visibility`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isPublic: makePublic }),
+      });
+      queryClient.invalidateQueries({ queryKey: getListVideosQueryKey() });
+    } catch {
+      /* ignore */
+    } finally {
+      setTogglingId(null);
+    }
+  }
 
   async function handleWatch(jobId: string) {
     setLoadingAction(prev => ({ ...prev, [jobId]: "watch" }));
@@ -179,6 +197,26 @@ export default function Gallery() {
                   <span className="text-xs text-muted-foreground">
                     {new Date(video.createdAt).toLocaleDateString()}
                   </span>
+                  {(() => {
+                    const isPublic = (video as unknown as Record<string, unknown>).isPublic as boolean | undefined;
+                    return (
+                      <button
+                        onClick={() => toggleVisibility(video.id, !isPublic)}
+                        disabled={togglingId === video.id}
+                        title={isPublic ? "Make private" : "Make public"}
+                        className={`text-xs font-medium px-2 py-1 rounded-md inline-flex items-center gap-1 ${
+                          isPublic ? "bg-primary/15 text-primary" : "bg-secondary text-secondary-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {togglingId === video.id ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Globe className="h-3 w-3" />
+                        )}
+                        {isPublic ? "Public" : "Make public"}
+                      </button>
+                    );
+                  })()}
                 </div>
 
                 <div className="flex items-center gap-2 mt-auto pt-1">
@@ -211,7 +249,7 @@ export default function Gallery() {
                     variant="outline"
                     size="icon"
                     className="h-8 w-8 shrink-0"
-                    title="Edit in Studio"
+                    title="Edit in Editor"
                     onClick={() => {
                       sessionStorage.setItem(
                         "editor:init",

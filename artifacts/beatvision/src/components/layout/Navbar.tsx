@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useGetDashboardStats } from "@workspace/api-client-react";
 import {
   Video, LayoutDashboard, Wand2, LogOut, Loader2, ShieldCheck,
-  MessageSquare, Menu, X, Film, CreditCard,
+  MessageSquare, Menu, X, Film, CreditCard, Compass,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -34,6 +34,7 @@ export function Navbar() {
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "/gallery", label: "Gallery", icon: Film },
     ] : []),
+    { href: "/explore", label: "Explore", icon: Compass },
     { href: "/pricing", label: "Pricing", icon: CreditCard },
   ];
 
@@ -80,6 +81,12 @@ export function Navbar() {
                   </Link>
                 </>
               )}
+              <Link
+                href="/explore"
+                className={`text-sm font-medium transition-colors hover:text-primary ${location === '/explore' ? 'text-foreground' : 'text-muted-foreground'}`}
+              >
+                Explore
+              </Link>
               <Link
                 href="/pricing"
                 className={`text-sm font-medium transition-colors hover:text-primary ${location === '/pricing' ? 'text-foreground' : 'text-muted-foreground'}`}
