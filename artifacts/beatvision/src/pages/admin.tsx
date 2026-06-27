@@ -11,6 +11,7 @@ import {
   Loader2, Search, ShieldCheck, Coins, Check, X,
   MessageSquare, Users, ChevronDown, ChevronUp,
   CircleDot, Clock, CheckCircle2, XCircle, RotateCcw, AlertTriangle, RefreshCw,
+  Film, Ban,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -21,12 +22,23 @@ interface AdminUser {
   firstName: string | null;
   lastName: string | null;
   subscriptionStatus: string;
+  isDisabled: boolean;
   createdAt: string;
   creditsRemaining: number;
   subscriptionCredits: number;
   topupCredits: number;
   creditsUsed: number;
   totalGenerations: number;
+}
+
+interface AdminUserVideo {
+  id: string;
+  videoObjectPath: string;
+  thumbnailObjectPath: string | null;
+  title: string | null;
+  prompt: string | null;
+  isPublic: boolean;
+  createdAt: string;
 }
 
 async function fetchAdminUsers(search: string): Promise<AdminUser[]> {
@@ -124,6 +136,129 @@ function CreditCell({ user, onSaved }: { user: AdminUser; onSaved: () => void })
         ({user.subscriptionCredits}+{user.topupCredits})
       </span>
     </button>
+  );
+}
+
+/* ─── User moderation row: playable videos + block/unblock ─── */
+function UserRow({ user, onChanged }: { user: AdminUser; onChanged: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [videos, setVideos] = useState<AdminUserVideo[] | null>(null);
+  const [loadingVids, setLoadingVids] = useState(false);
+  const [blocking, setBlocking] = useState(false);
+  const { toast } = useToast();
+
+  async function toggleVideos() {
+    if (open) { setOpen(false); return; }
+    setOpen(true);
+    if (videos === null) {
+      setLoadingVids(true);
+      try {
+        const res = await fetch(`/api/admin/users/${user.id}/videos`, { credentials: "include" });
+        const data = await res.json();
+        setVideos(data.videos ?? []);
+      } catch {
+        setVideos([]);
+      } finally {
+        setLoadingVids(false);
+      }
+    }
+  }
+
+  async function toggleBlock() {
+    setBlocking(true);
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}/disable`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ disabled: !user.isDisabled }),
+      });
+      if (!res.ok) throw new Error("Request failed");
+      toast({ title: user.isDisabled ? "User unblocked" : "User blocked", description: user.email ?? "" });
+      onChanged();
+    } catch {
+      toast({ title: "Could not update block status", variant: "destructive" });
+    } finally {
+      setBlocking(false);
+    }
+  }
+
+  return (
+    <>
+      <tr className={`hover:bg-muted/10 transition-colors ${user.isDisabled ? "opacity-60" : ""}`}>
+        <td className="px-4 py-3">
+          <div className="font-medium truncate max-w-[200px] flex items-center gap-2">
+            {user.firstName || user.lastName
+              ? [user.firstName, user.lastName].filter(Boolean).join(" ")
+              : <span className="text-muted-foreground italic">No name</span>}
+            {user.isDisabled && (
+              <Badge variant="outline" className="text-[10px] bg-red-500/15 text-red-400 border-red-500/30">Blocked</Badge>
+            )}
+          </div>
+          <div className="text-xs text-muted-foreground truncate max-w-[200px]">{user.email}</div>
+        </td>
+        <td className="px-4 py-3 hidden md:table-cell">
+          <Badge variant="outline" className={`capitalize text-xs ${statusColor(user.subscriptionStatus)}`}>
+            {user.subscriptionStatus}
+          </Badge>
+        </td>
+        <td className="px-4 py-3">
+          <CreditCell user={user} onSaved={onChanged} />
+        </td>
+        <td className="px-4 py-3 text-right text-muted-foreground hidden lg:table-cell">{user.totalGenerations}</td>
+        <td className="px-4 py-3 text-right text-muted-foreground hidden lg:table-cell">
+          {new Date(user.createdAt).toLocaleDateString()}
+        </td>
+        <td className="px-4 py-3">
+          <div className="flex items-center justify-end gap-1.5">
+            <Button size="sm" variant="ghost" className="h-7 gap-1.5 text-xs" onClick={toggleVideos}>
+              <Film className="h-3.5 w-3.5" /> Videos
+            </Button>
+            <Button
+              size="sm"
+              variant={user.isDisabled ? "outline" : "ghost"}
+              className={`h-7 gap-1.5 text-xs ${user.isDisabled ? "" : "text-red-400 hover:text-red-300"}`}
+              disabled={blocking}
+              onClick={toggleBlock}
+            >
+              {blocking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />}
+              {user.isDisabled ? "Unblock" : "Block"}
+            </Button>
+          </div>
+        </td>
+      </tr>
+      {open && (
+        <tr className="bg-muted/5">
+          <td colSpan={6} className="px-4 py-4">
+            {loadingVids ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Loading videos…
+              </div>
+            ) : videos && videos.length > 0 ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                {videos.map((v) => (
+                  <div key={v.id} className="min-w-0">
+                    <video
+                      src={`/api/storage${v.videoObjectPath}`}
+                      poster={v.thumbnailObjectPath ? `/api/storage${v.thumbnailObjectPath}` : undefined}
+                      controls
+                      preload="none"
+                      className="w-full aspect-video rounded-md border border-border bg-black"
+                    />
+                    <div className="mt-1 truncate text-xs text-muted-foreground" title={v.title || v.prompt || ""}>
+                      {v.title || v.prompt || "Untitled"}
+                      {v.isPublic ? " · 🌐 public" : ""}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-sm text-muted-foreground">This user has no videos.</div>
+            )}
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
@@ -534,37 +669,16 @@ export default function AdminPage() {
                       <th className="px-4 py-3 text-left font-medium text-muted-foreground">Credits</th>
                       <th className="px-4 py-3 text-right font-medium text-muted-foreground hidden lg:table-cell">Generations</th>
                       <th className="px-4 py-3 text-right font-medium text-muted-foreground hidden lg:table-cell">Joined</th>
+                      <th className="px-4 py-3 text-right font-medium text-muted-foreground">Moderation</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/30">
                     {users.map((u) => (
-                      <tr key={u.id} className="hover:bg-muted/10 transition-colors">
-                        <td className="px-4 py-3">
-                          <div className="font-medium truncate max-w-[200px]">
-                            {u.firstName || u.lastName
-                              ? [u.firstName, u.lastName].filter(Boolean).join(" ")
-                              : <span className="text-muted-foreground italic">No name</span>}
-                          </div>
-                          <div className="text-xs text-muted-foreground truncate max-w-[200px]">{u.email}</div>
-                        </td>
-                        <td className="px-4 py-3 hidden md:table-cell">
-                          <Badge variant="outline" className={`capitalize text-xs ${statusColor(u.subscriptionStatus)}`}>
-                            {u.subscriptionStatus}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-3">
-                          <CreditCell
-                            user={u}
-                            onSaved={() => queryClient.invalidateQueries({ queryKey: ["admin", "users"] })}
-                          />
-                        </td>
-                        <td className="px-4 py-3 text-right text-muted-foreground hidden lg:table-cell">
-                          {u.totalGenerations}
-                        </td>
-                        <td className="px-4 py-3 text-right text-muted-foreground hidden lg:table-cell">
-                          {new Date(u.createdAt).toLocaleDateString()}
-                        </td>
-                      </tr>
+                      <UserRow
+                        key={u.id}
+                        user={u}
+                        onChanged={() => queryClient.invalidateQueries({ queryKey: ["admin", "users"] })}
+                      />
                     ))}
                   </tbody>
                 </table>

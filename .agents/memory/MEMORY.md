@@ -1,2 +1,3 @@
 - [esbuild-zod-dep](esbuild-zod-dep.md) — api-server routes that directly import zod must add zod to api-server/package.json
 - [Editor upload extension handling](editor-upload-ext.md) — video clips silently dropped from Studio renders when presign map lacks video MIME types; ext extraction must be slash-aware + kind-fallback, fix both jobProcessor copies.
+- [Editor billing model](editor-billing-model.md) — Editor renders gated by manifest.chargeCredits (trial/subscription model), NOT watermark; keep studio.ts + both jobProcessors + editor.tsx in lockstep.

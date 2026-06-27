@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { creditsTable, usersTable } from "@workspace/db";
+import { creditsTable, usersTable, videosTable } from "@workspace/db";
 import { eq, ilike, or, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
@@ -61,6 +61,7 @@ router.get("/admin/users", async (req, res) => {
       firstName: usersTable.firstName,
       lastName: usersTable.lastName,
       subscriptionStatus: usersTable.subscriptionStatus,
+      isDisabled: usersTable.isDisabled,
       createdAt: usersTable.createdAt,
     })
     .from(usersTable)
@@ -155,6 +156,44 @@ router.post("/admin/credits/set", async (req, res) => {
   }
 
   res.json({ ok: true, userId: targetUserId, creditsRemaining: amount });
+});
+
+// ── Admin: list a user's videos for moderation (playable via /api/storage path).
+router.get("/admin/users/:id/videos", async (req, res) => {
+  if (!req.isAuthenticated() || !isAdmin(req.user.email)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const videos = await db
+    .select({
+      id: videosTable.id,
+      videoObjectPath: videosTable.videoObjectPath,
+      thumbnailObjectPath: videosTable.thumbnailObjectPath,
+      title: videosTable.title,
+      prompt: videosTable.prompt,
+      isPublic: videosTable.isPublic,
+      createdAt: videosTable.createdAt,
+    })
+    .from(videosTable)
+    .where(eq(videosTable.userId, req.params.id))
+    .orderBy(desc(videosTable.createdAt))
+    .limit(100);
+  res.json({ videos });
+});
+
+// ── Admin: block / unblock a user (sets isDisabled; login + middleware enforce it).
+router.post("/admin/users/:id/disable", async (req, res) => {
+  if (!req.isAuthenticated() || !isAdmin(req.user.email)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const disabled = (req.body as { disabled?: unknown })?.disabled;
+  if (typeof disabled !== "boolean") {
+    res.status(400).json({ error: "disabled (boolean) is required" });
+    return;
+  }
+  await db.update(usersTable).set({ isDisabled: disabled }).where(eq(usersTable.id, req.params.id));
+  res.json({ id: req.params.id, isDisabled: disabled });
 });
 
 export default router;

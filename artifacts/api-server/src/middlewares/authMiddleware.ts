@@ -1,6 +1,8 @@
 import { type Request, type Response, type NextFunction } from "express";
 import type { AuthUser } from "@workspace/api-zod";
 import { clearSession, getSessionId, getSession } from "../lib/auth.js";
+import { db, usersTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 
 declare global {
   namespace Express {
@@ -34,6 +36,18 @@ export async function authMiddleware(
 
   const session = await getSession(sid);
   if (!session?.user?.id) {
+    await clearSession(res, sid);
+    next();
+    return;
+  }
+
+  // Enforce account blocks immediately, even for already-active sessions.
+  const [u] = await db
+    .select({ isDisabled: usersTable.isDisabled })
+    .from(usersTable)
+    .where(eq(usersTable.id, session.user.id))
+    .limit(1);
+  if (u?.isDisabled) {
     await clearSession(res, sid);
     next();
     return;
