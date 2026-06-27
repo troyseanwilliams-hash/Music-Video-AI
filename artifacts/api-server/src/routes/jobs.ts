@@ -61,6 +61,15 @@ router.post("/jobs", async (req, res) => {
     return;
   }
 
+  // Require the copyright/ownership attestation (sent with the request).
+  if ((req.body as { acceptCopyright?: unknown })?.acceptCopyright !== true) {
+    res.status(403).json({
+      error: "You must confirm you own or are licensed to use this audio before generating.",
+      code: "COPYRIGHT_REQUIRED",
+    });
+    return;
+  }
+
   const { prompt, style, audioSourceType, audioObjectPath, audioSourceUrl, lyricsText, aspectRatio, resolution, character, referenceImagePath, requestedDuration, clipStartTime, audioAnalysis } =
     parseResult.data;
 
@@ -87,6 +96,12 @@ router.post("/jobs", async (req, res) => {
     .limit(1);
 
   const isAdmin = !!(process.env.ADMIN_EMAIL && userRecord?.email?.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase());
+
+  // Record the consent timestamp (first acceptance) for our compliance records.
+  if (!userRecord?.copyrightAcceptedAt) {
+    await db.update(usersTable).set({ copyrightAcceptedAt: new Date() }).where(eq(usersTable.id, req.user.id));
+  }
+  req.log.info({ userId: req.user.id, ip: req.ip }, "Copyright attestation recorded");
 
   if (!isAdmin) {
     const status = userRecord?.subscriptionStatus ?? "none";

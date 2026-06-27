@@ -12,6 +12,7 @@ import {
   CreateJobRequestResolution,
   CreateJobRequestRequestedDuration,
   VideoStyle,
+  type CreateJobRequest,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -379,7 +380,9 @@ export default function Generate() {
             analyzeAudio.data
               ? analyzeAudio.data
               : null,
-        },
+          // Copyright/ownership attestation (gated by the checkbox above).
+          acceptCopyright: copyrightAcknowledged,
+        } as unknown as CreateJobRequest,
       },
       {
         onSuccess: (job) => setLocation(`/jobs/${job.id}`),

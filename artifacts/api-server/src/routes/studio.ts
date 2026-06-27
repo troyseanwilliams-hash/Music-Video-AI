@@ -36,6 +36,7 @@ const RenderSchema = z.object({
     })
     .optional(),
   resolution: z.enum(["720p", "1080p"]).default("720p"),
+  acceptCopyright: z.boolean().optional(),
 });
 
 // POST /api/studio/render — enqueue an editor_render job from a timeline manifest.
@@ -52,11 +53,25 @@ router.post("/studio/render", async (req, res) => {
   }
   const input = parsed.data;
 
+  // Require the copyright/ownership attestation before rendering uploaded clips.
+  if (input.acceptCopyright !== true) {
+    res.status(403).json({
+      error: "You must confirm you own or are licensed to use these clips before exporting.",
+      code: "COPYRIGHT_REQUIRED",
+    });
+    return;
+  }
+
   const [userRecord] = await db
     .select()
     .from(usersTable)
     .where(eq(usersTable.id, req.user.id))
     .limit(1);
+
+  if (!userRecord?.copyrightAcceptedAt) {
+    await db.update(usersTable).set({ copyrightAcceptedAt: new Date() }).where(eq(usersTable.id, req.user.id));
+  }
+  req.log.info({ userId: req.user.id, ip: req.ip }, "Copyright attestation recorded (editor)");
 
   const isAdmin = !!(
     process.env.ADMIN_EMAIL &&

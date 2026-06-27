@@ -144,6 +144,7 @@ export default function Editor() {
   const [transitionDuration, setTransitionDuration] = useState(0.5);
   const [resolution, setResolution] = useState<"720p" | "1080p">("720p");
   const [submitting, setSubmitting] = useState(false);
+  const [acceptedCopyright, setAcceptedCopyright] = useState(false);
 
   // Preview state
   const [playing, setPlaying] = useState(false);
@@ -208,6 +209,11 @@ export default function Editor() {
 
   const totalDuration = segments.reduce((s, x) => s + (x.durationSec || 0), 0);
   const uploadsPending = segments.some((s) => s.uploading) || music?.uploading;
+
+  // Mirror of the server's size-based editor pricing (editorCost.ts): once the
+  // trial ends and there's no subscription, each export deducts credits scaled
+  // by the finished video's length (BASE 20 + seconds, capped at 120 → max 140).
+  const estimatedCost = 20 + Math.ceil(Math.min(Math.max(totalDuration, 0), 120));
 
   function patchSegment(id: string, patch: Partial<Segment>) {
     setSegments((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
@@ -446,6 +452,7 @@ export default function Editor() {
         music: music?.objectPath ? { objectPath: music.objectPath, mode: music.mode, volume: music.volume } : undefined,
         transition: transition === "none" ? undefined : { type: transition, durationSec: transitionDuration },
         resolution,
+        acceptCopyright: true,
       };
       const res = await fetch("/api/studio/render", {
         method: "POST",
@@ -519,7 +526,8 @@ export default function Editor() {
           <button className="text-primary font-medium underline" onClick={() => setLocation("/pricing")}>
             Subscribe
           </button>{" "}
-          for unlimited editing — or each export costs credits.
+          for unlimited editing — or each export costs credits based on length
+          {segments.length > 0 ? <> (~{estimatedCost} credits for this {totalDuration.toFixed(0)}s video)</> : null}.
         </Card>
       )}
 
@@ -724,13 +732,36 @@ export default function Editor() {
         </Card>
       </div>
 
+      {/* Copyright attestation */}
+      <label className="mb-4 flex items-start gap-2.5 text-sm text-muted-foreground cursor-pointer">
+        <input
+          type="checkbox"
+          checked={acceptedCopyright}
+          onChange={(e) => setAcceptedCopyright(e.target.checked)}
+          className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+        />
+        <span>
+          I confirm I own or have the rights/license to use every clip, photo, and track in this video. Uploading
+          content you don't have rights to may get the video removed and your account suspended.
+        </span>
+      </label>
+
       {/* Export */}
       <div className="flex items-center gap-3">
-        <Button size="lg" onClick={exportVideo} disabled={submitting || !!uploadsPending || segments.length === 0}>
+        <Button
+          size="lg"
+          onClick={exportVideo}
+          disabled={submitting || !!uploadsPending || segments.length === 0 || !acceptedCopyright}
+        >
           {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
           Export &amp; render MP4
         </Button>
         {uploadsPending && <span className="text-muted-foreground text-sm">Uploading…</span>}
+        {!fullAccess && !uploadsPending && segments.length > 0 && (
+          <span className="text-muted-foreground text-sm tabular-nums">
+            Est. cost: {estimatedCost} credits
+          </span>
+        )}
       </div>
     </div>
   );

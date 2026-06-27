@@ -23,6 +23,8 @@ export const usersTable = pgTable("users", {
   trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   isDisabled: boolean("is_disabled").notNull().default(false),
+  // Timestamp of the user's most recent copyright/ownership attestation.
+  copyrightAcceptedAt: timestamp("copyright_accepted_at", { withTimezone: true }),
   stripeCustomerId: varchar("stripe_customer_id"),
   stripeSubscriptionId: varchar("stripe_subscription_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
