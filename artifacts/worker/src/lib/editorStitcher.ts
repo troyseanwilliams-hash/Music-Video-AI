@@ -55,17 +55,21 @@ const XFADE: Record<string, string> = {
 
 function run(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
-    const p = spawn("ffmpeg", args);
+    // -threads 2: caps ffmpeg worker threads to limit peak RAM (prevents OOM in production VMs).
+    const p = spawn("ffmpeg", ["-threads", "2", ...args]);
     let stderr = "";
     p.stderr.on("data", (d) => {
       stderr = (stderr + d.toString()).slice(-8000);
     });
     p.on("error", reject);
-    p.on("close", (code) =>
-      code === 0
-        ? resolve()
-        : reject(new Error(`ffmpeg exited ${code}: ${stderr.slice(-500)}`)),
-    );
+    p.on("close", (code) => {
+      if (code === 0) return resolve();
+      const reason =
+        code === null
+          ? "killed by OS (out-of-memory or SIGKILL — try a lower resolution)"
+          : `exited ${code}`;
+      reject(new Error(`ffmpeg ${reason}: ${stderr.slice(-500)}`));
+    });
   });
 }
 
