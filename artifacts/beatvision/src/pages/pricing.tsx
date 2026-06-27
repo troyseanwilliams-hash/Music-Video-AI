@@ -59,7 +59,7 @@ export default function Pricing() {
 
   const { data: plans, isLoading: plansLoading } = useListBillingPlans();
   const { data: subscription } = useGetBillingSubscription({
-    query: { enabled: isAuthenticated },
+    query: { queryKey: getGetBillingSubscriptionQueryKey(), enabled: isAuthenticated },
   });
 
   useEffect(() => {

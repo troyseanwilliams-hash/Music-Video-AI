@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
-import { useGetDashboardStats } from "@workspace/api-client-react";
+import { useGetDashboardStats, getGetDashboardStatsQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Plus, Film, CheckCircle2, Clock, AlertCircle, Crown, Play, Coins } from "lucide-react";
@@ -57,6 +57,7 @@ export default function Dashboard() {
 
   const { data: stats, isLoading: statsLoading } = useGetDashboardStats({
     query: {
+      queryKey: getGetDashboardStatsQueryKey(),
       enabled: isAuthenticated,
     }
   });

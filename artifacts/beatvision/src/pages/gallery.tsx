@@ -105,7 +105,7 @@ export default function Gallery() {
 
   const { data, isLoading } = useListVideos(
     { limit: 20 },
-    { query: { enabled: isAuthenticated } }
+    { query: { queryKey: getListVideosQueryKey({ limit: 20 }), enabled: isAuthenticated } }
   );
 
   const deleteVideo = useDeleteVideo({

@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
-import { useGetDashboardStats } from "@workspace/api-client-react";
+import { useGetDashboardStats, getGetDashboardStatsQueryKey } from "@workspace/api-client-react";
 import {
   Video, LayoutDashboard, Wand2, LogOut, Loader2, ShieldCheck,
   MessageSquare, Menu, X, Film, CreditCard, Compass,
@@ -23,6 +23,7 @@ export function Navbar() {
 
   const { data: stats } = useGetDashboardStats({
     query: {
+      queryKey: getGetDashboardStatsQueryKey(),
       enabled: isAuthenticated,
     }
   });
