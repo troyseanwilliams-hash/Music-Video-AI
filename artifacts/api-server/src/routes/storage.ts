@@ -42,6 +42,17 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
       "image/png": "png",
       "image/webp": "webp",
       "image/gif": "gif",
+      "video/mp4": "mp4",
+      "video/quicktime": "mov",
+      "video/webm": "webm",
+      "video/x-matroska": "mkv",
+      "video/x-msvideo": "avi",
+      "video/x-ms-wmv": "wmv",
+      "video/3gpp": "3gp",
+      "video/mp2t": "ts",
+      "video/ogg": "ogv",
+      "video/x-m4v": "m4v",
+      "video/m4v": "m4v",
     };
     const ext = contentType ? CONTENT_TYPE_EXT[contentType.toLowerCase()] : undefined;
 

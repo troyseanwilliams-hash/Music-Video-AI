@@ -363,6 +363,18 @@ type ExtendedJobRow = JobRow & {
   clipStartTime?: number | null;
 };
 
+// Extract a real file extension from an object path. Returns `fallback` when the
+// path has no extension (e.g. video uploads stored without a suffix) — guards the
+// stitcher against building invalid filenames like `raw_0./objects/uploads/uuid`.
+function extFromObjectPath(objectPath: string, fallback: string): string {
+  const slash = objectPath.lastIndexOf("/");
+  const dot = objectPath.lastIndexOf(".");
+  if (dot > slash && dot < objectPath.length - 1) {
+    return objectPath.slice(dot + 1).toLowerCase();
+  }
+  return fallback;
+}
+
 // Studio (editor) render manifest stored on the job row.
 interface EditorManifest {
   segments: { objectPath: string; kind: "video" | "photo"; durationSec: number }[];
@@ -388,7 +400,7 @@ async function processEditorJob(job: JobRow): Promise<void> {
     for (const s of manifest.segments) {
       const file = await storageService.getObjectEntityFile(s.objectPath);
       const [buf] = await file.download();
-      const ext = (s.objectPath.split(".").pop() || "").toLowerCase();
+      const ext = extFromObjectPath(s.objectPath, s.kind === "photo" ? "jpg" : "mp4");
       segments.push({ buffer: buf, kind: s.kind, durationSec: s.durationSec, ext });
     }
 
@@ -396,7 +408,7 @@ async function processEditorJob(job: JobRow): Promise<void> {
     if (manifest.music?.objectPath) {
       const file = await storageService.getObjectEntityFile(manifest.music.objectPath);
       const [buf] = await file.download();
-      const ext = (manifest.music.objectPath.split(".").pop() || "mp3").toLowerCase();
+      const ext = extFromObjectPath(manifest.music.objectPath, "mp3");
       music = { buffer: buf, ext, mode: manifest.music.mode, volume: manifest.music.volume };
     }
 
