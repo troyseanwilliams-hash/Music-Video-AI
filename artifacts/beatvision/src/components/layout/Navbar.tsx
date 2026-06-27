@@ -29,8 +29,8 @@ export function Navbar() {
 
   const navLinks = [
     ...(isAuthenticated ? [
-      { href: "/generate", label: "Generate", icon: Wand2 },
       { href: "/editor", label: "Editor", icon: Video },
+      { href: "/generate", label: "Generate", icon: Wand2 },
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "/gallery", label: "Gallery", icon: Film },
     ] : []),
@@ -56,16 +56,16 @@ export function Navbar() {
               {isAuthenticated && (
                 <>
                   <Link
-                    href="/generate"
-                    className={`text-sm font-medium transition-colors hover:text-primary ${location === '/generate' ? 'text-foreground' : 'text-muted-foreground'}`}
-                  >
-                    Generate
-                  </Link>
-                  <Link
                     href="/editor"
                     className={`text-sm font-medium transition-colors hover:text-primary ${location === '/editor' ? 'text-foreground' : 'text-muted-foreground'}`}
                   >
                     Editor
+                  </Link>
+                  <Link
+                    href="/generate"
+                    className={`text-sm font-medium transition-colors hover:text-primary ${location === '/generate' ? 'text-foreground' : 'text-muted-foreground'}`}
+                  >
+                    Generate
                   </Link>
                   <Link
                     href="/dashboard"
