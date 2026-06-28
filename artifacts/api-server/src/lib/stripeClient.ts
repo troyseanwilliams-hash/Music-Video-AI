@@ -15,6 +15,23 @@ async function getCredentials(): Promise<{
   publishableKey: string;
   secretKey: string;
 }> {
+  const isProduction = process.env["REPLIT_DEPLOYMENT"] === "1";
+
+  // Production override: when live Stripe keys are supplied as secrets, use them
+  // directly instead of the Replit connector. This lets the deployed app run on a
+  // Stripe account that the connector cannot bind. Development is never affected —
+  // it always resolves keys through the connector (test mode).
+  if (isProduction) {
+    const overrideSecret = process.env["STRIPE_SECRET_KEY"];
+    const overridePublishable = process.env["STRIPE_PUBLISHABLE_KEY"];
+    if (overrideSecret && overridePublishable) {
+      return {
+        publishableKey: overridePublishable,
+        secretKey: overrideSecret,
+      };
+    }
+  }
+
   const hostname = process.env["REPLIT_CONNECTORS_HOSTNAME"];
   const xReplitToken = process.env["REPL_IDENTITY"]
     ? "repl " + process.env["REPL_IDENTITY"]
@@ -28,7 +45,6 @@ async function getCredentials(): Promise<{
     );
   }
 
-  const isProduction = process.env["REPLIT_DEPLOYMENT"] === "1";
   const targetEnvironment = isProduction ? "production" : "development";
 
   const url = new URL(`https://${hostname}/api/v2/connection`);
