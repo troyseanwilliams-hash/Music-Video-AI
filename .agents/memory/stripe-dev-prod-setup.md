@@ -39,3 +39,15 @@ reliable way to point the deployed app at a different live account.
 
 **How to apply:** Changing live keys = update the two secrets + redeploy (existing deployment
 runs old build until republished). Don't expect the connector flow to move the prod account.
+
+## Seeding the secret-based (non-connector) account
+
+`seed-products.ts` defaults to the connector account. To seed the account behind
+`STRIPE_SECRET_KEY` instead (i.e. the live account the deployed app actually uses), run with
+`SEED_USE_SECRET=1` — it builds the Stripe client straight from the secret.
+
+**Why:** When repointing prod at a brand-new live account via secrets, the new account is
+typically *empty* (0 products/prices/promo) even if the user believes it's "already
+configured" — that belief usually refers to the OLD account. Checkout resolves prices by
+`lookup_key` at purchase time, so an unseeded account makes every checkout fail. Always
+validate the secret-account catalog (9 lookup keys + FIRST15) before declaring prod ready.

@@ -296,8 +296,27 @@ async function seedFirstPurchasePromo(stripe: Stripe): Promise<void> {
   console.log(`+ Created promo code: ${promoCode} (${promo.id}) — 15% off, first purchase only`);
 }
 
+// Opt-in: seed the account behind STRIPE_SECRET_KEY instead of the connector.
+// Used to seed the production account when prod credentials come from secrets
+// (see api-server/src/lib/stripeClient.ts) rather than the Replit connector.
+async function getSeedClient(): Promise<Stripe> {
+  if (process.env["SEED_USE_SECRET"] === "1") {
+    const key = process.env["STRIPE_SECRET_KEY"];
+    if (!key) {
+      throw new Error(
+        "SEED_USE_SECRET=1 but STRIPE_SECRET_KEY is not set in the environment.",
+      );
+    }
+    console.log(
+      `Seeding via STRIPE_SECRET_KEY (${key.startsWith("sk_live") ? "LIVE" : "TEST"} account)\n`,
+    );
+    return new Stripe(key, { apiVersion: "2025-02-24.acacia" });
+  }
+  return getUncachableStripeClient();
+}
+
 async function main(): Promise<void> {
-  const stripe = await getUncachableStripeClient();
+  const stripe = await getSeedClient();
   console.log("Seeding products & prices into Stripe…\n");
 
   console.log("Archiving old topup products…");
