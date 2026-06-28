@@ -24,3 +24,18 @@ incoming `POST /api/stripe/webhook` requests returning 200.
 
 **How to apply:** When asked to finish/verify Stripe, check BOTH connections' catalogs, run
 seed-stripe for any empty one, and judge webhook health from logs, not webhookEndpoints.list.
+
+## Production live-key override (connector bypass)
+
+`getCredentials()` in `stripeClient.ts` checks `STRIPE_SECRET_KEY` + `STRIPE_PUBLISHABLE_KEY`
+secrets **only when `REPLIT_DEPLOYMENT === "1"`** (production). If both are set, it uses them
+instead of the connector; otherwise it falls back to the connector. Development always uses the
+connector (test keys) — the override never fires in dev even though secrets are global.
+
+**Why:** The Replit Stripe connector flow run from the dev workspace only ever rewrites the
+*development* connection; it cannot rebind the *production* connection to a different Stripe
+account, and attempting it surfaces a "Connection Not Found" platform error. Secrets are the
+reliable way to point the deployed app at a different live account.
+
+**How to apply:** Changing live keys = update the two secrets + redeploy (existing deployment
+runs old build until republished). Don't expect the connector flow to move the prod account.

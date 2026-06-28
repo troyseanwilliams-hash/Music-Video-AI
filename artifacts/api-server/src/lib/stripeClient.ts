@@ -11,6 +11,14 @@ interface StripeConnectionItem {
   settings: StripeConnectionSettings;
 }
 
+let loggedCredentialSource = false;
+
+function logCredentialSource(source: string): void {
+  if (loggedCredentialSource) return;
+  loggedCredentialSource = true;
+  logger.info({ source }, "Stripe credential source resolved");
+}
+
 async function getCredentials(): Promise<{
   publishableKey: string;
   secretKey: string;
@@ -25,12 +33,15 @@ async function getCredentials(): Promise<{
     const overrideSecret = process.env["STRIPE_SECRET_KEY"];
     const overridePublishable = process.env["STRIPE_PUBLISHABLE_KEY"];
     if (overrideSecret && overridePublishable) {
+      logCredentialSource("secrets");
       return {
         publishableKey: overridePublishable,
         secretKey: overrideSecret,
       };
     }
   }
+
+  logCredentialSource(isProduction ? "connector (production)" : "connector");
 
   const hostname = process.env["REPLIT_CONNECTORS_HOSTNAME"];
   const xReplitToken = process.env["REPL_IDENTITY"]
