@@ -616,6 +616,11 @@ export default function JobStatus() {
           </div>
         )}
 
+        {/* ── Remix clips ── */}
+        {isComplete && job.videoId && (
+          <RemixPanel jobId={job.id} requestedDuration={job.requestedDuration} />
+        )}
+
         {/* ── Audio analysis ── */}
         {analysis && (
           <div className="grid md:grid-cols-3 gap-6">
@@ -890,5 +895,227 @@ function VideoPlayer({ jobId, videoId, videoUrl: initialVideoUrl }: { jobId: str
         onError={() => setErrored(true)}
       />
     </div>
+  );
+}
+
+// ───────────────────────── Remix clips ─────────────────────────
+
+interface RemixClip {
+  index: number;
+  startTime: number;
+  endTime: number;
+  durationSec: number;
+  prompt: string;
+  style: string | null;
+}
+
+const REMIX_STYLES = [
+  "realistic", "anime", "cinematic", "abstract",
+  "neon", "vintage", "fantasy", "documentary",
+] as const;
+
+// Mirror of the server's credit math (creditCost.ts) so the estimate shown
+// matches what will actually be charged. Pricing is size-based:
+// cost = BASE_CREDITS + ceil(min(seconds, FULL_VIDEO_SECONDS)). Remix cost is
+// then proportional to the number of clips regenerated, never the full job.
+function fullJobCost(requestedDuration: string | null | undefined): number {
+  const BASE_CREDITS = 20, FULL_VIDEO_SECONDS = 120;
+  const dur = requestedDuration ?? "full";
+  let secs: number;
+  if (dur === "full") {
+    secs = FULL_VIDEO_SECONDS;
+  } else {
+    const n = parseInt(dur, 10);
+    secs = isNaN(n) || n <= 0 ? FULL_VIDEO_SECONDS : Math.min(n, FULL_VIDEO_SECONDS);
+  }
+  return BASE_CREDITS + Math.ceil(secs);
+}
+
+function estimateRemixCost(
+  requestedDuration: string | null | undefined,
+  totalClips: number,
+  regen: number,
+): number {
+  const total = Math.max(1, totalClips);
+  const r = Math.max(0, Math.min(regen, total));
+  if (r === 0) return 0;
+  return Math.max(1, Math.ceil((fullJobCost(requestedDuration) / total) * r));
+}
+
+function fmtTime(sec: number): string {
+  const s = Math.max(0, Math.floor(sec));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function RemixPanel({
+  jobId,
+  requestedDuration,
+}: {
+  jobId: string;
+  requestedDuration: string | null | undefined;
+}) {
+  const [, setLocation] = useLocation();
+  const [clips, setClips] = useState<RemixClip[] | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [style, setStyle] = useState<string>("keep");
+  const [promptOverride, setPromptOverride] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/jobs/${jobId}`, { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        const c = (data?.clips as RemixClip[] | undefined) ?? [];
+        setClips(Array.isArray(c) ? [...c].sort((a, b) => a.index - b.index) : []);
+      })
+      .catch(() => !cancelled && setClips([]));
+    return () => { cancelled = true; };
+  }, [jobId]);
+
+  // Older videos generated before clip metadata existed can't be remixed.
+  if (clips !== null && clips.length === 0) return null;
+
+  const toggle = (i: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  };
+
+  const cost = estimateRemixCost(requestedDuration, clips?.length ?? 0, selected.size);
+
+  const regenerate = async () => {
+    if (selected.size === 0) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/jobs/${jobId}/remix`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clipIndexes: Array.from(selected),
+          style: style === "keep" ? undefined : style,
+          promptOverride: promptOverride.trim() || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data?.error || "Could not start the remix. Please try again.");
+        setSubmitting(false);
+        return;
+      }
+      // Watch the new remix job progress (the original video stays accessible).
+      setLocation(`/jobs/${data.job.id}`);
+    } catch {
+      setError("Network error — please try again.");
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Card className="border-primary/20">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base font-semibold flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <RefreshCw className="h-4 w-4 text-primary" /> Remix clips
+          </span>
+          {!open && (
+            <Button size="sm" variant="outline" onClick={() => setOpen(true)} disabled={clips === null}>
+              {clips === null ? <Loader2 className="h-4 w-4 animate-spin" /> : "Remix a clip"}
+            </Button>
+          )}
+        </CardTitle>
+      </CardHeader>
+      {open && (
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Pick the clips you want to redo. Only those are regenerated — the rest are reused and
+            re-stitched with your original audio into a new video. Your current video stays untouched.
+          </p>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+            {clips?.map((c) => {
+              const on = selected.has(c.index);
+              return (
+                <button
+                  key={c.index}
+                  type="button"
+                  onClick={() => toggle(c.index)}
+                  className={`text-left rounded-lg border p-3 transition-colors ${
+                    on ? "border-primary bg-primary/10" : "border-border hover:border-primary/40"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="flex items-center gap-1.5 text-sm font-medium">
+                      <Clapperboard className="h-3.5 w-3.5 text-primary" /> Clip {c.index + 1}
+                    </span>
+                    {on && <Check className="h-4 w-4 text-primary" />}
+                  </div>
+                  <div className="text-xs text-muted-foreground font-mono">
+                    {fmtTime(c.startTime)}–{fmtTime(c.endTime)}
+                  </div>
+                  {c.style && (
+                    <div className="text-[11px] text-muted-foreground mt-1 capitalize truncate">
+                      {c.style}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">New style (optional)</label>
+              <select
+                value={style}
+                onChange={(e) => setStyle(e.target.value)}
+                className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              >
+                <option value="keep">Keep original style</option>
+                {REMIX_STYLES.map((s) => (
+                  <option key={s} value={s} className="capitalize">{s}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Prompt override (optional)</label>
+              <textarea
+                value={promptOverride}
+                onChange={(e) => setPromptOverride(e.target.value.slice(0, 1000))}
+                placeholder="Describe what these clips should show instead…"
+                rows={2}
+                className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm resize-none"
+              />
+            </div>
+          </div>
+
+          {error && (
+            <div className="flex items-start gap-2 text-sm text-destructive">
+              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" /> {error}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <span className="text-sm text-muted-foreground">
+              {selected.size === 0
+                ? "Select at least one clip"
+                : <>Regenerating {selected.size} of {clips?.length} clips · <span className="font-medium text-foreground tabular-nums">~{cost} credits</span></>}
+            </span>
+            <Button onClick={regenerate} disabled={submitting || selected.size === 0} className="gap-2">
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              Regenerate selected
+            </Button>
+          </div>
+        </CardContent>
+      )}
+    </Card>
   );
 }

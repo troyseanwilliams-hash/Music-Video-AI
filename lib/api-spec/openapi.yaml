@@ -315,6 +315,61 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
 
+  /jobs/{id}/remix:
+    post:
+      tags: [Jobs]
+      operationId: remixJob
+      summary: Regenerate selected clips of a finished video
+      description: >
+        Regenerates only the specified clips of a completed video and re-stitches
+        them with the original audio into a new video. Credits are charged
+        proportionally to the number of clips regenerated, not the full job.
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RemixJobRequest'
+      responses:
+        '201':
+          description: Remix job created and queued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemixJobResponse'
+        '400':
+          description: Invalid input or video has no remixable clips.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '402':
+          description: Insufficient credits.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Job not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
   /videos:
     get:
       tags: [Videos]
@@ -959,6 +1014,11 @@ components:
           type: [string, 'null']
         videoId:
           type: [string, 'null']
+        clips:
+          type: array
+          description: Per-clip metadata for the finished video (present when status is ready). Used by the remix UI to list individual clips.
+          items:
+            $ref: '#/components/schemas/VideoClip'
         lyricsText:
           type: [string, 'null']
         referenceImagePath:
@@ -1028,6 +1088,62 @@ components:
             - $ref: '#/components/schemas/AudioAnalysis'
             - type: 'null'
           description: Pre-computed audio analysis from POST /audio/analyze; when provided the job processor skips re-analysis and uses this result directly
+
+    VideoClip:
+      type: object
+      required: [index, startTime, endTime, durationSec, prompt, objectPath]
+      properties:
+        index:
+          type: integer
+          description: Zero-based position of this clip in the timeline
+        startTime:
+          type: number
+          description: Clip start time in seconds within the finished video
+        endTime:
+          type: number
+          description: Clip end time in seconds within the finished video
+        durationSec:
+          type: number
+        prompt:
+          type: string
+          description: The prompt used to generate this clip
+        style:
+          type: [string, 'null']
+        objectPath:
+          type: string
+          description: Object storage path of the stored clip, reused on remix
+
+    RemixJobRequest:
+      type: object
+      required: [clipIndexes]
+      properties:
+        clipIndexes:
+          type: array
+          minItems: 1
+          maxItems: 64
+          description: Indexes of the clips to regenerate
+          items:
+            type: integer
+            minimum: 0
+        style:
+          $ref: '#/components/schemas/VideoStyle'
+        promptOverride:
+          type: string
+          maxLength: 1000
+          description: Optional prompt applied to the regenerated clips
+
+    RemixJobResponse:
+      type: object
+      required: [job, remixCost, charged]
+      properties:
+        job:
+          $ref: '#/components/schemas/Job'
+        remixCost:
+          type: integer
+          description: Credits charged for this remix (proportional to clips regenerated)
+        charged:
+          type: boolean
+          description: Whether credits were deducted (false for admins)
 
     JobListResponse:
       type: object

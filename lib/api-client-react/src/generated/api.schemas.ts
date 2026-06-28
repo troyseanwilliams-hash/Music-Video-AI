@@ -173,6 +173,22 @@ export const JobRequestedDuration = {
   full: "full",
 } as const;
 
+export interface VideoClip {
+  /** Zero-based position of this clip in the timeline */
+  index: number;
+  /** Clip start time in seconds within the finished video */
+  startTime: number;
+  /** Clip end time in seconds within the finished video */
+  endTime: number;
+  durationSec: number;
+  /** The prompt used to generate this clip */
+  prompt: string;
+  /** @nullable */
+  style?: string | null;
+  /** Object storage path of the stored clip, reused on remix */
+  objectPath: string;
+}
+
 export interface Job {
   id: string;
   userId: string;
@@ -194,6 +210,8 @@ export interface Job {
   errorMessage?: string | null;
   /** @nullable */
   videoId?: string | null;
+  /** Per-clip metadata for the finished video (present when status is ready). Used by the remix UI to list individual clips. */
+  clips?: VideoClip[];
   /** @nullable */
   lyricsText?: string | null;
   /**
@@ -325,6 +343,29 @@ export interface CreateJobRequest {
   clipStartTime?: number | null;
   /** Pre-computed audio analysis from POST /audio/analyze; when provided the job processor skips re-analysis and uses this result directly */
   audioAnalysis?: AudioAnalysis | null;
+}
+
+export interface RemixJobRequest {
+  /**
+   * Indexes of the clips to regenerate
+   * @minItems 1
+   * @maxItems 64
+   */
+  clipIndexes: number[];
+  style?: VideoStyle;
+  /**
+   * Optional prompt applied to the regenerated clips
+   * @maxLength 1000
+   */
+  promptOverride?: string;
+}
+
+export interface RemixJobResponse {
+  job: Job;
+  /** Credits charged for this remix (proportional to clips regenerated) */
+  remixCost: number;
+  /** Whether credits were deducted (false for admins) */
+  charged: boolean;
 }
 
 export interface JobListResponse {

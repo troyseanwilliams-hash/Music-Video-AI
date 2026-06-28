@@ -41,6 +41,8 @@ import type {
   ListVideosParams,
   LoginRequest,
   RegisterRequest,
+  RemixJobRequest,
+  RemixJobResponse,
   SuccessResponse,
   UpdateVisibilityRequest,
   UploadUrlRequest,
@@ -974,6 +976,95 @@ export function useGetJob<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * Regenerates only the specified clips of a completed video and re-stitches them with the original audio into a new video. Credits are charged proportionally to the number of clips regenerated, not the full job.
+
+ * @summary Regenerate selected clips of a finished video
+ */
+export const getRemixJobUrl = (id: string) => {
+  return `/api/jobs/${id}/remix`;
+};
+
+export const remixJob = async (
+  id: string,
+  remixJobRequest: RemixJobRequest,
+  options?: RequestInit,
+): Promise<RemixJobResponse> => {
+  return customFetch<RemixJobResponse>(getRemixJobUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(remixJobRequest),
+  });
+};
+
+export const getRemixJobMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof remixJob>>,
+    TError,
+    { id: string; data: BodyType<RemixJobRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof remixJob>>,
+  TError,
+  { id: string; data: BodyType<RemixJobRequest> },
+  TContext
+> => {
+  const mutationKey = ["remixJob"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof remixJob>>,
+    { id: string; data: BodyType<RemixJobRequest> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return remixJob(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RemixJobMutationResult = NonNullable<
+  Awaited<ReturnType<typeof remixJob>>
+>;
+export type RemixJobMutationBody = BodyType<RemixJobRequest>;
+export type RemixJobMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Regenerate selected clips of a finished video
+ */
+export const useRemixJob = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof remixJob>>,
+    TError,
+    { id: string; data: BodyType<RemixJobRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof remixJob>>,
+  TError,
+  { id: string; data: BodyType<RemixJobRequest> },
+  TContext
+> => {
+  return useMutation(getRemixJobMutationOptions(options));
+};
 
 /**
  * @summary List generated videos for the current user

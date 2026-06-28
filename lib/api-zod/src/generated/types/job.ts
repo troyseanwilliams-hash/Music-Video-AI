@@ -9,6 +9,7 @@ import type { AudioAnalysis } from "./audioAnalysis";
 import type { JobAudioSourceType } from "./jobAudioSourceType";
 import type { JobRequestedDuration } from "./jobRequestedDuration";
 import type { JobStatus } from "./jobStatus";
+import type { VideoClip } from "./videoClip";
 
 export interface Job {
   id: string;
@@ -31,6 +32,8 @@ export interface Job {
   errorMessage?: string | null;
   /** @nullable */
   videoId?: string | null;
+  /** Per-clip metadata for the finished video (present when status is ready). Used by the remix UI to list individual clips. */
+  clips?: VideoClip[];
   /** @nullable */
   lyricsText?: string | null;
   /**

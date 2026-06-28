@@ -29,8 +29,9 @@ export const audioSourceTypeEnum = pgEnum("audio_source_type", [
   "suno",
 ]);
 
-// Distinguishes AI-generated jobs from user-driven Studio (editor) renders.
-export const jobTypeEnum = pgEnum("job_type", ["ai", "editor_render"]);
+// Distinguishes AI-generated jobs from user-driven Studio (editor) renders and
+// lightweight remix jobs (regenerate a subset of an existing video's clips).
+export const jobTypeEnum = pgEnum("job_type", ["ai", "editor_render", "remix"]);
 
 export const videoStyleEnum = pgEnum("video_style", [
   "realistic",
@@ -94,6 +95,10 @@ export const videosTable = pgTable("videos", {
   durationSeconds: real("duration_seconds"),
   style: videoStyleEnum("style"),
   prompt: text("prompt"),
+  // Per-clip metadata captured during generation so individual clips can be
+  // remixed (regenerated) later without rerunning the whole pipeline. Array of
+  // VideoClipMeta: { index, startTime, endTime, durationSec, prompt, style, objectPath }.
+  clips: jsonb("clips"),
   shareToken: text("share_token").unique(),
   // Public gallery: opt-in visibility + denormalized like count for fast sorting.
   isPublic: boolean("is_public").notNull().default(false),
@@ -152,6 +157,18 @@ export type Job = typeof jobsTable.$inferSelect;
 export const insertVideoSchema = createInsertSchema(videosTable);
 export type InsertVideo = z.infer<typeof insertVideoSchema>;
 export type Video = typeof videosTable.$inferSelect;
+
+// Shape of each entry in videosTable.clips. Persisted at generation time and
+// read back by the remix pipeline + the remix UI.
+export interface VideoClipMeta {
+  index: number;
+  startTime: number;
+  endTime: number;
+  durationSec: number;
+  prompt: string;
+  style: string | null;
+  objectPath: string; // /objects/clips/{videoId}/{index}.mp4
+}
 
 export const insertCreditSchema = createInsertSchema(creditsTable);
 export type InsertCredit = z.infer<typeof insertCreditSchema>;

@@ -242,6 +242,34 @@ export const ListJobsResponse = zod.object({
       progressPercent: zod.number().nullish(),
       errorMessage: zod.string().nullish(),
       videoId: zod.string().nullish(),
+      clips: zod
+        .array(
+          zod.object({
+            index: zod
+              .number()
+              .describe("Zero-based position of this clip in the timeline"),
+            startTime: zod
+              .number()
+              .describe("Clip start time in seconds within the finished video"),
+            endTime: zod
+              .number()
+              .describe("Clip end time in seconds within the finished video"),
+            durationSec: zod.number(),
+            prompt: zod
+              .string()
+              .describe("The prompt used to generate this clip"),
+            style: zod.string().nullish(),
+            objectPath: zod
+              .string()
+              .describe(
+                "Object storage path of the stored clip, reused on remix",
+              ),
+          }),
+        )
+        .optional()
+        .describe(
+          "Per-clip metadata for the finished video (present when status is ready). Used by the remix UI to list individual clips.",
+        ),
       lyricsText: zod.string().nullish(),
       referenceImagePath: zod
         .string()
@@ -458,6 +486,30 @@ export const GetJobResponse = zod.object({
   progressPercent: zod.number().nullish(),
   errorMessage: zod.string().nullish(),
   videoId: zod.string().nullish(),
+  clips: zod
+    .array(
+      zod.object({
+        index: zod
+          .number()
+          .describe("Zero-based position of this clip in the timeline"),
+        startTime: zod
+          .number()
+          .describe("Clip start time in seconds within the finished video"),
+        endTime: zod
+          .number()
+          .describe("Clip end time in seconds within the finished video"),
+        durationSec: zod.number(),
+        prompt: zod.string().describe("The prompt used to generate this clip"),
+        style: zod.string().nullish(),
+        objectPath: zod
+          .string()
+          .describe("Object storage path of the stored clip, reused on remix"),
+      }),
+    )
+    .optional()
+    .describe(
+      "Per-clip metadata for the finished video (present when status is ready). Used by the remix UI to list individual clips.",
+    ),
   lyricsText: zod.string().nullish(),
   referenceImagePath: zod
     .string()
@@ -486,6 +538,53 @@ export const GetJobResponse = zod.object({
     ),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
+});
+
+/**
+ * Regenerates only the specified clips of a completed video and re-stitches them with the original audio into a new video. Credits are charged proportionally to the number of clips regenerated, not the full job.
+
+ * @summary Regenerate selected clips of a finished video
+ */
+export const RemixJobParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const RemixJobHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const remixJobBodyClipIndexesItemMin = 0;
+
+export const remixJobBodyClipIndexesMax = 64;
+
+export const remixJobBodyPromptOverrideMax = 1000;
+
+export const RemixJobBody = zod.object({
+  clipIndexes: zod
+    .array(zod.number().min(remixJobBodyClipIndexesItemMin))
+    .min(1)
+    .max(remixJobBodyClipIndexesMax)
+    .describe("Indexes of the clips to regenerate"),
+  style: zod
+    .enum([
+      "realistic",
+      "anime",
+      "cinematic",
+      "abstract",
+      "neon",
+      "vintage",
+      "fantasy",
+      "documentary",
+    ])
+    .optional(),
+  promptOverride: zod
+    .string()
+    .max(remixJobBodyPromptOverrideMax)
+    .optional()
+    .describe("Optional prompt applied to the regenerated clips"),
 });
 
 /**
@@ -971,6 +1070,36 @@ export const GetDashboardStatsResponse = zod.object({
         progressPercent: zod.number().nullish(),
         errorMessage: zod.string().nullish(),
         videoId: zod.string().nullish(),
+        clips: zod
+          .array(
+            zod.object({
+              index: zod
+                .number()
+                .describe("Zero-based position of this clip in the timeline"),
+              startTime: zod
+                .number()
+                .describe(
+                  "Clip start time in seconds within the finished video",
+                ),
+              endTime: zod
+                .number()
+                .describe("Clip end time in seconds within the finished video"),
+              durationSec: zod.number(),
+              prompt: zod
+                .string()
+                .describe("The prompt used to generate this clip"),
+              style: zod.string().nullish(),
+              objectPath: zod
+                .string()
+                .describe(
+                  "Object storage path of the stored clip, reused on remix",
+                ),
+            }),
+          )
+          .optional()
+          .describe(
+            "Per-clip metadata for the finished video (present when status is ready). Used by the remix UI to list individual clips.",
+          ),
         lyricsText: zod.string().nullish(),
         referenceImagePath: zod
           .string()

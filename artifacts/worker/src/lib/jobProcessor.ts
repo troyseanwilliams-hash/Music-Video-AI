@@ -1,6 +1,7 @@
 import { db } from "@workspace/db";
 import { jobsTable, videosTable, creditsTable } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import type { VideoClipMeta } from "@workspace/db";
+import { eq, and, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { exec } from "child_process";
 import { promisify } from "util";
@@ -247,10 +248,10 @@ async function generateClips(
   analysis: AudioAnalysis,
   plan: GenerationPlan,
   onProgress: (pct: number) => Promise<void>,
-): Promise<{ buffer: Buffer; targetDuration: number }[]> {
+): Promise<{ buffer: Buffer; targetDuration: number; prompt: string }[]> {
   const provider = getActiveProvider();
   const { sections, clipDurationSec } = plan;
-  const clips: { buffer: Buffer; targetDuration: number }[] = [];
+  const clips: { buffer: Buffer; targetDuration: number; prompt: string }[] = [];
   const refImageUrl = await loadReferenceImageUrl(job);
 
   logger.info(
@@ -272,6 +273,9 @@ async function generateClips(
 
     await onProgress(30 + Math.floor((i / sections.length) * 40));
 
+    // Build the prompt regardless of provider so it can be persisted as clip
+    // metadata (and reused as the basis for a future remix of this clip).
+    const prompt = buildSectionPrompt(job, analysis, section);
     let clipBuffer: Buffer;
 
     if (provider === "simulation") {
@@ -282,7 +286,6 @@ async function generateClips(
       await new Promise((r) => setTimeout(r, 1500));
       clipBuffer = await createSimulationClip(clipDuration);
     } else {
-      const prompt = buildSectionPrompt(job, analysis, section);
       logger.info(
         { jobId: job.id, section: section.label, provider, prompt: prompt.slice(0, 80) },
         "Generating AI clip",
@@ -304,10 +307,46 @@ async function generateClips(
       }
     }
 
-    clips.push({ buffer: clipBuffer, targetDuration });
+    clips.push({ buffer: clipBuffer, targetDuration, prompt });
   }
 
   return clips;
+}
+
+// Upload each generated clip to object storage and assemble the clip metadata
+// array persisted on videos.clips. Timestamps are cumulative across clips.
+async function persistClips(
+  videoId: string,
+  clips: { buffer: Buffer; targetDuration: number; prompt: string }[],
+  style: string | null,
+): Promise<VideoClipMeta[]> {
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const metas: VideoClipMeta[] = [];
+  let cursor = 0;
+  for (let i = 0; i < clips.length; i++) {
+    const c = clips[i]!;
+    let objectPath = "";
+    try {
+      objectPath = await storageService.uploadClipBuffer(c.buffer, videoId, i);
+    } catch (err) {
+      // Non-fatal: a missing clip just can't be reused by remix (it'll be
+      // regenerated). Never fail the whole job over clip persistence.
+      logger.warn({ err, videoId, index: i }, "Failed to persist clip for remix (non-fatal)");
+    }
+    const start = cursor;
+    const end = cursor + c.targetDuration;
+    cursor = end;
+    metas.push({
+      index: i,
+      startTime: round2(start),
+      endTime: round2(end),
+      durationSec: round2(c.targetDuration),
+      prompt: c.prompt,
+      style,
+      objectPath,
+    });
+  }
+  return metas;
 }
 
 async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
@@ -472,10 +511,207 @@ async function processEditorJob(job: JobRow): Promise<void> {
   }
 }
 
+// Remix manifest stored on a jobType="remix" job row. The job row itself
+// carries the inherited audio fields (audioObjectPath / audioSourceUrl /
+// aspectRatio / requestedDuration) copied from the original job at creation.
+interface RemixManifest {
+  originalVideoId: string;
+  clipIndexes: number[];
+  style?: string | null;
+  promptOverride?: string | null;
+  remixCost: number;
+  chargeCredits?: boolean;
+}
+
+// Compose the prompt for a regenerated clip. When the user supplies a prompt
+// override or a new style, those take priority; otherwise we fall back to the
+// clip's original prompt so an un-overridden remix simply re-rolls the clip.
+function composeRemixPrompt(
+  clip: VideoClipMeta,
+  manifest: RemixManifest,
+  jobPrompt: string | null,
+): string {
+  const styleKey = manifest.style ?? clip.style ?? "cinematic";
+  const styleDesc = STYLE_PROMPTS[styleKey] ?? STYLE_PROMPTS.cinematic;
+  const override = manifest.promptOverride?.trim();
+  if (!override && (manifest.style == null || manifest.style === clip.style)) {
+    return clip.prompt;
+  }
+  const userPart = override || jobPrompt || clip.prompt;
+  return [styleDesc, userPart, "beat-synced cuts, professional music video production, 4K ultra-wide"]
+    .filter(Boolean)
+    .join(", ");
+}
+
+// Lightweight remix: regenerate only the selected clips of an existing video,
+// reuse the rest, and re-stitch with the original audio into a NEW video. The
+// original video is never modified, so it stays accessible during the remix.
+async function processRemixJob(job: JobRow): Promise<void> {
+  logger.info({ jobId: job.id }, "Processing remix job");
+  try {
+    const manifest = job.manifest as unknown as RemixManifest | null;
+    if (!manifest?.originalVideoId || !manifest.clipIndexes?.length) {
+      throw new Error("Remix job has an invalid manifest");
+    }
+
+    const [original] = await db
+      .select()
+      .from(videosTable)
+      .where(and(eq(videosTable.id, manifest.originalVideoId), eq(videosTable.userId, job.userId)))
+      .limit(1);
+    if (!original) throw new Error("Original video not found for remix");
+
+    const sourceClips = (original.clips as unknown as VideoClipMeta[] | null) ?? [];
+    if (!sourceClips.length) {
+      throw new Error("This video has no remixable clips (it was generated before remix was available)");
+    }
+
+    await updateJobStatus(job.id, { status: "generating", progressPercent: 10 });
+
+    const regen = new Set(manifest.clipIndexes);
+    const ordered = [...sourceClips].sort((a, b) => a.index - b.index);
+    const provider = getActiveProvider();
+
+    const built: { buffer: Buffer; targetDuration: number; prompt: string; style: string | null }[] = [];
+    let processed = 0;
+    for (const clip of ordered) {
+      const duration = Math.min(Math.max(Math.ceil(clip.durationSec || 5), 5), 10);
+
+      if (regen.has(clip.index)) {
+        const prompt = composeRemixPrompt(clip, manifest, job.prompt);
+        const styleKey = manifest.style ?? clip.style ?? null;
+        logger.info({ jobId: job.id, index: clip.index, provider }, "Regenerating remix clip");
+        let buffer: Buffer;
+        if (provider === "simulation") {
+          await new Promise((r) => setTimeout(r, 1200));
+          buffer = await createSimulationClip(duration);
+        } else {
+          const result = await generateClip({
+            prompt,
+            durationSeconds: duration,
+            aspectRatio: job.aspectRatio ?? "16:9",
+          });
+          buffer = result ? await downloadClip(result.videoUrl) : await createSimulationClip(duration);
+        }
+        built.push({ buffer, targetDuration: clip.durationSec, prompt, style: styleKey });
+        processed++;
+        await updateJobStatus(job.id, {
+          progressPercent: 10 + Math.floor((processed / regen.size) * 60),
+        });
+      } else {
+        let buffer: Buffer;
+        try {
+          const file = await storageService.getObjectEntityFile(clip.objectPath);
+          [buffer] = await file.download();
+        } catch (err) {
+          logger.warn({ err, jobId: job.id, index: clip.index }, "Could not reuse clip; substituting placeholder");
+          buffer = await createSimulationClip(duration);
+        }
+        built.push({ buffer, targetDuration: clip.durationSec, prompt: clip.prompt, style: clip.style });
+      }
+    }
+
+    await updateJobStatus(job.id, { status: "stitching", progressPercent: 75 });
+
+    const audioData = await getAudioBuffer(job);
+    const totalDuration =
+      original.durationSeconds || built.reduce((s, c) => s + (c.targetDuration || 0), 0);
+
+    let videoBuffer: Buffer;
+    let thumbnailBuffer: Buffer;
+    if (audioData) {
+      const stitchResult = await stitchVideoClips({
+        clips: built.map((c) => ({ buffer: c.buffer, targetDuration: c.targetDuration })),
+        audioBuffer: audioData.buffer,
+        audioExt: audioData.ext,
+        totalDuration,
+        lyricsText: (job as JobRow & { lyricsText?: string | null }).lyricsText ?? undefined,
+      });
+      videoBuffer = stitchResult.videoBuffer;
+      thumbnailBuffer = stitchResult.thumbnailBuffer;
+    } else {
+      videoBuffer = built[0]?.buffer ?? (await createSimulationClip(10));
+      thumbnailBuffer = await extractVideoThumbnail(videoBuffer, 2);
+    }
+
+    await updateJobStatus(job.id, { progressPercent: 90 });
+
+    const newVideoId = randomUUID();
+    const [videoObjectPath, thumbnailObjectPath] = await Promise.all([
+      storageService.uploadVideoBuffer(videoBuffer, newVideoId),
+      storageService.uploadThumbnailBuffer(thumbnailBuffer, newVideoId),
+    ]);
+
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    const newClips: VideoClipMeta[] = [];
+    let cursor = 0;
+    for (let i = 0; i < built.length; i++) {
+      const c = built[i]!;
+      let objectPath = "";
+      try {
+        objectPath = await storageService.uploadClipBuffer(c.buffer, newVideoId, i);
+      } catch (err) {
+        logger.warn({ err, newVideoId, index: i }, "Failed to persist remix clip (non-fatal)");
+      }
+      const start = cursor;
+      const end = cursor + c.targetDuration;
+      cursor = end;
+      newClips.push({
+        index: i,
+        startTime: round2(start),
+        endTime: round2(end),
+        durationSec: round2(c.targetDuration),
+        prompt: c.prompt,
+        style: c.style,
+        objectPath,
+      });
+    }
+
+    await db.insert(videosTable).values({
+      id: newVideoId,
+      userId: job.userId,
+      jobId: job.id,
+      videoObjectPath,
+      thumbnailObjectPath,
+      title: original.title ? `Remix — ${original.title}`.slice(0, 100) : "Remix",
+      durationSeconds: totalDuration,
+      style: (manifest.style ?? original.style) as typeof original.style,
+      prompt: manifest.promptOverride?.trim() || original.prompt,
+      clips: newClips as unknown as Record<string, unknown>,
+      shareToken: randomUUID().replace(/-/g, "").slice(0, 16),
+    });
+
+    if (manifest.chargeCredits && manifest.remixCost > 0) {
+      const cost = manifest.remixCost;
+      await db
+        .update(creditsTable)
+        .set({
+          subscriptionCredits: sql`GREATEST(subscription_credits - ${cost}, 0)`,
+          topupCredits: sql`GREATEST(topup_credits - GREATEST(${cost} - subscription_credits, 0), 0)`,
+          creditsRemaining: sql`GREATEST(credits_remaining - ${cost}, 0)`,
+          creditsUsed: sql`credits_used + ${cost}`,
+          totalGenerations: sql`total_generations + 1`,
+          updatedAt: new Date(),
+        })
+        .where(eq(creditsTable.userId, job.userId));
+      logger.info({ jobId: job.id, cost }, "Remix credits deducted on success");
+    }
+
+    await updateJobStatus(job.id, { status: "ready", progressPercent: 100, videoId: newVideoId });
+    logger.info({ jobId: job.id, newVideoId }, "Remix completed");
+  } catch (err) {
+    await retryOrFail(job, err);
+  }
+}
+
 async function processJob(job: JobRow): Promise<void> {
   // Studio timeline renders take a completely different path from AI generation.
   if (job.jobType === "editor_render") {
     await processEditorJob(job);
+    return;
+  }
+  if (job.jobType === "remix") {
+    await processRemixJob(job);
     return;
   }
 
@@ -609,6 +845,10 @@ async function processJob(job: JobRow): Promise<void> {
       storageService.uploadThumbnailBuffer(thumbnailBuffer, videoId),
     ]);
 
+    // Persist individual clips so the user can remix (regenerate) any one of
+    // them later without rerunning the whole pipeline.
+    const clipMetas = await persistClips(videoId, clips, job.style ?? null);
+
     await db.insert(videosTable).values({
       id: videoId,
       userId: job.userId,
@@ -619,6 +859,7 @@ async function processJob(job: JobRow): Promise<void> {
       durationSeconds: analysis.durationSeconds,
       style: job.style,
       prompt: job.prompt,
+      clips: clipMetas as unknown as Record<string, unknown>,
       shareToken: randomUUID().replace(/-/g, "").slice(0, 16),
     });
 

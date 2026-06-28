@@ -2,15 +2,17 @@ import { Router } from "express";
 import https from "https";
 import { Client } from "pg";
 import { db } from "@workspace/db";
-import { jobsTable, creditsTable, usersTable } from "@workspace/db";
+import { jobsTable, creditsTable, usersTable, videosTable } from "@workspace/db";
+import type { VideoClipMeta } from "@workspace/db";
 import { eq, and, desc, count } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { z } from "zod";
 import {
   CreateJobBody,
   ListJobsQueryParams,
   GetJobParams,
 } from "@workspace/api-zod";
-import { calculateCreditCost } from "../lib/creditCost.js";
+import { calculateCreditCost, calculateRemixCost } from "../lib/creditCost.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { notifyJobPendingApproval } from "../lib/notifications.js";
 
@@ -229,6 +231,14 @@ router.get("/jobs/:id", async (req, res) => {
   if (job[0].videoId && job[0].status === "ready") {
     const storageService = new ObjectStorageService();
     jobData.videoUrl = await storageService.getVideoSignedUrl(job[0].videoId);
+
+    // Surface the per-clip metadata so the remix UI can list individual clips.
+    const [video] = await db
+      .select({ clips: videosTable.clips, durationSeconds: videosTable.durationSeconds })
+      .from(videosTable)
+      .where(eq(videosTable.id, job[0].videoId))
+      .limit(1);
+    if (video?.clips) jobData.clips = video.clips;
   }
   res.json(jobData);
 });
@@ -478,6 +488,155 @@ router.post("/jobs/:id/retry", async (req, res) => {
     .returning();
 
   res.json(updated);
+});
+
+const RemixBody = z.object({
+  clipIndexes: z.array(z.number().int().min(0)).min(1).max(64),
+  style: z
+    .enum([
+      "realistic", "anime", "cinematic", "abstract",
+      "neon", "vintage", "fantasy", "documentary",
+    ])
+    .optional(),
+  promptOverride: z.string().max(1000).optional(),
+});
+
+// POST /api/jobs/:id/remix — regenerate selected clips of a finished video and
+// re-stitch into a NEW video. Credits are charged proportionally to the number
+// of clips regenerated, not the full job.
+router.post("/jobs/:id/remix", async (req, res) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const parsed = RemixBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  const { clipIndexes, style, promptOverride } = parsed.data;
+
+  const [job] = await db
+    .select()
+    .from(jobsTable)
+    .where(and(eq(jobsTable.id, req.params.id), eq(jobsTable.userId, req.user.id)))
+    .limit(1);
+
+  if (!job) {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
+  if (job.status !== "ready" || !job.videoId) {
+    res.status(400).json({ error: "Only completed videos can be remixed." });
+    return;
+  }
+
+  const [video] = await db
+    .select()
+    .from(videosTable)
+    .where(and(eq(videosTable.id, job.videoId), eq(videosTable.userId, req.user.id)))
+    .limit(1);
+
+  const clips = (video?.clips as unknown as VideoClipMeta[] | null) ?? [];
+  if (!clips.length) {
+    res.status(400).json({
+      error: "This video has no remixable clips (it was generated before remix was available).",
+      code: "NO_REMIXABLE_CLIPS",
+    });
+    return;
+  }
+
+  // De-dupe and validate the selected indexes against what actually exists.
+  const validIndexes = Array.from(new Set(clipIndexes)).filter(
+    (i) => i >= 0 && i < clips.length,
+  );
+  if (!validIndexes.length) {
+    res.status(400).json({ error: "No valid clip selected to remix." });
+    return;
+  }
+
+  const [userRecord] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.id, req.user.id))
+    .limit(1);
+
+  const isAdmin = !!(
+    process.env.ADMIN_EMAIL &&
+    userRecord?.email?.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase()
+  );
+
+  if (!isAdmin && (userRecord?.subscriptionStatus ?? "none") !== "active") {
+    res.status(403).json({
+      error: "A subscription is required to remix videos.",
+      code: "SUBSCRIPTION_REQUIRED",
+    });
+    return;
+  }
+
+  const remixCost = calculateRemixCost(job.requestedDuration, clips.length, validIndexes.length);
+  const chargeCredits = !isAdmin;
+
+  if (chargeCredits) {
+    let [userCredits] = await db
+      .select()
+      .from(creditsTable)
+      .where(eq(creditsTable.userId, req.user.id))
+      .limit(1);
+    if (!userCredits) {
+      [userCredits] = await db
+        .insert(creditsTable)
+        .values({ id: randomUUID(), userId: req.user.id })
+        .returning();
+    }
+    if (userCredits.creditsRemaining < remixCost) {
+      res.status(402).json({
+        error: `Remixing ${validIndexes.length} clip(s) costs ${remixCost} credits but you only have ${userCredits.creditsRemaining}.`,
+        code: "INSUFFICIENT_CREDITS",
+        creditsRequired: remixCost,
+        creditsRemaining: userCredits.creditsRemaining,
+      });
+      return;
+    }
+  }
+
+  const remixJobId = randomUUID();
+  const [remixJob] = await db
+    .insert(jobsTable)
+    .values({
+      id: remixJobId,
+      userId: req.user.id,
+      jobType: "remix",
+      status: "queued", // straight into the worker queue — no AI approval step
+      // Inherit the original job's audio + framing so the stitcher reproduces it.
+      audioSourceType: job.audioSourceType,
+      audioObjectPath: job.audioObjectPath,
+      audioSourceUrl: job.audioSourceUrl,
+      lyricsText: job.lyricsText,
+      aspectRatio: job.aspectRatio,
+      resolution: job.resolution,
+      requestedDuration: job.requestedDuration,
+      prompt: promptOverride?.trim() || job.prompt,
+      style: (style ?? job.style) as typeof job.style,
+      manifest: {
+        originalVideoId: job.videoId,
+        clipIndexes: validIndexes,
+        style: style ?? null,
+        promptOverride: promptOverride?.trim() || null,
+        remixCost,
+        chargeCredits,
+      } as unknown as Record<string, unknown>,
+      progressPercent: 0,
+    })
+    .returning();
+
+  req.log.info(
+    { userId: req.user.id, remixJobId, originalVideoId: job.videoId, clips: validIndexes.length, remixCost, isAdmin },
+    "Remix job queued",
+  );
+
+  res.status(201).json({ job: remixJob, remixCost, charged: chargeCredits });
 });
 
 export default router;

@@ -233,6 +233,18 @@ export class ObjectStorageService {
     return `/objects/thumbnails/${videoId}.jpg`;
   }
 
+  // Persist a single generated clip so it can be reused by a later remix without
+  // regenerating it. Returns the /objects/... path stored on videos.clips.
+  async uploadClipBuffer(buffer: Buffer, videoId: string, index: number): Promise<string> {
+    const privateObjectDir = this.getPrivateObjectDir();
+    const objectEntityPath = `${privateObjectDir}/clips/${videoId}/${index}.mp4`;
+    const { bucketName, objectName } = parseObjectPath(objectEntityPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+    await file.save(buffer, { contentType: "video/mp4", resumable: buffer.length > 5 * 1024 * 1024 });
+    return `/objects/clips/${videoId}/${index}.mp4`;
+  }
+
   normalizeObjectEntityPath(rawPath: string): string {
     if (!rawPath.startsWith("https://storage.googleapis.com/")) {
       return rawPath;
