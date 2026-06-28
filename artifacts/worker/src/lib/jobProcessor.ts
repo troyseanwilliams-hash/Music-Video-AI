@@ -453,8 +453,12 @@ async function processEditorJob(job: JobRow): Promise<void> {
     }
 
     const [width, height] = manifest.resolution === "1080p" ? [1920, 1080] : [1280, 720];
-    await updateJobStatus(job.id, { progressPercent: 55 });
+    await updateJobStatus(job.id, { progressPercent: 22 });
 
+    // Drive progress smoothly from 25%→80% as each segment is normalized so the
+    // job-status page can compute a files-based remaining-time estimate. Updates
+    // are fire-and-forget (best-effort) and only when the integer percent rises.
+    let lastEditorPct = 22;
     const result = await stitchEditorTimeline({
       segments,
       music,
@@ -462,6 +466,13 @@ async function processEditorJob(job: JobRow): Promise<void> {
       width,
       height,
       watermark: manifest.watermark === true,
+      onProgress: (done, total) => {
+        const pct = total > 0 ? 25 + Math.round((done / total) * 55) : 25;
+        if (pct > lastEditorPct) {
+          lastEditorPct = pct;
+          void updateJobStatus(job.id, { progressPercent: pct });
+        }
+      },
     });
     if (result.skipped.length) {
       logger.warn({ jobId: job.id, skipped: result.skipped.length }, "Some segments were skipped");

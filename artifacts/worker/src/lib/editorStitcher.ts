@@ -33,6 +33,10 @@ export interface EditorStitchInput {
   height?: number;
   fps?: number;
   watermark?: boolean; // free tier
+  // Fires once per normalized segment so the caller can surface a files-based
+  // progress/ETA. done counts processed segments (success or skip); total is the
+  // segment count.
+  onProgress?: (done: number, total: number) => void;
 }
 
 export interface EditorStitchResult {
@@ -179,6 +183,9 @@ export async function stitchEditorTimeline(
       } catch (err) {
         skipped.push({ index: i, error: String((err as Error).message || err).slice(-300) });
       }
+      // Report after each segment (processed or skipped) so the caller can show
+      // a files-remaining estimate.
+      input.onProgress?.(i + 1, input.segments.length);
     }
 
     if (parts.length === 0) {

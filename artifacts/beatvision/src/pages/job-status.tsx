@@ -170,6 +170,68 @@ function useWallElapsedMs(startIso: string | null | undefined, active: boolean):
   return ms;
 }
 
+/** Format a seconds count as a compact remaining-time string (e.g. "45s", "2m 10s", "1h 5m"). */
+function fmtRemaining(secs: number): string {
+  if (secs < 60) return `${secs}s`;
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  if (m < 60) return s ? `${m}m ${s}s` : `${m}m`;
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  return mm ? `${h}h ${mm}m` : `${h}h`;
+}
+
+/**
+ * Estimates seconds remaining from the rate of progressPercent change over a
+ * recent sliding window: rate = Δpercent/Δtime, eta = (100 − percent) / rate.
+ * Returns null until there's enough signal (or when the estimate is wildly
+ * uncertain). General across job types — and accurate for editor renders, which
+ * now report smooth per-segment progress.
+ */
+function useEtaSeconds(percent: number, active: boolean): number | null {
+  const samplesRef = useRef<{ t: number; p: number }[]>([]);
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    if (!active) {
+      samplesRef.current = [];
+      return;
+    }
+    const now = Date.now();
+    const arr = samplesRef.current;
+    const last = arr[arr.length - 1];
+    if (!last || last.p !== percent) {
+      arr.push({ t: now, p: percent });
+      const cutoff = now - 120_000; // keep ~2 min of history
+      samplesRef.current = arr.filter((s) => s.t >= cutoff).slice(-30);
+    }
+  }, [percent, active]);
+
+  // Tick every second so the estimate refreshes and counts down between updates.
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => setTick((x) => x + 1), 1000);
+    return () => clearInterval(id);
+  }, [active]);
+
+  if (!active) return null;
+  const arr = samplesRef.current;
+  if (arr.length < 2) return null;
+  const first = arr[0]!;
+  const last = arr[arr.length - 1]!;
+  const dt = (last.t - first.t) / 1000;
+  const dp = last.p - first.p;
+  if (dt <= 0 || dp <= 0) return null; // no forward progress yet
+  const rate = dp / dt; // percent per second
+  const remaining = Math.max(0, 100 - last.p);
+  const sinceLast = (Date.now() - last.t) / 1000;
+  const eta = remaining / rate - sinceLast;
+  if (!isFinite(eta)) return null;
+  const secs = Math.max(0, Math.round(eta));
+  if (secs > 3 * 3600) return null; // too uncertain to show
+  return secs;
+}
+
 /**
  * Returns the "taking too long" warning threshold in milliseconds based on the
  * requested video duration.
@@ -262,6 +324,11 @@ export default function JobStatus() {
   );
   const thresholdMs = getThresholdMs(durVal);
   const showSlowWarning = jobIsActive && !warningDismissed && wallElapsedMs >= thresholdMs;
+
+  const etaSeconds = useEtaSeconds(
+    Math.max(0, Math.min(100, (job as { progressPercent?: number | null } | undefined)?.progressPercent ?? 0)),
+    jobIsActive,
+  );
 
   if (isAuthLoading || !isAuthenticated || !id) return null;
 
@@ -401,6 +468,11 @@ export default function JobStatus() {
                         transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut", repeatDelay: 0.5 }}
                       />
                     </div>
+                    {etaSeconds != null && (
+                      <div className="text-muted-foreground text-right text-xs tabular-nums">
+                        about {fmtRemaining(etaSeconds)} remaining
+                      </div>
+                    )}
                   </div>
 
                   {/* Stage timeline */}
