@@ -168,11 +168,21 @@ router.get("/billing/subscription", async (req, res) => {
           planName = product.name;
         }
       }
-      const subWithPeriod = sub as Stripe.Subscription & {
-        current_period_end?: number;
-      };
-      if (typeof subWithPeriod.current_period_end === "number") {
-        renewsAt = new Date(subWithPeriod.current_period_end * 1000).toISOString();
+      // In the 2025-03-31.basil+ API versions, current_period_end was removed
+      // from the Subscription object and now lives on each subscription item.
+      // Read it from the item, falling back to the legacy top-level field so
+      // this keeps working regardless of the active API version.
+      const itemPeriodEnd = item
+        ? (item as Stripe.SubscriptionItem & { current_period_end?: number })
+            .current_period_end
+        : undefined;
+      const legacyPeriodEnd = (
+        sub as Stripe.Subscription & { current_period_end?: number }
+      ).current_period_end;
+      const periodEnd =
+        typeof itemPeriodEnd === "number" ? itemPeriodEnd : legacyPeriodEnd;
+      if (typeof periodEnd === "number") {
+        renewsAt = new Date(periodEnd * 1000).toISOString();
       }
       cancelAtPeriodEnd = sub.cancel_at_period_end;
     } catch (err) {

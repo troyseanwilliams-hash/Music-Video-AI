@@ -68,6 +68,8 @@ async function getCredentials(): Promise<{
 export async function getUncachableStripeClient(): Promise<Stripe> {
   const { secretKey } = await getCredentials();
   return new Stripe(secretKey, {
+    // Pin a current Stripe API version. Sent verbatim as the Stripe-Version
+    // header at runtime; the installed SDK already accepts this literal.
     apiVersion: "2026-04-22.dahlia",
   });
 }
