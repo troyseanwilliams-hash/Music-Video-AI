@@ -25,6 +25,51 @@ function parseCredits(meta: Stripe.Metadata | null | undefined): number {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+// Returns a Stripe customer ID that is guaranteed to exist on the *current*
+// Stripe account. If the user has no stored customer, or the stored ID belongs
+// to a different account (e.g. after switching live keys, Stripe returns a
+// `resource_missing` error) or was deleted, a fresh customer is created and
+// persisted. This keeps checkout and the billing portal working across account
+// migrations instead of failing with "No such customer".
+async function getOrRepairStripeCustomerId(
+  stripe: Stripe,
+  user: typeof usersTable.$inferSelect,
+): Promise<string> {
+  const existingId = user.stripeCustomerId;
+  if (existingId) {
+    try {
+      const customer = await stripe.customers.retrieve(existingId);
+      if (!("deleted" in customer) || !customer.deleted) {
+        return existingId;
+      }
+    } catch (err) {
+      const code = (err as { code?: string } | null)?.code;
+      if (code !== "resource_missing") {
+        throw err;
+      }
+      // Stale ID from a different Stripe account — recreate below.
+    }
+  }
+
+  const customer = await stripe.customers.create({
+    email: user.email ?? undefined,
+    name: [user.firstName, user.lastName].filter(Boolean).join(" ") || undefined,
+    metadata: { userId: user.id },
+  });
+  await db
+    .update(usersTable)
+    .set({ stripeCustomerId: customer.id })
+    .where(eq(usersTable.id, user.id));
+
+  // Ensure a credits row exists for the grant flow.
+  await db
+    .insert(creditsTable)
+    .values({ id: randomUUID(), userId: user.id })
+    .onConflictDoNothing({ target: creditsTable.userId });
+
+  return customer.id;
+}
+
 // Known topup lookup keys in ascending price order.
 // Fetch these directly so we don't depend on Stripe product active-status or metadata.
 const TOPUP_LOOKUP_KEYS = ["topup_1000", "topup_5000", "topup_20000"] as const;
@@ -237,25 +282,7 @@ router.post("/billing/checkout", async (req, res) => {
       return;
     }
 
-    let customerId = user.stripeCustomerId;
-    if (!customerId) {
-      const customer = await stripe.customers.create({
-        email: user.email ?? undefined,
-        name: [user.firstName, user.lastName].filter(Boolean).join(" ") || undefined,
-        metadata: { userId: user.id },
-      });
-      customerId = customer.id;
-      await db
-        .update(usersTable)
-        .set({ stripeCustomerId: customerId })
-        .where(eq(usersTable.id, user.id));
-
-      // Ensure credits row exists for grant flow
-      await db
-        .insert(creditsTable)
-        .values({ id: randomUUID(), userId: user.id })
-        .onConflictDoNothing({ target: creditsTable.userId });
-    }
+    const customerId = await getOrRepairStripeCustomerId(stripe, user);
 
     // Resolve lookup key → real Stripe price ID if needed
     let resolvedPriceId = priceIdentifier;
@@ -389,21 +416,22 @@ router.post("/billing/portal", async (req, res) => {
 
   const { returnUrl } = (req.body ?? {}) as { returnUrl?: string | null };
 
-  const [user] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.id, req.user.id))
-    .limit(1);
-
-  if (!user?.stripeCustomerId) {
-    res.status(400).json({ error: "No Stripe customer for this user" });
-    return;
-  }
-
   try {
+    const [user] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.id, req.user.id))
+      .limit(1);
+
+    if (!user) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
     const stripe = await getUncachableStripeClient();
+    const customerId = await getOrRepairStripeCustomerId(stripe, user);
     const session = await stripe.billingPortal.sessions.create({
-      customer: user.stripeCustomerId,
+      customer: customerId,
       return_url: returnUrl || buildAppUrl(req, "/dashboard"),
     });
     res.json({ url: session.url });

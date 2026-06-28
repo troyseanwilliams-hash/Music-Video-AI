@@ -51,3 +51,18 @@ typically *empty* (0 products/prices/promo) even if the user believes it's "alre
 configured" — that belief usually refers to the OLD account. Checkout resolves prices by
 `lookup_key` at purchase time, so an unseeded account makes every checkout fail. Always
 validate the secret-account catalog (9 lookup keys + FIRST15) before declaring prod ready.
+
+## Switching Stripe accounts orphans stored customer/subscription IDs
+
+`users.stripeCustomerId` (and `stripeSubscriptionId`) are account-scoped. After pointing prod
+at a different Stripe account, every stored `cus_*` / `sub_*` is invalid on the new account →
+`stripe.billingPortal.sessions.create` and `checkout.sessions.create` throw
+`StripeInvalidRequestError: No such customer` (code `resource_missing`) → 500.
+
+**Fix pattern:** before using a stored customer ID, retrieve it; on `resource_missing` (or a
+deleted customer) create a fresh customer on the current account and persist it. billing.ts
+does this via `getOrRepairStripeCustomerId()`, used by both checkout and portal.
+
+**How to apply:** Any flow that consumes a persisted Stripe object ID must tolerate
+`resource_missing` after an account switch — repair (recreate) or clear the stale ID rather
+than letting it 500. Old-account subscriptions/credits do NOT migrate automatically.
