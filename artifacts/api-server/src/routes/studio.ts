@@ -93,10 +93,11 @@ router.post("/studio/render", async (req, res) => {
   // Once the trial ends and there's no subscription, each export costs credits.
   const chargeCredits = !fullAccess;
 
-  let creditCost = 0;
-  if (chargeCredits) {
-    creditCost = calculateEditorCost({ durationSec: totalDuration, resolution, hasTransitions });
+  // Always compute the estimate so the client can show what an export would cost
+  // — even during the free trial, when it isn't actually charged.
+  const creditCost = calculateEditorCost({ durationSec: totalDuration, resolution, hasTransitions });
 
+  if (chargeCredits) {
     let [userCredits] = await db
       .select()
       .from(creditsTable)

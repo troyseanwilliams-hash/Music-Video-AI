@@ -525,12 +525,17 @@ async function processEditorJob(job: JobRow): Promise<void> {
         resolution: manifest.resolution,
         hasTransitions: !!manifest.transition && manifest.transition.type !== "none",
       });
+      // Deduct from the subscription bucket first, then top-up — same split as
+      // AI generation — so creditsRemaining stays equal to sub + top-up.
       await db
         .update(creditsTable)
         .set({
+          subscriptionCredits: sql`GREATEST(subscription_credits - ${creditCost}, 0)`,
+          topupCredits: sql`GREATEST(topup_credits - GREATEST(${creditCost} - subscription_credits, 0), 0)`,
           creditsRemaining: sql`GREATEST(credits_remaining - ${creditCost}, 0)`,
           creditsUsed: sql`credits_used + ${creditCost}`,
           totalGenerations: sql`total_generations + 1`,
+          updatedAt: new Date(),
         })
         .where(eq(creditsTable.userId, job.userId));
       logger.info({ jobId: job.id, creditCost }, "Editor credits deducted on success");

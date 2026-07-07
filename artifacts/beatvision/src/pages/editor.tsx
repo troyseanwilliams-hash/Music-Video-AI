@@ -475,6 +475,9 @@ export default function Editor() {
         <Card className="border-primary/30 bg-primary/5 mb-6 p-4 text-sm">
           Free trial — {trialDaysLeft} day{trialDaysLeft === 1 ? "" : "s"} left. The full Editor is unlocked: 1080p,
           no watermark, all transitions.{" "}
+          {segments.length > 0 && (
+            <>This export would use <strong>~{estimatedCost} credits</strong>, free while you're on the trial.{" "}</>
+          )}
           <button className="text-primary font-medium underline" onClick={() => setLocation("/pricing")}>
             Subscribe
           </button>{" "}
@@ -718,9 +721,13 @@ export default function Editor() {
           Export &amp; render MP4
         </Button>
         {uploadsPending && <span className="text-muted-foreground text-sm">Uploading…</span>}
-        {!fullAccess && !uploadsPending && segments.length > 0 && (
+        {!uploadsPending && segments.length > 0 && (trialActive || !fullAccess) && (
           <span className="text-muted-foreground text-sm tabular-nums">
-            Est. cost: {estimatedCost} credits
+            {trialActive ? (
+              <>Would use {estimatedCost} credits · <span className="text-primary">free during trial</span></>
+            ) : (
+              <>Est. cost: {estimatedCost} credits</>
+            )}
           </span>
         )}
       </div>
