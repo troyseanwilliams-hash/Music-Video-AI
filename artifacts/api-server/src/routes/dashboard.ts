@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { jobsTable, videosTable, creditsTable } from "@workspace/db";
-import { eq, count, desc, and, isNull, isNotNull, notInArray } from "drizzle-orm";
+import { eq, count, and, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 const router = Router();
@@ -14,22 +14,7 @@ router.get("/dashboard/stats", async (req, res) => {
 
   const userId = req.user.id;
 
-  // Jobs whose resulting video the user has soft-deleted — hidden from the
-  // dashboard's recent-generations list so deleted videos don't linger there.
-  const deletedVideoRows = await db
-    .select({ jobId: videosTable.jobId })
-    .from(videosTable)
-    .where(and(eq(videosTable.userId, userId), isNotNull(videosTable.deletedAt)));
-  const deletedJobIds = deletedVideoRows
-    .map((r) => r.jobId)
-    .filter((x): x is string => !!x);
-
-  const recentJobsWhere =
-    deletedJobIds.length > 0
-      ? and(eq(jobsTable.userId, userId), notInArray(jobsTable.id, deletedJobIds))
-      : eq(jobsTable.userId, userId);
-
-  const [allJobs, totalVideosResult, credits, recentJobs] = await Promise.all([
+  const [allJobs, totalVideosResult, credits, liveVideoRows] = await Promise.all([
     db.select().from(jobsTable).where(eq(jobsTable.userId, userId)),
     db
       .select({ count: count() })
@@ -40,13 +25,24 @@ router.get("/dashboard/stats", async (req, res) => {
       .from(creditsTable)
       .where(eq(creditsTable.userId, userId))
       .limit(1),
+    // jobIds that still have a live (existing, non-deleted) video.
     db
-      .select()
-      .from(jobsTable)
-      .where(recentJobsWhere)
-      .orderBy(desc(jobsTable.createdAt))
-      .limit(5),
+      .select({ jobId: videosTable.jobId })
+      .from(videosTable)
+      .where(and(eq(videosTable.userId, userId), isNull(videosTable.deletedAt))),
   ]);
+
+  // Recent Activity shows ONLY active saved videos: completed jobs whose video
+  // still exists and hasn't been deleted. Everything else is excluded —
+  // failed/in-progress jobs (no saved video), and videos deleted earlier whether
+  // soft-deleted now or hard-deleted under older behavior (the row is gone).
+  const liveJobIds = new Set(
+    liveVideoRows.map((r) => r.jobId).filter((x): x is string => !!x),
+  );
+  const recentJobs = [...allJobs]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .filter((j) => j.status === "ready" && !!j.videoId && liveJobIds.has(j.id))
+    .slice(0, 5);
 
   let creditsRemaining = 10;
   let subscriptionCredits = 10;
