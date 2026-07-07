@@ -44,29 +44,25 @@ export interface EditorStitchResult {
   thumbnailBuffer: Buffer;
   durationSeconds: number;
   skipped: { index: number; error: string }[];
+  // True when a requested transition was dropped in favor of a hard-cut concat
+  // because the timeline was too long (see TRANSITION_MAX_* below).
+  transitionsDisabled: boolean;
 }
 
 const SAR = 48000;
 
+// Transitions join clips pairwise, re-encoding the whole (growing) timeline at
+// each step. That is slow and memory-hungry on long timelines and is the most
+// common cause of stitch failures. Past either threshold we drop the transition
+// and fall back to a hard-cut concat (the fast, robust `-c copy` path).
+const TRANSITION_MAX_SEGMENTS = 12; // more than this many clips => hard cut
+const TRANSITION_MAX_TOTAL_SEC = 150; // longer total runtime => hard cut
+
 // ffmpeg xfade transition names keyed by our friendly names.
+// Only the simple crossfade is offered — the fancier wipes/slides/shapes were
+// removed to keep the transition set basic and reliable.
 const XFADE: Record<string, string> = {
   crossfade: "fade",
-  fadeblack: "fadeblack",
-  fadewhite: "fadewhite",
-  dissolve: "dissolve",
-  pixelize: "pixelize",
-  wipe: "wiperight",
-  wipeleft: "wipeleft",
-  wipeup: "wipeup",
-  wipedown: "wipedown",
-  slide: "slideleft",
-  slideright: "slideright",
-  slideup: "slideup",
-  slidedown: "slidedown",
-  circle: "circleopen",
-  circleclose: "circleclose",
-  radial: "radial",
-  zoomin: "zoomin",
 };
 
 function run(args: string[]): Promise<void> {
@@ -197,9 +193,31 @@ export async function stitchEditorTimeline(
     const xName = XFADE[transType];
     const joined = join(dir, "joined.mp4");
 
-    if (xName && parts.length >= 2) {
-      const durs: number[] = [];
+    // Decide whether transitions are safe for this timeline. A transition is
+    // requested when xName is set and there are >=2 clips to blend.
+    let useTransition = !!xName && parts.length >= 2;
+    let transitionsDisabled = false;
+
+    // Guard 1 (segment count): cheap, deterministic — no probing needed.
+    if (useTransition && parts.length > TRANSITION_MAX_SEGMENTS) {
+      useTransition = false;
+      transitionsDisabled = true;
+    }
+
+    // Probe durations only if we still intend to transition — needed for the
+    // xfade offsets and for the total-runtime guard below.
+    let durs: number[] = [];
+    if (useTransition) {
       for (const p of parts) durs.push(await probeDuration(p));
+      const totalSec = durs.reduce((a, b) => a + b, 0);
+      // Guard 2 (total runtime): very long timelines fall back to hard cuts.
+      if (totalSec > TRANSITION_MAX_TOTAL_SEC) {
+        useTransition = false;
+        transitionsDisabled = true;
+      }
+    }
+
+    if (useTransition) {
       const minDur = Math.min(...durs);
       const t = Math.max(0.1, Math.min(input.transition?.durationSec || 0.5, minDur - 0.05, 2));
       // Join two clips at a time instead of one N-input filter graph — a single
@@ -292,7 +310,7 @@ export async function stitchEditorTimeline(
       readFile(current),
       readFile(thumbPath),
     ]);
-    return { videoBuffer, thumbnailBuffer, durationSeconds, skipped };
+    return { videoBuffer, thumbnailBuffer, durationSeconds, skipped, transitionsDisabled };
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {});
   }

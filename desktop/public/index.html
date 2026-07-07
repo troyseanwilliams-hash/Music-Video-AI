@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Splicer — AI Beat Sync</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Splicer</h1>
+      <p class="sub">Splice clips &amp; photos, review the cut, then export an MP4.</p>
+    </header>
+
+    <!-- Tabs -->
+    <nav class="tabs">
+      <button class="tab active" id="tabSplicer" type="button" data-view="viewSplicer">🎬 Splicer</button>
+      <button class="tab" id="tabImages" type="button" data-view="viewImages">🖼️ Images</button>
+    </nav>
+
+    <!-- ================= SPLICER (editor) ================= -->
+    <div class="view" id="viewSplicer">
+      <!-- Top toolbar -->
+      <div class="toolbar">
+        <label class="btn primary">Add media
+          <input type="file" id="mediaInput" accept="video/*,image/*" multiple hidden />
+        </label>
+      </div>
+
+      <!-- Preview player + transport (this whole block goes fullscreen) -->
+      <div class="viewer" id="viewer">
+        <section class="stage" id="stage">
+          <div id="photoBg" class="photo-bg" hidden></div>
+          <img id="transPrev" class="trans-prev" alt="" hidden />
+          <video id="player" playsinline></video>
+          <img id="photoView" alt="" hidden />
+          <div class="stage-empty" id="stageEmpty">
+            <p></p>
+          </div>
+        </section>
+
+        <!-- Transport -->
+        <section class="transport" id="transport" hidden>
+          <button class="icon-btn" id="playBtn" title="Play / pause">▶</button>
+          <span class="time"><span id="curTime">0:00</span> / <span id="totTime">0:00</span></span>
+          <div class="scrub" id="scrub"><div class="scrub-fill" id="scrubFill"></div></div>
+          <button class="icon-btn ghost" id="saveImgBtn" title="Save current image to your library">💾</button>
+          <button class="icon-btn ghost" id="fsBtn" title="Full screen">⛶</button>
+        </section>
+      </div>
+
+      <!-- Horizontal timeline -->
+      <section class="tl-wrap" id="tlWrap" hidden>
+        <div class="tl-head">
+          <h2>Timeline</h2>
+          <label class="btn ghost small">+ Add media
+            <input type="file" id="mediaInput2" accept="video/*,image/*" multiple hidden />
+          </label>
+        </div>
+        <div class="tl-track" id="tlTrack">
+          <div class="tl-playhead" id="tlPlayhead"></div>
+        </div>
+        <p class="hint">Drag blocks to reorder · click to jump · set a photo's seconds in its box</p>
+      </section>
+
+      <!-- Transitions -->
+      <section class="music">
+        <h2>Transitions</h2>
+        <div class="music-controls">
+          <label>Between clips
+            <select id="transition">
+              <option value="none">None (hard cut)</option>
+              <option value="crossfade">Crossfade</option>
+            </select>
+          </label>
+          <label id="transDurWrap" hidden>Length
+            <input type="range" id="transitionDuration" min="0.2" max="2" step="0.1" value="0.5" />
+            <span id="transDurVal" class="muted">0.5s</span>
+          </label>
+        </div>
+        <p class="trans-warn" id="transWarn" hidden>
+          ⚠ With many clips, a transition re-encodes the whole timeline, so export can take
+          substantially longer. Choosing “None (hard cut)” exports almost instantly.
+        </p>
+      </section>
+
+      <!-- Music -->
+      <section class="music">
+        <h2>Music</h2>
+        <div class="music-row">
+          <label class="btn ghost">Choose track
+            <input type="file" id="musicInput" accept="audio/*" hidden />
+          </label>
+          <span id="musicName" class="muted">No track</span>
+        </div>
+        <div class="music-controls" id="musicControls" hidden>
+          <label>Mode
+            <select id="musicMode">
+              <option value="mix">Mix with clip audio</option>
+              <option value="replace">Replace clip audio</option>
+            </select>
+          </label>
+          <label>Volume <input type="range" id="musicVolume" min="0" max="1" step="0.05" value="0.6" /></label>
+        </div>
+      </section>
+
+      <!-- Export (renders, then downloads automatically) -->
+      <section class="actions">
+        <button class="btn primary" id="renderBtn" disabled>Export &amp; download MP4</button>
+        <div class="progress" id="progress" hidden>
+          <div class="bar"><div class="fill" id="progressFill"></div></div>
+          <span id="progressText">Rendering…</span>
+        </div>
+        <a id="downloadLink" hidden></a>
+        <p class="error" id="error" hidden></p>
+      </section>
+    </div>
+
+    <!-- ================= IMAGES (search + saved library) ================= -->
+    <div class="view" id="viewImages" hidden>
+      <!-- Search engine -->
+      <div class="dl-setting" id="searchSetting" hidden>
+        <span class="muted">Search engine:</span>
+        <select id="searchEngine">
+          <option value="wikimedia">Wikimedia Commons — free, no key</option>
+          <option value="google">Google — 100 searches/day free</option>
+        </select>
+        <span id="googleFields" hidden>
+          <input type="text" id="googleCx" placeholder="Search engine ID (cx)" />
+          <input type="password" id="googleKey" placeholder="API key" />
+          <button class="btn ghost small" id="googleSaveBtn" type="button">Save</button>
+          <a href="https://programmablesearchengine.google.com/controlpanel/create" target="_blank" rel="noopener" class="muted">how to get these</a>
+        </span>
+      </div>
+
+      <!-- Download location (desktop only) -->
+      <div class="dl-setting" id="dlSetting" hidden>
+        <span class="muted">Save downloaded images to:</span>
+        <strong id="dlFolderLabel">Ask every time</strong>
+        <button class="btn ghost small" id="dlChooseBtn" type="button">Choose folder…</button>
+        <button class="btn ghost small" id="dlAskBtn" type="button" hidden>Ask every time</button>
+      </div>
+
+      <!-- Web image search -->
+      <section class="imgsearch" id="imgSearch">
+        <div class="imgsearch-bar">
+          <input type="search" id="imgQuery" placeholder="Search for images — e.g. “sunset over mountains”" />
+          <button class="btn primary" id="imgSearchBtn" type="button">Search</button>
+        </div>
+        <p class="imgsearch-note muted">
+          Creative-Commons &amp; public-domain images from Wikimedia Commons. Check each image’s license before commercial use.
+        </p>
+        <div class="imgsearch-bar imgsearch-url">
+          <input type="url" id="imgUrl" placeholder="…or paste a web page URL to pull all its images" />
+          <button class="btn" id="imgGrabBtn" type="button">Grab images</button>
+        </div>
+        <div class="imgsearch-bar imgsearch-url">
+          <input type="url" id="imgOneUrl" placeholder="…or paste one image’s address (right-click a full image → Copy Image Address)" />
+          <button class="btn" id="imgOneBtn" type="button">Add image</button>
+        </div>
+        <p class="imgsearch-note muted">
+          Grabbing pulls images straight from another site — you’re responsible for having the right to use them.
+          Some sites only load full images after a click; for those, open the image in your browser and paste its address above.
+        </p>
+        <div class="imgsearch-status muted" id="imgStatus" hidden></div>
+        <div class="imgsearch-toolbar" id="imgResultsBar" hidden>
+          <div class="imgsearch-selbtns">
+            <button class="btn ghost small" id="imgSelectAll" type="button">Select all</button>
+            <button class="btn ghost small" id="imgClear" type="button">Clear all</button>
+          </div>
+          <div class="imgsearch-pager" id="imgPager">
+            <button class="btn ghost small" id="imgPrev" type="button" disabled>‹ Prev</button>
+            <span id="imgPageInfo" class="muted">Page 1</span>
+            <button class="btn ghost small" id="imgNext" type="button" disabled>Next ›</button>
+          </div>
+        </div>
+        <div class="imgsearch-grid" id="imgGrid" hidden></div>
+        <div class="imgsearch-actions" id="imgActions" hidden>
+          <label class="imgsearch-dur">Seconds each
+            <input type="number" id="imgDur" min="0.5" step="0.5" value="3" />
+          </label>
+          <button class="btn primary" id="imgDownloadAllBtn" type="button">⬇ Download all to computer</button>
+          <button class="btn" id="imgAddAllBtn" type="button">＋ Add all to slideshow</button>
+          <span class="imgsearch-sep muted">·</span>
+          <span id="imgSelCount" class="muted">0 selected</span>
+          <button class="btn ghost small" id="imgAddBtn" type="button" disabled>Add selected</button>
+          <button class="btn ghost small" id="imgDownloadBtn" type="button" disabled>Save selected</button>
+          <button class="btn ghost small" id="imgSaveBtn" type="button" disabled>To library</button>
+        </div>
+      </section>
+
+      <!-- Saved library -->
+      <section class="library" id="library">
+        <div class="library-head">
+          <h2>Saved images</h2>
+          <span id="libCount" class="muted"></span>
+        </div>
+        <p class="library-empty muted" id="libEmpty">
+          No saved images yet. Search above and “Save to library” to build a collection you can reuse in any video.
+        </p>
+        <div class="imgsearch-grid" id="libGrid" hidden></div>
+        <div class="imgsearch-actions" id="libActions" hidden>
+          <span id="libSelCount" class="muted">0 selected</span>
+          <label class="imgsearch-dur">Seconds each
+            <input type="number" id="libDur" min="0.5" step="0.5" value="3" />
+          </label>
+          <button class="btn ghost" id="libRemoveBtn" type="button" disabled>Remove</button>
+          <button class="btn" id="libDownloadBtn" type="button" disabled>Save to disk</button>
+          <button class="btn primary" id="libAddBtn" type="button" disabled>Add to video</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- Image preview lightbox (full-screen capable) -->
+  <div class="lightbox" id="imgLightbox" hidden>
+    <button class="lb-close" id="lbClose" type="button" title="Close (Esc)">✕</button>
+    <button class="lb-nav lb-prev" id="lbPrev" type="button" title="Previous (←)">‹</button>
+    <div class="lb-stage"><img class="lb-img" id="lbImg" alt="" /></div>
+    <button class="lb-nav lb-next" id="lbNext" type="button" title="Next (→)">›</button>
+    <div class="lb-bar">
+      <span class="lb-cap" id="lbCap"></span>
+      <span class="lb-actions">
+        <button class="btn small primary" id="lbSelect" type="button">Select</button>
+        <button class="btn ghost small" id="lbDownload" type="button">⤓ Download</button>
+        <button class="btn ghost small" id="lbFull" type="button">⛶ Full screen</button>
+      </span>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -26,6 +26,8 @@ const RenderSchema = z.object({
     .optional(),
   transition: z
     .object({
+      // Only None (hard cut) and Crossfade are supported. Older values still
+      // validate as a fallback but are treated as a hard cut on render.
       type: z.enum([
         "none", "crossfade", "fadeblack", "fadewhite", "dissolve", "pixelize",
         "wipe", "wipeleft", "wipeup", "wipedown",

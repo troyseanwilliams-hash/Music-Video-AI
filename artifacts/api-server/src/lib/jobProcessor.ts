@@ -434,10 +434,25 @@ async function processEditorJob(job: JobRow): Promise<void> {
     // job-status page can compute a files-based remaining-time estimate. Updates
     // are fire-and-forget (best-effort) and only when the integer percent rises.
     let lastEditorPct = 22;
+    // If a previous attempt already failed, drop the transition on retry.
+    // Transitions are the most fragile part of the render (extra re-encode
+    // passes), so falling back to a hard cut maximizes the odds the retry
+    // succeeds. The length-based guard in the stitcher still applies too.
+    const isRetry = (job.retryCount ?? 0) > 0;
+    const effectiveTransition =
+      isRetry && manifest.transition && manifest.transition.type !== "none"
+        ? undefined
+        : manifest.transition;
+    if (isRetry && effectiveTransition === undefined && manifest.transition) {
+      logger.info(
+        { jobId: job.id, retryCount: job.retryCount },
+        "Retry after failure — dropping transition, rendering with hard cuts",
+      );
+    }
     const result = await stitchEditorTimeline({
       segments,
       music,
-      transition: manifest.transition,
+      transition: effectiveTransition,
       width,
       height,
       watermark: manifest.watermark === true,
@@ -449,6 +464,12 @@ async function processEditorJob(job: JobRow): Promise<void> {
         }
       },
     });
+    if (result.transitionsDisabled) {
+      logger.info(
+        { jobId: job.id, segments: segments.length },
+        "Transitions disabled for long timeline — used hard-cut concat",
+      );
+    }
 
     await updateJobStatus(job.id, { progressPercent: 88 });
 
