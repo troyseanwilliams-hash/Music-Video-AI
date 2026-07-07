@@ -4,7 +4,7 @@ import { Client } from "pg";
 import { db } from "@workspace/db";
 import { jobsTable, creditsTable, usersTable, videosTable } from "@workspace/db";
 import type { VideoClipMeta } from "@workspace/db";
-import { eq, and, desc, count } from "drizzle-orm";
+import { eq, and, desc, count, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import {
@@ -444,6 +444,17 @@ router.get("/jobs/:id/video-url", async (req, res) => {
     return;
   }
 
+  // Deny playback if the video has been soft-deleted.
+  const [vid] = await db
+    .select({ deletedAt: videosTable.deletedAt })
+    .from(videosTable)
+    .where(eq(videosTable.id, job.videoId))
+    .limit(1);
+  if (!vid || vid.deletedAt) {
+    res.status(404).json({ error: "Video not found" });
+    return;
+  }
+
   const storageService = new ObjectStorageService();
   const url = await storageService.getVideoSignedUrl(job.videoId);
   res.json({ url });
@@ -535,7 +546,11 @@ router.post("/jobs/:id/remix", async (req, res) => {
   const [video] = await db
     .select()
     .from(videosTable)
-    .where(and(eq(videosTable.id, job.videoId), eq(videosTable.userId, req.user.id)))
+    .where(and(
+      eq(videosTable.id, job.videoId),
+      eq(videosTable.userId, req.user.id),
+      isNull(videosTable.deletedAt),
+    ))
     .limit(1);
 
   const clips = (video?.clips as unknown as VideoClipMeta[] | null) ?? [];

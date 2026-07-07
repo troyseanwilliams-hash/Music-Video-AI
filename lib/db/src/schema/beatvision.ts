@@ -103,6 +103,10 @@ export const videosTable = pgTable("videos", {
   // Public gallery: opt-in visibility + denormalized like count for fast sorting.
   isPublic: boolean("is_public").notNull().default(false),
   likeCount: integer("like_count").notNull().default(0),
+  // Soft delete: when set, the user has deleted this video. It's hidden from all
+  // user-facing views but remains visible to admins until permanently purged
+  // (manually by an admin, or automatically after the retention window).
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

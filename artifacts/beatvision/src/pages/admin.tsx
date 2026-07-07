@@ -11,7 +11,7 @@ import {
   Loader2, Search, ShieldCheck, Coins, Check, X,
   MessageSquare, Users, ChevronDown, ChevronUp,
   CircleDot, Clock, CheckCircle2, XCircle, RotateCcw, AlertTriangle, RefreshCw,
-  Film, Ban,
+  Film, Ban, Trash2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -438,7 +438,18 @@ interface FailedJob extends PendingJob {
 }
 
 /* ─── Main admin page ─── */
-type Tab = "users" | "support" | "jobs";
+type Tab = "users" | "support" | "jobs" | "deleted";
+
+interface DeletedVideo {
+  id: string;
+  userId: string;
+  email: string | null;
+  title: string | null;
+  durationSeconds: number | null;
+  isPublic: boolean;
+  createdAt: string;
+  deletedAt: string | null;
+}
 
 export default function AdminPage() {
   const [, setLocation] = useLocation();
@@ -524,6 +535,36 @@ export default function AdminPage() {
     onSuccess: () => {
       toast({ title: "Job requeued", description: "Job has been reset and will process shortly." });
       refetchFailedJobs();
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const {
+    data: deletedVideosData,
+    isLoading: deletedLoading,
+    refetch: refetchDeleted,
+  } = useQuery<{ videos: DeletedVideo[] }>({
+    queryKey: ["admin", "deleted-videos"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/deleted-videos", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load deleted videos");
+      return res.json();
+    },
+    enabled: isAdmin && tab === "deleted",
+    staleTime: 15_000,
+  });
+
+  const purgeMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/admin/videos/${id}/purge`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to permanently delete");
+    },
+    onSuccess: () => {
+      toast({ title: "Permanently deleted", description: "The video and its files were removed." });
+      refetchDeleted();
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -620,6 +661,17 @@ export default function AdminPage() {
               {pendingJobsData.jobs.length}
             </span>
           )}
+        </button>
+        <button
+          onClick={() => setTab("deleted")}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            tab === "deleted"
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Trash2 className="h-4 w-4" />
+          Deleted Files
         </button>
       </div>
 
@@ -850,6 +902,66 @@ export default function AdminPage() {
             )}
           </div>
         </div>
+      )}
+
+      {/* ── Deleted files tab ── */}
+      {tab === "deleted" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Deleted Files</CardTitle>
+            <CardDescription>
+              Videos users have deleted. They're hidden from users but stay on the site until purged
+              (automatically after 30 days, or manually here). Permanent deletion removes the database
+              record and the underlying files — this cannot be undone.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {deletedLoading ? (
+              <div className="flex items-center justify-center py-10">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            ) : !deletedVideosData || deletedVideosData.videos.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-6 text-center">No deleted files.</p>
+            ) : (
+              <div className="space-y-2">
+                {deletedVideosData.videos.map((v) => (
+                  <div
+                    key={v.id}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-border/50 px-3 py-2.5"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Film className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <span className="text-sm font-medium truncate">{v.title || "Untitled video"}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5 truncate">
+                        {v.email || v.userId}
+                        {v.deletedAt ? ` · deleted ${new Date(v.deletedAt).toLocaleDateString()}` : ""}
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={purgeMutation.isPending}
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            `Permanently delete "${v.title || "this video"}" and its files? This cannot be undone.`,
+                          )
+                        ) {
+                          purgeMutation.mutate(v.id);
+                        }
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 mr-1" />
+                      Delete forever
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* ── Support tab ── */}

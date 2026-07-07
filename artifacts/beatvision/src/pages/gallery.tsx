@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
-import { useListVideos, useDeleteVideo, getListVideosQueryKey } from "@workspace/api-client-react";
+import { useListVideos, useDeleteVideo, getListVideosQueryKey, getGetDashboardStatsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Loader2, Trash2, Play, Film, Download, Scissors, Globe } from "lucide-react";
@@ -111,7 +111,10 @@ export default function Gallery() {
   const deleteVideo = useDeleteVideo({
     mutation: {
       onSuccess: () => {
+        // Refresh the library list AND the dashboard (its video count and
+        // recent-generations list must drop the deleted video too).
         queryClient.invalidateQueries({ queryKey: getListVideosQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetDashboardStatsQueryKey() });
       }
     }
   });

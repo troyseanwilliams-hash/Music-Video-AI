@@ -1,5 +1,6 @@
 import http from "http";
 import { startJobProcessor } from "./lib/jobProcessor.js";
+import { startDeletedVideoPurgeSweep } from "./lib/purgeSweep.js";
 import { logger } from "./lib/logger.js";
 
 const port = Number(process.env.PORT ?? 9000);
@@ -21,6 +22,9 @@ server.listen(port, () => {
     logger.error({ err }, "Job processor failed to start — exiting");
     process.exit(1);
   });
+
+  // Periodically purge soft-deleted videos past the retention window.
+  startDeletedVideoPurgeSweep();
 });
 
 process.on("SIGTERM", () => {

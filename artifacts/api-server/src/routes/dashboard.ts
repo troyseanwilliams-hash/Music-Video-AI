@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { jobsTable, videosTable, creditsTable } from "@workspace/db";
-import { eq, count, desc } from "drizzle-orm";
+import { eq, count, desc, and, isNull, isNotNull, notInArray } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 const router = Router();
@@ -14,12 +14,27 @@ router.get("/dashboard/stats", async (req, res) => {
 
   const userId = req.user.id;
 
+  // Jobs whose resulting video the user has soft-deleted — hidden from the
+  // dashboard's recent-generations list so deleted videos don't linger there.
+  const deletedVideoRows = await db
+    .select({ jobId: videosTable.jobId })
+    .from(videosTable)
+    .where(and(eq(videosTable.userId, userId), isNotNull(videosTable.deletedAt)));
+  const deletedJobIds = deletedVideoRows
+    .map((r) => r.jobId)
+    .filter((x): x is string => !!x);
+
+  const recentJobsWhere =
+    deletedJobIds.length > 0
+      ? and(eq(jobsTable.userId, userId), notInArray(jobsTable.id, deletedJobIds))
+      : eq(jobsTable.userId, userId);
+
   const [allJobs, totalVideosResult, credits, recentJobs] = await Promise.all([
     db.select().from(jobsTable).where(eq(jobsTable.userId, userId)),
     db
       .select({ count: count() })
       .from(videosTable)
-      .where(eq(videosTable.userId, userId)),
+      .where(and(eq(videosTable.userId, userId), isNull(videosTable.deletedAt))),
     db
       .select()
       .from(creditsTable)
@@ -28,7 +43,7 @@ router.get("/dashboard/stats", async (req, res) => {
     db
       .select()
       .from(jobsTable)
-      .where(eq(jobsTable.userId, userId))
+      .where(recentJobsWhere)
       .orderBy(desc(jobsTable.createdAt))
       .limit(5),
   ]);

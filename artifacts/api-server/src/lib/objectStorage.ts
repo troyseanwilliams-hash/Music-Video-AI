@@ -171,6 +171,40 @@ export class ObjectStorageService {
     return objectFile;
   }
 
+  // Permanently delete an object by its /objects/... path. Best-effort:
+  // silently ignores blank paths and objects that no longer exist.
+  async deleteObject(objectPath: string | null | undefined): Promise<void> {
+    if (!objectPath || !objectPath.startsWith("/objects/")) return;
+    const parts = objectPath.slice(1).split("/");
+    if (parts.length < 2) return;
+    const entityId = parts.slice(1).join("/");
+    let entityDir = this.getPrivateObjectDir();
+    if (!entityDir.endsWith("/")) entityDir = `${entityDir}/`;
+    const objectEntityPath = `${entityDir}${entityId}`;
+    const { bucketName, objectName } = parseObjectPath(objectEntityPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    await bucket.file(objectName).delete({ ignoreNotFound: true });
+  }
+
+  // Delete every stored asset for a video: the MP4, its thumbnail, and any
+  // per-clip files. Each delete is independent and best-effort.
+  async deleteVideoAssets(video: {
+    videoObjectPath?: string | null;
+    thumbnailObjectPath?: string | null;
+    clips?: unknown;
+  }): Promise<void> {
+    const paths: string[] = [];
+    if (video.videoObjectPath) paths.push(video.videoObjectPath);
+    if (video.thumbnailObjectPath) paths.push(video.thumbnailObjectPath);
+    if (Array.isArray(video.clips)) {
+      for (const c of video.clips) {
+        const p = c && typeof c === "object" ? (c as { objectPath?: unknown }).objectPath : null;
+        if (typeof p === "string") paths.push(p);
+      }
+    }
+    await Promise.all(paths.map((p) => this.deleteObject(p).catch(() => {})));
+  }
+
   async getVideoSignedUrl(videoId: string, ttlSec: number = 3600): Promise<string> {
     const privateObjectDir = this.getPrivateObjectDir();
     const objectEntityPath = `${privateObjectDir}/videos/${videoId}.mp4`;

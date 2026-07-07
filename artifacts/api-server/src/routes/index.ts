@@ -10,6 +10,7 @@ import billingRouter from "./billing.js";
 import sunoRouter from "./suno.js";
 import supportRouter from "./support.js";
 import adminJobsRouter from "./admin-jobs.js";
+import adminVideosRouter from "./admin-videos.js";
 import audioRouter from "./audio.js";
 import studioRouter from "./studio.js";
 
@@ -27,6 +28,7 @@ router.use(billingRouter);
 router.use(sunoRouter);
 router.use(supportRouter);
 router.use(adminJobsRouter);
+router.use(adminVideosRouter);
 router.use(studioRouter);
 
 export default router;

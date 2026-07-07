@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { videosTable, videoLikesTable, usersTable } from "@workspace/db";
-import { eq, and, desc, count, sql, inArray } from "drizzle-orm";
+import { eq, and, desc, count, sql, inArray, isNull } from "drizzle-orm";
 import {
   ListVideosQueryParams,
   GetVideoParams,
@@ -29,18 +29,20 @@ router.get("/videos", async (req, res) => {
   const limit = parseResult.success ? (parseResult.data.limit ?? 20) : 20;
   const offset = (page - 1) * limit;
 
+  // Exclude soft-deleted videos from the user's library.
+  const notDeleted = and(eq(videosTable.userId, req.user.id), isNull(videosTable.deletedAt));
   const [videos, totalResult] = await Promise.all([
     db
       .select()
       .from(videosTable)
-      .where(eq(videosTable.userId, req.user.id))
+      .where(notDeleted)
       .orderBy(desc(videosTable.createdAt))
       .limit(limit)
       .offset(offset),
     db
       .select({ count: count() })
       .from(videosTable)
-      .where(eq(videosTable.userId, req.user.id)),
+      .where(notDeleted),
   ]);
 
   res.json({
@@ -70,6 +72,7 @@ router.get("/videos/:id", async (req, res) => {
       and(
         eq(videosTable.id, parseResult.data.id),
         eq(videosTable.userId, req.user.id),
+        isNull(videosTable.deletedAt),
       ),
     )
     .limit(1);
@@ -110,7 +113,13 @@ router.delete("/videos/:id", async (req, res) => {
     return;
   }
 
-  await db.delete(videosTable).where(eq(videosTable.id, parseResult.data.id));
+  // Soft delete: mark as deleted rather than removing the row. It disappears
+  // from every user-facing view immediately, but admins can still see it and
+  // the files stay in storage until permanently purged (manual or auto-purge).
+  await db
+    .update(videosTable)
+    .set({ deletedAt: new Date(), isPublic: false })
+    .where(eq(videosTable.id, parseResult.data.id));
 
   res.json({ success: true });
 });
@@ -136,14 +145,14 @@ router.get("/gallery", async (req, res) => {
       })
       .from(videosTable)
       .leftJoin(usersTable, eq(usersTable.id, videosTable.userId))
-      .where(eq(videosTable.isPublic, true))
+      .where(and(eq(videosTable.isPublic, true), isNull(videosTable.deletedAt)))
       .orderBy(desc(videosTable.likeCount), desc(videosTable.createdAt))
       .limit(limit)
       .offset(offset),
     db
       .select({ count: count() })
       .from(videosTable)
-      .where(eq(videosTable.isPublic, true)),
+      .where(and(eq(videosTable.isPublic, true), isNull(videosTable.deletedAt))),
   ]);
 
   // Mark which of these the requester has already liked (if logged in).
