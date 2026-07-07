@@ -155,7 +155,7 @@ export async function stitchEditorTimeline(
             "-vf", vf,
             "-map", "0:v:0", "-map", "1:a:0",
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
-            "-refs", "1", "-bf", "0",
+            "-refs", "1", "-bf", "0", "-threads", "2",
             "-pix_fmt", "yuv420p", "-r", String(FPS),
             "-c:a", "aac", "-ar", String(SAR), "-ac", "2",
             "-video_track_timescale", "30000",
@@ -171,7 +171,7 @@ export async function stitchEditorTimeline(
             "-vf", vf,
             "-map", "0:v:0", "-map", audio ? "0:a:0" : "1:a:0",
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
-            "-refs", "1", "-bf", "0",
+            "-refs", "1", "-bf", "0", "-threads", "2",
             "-pix_fmt", "yuv420p", "-r", String(FPS),
             "-c:a", "aac", "-ar", String(SAR), "-ac", "2",
             "-shortest", "-video_track_timescale", "30000",
@@ -202,27 +202,33 @@ export async function stitchEditorTimeline(
       for (const p of parts) durs.push(await probeDuration(p));
       const minDur = Math.min(...durs);
       const t = Math.max(0.1, Math.min(input.transition?.durationSec || 0.5, minDur - 0.05, 2));
-      const filters: string[] = [];
-      let prevV = "0:v", prevA = "0:a", cum = durs[0]!;
+      // Join two clips at a time instead of one N-input filter graph — a single
+      // graph buffers frames from every input at once and gets OOM-killed on
+      // long timelines in production. Pairwise keeps peak memory flat.
+      let acc = parts[0]!;
+      let accDur = durs[0]!;
       for (let k = 1; k < parts.length; k++) {
-        const offset = Math.max(0, cum - t).toFixed(3);
-        filters.push(`[${prevV}][${k}:v]xfade=transition=${xName}:duration=${t}:offset=${offset}[v${k}]`);
-        filters.push(`[${prevA}][${k}:a]acrossfade=d=${t}[a${k}]`);
-        prevV = `v${k}`; prevA = `a${k}`;
-        cum = cum + durs[k]! - t;
+        const step = join(dir, `join_${String(k).padStart(4, "0")}.mp4`);
+        const offset = Math.max(0, accDur - t).toFixed(3);
+        await run([
+          "-y", "-i", acc, "-i", parts[k]!,
+          "-filter_complex",
+          `[0:v][1:v]xfade=transition=${xName}:duration=${t}:offset=${offset}[v];` +
+            `[0:a][1:a]acrossfade=d=${t}[a]`,
+          "-map", "[v]", "-map", "[a]",
+          "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
+          "-refs", "1", "-bf", "0", "-threads", "2",
+          "-pix_fmt", "yuv420p", "-r", String(FPS),
+          "-c:a", "aac", "-ar", String(SAR), "-ac", "2",
+          // Keep the same track timescale as the normalized segments — xfade
+          // refuses inputs whose video timebases differ.
+          "-video_track_timescale", "30000",
+          step,
+        ]);
+        acc = step;
+        accDur = accDur + durs[k]! - t;
       }
-      const args = ["-y"];
-      for (const p of parts) args.push("-i", p);
-      args.push(
-        "-filter_complex", filters.join(";"),
-        "-map", `[${prevV}]`, "-map", `[${prevA}]`,
-        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
-        "-refs", "1", "-bf", "0",
-        "-pix_fmt", "yuv420p", "-r", String(FPS),
-        "-c:a", "aac", "-ar", String(SAR), "-ac", "2",
-        joined,
-      );
-      await run(args);
+      await run(["-y", "-i", acc, "-c", "copy", joined]);
     } else {
       const listFile = join(dir, "list.txt");
       await writeFile(listFile, parts.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join("\n"));
@@ -261,7 +267,7 @@ export async function stitchEditorTimeline(
         `box=1:boxcolor=black@0.35:boxborderw=8:x=w-text_w-24:y=h-text_h-24`;
       await run([
         "-y", "-i", current, "-vf", draw,
-        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-refs", "1", "-bf", "0", "-pix_fmt", "yuv420p",
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-refs", "1", "-bf", "0", "-threads", "2", "-pix_fmt", "yuv420p",
         "-c:a", "copy", "-movflags", "+faststart", wm,
       ]);
       current = wm;
