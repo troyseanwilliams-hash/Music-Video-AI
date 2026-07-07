@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { useLocation, Link } from "wouter";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useGetDashboardStats, getGetDashboardStatsQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus, Film, CheckCircle2, Clock, AlertCircle, Crown, Play, Coins } from "lucide-react";
+import { Loader2, Plus, Film, CheckCircle2, Clock, AlertCircle, Crown, Play, Coins, Trash2 } from "lucide-react";
 
 function daysUntil(dateStr: string | null | undefined): number {
   if (!dateStr) return 0;
@@ -40,6 +41,24 @@ export default function Dashboard() {
   const [, setLocation] = useLocation();
   const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const [watchingJobId, setWatchingJobId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  // Delete a video straight from the dashboard. Soft-deletes it (removed from
+  // the dashboard, library and gallery); refresh stats so it disappears here.
+  async function handleDelete(videoId: string) {
+    if (!window.confirm("Delete this video? It will be removed from your dashboard and library.")) return;
+    setDeletingId(videoId);
+    try {
+      const r = await fetch(`/api/videos/${videoId}`, { method: "DELETE", credentials: "include" });
+      if (!r.ok) throw new Error("delete failed");
+      await queryClient.invalidateQueries({ queryKey: getGetDashboardStatsQueryKey() });
+    } catch {
+      // silently ignore
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   async function handleWatch(jobId: string) {
     setWatchingJobId(jobId);
@@ -191,6 +210,7 @@ export default function Dashboard() {
                 <div className="divide-y divide-border/50">
                   {stats.recentJobs.map((job) => {
                     const cost = estimateCreditCost((job as { requestedDuration?: string | null }).requestedDuration);
+                    const videoId = (job as { videoId?: string | null }).videoId ?? null;
                     const isReady = job.status === 'ready';
                     const isFailed = job.status === 'failed';
                     const isProcessing = !isReady && !isFailed;
@@ -218,6 +238,20 @@ export default function Dashboard() {
                                 : <Play className="h-3 w-3 mr-1" />}
                               Watch
                             </Button>
+                            {videoId && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                                title="Delete video"
+                                disabled={deletingId === videoId}
+                                onClick={(e) => { e.preventDefault(); handleDelete(videoId); }}
+                              >
+                                {deletingId === videoId
+                                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  : <Trash2 className="h-3.5 w-3.5" />}
+                              </Button>
+                            )}
                           </>
                         ) : isFailed ? (
                           <span className="flex items-center gap-1.5 text-sm text-destructive">
