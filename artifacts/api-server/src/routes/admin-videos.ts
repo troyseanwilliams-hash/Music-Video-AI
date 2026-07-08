@@ -45,6 +45,36 @@ router.get("/admin/deleted-videos", async (req, res) => {
   res.json({ videos: rows });
 });
 
+// ── Signed URL to preview a (usually deleted) video in the admin panel. Works
+// for any user's video, unlike the owner-scoped /jobs/:id/video-url. Admin only.
+router.get("/admin/videos/:id/preview-url", async (req, res) => {
+  if (!req.isAuthenticated() || !isAdmin(req.user.email)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const id = String(req.params.id || "");
+  const [video] = await db
+    .select()
+    .from(videosTable)
+    .where(eq(videosTable.id, id))
+    .limit(1);
+
+  if (!video || !video.videoObjectPath) {
+    res.status(404).json({ error: "Video not found" });
+    return;
+  }
+
+  try {
+    const storageService = new ObjectStorageService();
+    const url = await storageService.getObjectEntitySignedUrl(video.videoObjectPath, 3600);
+    res.json({ url });
+  } catch {
+    // The DB row exists but the underlying file is already gone from storage.
+    res.status(410).json({ error: "Video file is no longer available." });
+  }
+});
+
 // ── Permanently delete a video: remove its stored files (MP4, thumbnail, clips)
 // AND its database row. Irreversible. Admin only.
 router.post("/admin/videos/:id/purge", async (req, res) => {

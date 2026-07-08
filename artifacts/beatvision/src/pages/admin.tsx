@@ -11,7 +11,7 @@ import {
   Loader2, Search, ShieldCheck, Coins, Check, X,
   MessageSquare, Users, ChevronDown, ChevronUp,
   CircleDot, Clock, CheckCircle2, XCircle, RotateCcw, AlertTriangle, RefreshCw,
-  Film, Ban, Trash2,
+  Film, Ban, Trash2, Play,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -569,6 +569,23 @@ export default function AdminPage() {
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
+
+  async function previewDeletedVideo(id: string) {
+    setPreviewLoadingId(id);
+    try {
+      const res = await fetch(`/api/admin/videos/${id}/preview-url`, { credentials: "include" });
+      if (!res.ok) throw new Error();
+      const { url } = (await res.json()) as { url: string };
+      setPreviewUrl(url);
+    } catch {
+      toast({ title: "Preview unavailable", description: "The video file may already be gone.", variant: "destructive" });
+    } finally {
+      setPreviewLoadingId(null);
+    }
+  }
+
   const { data: ticketsData, isLoading: ticketsLoading, refetch: refetchTickets } = useQuery<{ tickets: AdminTicket[] }>({
     queryKey: ["admin", "support", ticketStatus, ticketSearch],
     queryFn: async () => {
@@ -906,6 +923,7 @@ export default function AdminPage() {
 
       {/* ── Deleted files tab ── */}
       {tab === "deleted" && (
+        <>
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Deleted Files</CardTitle>
@@ -939,29 +957,64 @@ export default function AdminPage() {
                         {v.deletedAt ? ` · deleted ${new Date(v.deletedAt).toLocaleDateString()}` : ""}
                       </div>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      disabled={purgeMutation.isPending}
-                      onClick={() => {
-                        if (
-                          window.confirm(
-                            `Permanently delete "${v.title || "this video"}" and its files? This cannot be undone.`,
-                          )
-                        ) {
-                          purgeMutation.mutate(v.id);
-                        }
-                      }}
-                    >
-                      <Trash2 className="h-3.5 w-3.5 mr-1" />
-                      Delete forever
-                    </Button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={previewLoadingId === v.id}
+                        onClick={() => previewDeletedVideo(v.id)}
+                      >
+                        {previewLoadingId === v.id ? (
+                          <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                        ) : (
+                          <Play className="h-3.5 w-3.5 mr-1" />
+                        )}
+                        Preview
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        disabled={purgeMutation.isPending}
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              `Permanently delete "${v.title || "this video"}" and its files? This cannot be undone.`,
+                            )
+                          ) {
+                            purgeMutation.mutate(v.id);
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5 mr-1" />
+                        Delete forever
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
             )}
           </CardContent>
         </Card>
+        {previewUrl && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+            onClick={() => setPreviewUrl(null)}
+          >
+            <div className="relative w-full max-w-3xl" onClick={(e) => e.stopPropagation()}>
+              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+              <video src={previewUrl} controls autoPlay className="w-full rounded-lg shadow-xl bg-black" />
+              <Button
+                size="sm"
+                variant="secondary"
+                className="absolute -top-3 -right-3 h-8 w-8 p-0 rounded-full"
+                onClick={() => setPreviewUrl(null)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
+        </>
       )}
 
       {/* ── Support tab ── */}
