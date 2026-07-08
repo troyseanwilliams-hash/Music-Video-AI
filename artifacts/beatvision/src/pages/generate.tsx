@@ -301,22 +301,23 @@ export default function Generate() {
 
   if (!canCreate) {
     return (
-      <div className="min-h-[70vh] flex items-center justify-center px-4">
-        <div className="max-w-md w-full text-center space-y-6">
+      <div className="min-h-[70vh] flex items-center justify-center px-4 relative overflow-hidden">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/10 rounded-full blur-[120px] pointer-events-none" />
+        <div className="max-w-md w-full text-center space-y-6 relative z-10">
           <div className="flex justify-center">
-            <div className="h-20 w-20 rounded-full bg-primary/10 flex items-center justify-center">
-              <Lock className="h-10 w-10 text-primary" />
+            <div className="h-20 w-20 rounded-2xl bg-gradient-electric shadow-glow flex items-center justify-center">
+              <Lock className="h-10 w-10 text-white" />
             </div>
           </div>
           <div>
-            <h2 className="text-3xl font-bold tracking-tight mb-3">
-              Subscription Required
+            <h2 className="text-3xl font-extrabold tracking-tight mb-3">
+              Unlock <span className="text-gradient-electric">AI video generation</span>
             </h2>
             <p className="text-muted-foreground text-lg">
-              You need an active subscription to create videos.
+              An active subscription lets you turn any track into a beat-synced music video.
             </p>
           </div>
-          <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-left space-y-3">
+          <div className="rounded-2xl border border-primary/20 bg-card/60 backdrop-blur p-6 text-left space-y-3">
             <div className="flex items-center gap-3 text-sm">
               <Crown className="h-4 w-4 text-primary shrink-0" />
               <span>Unlimited AI music video generations</span>
@@ -333,7 +334,7 @@ export default function Generate() {
           <Link href="/pricing" className="w-full">
             <Button
               size="lg"
-              className="w-full bg-gradient-electric text-white shadow-glow text-base"
+              className="w-full bg-gradient-electric text-white shadow-glow text-base hover:opacity-90 transition-opacity"
             >
               <Crown className="mr-2 h-5 w-5" />
               View Plans
@@ -469,9 +470,15 @@ export default function Generate() {
         className="space-y-6 sm:space-y-8"
       >
         <div>
-          <h1 className="text-2xl sm:text-4xl font-bold tracking-tight mb-2">Create New Video</h1>
-          <p className="text-sm sm:text-base text-muted-foreground">
-            Upload a track, our AI analyses the beats, and generates a synced music video.
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary mb-3">
+            <Sparkles className="h-3.5 w-3.5" />
+            AI Generator
+          </div>
+          <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight mb-2">
+            Create a <span className="text-gradient-electric">new video</span>
+          </h1>
+          <p className="text-sm sm:text-base text-muted-foreground max-w-xl">
+            Drop in a track — our AI reads its beat, energy, and mood, then generates a cinematic, beat-synced music video.
           </p>
         </div>
 

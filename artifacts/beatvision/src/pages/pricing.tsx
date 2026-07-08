@@ -196,8 +196,12 @@ export default function Pricing() {
       </div>
 
       <div className="text-center mb-12">
-        <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">
-          Choose your plan
+        <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary mb-4">
+          <Zap className="h-3.5 w-3.5" />
+          Simple, credit-based pricing
+        </div>
+        <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight mb-4">
+          Choose your <span className="text-gradient-electric">plan</span>
         </h1>
         <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
           Credits are consumed per video generated. A 5-second clip costs{" "}
@@ -278,10 +282,10 @@ export default function Pricing() {
           return (
             <Card
               key={plan.id}
-              className={`relative bg-card/50 border ${
+              className={`relative bg-card/50 border transition-all duration-300 hover:-translate-y-1 ${
                 plan.popular
-                  ? "border-primary/60 shadow-glow"
-                  : "border-card-border"
+                  ? "border-primary/60 shadow-glow md:scale-[1.03]"
+                  : "border-card-border hover:border-primary/40 hover:shadow-glow"
               }`}
               data-testid={`card-plan-${plan.name.toLowerCase()}`}
             >
@@ -335,7 +339,7 @@ export default function Pricing() {
                   </li>
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                    <span>Video editor — arrange clips, photos &amp; music with transitions</span>
+                    <span>Remix Lab — arrange clips, photos &amp; music with transitions</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
