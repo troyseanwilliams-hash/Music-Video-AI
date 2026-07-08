@@ -60,7 +60,7 @@ export function Navbar() {
                     href="/editor"
                     className={`text-sm font-medium transition-colors hover:text-primary ${location === '/editor' ? 'text-foreground' : 'text-muted-foreground'}`}
                   >
-                    Editor
+                    Remix Lab
                   </Link>
                   <Link
                     href="/generate"
