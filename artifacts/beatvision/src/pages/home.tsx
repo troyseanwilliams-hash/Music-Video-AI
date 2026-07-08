@@ -102,7 +102,7 @@ export default function Home() {
               </h1>
               
               <p className="text-lg md:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto">
-                Let our AI generate beat-synced music videos from any song — or jump into the Editor to arrange your own clips, photos, music, and transitions into a finished video.
+                Let our AI generate beat-synced music videos from any song — or jump into <span className="text-foreground font-semibold">Remix Lab</span> to arrange your own clips, photos, music, and transitions into a finished video.
               </p>
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -113,9 +113,9 @@ export default function Home() {
                   </Button>
                 </Link>
                 <Link href="/editor">
-                  <Button size="lg" variant="outline" className="w-full sm:w-auto text-lg h-14 px-8 border-border/50 bg-secondary/50 hover:bg-secondary/80 backdrop-blur-sm group">
+                  <Button size="lg" variant="outline" className="w-full sm:w-auto text-lg h-14 px-8 border-accent/40 bg-secondary/50 hover:bg-accent/10 hover:text-accent hover:border-accent/60 backdrop-blur-sm transition-all group">
                     <Scissors className="mr-2 h-5 w-5 group-hover:scale-110 transition-transform" />
-                    Open the Editor
+                    Open Remix Lab
                   </Button>
                 </Link>
               </div>
@@ -138,8 +138,8 @@ export default function Home() {
               </p>
             </div>
             <div className="grid md:grid-cols-2 gap-6">
-              <div className="rounded-2xl border border-card-border bg-card p-8 flex flex-col">
-                <div className="h-12 w-12 rounded-xl bg-primary/15 flex items-center justify-center mb-5">
+              <div className="group rounded-2xl border border-card-border bg-card p-8 flex flex-col transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-glow">
+                <div className="h-12 w-12 rounded-xl bg-primary/15 flex items-center justify-center mb-5 transition-transform group-hover:scale-110">
                   <Sparkles className="h-6 w-6 text-primary" />
                 </div>
                 <h3 className="text-xl font-bold mb-2">AI Generator</h3>
@@ -153,17 +153,29 @@ export default function Home() {
                   </Button>
                 </Link>
               </div>
-              <div className="rounded-2xl border border-card-border bg-card p-8 flex flex-col">
-                <div className="h-12 w-12 rounded-xl bg-accent/15 flex items-center justify-center mb-5">
+              <div className="group rounded-2xl border border-card-border bg-card p-8 flex flex-col transition-all duration-300 hover:-translate-y-1 hover:border-accent/40 hover:shadow-glow">
+                <div className="h-12 w-12 rounded-xl bg-accent/15 flex items-center justify-center mb-5 transition-transform group-hover:scale-110">
                   <Scissors className="h-6 w-6 text-accent" />
                 </div>
-                <h3 className="text-xl font-bold mb-2">Editor</h3>
-                <p className="text-muted-foreground mb-6 flex-1">
-                  Arrange your own clips and photos on a timeline, add music, choose from 17 transitions, preview,
-                  and export an MP4 — free for 7 days.
+                <h3 className="text-xl font-bold mb-2">Remix Lab</h3>
+                <p className="text-muted-foreground mb-4 flex-1">
+                  Your own cut, your rules. Drop clips and photos onto a timeline, sync a music track, add smooth
+                  transitions, preview live, and export a crisp <span className="text-foreground font-medium">1080p</span> MP4 — no watermark.
                 </p>
+                <div className="flex flex-wrap gap-2 mb-6">
+                  {["1080p export", "No watermark", "Music sync", "Live preview"].map((chip) => (
+                    <span
+                      key={chip}
+                      className="text-xs font-medium text-muted-foreground border border-border/60 rounded-full px-2.5 py-1 bg-secondary/40"
+                    >
+                      {chip}
+                    </span>
+                  ))}
+                </div>
                 <Link href="/editor">
-                  <Button variant="outline">Open the Editor</Button>
+                  <Button variant="outline" className="border-accent/40 hover:bg-accent/10 hover:text-accent">
+                    Open Remix Lab
+                  </Button>
                 </Link>
               </div>
             </div>

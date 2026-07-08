@@ -683,7 +683,7 @@ export default function JobStatus() {
                 setLocation("/editor");
               }}
             >
-              <Scissors className="h-4 w-4" /> Edit in Studio
+              <Scissors className="h-4 w-4" /> Open in Remix Lab
             </Button>
           </div>
         )}

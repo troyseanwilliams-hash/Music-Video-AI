@@ -30,7 +30,7 @@ export function Navbar() {
 
   const navLinks = [
     ...(isAuthenticated ? [
-      { href: "/editor", label: "Editor", icon: Video },
+      { href: "/editor", label: "Remix Lab", icon: Video },
       { href: "/generate", label: "Generate", icon: Wand2 },
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "/gallery", label: "Gallery", icon: Film },

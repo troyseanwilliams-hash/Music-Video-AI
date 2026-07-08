@@ -252,7 +252,7 @@ export default function Gallery() {
                     variant="outline"
                     size="icon"
                     className="h-8 w-8 shrink-0"
-                    title="Edit in Editor"
+                    title="Open in Remix Lab"
                     onClick={() => {
                       sessionStorage.setItem(
                         "editor:init",

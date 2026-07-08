@@ -465,16 +465,33 @@ export default function Editor() {
       `}</style>
 
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Editor</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Arrange your clips and photos, add music and transitions, preview, then export an MP4.
+        <div className="inline-flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-xs font-semibold text-accent mb-3">
+          <Sparkles className="h-3.5 w-3.5" />
+          Remix Lab
+        </div>
+        <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">
+          Your cut, <span className="text-gradient-electric">your rules</span>
+        </h1>
+        <p className="text-muted-foreground mt-2 text-sm md:text-base max-w-2xl">
+          Drop in clips and photos, lay them on the timeline, sync your music, add smooth transitions,
+          preview it live, and export a crisp 1080p MP4 — no watermark.
         </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {["1080p export", "No watermark", "Music sync", "Smooth transitions", "Live preview"].map((chip) => (
+            <span
+              key={chip}
+              className="text-xs font-medium text-muted-foreground border border-border/60 rounded-full px-2.5 py-1 bg-secondary/40"
+            >
+              {chip}
+            </span>
+          ))}
+        </div>
       </div>
 
       {trialActive && (
         <Card className="border-primary/30 bg-primary/5 mb-6 p-4 text-sm">
-          Free trial — {trialDaysLeft} day{trialDaysLeft === 1 ? "" : "s"} left. The full Editor is unlocked: 1080p,
-          no watermark, all transitions.{" "}
+          Free trial — {trialDaysLeft} day{trialDaysLeft === 1 ? "" : "s"} left. The full Remix Lab is unlocked: 1080p,
+          no watermark, smooth transitions.{" "}
           {segments.length > 0 && (
             <>This export would use <strong>~{estimatedCost} credits</strong>, free while you're on the trial.{" "}</>
           )}
