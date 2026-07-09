@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { creditsTable, usersTable, videosTable } from "@workspace/db";
-import { eq, ilike, or, desc } from "drizzle-orm";
+import { creditsTable, usersTable, videosTable, jobsTable } from "@workspace/db";
+import { eq, ilike, or, desc, and, inArray, count } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 function isAdmin(email: string | null | undefined): boolean {
@@ -88,6 +88,32 @@ router.get("/admin/users", async (req, res) => {
 
   const creditMap = new Map(creditRows.map((c) => [c.userId, c]));
 
+  // Count completed videos per user, split by how they were made:
+  //   Generated = AI pipeline ("ai" + clip-regen "remix")
+  //   Remix     = Remix Lab timeline exports ("editor_render")
+  const jobCountRows =
+    userIds.length > 0
+      ? await db
+          .select({
+            userId: jobsTable.userId,
+            jobType: jobsTable.jobType,
+            c: count(),
+          })
+          .from(jobsTable)
+          .where(and(inArray(jobsTable.userId, userIds), eq(jobsTable.status, "ready")))
+          .groupBy(jobsTable.userId, jobsTable.jobType)
+      : [];
+  const generatedMap = new Map<string, number>();
+  const remixMap = new Map<string, number>();
+  for (const r of jobCountRows) {
+    const n = Number(r.c);
+    if (r.jobType === "editor_render") {
+      remixMap.set(r.userId, (remixMap.get(r.userId) ?? 0) + n);
+    } else {
+      generatedMap.set(r.userId, (generatedMap.get(r.userId) ?? 0) + n);
+    }
+  }
+
   const users = allUsers.map((u) => {
     const c = creditMap.get(u.id);
     return {
@@ -97,6 +123,8 @@ router.get("/admin/users", async (req, res) => {
       topupCredits: c?.topupCredits ?? 0,
       creditsUsed: c?.creditsUsed ?? 0,
       totalGenerations: c?.totalGenerations ?? 0,
+      generatedVideos: generatedMap.get(u.id) ?? 0,
+      remixVideos: remixMap.get(u.id) ?? 0,
     };
   });
 

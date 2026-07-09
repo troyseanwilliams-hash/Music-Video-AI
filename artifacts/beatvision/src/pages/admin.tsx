@@ -29,6 +29,8 @@ interface AdminUser {
   topupCredits: number;
   creditsUsed: number;
   totalGenerations: number;
+  generatedVideos: number;
+  remixVideos: number;
 }
 
 interface AdminUserVideo {
@@ -205,7 +207,13 @@ function UserRow({ user, onChanged }: { user: AdminUser; onChanged: () => void }
         <td className="px-4 py-3">
           <CreditCell user={user} onSaved={onChanged} />
         </td>
-        <td className="px-4 py-3 text-right text-muted-foreground hidden lg:table-cell">{user.totalGenerations}</td>
+        <td className="px-4 py-3 text-right hidden lg:table-cell whitespace-nowrap">
+          <span title="AI-generated videos" className="text-foreground font-medium">{user.generatedVideos}</span>
+          <span className="text-muted-foreground text-xs"> gen</span>
+          <span className="mx-1.5 text-muted-foreground/40">·</span>
+          <span title="Remix Lab videos" className="text-accent font-medium">{user.remixVideos}</span>
+          <span className="text-muted-foreground text-xs"> remix</span>
+        </td>
         <td className="px-4 py-3 text-right text-muted-foreground hidden lg:table-cell">
           {new Date(user.createdAt).toLocaleDateString()}
         </td>
@@ -736,7 +744,7 @@ export default function AdminPage() {
                       <th className="px-4 py-3 text-left font-medium text-muted-foreground">User</th>
                       <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden md:table-cell">Status</th>
                       <th className="px-4 py-3 text-left font-medium text-muted-foreground">Credits</th>
-                      <th className="px-4 py-3 text-right font-medium text-muted-foreground hidden lg:table-cell">Generations</th>
+                      <th className="px-4 py-3 text-right font-medium text-muted-foreground hidden lg:table-cell">Videos (Gen · Remix)</th>
                       <th className="px-4 py-3 text-right font-medium text-muted-foreground hidden lg:table-cell">Joined</th>
                       <th className="px-4 py-3 text-right font-medium text-muted-foreground">Moderation</th>
                     </tr>

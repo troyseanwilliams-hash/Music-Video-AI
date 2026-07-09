@@ -476,6 +476,21 @@ async function handleSubscriptionUpdated(
           : subscription.status,
     })
     .where(eq(usersTable.id, user.id));
+
+  // On cancellation, zero out plan/trial credits. Purchased top-up credits are
+  // preserved (they never expire), so creditsRemaining collapses to the top-up
+  // balance.
+  if (subscription.status === "canceled") {
+    await ensureCreditsRow(user.id);
+    await db
+      .update(creditsTable)
+      .set({
+        subscriptionCredits: 0,
+        creditsRemaining: sql`${creditsTable.topupCredits}`,
+      })
+      .where(eq(creditsTable.userId, user.id));
+    logger.info({ userId: user.id }, "Subscription cancelled — plan credits zeroed (top-up kept)");
+  }
 }
 
 /**
