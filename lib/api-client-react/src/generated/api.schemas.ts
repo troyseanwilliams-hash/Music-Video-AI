@@ -291,6 +291,20 @@ export const CreateJobRequestRequestedDuration = {
   full: "full",
 } as const;
 
+/**
+ * Preferred AI video generation provider; falls back to the server-configured active provider if not set or unavailable
+ * @nullable
+ */
+export type CreateJobRequestAiProvider =
+  | (typeof CreateJobRequestAiProvider)[keyof typeof CreateJobRequestAiProvider]
+  | null;
+
+export const CreateJobRequestAiProvider = {
+  runway: "runway",
+  kling: "kling",
+  luma: "luma",
+} as const;
+
 export interface CreateJobRequest {
   /**
    * @minLength 1
@@ -343,6 +357,11 @@ export interface CreateJobRequest {
   clipStartTime?: number | null;
   /** Pre-computed audio analysis from POST /audio/analyze; when provided the job processor skips re-analysis and uses this result directly */
   audioAnalysis?: AudioAnalysis | null;
+  /**
+   * Preferred AI video generation provider; falls back to the server-configured active provider if not set or unavailable
+   * @nullable
+   */
+  aiProvider?: CreateJobRequestAiProvider;
 }
 
 export interface RemixJobRequest {

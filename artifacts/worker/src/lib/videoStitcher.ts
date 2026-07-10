@@ -37,6 +37,7 @@ async function trimOrLoopClip(
         "-c:v", "libx264",
         "-preset", "fast",
         "-crf", "23",
+        "-threads", "2",
         "-an",
         "-movflags", "+faststart",
       ])
@@ -59,19 +60,40 @@ async function extractThumbnailFromFile(
   );
 }
 
-function buildLyricsFilter(lyricsText: string): string {
-  const escaped = lyricsText
+function escapeDrawtext(s: string): string {
+  return s
     .replace(/\\/g, "\\\\")
     .replace(/'/g, "\u2019")
     .replace(/:/g, "\\:")
-    .replace(/\n/g, " ")
-    .slice(0, 200);
-  return (
-    `drawtext=fontsize=32:fontcolor=white:` +
-    `box=1:boxcolor=black@0.55:boxborderw=10:` +
-    `x=(w-text_w)/2:y=h-90:` +
-    `text='${escaped}'`
-  );
+    .replace(/,/g, "\\,")
+    .replace(/%/g, "\\%")
+    .slice(0, 120);
+}
+
+// Lyric-video mode: split the lyrics into lines and show them one at a time,
+// evenly across the video, so they appear roughly in sync with the music.
+// Returns a chained drawtext filter (one drawtext per line, time-gated).
+function buildLyricsFilter(lyricsText: string, totalDuration: number): string {
+  const lines = lyricsText
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(0, 60);
+  if (lines.length === 0) return "";
+
+  const dur = Math.max(1, totalDuration);
+  const per = dur / lines.length;
+  const style =
+    "fontsize=34:fontcolor=white:box=1:boxcolor=black@0.55:boxborderw=12:" +
+    "x=(w-text_w)/2:y=h-100";
+
+  return lines
+    .map((line, i) => {
+      const start = (i * per).toFixed(2);
+      const end = ((i + 1) * per).toFixed(2);
+      return `drawtext=${style}:text='${escapeDrawtext(line)}':enable='between(t,${start},${end})'`;
+    })
+    .join(",");
 }
 
 export async function stitchVideoClips(input: StitchInput): Promise<StitchResult> {
@@ -108,6 +130,7 @@ export async function stitchVideoClips(input: StitchInput): Promise<StitchResult
           "-c:v", "libx264",
           "-preset", "fast",
           "-crf", "23",
+          "-threads", "2",
           "-an",
           "-movflags", "+faststart",
         ])
@@ -121,6 +144,7 @@ export async function stitchVideoClips(input: StitchInput): Promise<StitchResult
       "-c:v", "libx264",
       "-preset", "fast",
       "-crf", "22",
+      "-threads", "2",
       "-c:a", "aac",
       "-b:a", "192k",
       "-shortest",
@@ -128,7 +152,8 @@ export async function stitchVideoClips(input: StitchInput): Promise<StitchResult
     ];
 
     if (input.lyricsText?.trim()) {
-      outputOptions.push("-vf", buildLyricsFilter(input.lyricsText));
+      const lyricsFilter = buildLyricsFilter(input.lyricsText, input.totalDuration);
+      if (lyricsFilter) outputOptions.push("-vf", lyricsFilter);
     }
 
     await runFfmpeg(

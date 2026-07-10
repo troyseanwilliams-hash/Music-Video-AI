@@ -125,6 +125,10 @@ export default function Editor() {
   const [transitionDuration, setTransitionDuration] = useState(0.5);
   const [resolution, setResolution] = useState<"720p" | "1080p">("720p");
   const [submitting, setSubmitting] = useState(false);
+  // Beat sync: detected from the added music track (BPM + beat times).
+  const [beatInfo, setBeatInfo] = useState<{ bpm: number; beats: number[] } | null>(null);
+  const [analyzingBeats, setAnalyzingBeats] = useState(false);
+  const [beatsPerPhoto, setBeatsPerPhoto] = useState(2);
   const [acceptedCopyright, setAcceptedCopyright] = useState(false);
 
   // Preview state
@@ -151,6 +155,38 @@ export default function Editor() {
   useEffect(() => {
     segmentsRef.current = segments;
   }, [segments]);
+
+  // When a music track finishes uploading, analyze it for BPM + beat times so
+  // the user can auto-cut photos to the beat.
+  useEffect(() => {
+    const path = music?.objectPath;
+    if (!path) {
+      setBeatInfo(null);
+      return;
+    }
+    let cancelled = false;
+    setAnalyzingBeats(true);
+    fetch("/api/audio/analyze", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ objectPath: path }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        const bpm = Number(data.bpm) || 0;
+        const beats = Array.isArray(data.beatTimestamps) ? (data.beatTimestamps as number[]) : [];
+        if (bpm > 0) setBeatInfo({ bpm, beats });
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setAnalyzingBeats(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [music?.objectPath]);
 
   const trialActive = !!user?.trialEndsAt && new Date(user.trialEndsAt).getTime() > Date.now();
   const trialDaysLeft = user?.trialEndsAt
@@ -198,6 +234,20 @@ export default function Editor() {
 
   function patchSegment(id: string, patch: Partial<Segment>) {
     setSegments((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  }
+
+  // Beat length for the current selection (seconds a photo should hold).
+  const beatPhotoSeconds = beatInfo
+    ? Math.max(0.5, Math.round(beatsPerPhoto * (60 / beatInfo.bpm) * 10) / 10)
+    : 0;
+
+  // Auto-edit to the beat: set every photo's duration to a whole number of
+  // beats so its cut lands on the beat grid. Video clips keep their length.
+  function syncPhotosToBeat() {
+    if (!beatInfo) return;
+    setSegments((prev) =>
+      prev.map((s) => (s.kind === "photo" ? { ...s, durationSec: beatPhotoSeconds } : s)),
+    );
   }
 
   // ---------- preview engine ----------
@@ -694,6 +744,45 @@ export default function Editor() {
                   />
                 </div>
               </div>
+              {analyzingBeats && (
+                <div className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Detecting beat…
+                </div>
+              )}
+              {beatInfo && (
+                <div className="mt-4 rounded-lg border border-accent/30 bg-accent/5 p-3">
+                  <div className="mb-2 flex items-center gap-1.5 text-sm font-medium">
+                    <Music className="h-3.5 w-3.5 text-accent" />
+                    {Math.round(beatInfo.bpm)} BPM detected
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Hold each photo for</span>
+                    <Select value={String(beatsPerPhoto)} onValueChange={(v) => setBeatsPerPhoto(Number(v))}>
+                      <SelectTrigger className="h-8 w-28">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">1 beat</SelectItem>
+                        <SelectItem value="2">2 beats</SelectItem>
+                        <SelectItem value="4">4 beats</SelectItem>
+                        <SelectItem value="8">8 beats</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-accent/40 hover:bg-accent/10 hover:text-accent"
+                      disabled={segments.filter((s) => s.kind === "photo").length === 0}
+                      onClick={syncPhotosToBeat}
+                    >
+                      Sync photos to beat
+                    </Button>
+                  </div>
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    Sets every photo to {beatPhotoSeconds.toFixed(1)}s so its cut lands on the beat. Video clips keep their length.
+                  </p>
+                </div>
+              )}
             </>
           ) : (
             <p className="text-muted-foreground text-sm">No track. Add one to score your video.</p>

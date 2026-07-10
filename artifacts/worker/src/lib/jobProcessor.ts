@@ -249,7 +249,7 @@ async function generateClips(
   plan: GenerationPlan,
   onProgress: (pct: number) => Promise<void>,
 ): Promise<{ buffer: Buffer; targetDuration: number; prompt: string }[]> {
-  const provider = getActiveProvider();
+  const provider = getActiveProvider((job as JobRow & { aiProvider?: string | null }).aiProvider ?? undefined);
   const { sections, clipDurationSec } = plan;
   const clips: { buffer: Buffer; targetDuration: number; prompt: string }[] = [];
   const refImageUrl = await loadReferenceImageUrl(job);

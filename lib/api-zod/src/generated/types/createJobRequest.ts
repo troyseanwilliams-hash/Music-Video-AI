@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { AudioAnalysis } from "./audioAnalysis";
+import type { CreateJobRequestAiProvider } from "./createJobRequestAiProvider";
 import type { CreateJobRequestAspectRatio } from "./createJobRequestAspectRatio";
 import type { CreateJobRequestAudioSourceType } from "./createJobRequestAudioSourceType";
 import type { CreateJobRequestRequestedDuration } from "./createJobRequestRequestedDuration";
@@ -64,4 +65,9 @@ export interface CreateJobRequest {
   clipStartTime?: number | null;
   /** Pre-computed audio analysis from POST /audio/analyze; when provided the job processor skips re-analysis and uses this result directly */
   audioAnalysis?: AudioAnalysis | null;
+  /**
+   * Preferred AI video generation provider; falls back to the server-configured active provider if not set or unavailable
+   * @nullable
+   */
+  aiProvider?: CreateJobRequestAiProvider;
 }

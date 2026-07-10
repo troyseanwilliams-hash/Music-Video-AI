@@ -70,6 +70,7 @@ export const jobsTable = pgTable("jobs", {
   referenceImagePath: text("reference_image_path"),
   requestedDuration: text("requested_duration").default("full"),
   clipStartTime: real("clip_start_time"),
+  aiProvider: text("ai_provider"),
   retryCount: integer("retry_count").notNull().default(0),
   claimedAt: timestamp("claimed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })

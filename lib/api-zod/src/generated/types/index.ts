@@ -22,6 +22,7 @@ export * from "./billingSubscriptionResponse";
 export * from "./createCheckoutRequest";
 export * from "./createCheckoutResponse";
 export * from "./createJobRequest";
+export * from "./createJobRequestAiProvider";
 export * from "./createJobRequestAspectRatio";
 export * from "./createJobRequestAudioSourceType";
 export * from "./createJobRequestRequestedDuration";

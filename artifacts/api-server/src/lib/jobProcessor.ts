@@ -215,7 +215,7 @@ async function generateClips(
   analysis: AudioAnalysis,
   onProgress: (pct: number) => Promise<void>,
 ): Promise<{ buffer: Buffer; targetDuration: number; prompt: string }[]> {
-  const provider = getActiveProvider();
+  const provider = getActiveProvider((job as JobRow & { aiProvider?: string | null }).aiProvider ?? undefined);
   const requestedDur = (job as JobRow & { requestedDuration?: string | null }).requestedDuration;
 
   // Use the same clip plan as the credit formula so the number of provider calls

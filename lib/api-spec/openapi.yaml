@@ -1088,6 +1088,10 @@ components:
             - $ref: '#/components/schemas/AudioAnalysis'
             - type: 'null'
           description: Pre-computed audio analysis from POST /audio/analyze; when provided the job processor skips re-analysis and uses this result directly
+        aiProvider:
+          type: [string, 'null']
+          enum: ['runway', 'kling', 'luma', null]
+          description: Preferred AI video generation provider; falls back to the server-configured active provider if not set or unavailable
 
     VideoClip:
       type: object

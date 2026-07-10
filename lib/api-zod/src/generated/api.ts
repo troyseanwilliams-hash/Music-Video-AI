@@ -418,6 +418,17 @@ export const CreateJobBody = zod.object({
     .describe(
       "Pre-computed audio analysis from POST \/audio\/analyze; when provided the job processor skips re-analysis and uses this result directly",
     ),
+  aiProvider: zod
+    .union([
+      zod.literal("runway"),
+      zod.literal("kling"),
+      zod.literal("luma"),
+      zod.literal(null),
+    ])
+    .nullish()
+    .describe(
+      "Preferred AI video generation provider; falls back to the server-configured active provider if not set or unavailable",
+    ),
 });
 
 /**

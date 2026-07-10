@@ -26,7 +26,11 @@ function getProvider(): Provider | null {
   return null;
 }
 
-export function getActiveProvider(): string {
+export function getActiveProvider(hint?: string | null): string {
+  const h = hint?.toLowerCase() as Provider | undefined;
+  if (h === "runway" && process.env.RUNWAY_API_KEY) return "runway";
+  if (h === "kling" && process.env.KLING_API_KEY) return "kling";
+  if (h === "luma" && process.env.LUMA_API_KEY) return "luma";
   return getProvider() ?? "simulation";
 }
 

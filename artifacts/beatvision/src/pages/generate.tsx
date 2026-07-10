@@ -14,6 +14,7 @@ import {
   VideoStyle,
   type CreateJobRequest,
 } from "@workspace/api-client-react";
+import { estimateCreditCost, PROVIDER_LABELS, type AiProvider } from "@/lib/creditPricing";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -62,6 +63,39 @@ const STYLES = [
   { id: VideoStyle.documentary, label: "Docu-style", icon: VideoIcon },
 ];
 
+// One-click starting points: fill prompt + style + aspect + duration so new
+// users aren't staring at a blank form.
+const TEMPLATES: {
+  id: string;
+  label: string;
+  emoji: string;
+  prompt: string;
+  style: VideoStyle;
+  aspect: CreateJobRequestAspectRatio;
+  duration: CreateJobRequestRequestedDuration;
+}[] = [
+  { id: "neon-tiktok", label: "Neon TikTok loop", emoji: "🌆", prompt: "neon-lit city at night, glowing reflections on wet streets, cyberpunk mood, rhythmic pulsing lights", style: VideoStyle.neon, aspect: CreateJobRequestAspectRatio["9:16"], duration: CreateJobRequestRequestedDuration.NUMBER_10 },
+  { id: "anime-mv", label: "Anime music video", emoji: "🌸", prompt: "anime protagonist, dynamic action poses, falling sakura petals, dramatic anime lighting and speed lines", style: VideoStyle.anime, aspect: CreateJobRequestAspectRatio["16:9"], duration: CreateJobRequestRequestedDuration.NUMBER_30 },
+  { id: "cinematic", label: "Cinematic trailer", emoji: "🎬", prompt: "epic cinematic landscapes, slow sweeping camera moves, volumetric light, film grain, moody color grade", style: VideoStyle.cinematic, aspect: CreateJobRequestAspectRatio["16:9"], duration: CreateJobRequestRequestedDuration.NUMBER_30 },
+  { id: "dreamy", label: "Dreamy aesthetic", emoji: "✨", prompt: "ethereal dreamscape, soft glowing haze, floating particles, pastel gradients, slow drifting motion", style: VideoStyle.fantasy, aspect: CreateJobRequestAspectRatio["9:16"], duration: CreateJobRequestRequestedDuration.NUMBER_10 },
+  { id: "retro", label: "Retro 80s vibes", emoji: "📼", prompt: "retro 1980s aesthetic, VHS grain, chrome text, sunset gradient grid, synthwave mood", style: VideoStyle.vintage, aspect: CreateJobRequestAspectRatio["16:9"], duration: CreateJobRequestRequestedDuration.NUMBER_10 },
+  { id: "canvas", label: "Spotify Canvas loop", emoji: "🔁", prompt: "abstract flowing liquid gradients, seamless hypnotic loop, smooth continuous motion", style: VideoStyle.abstract, aspect: CreateJobRequestAspectRatio["9:16"], duration: CreateJobRequestRequestedDuration.NUMBER_5 },
+];
+
+// Platform presets: one click sets the right aspect ratio + length for a target.
+const PLATFORM_PRESETS: {
+  id: string;
+  label: string;
+  emoji: string;
+  aspect: CreateJobRequestAspectRatio;
+  duration: CreateJobRequestRequestedDuration;
+}[] = [
+  { id: "vertical", label: "TikTok · Reels · Shorts", emoji: "📱", aspect: CreateJobRequestAspectRatio["9:16"], duration: CreateJobRequestRequestedDuration.NUMBER_10 },
+  { id: "youtube", label: "YouTube", emoji: "▶️", aspect: CreateJobRequestAspectRatio["16:9"], duration: CreateJobRequestRequestedDuration.NUMBER_30 },
+  { id: "canvas", label: "Spotify Canvas", emoji: "🎵", aspect: CreateJobRequestAspectRatio["9:16"], duration: CreateJobRequestRequestedDuration.NUMBER_5 },
+  { id: "square", label: "Square feed", emoji: "⬛", aspect: CreateJobRequestAspectRatio["1:1"], duration: CreateJobRequestRequestedDuration.NUMBER_10 },
+];
+
 const ASPECT_RATIOS = [
   CreateJobRequestAspectRatio["16:9"],
   CreateJobRequestAspectRatio["9:16"],
@@ -85,23 +119,8 @@ const CHARACTERS = [
 ] as const;
 type CharacterValue = (typeof CHARACTERS)[number]["value"];
 
-// Mirrors server-side calculateCreditCost — must stay in sync with creditCost.ts.
-// Size-based: a 5s clip is the cheapest (≈ half a 30s video); a full video is max.
-const BASE_CREDITS = 20;
-const CREDITS_PER_SECOND = 1;
-const FULL_VIDEO_SECONDS = 120;
-
-function estimateCreditCost(requestedDuration: CreateJobRequestRequestedDuration | null | undefined): number {
-  const dur = requestedDuration ?? CreateJobRequestRequestedDuration.full;
-  let secs: number;
-  if (dur === CreateJobRequestRequestedDuration.full) {
-    secs = FULL_VIDEO_SECONDS;
-  } else {
-    const n = parseInt(dur as string, 10);
-    secs = isNaN(n) || n <= 0 ? FULL_VIDEO_SECONDS : Math.min(n, FULL_VIDEO_SECONDS);
-  }
-  return BASE_CREDITS + Math.ceil(secs * CREDITS_PER_SECOND);
-}
+// estimateCreditCost + provider pricing now live in "@/lib/creditPricing"
+// (imported above) so the generate page and pricing page share one source.
 
 export default function Generate() {
   const [, setLocation] = useLocation();
@@ -135,6 +154,7 @@ export default function Generate() {
   const [resolution, setResolution] = useState<CreateJobRequestResolution>(CreateJobRequestResolution["720p"]);
   const [character, setCharacter] = useState<CharacterValue>("none");
   const [requestedDuration, setRequestedDuration] = useState<CreateJobRequestRequestedDuration>(CreateJobRequestRequestedDuration.NUMBER_10);
+  const [aiProvider, setAiProvider] = useState<AiProvider>("runway");
   const [clipStartTime, setClipStartTime] = useState(0);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [errorDialog, setErrorDialog] = useState<ErrorDialogState>({ open: false, title: "", message: "" });
@@ -241,6 +261,40 @@ export default function Generate() {
   // Track which objectPath the current analysis result belongs to.
   // This prevents stale results from a previous upload being submitted with a new job.
   const [analysisForPath, setAnalysisForPath] = useState<string | null>(null);
+
+  // Quick-start: apply a template's prompt/style/aspect/duration in one click.
+  function applyTemplate(t: (typeof TEMPLATES)[number]) {
+    setPrompt(t.prompt);
+    setSelectedStyle(t.style);
+    setAspectRatio(t.aspect);
+    handleDurationChange(t.duration);
+    setFieldErrors((fe) => ({ ...fe, prompt: undefined }));
+  }
+
+  // Platform preset: set aspect ratio + duration for a target in one click.
+  function applyPreset(p: (typeof PLATFORM_PRESETS)[number]) {
+    setAspectRatio(p.aspect);
+    handleDurationChange(p.duration);
+  }
+
+  // Quick-start: load a bundled royalty-free demo track so new users can try a
+  // generation without hunting for audio. Requires public/demo-song.mp3.
+  async function loadDemoSong() {
+    try {
+      setSourceType(CreateJobRequestAudioSourceType.upload);
+      const res = await fetch("/demo-song.mp3");
+      if (!res.ok) throw new Error("missing");
+      const blob = await res.blob();
+      const file = new File([blob], "demo-song.mp3", { type: blob.type || "audio/mpeg" });
+      await handleFileSelect(file);
+    } catch {
+      toast({
+        title: "Demo song unavailable",
+        description: "Add a royalty-free public/demo-song.mp3 to enable this.",
+        variant: "destructive",
+      });
+    }
+  }
 
   // Trigger server-side analysis as soon as the upload path is available.
   // Reset mutation state immediately when objectPath changes so old badges disappear.
@@ -368,6 +422,7 @@ export default function Generate() {
           character: character !== "none" ? character : null,
           referenceImagePath: refImageObjectPath ?? null,
           requestedDuration,
+          aiProvider,
           clipStartTime:
             requestedDuration !== CreateJobRequestRequestedDuration.full &&
             sourceType === CreateJobRequestAudioSourceType.upload &&
@@ -482,6 +537,57 @@ export default function Generate() {
           </p>
         </div>
 
+        {/* ── Quick start: templates + demo song ── */}
+        <div className="rounded-2xl border border-border/60 bg-background/30 p-4 sm:p-5">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <span className="flex items-center gap-1.5 text-sm font-semibold">
+              <Sparkles className="h-4 w-4 text-primary" /> Quick start
+            </span>
+            <Button variant="outline" size="sm" onClick={loadDemoSong}>
+              <Music className="mr-1.5 h-3.5 w-3.5" /> Try a demo song
+            </Button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {TEMPLATES.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => applyTemplate(t)}
+                className="rounded-full border border-border/60 bg-secondary/40 px-3 py-1.5 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-secondary/70"
+              >
+                <span className="mr-1">{t.emoji}</span>
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Templates fill in a prompt, style, aspect ratio, and length — tweak anything after.
+          </p>
+          <div className="mt-4 border-t border-border/40 pt-3">
+            <div className="mb-2 text-xs font-medium text-muted-foreground">Sized for</div>
+            <div className="flex flex-wrap gap-2">
+              {PLATFORM_PRESETS.map((p) => {
+                const active = aspectRatio === p.aspect && requestedDuration === p.duration;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => applyPreset(p)}
+                    className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                      active
+                        ? "border-primary/60 bg-primary/10 text-primary"
+                        : "border-border/60 bg-secondary/40 hover:border-primary/40 hover:bg-secondary/70"
+                    }`}
+                  >
+                    <span className="mr-1">{p.emoji}</span>
+                    {p.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
         <div className="grid gap-5 sm:gap-8 p-4 sm:p-8 rounded-2xl bg-card border border-card-border shadow-lg">
 
           {/* ── Settings Toolbar ── */}
@@ -519,6 +625,34 @@ export default function Generate() {
 
               <div className="hidden sm:block h-5 w-px bg-border/40 mx-0.5" />
 
+              {/* AI provider */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 px-3 py-1.5 text-sm font-medium transition-colors">
+                    <Wand2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span>{PROVIDER_LABELS[aiProvider]}</span>
+                    <ChevronDown className="h-3 w-3 text-muted-foreground ml-0.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-64">
+                  {(["runway", "kling"] as const).map((p) => (
+                    <DropdownMenuItem
+                      key={p}
+                      onClick={() => setAiProvider(p)}
+                      className={`flex items-center justify-between gap-3 ${aiProvider === p ? "text-primary font-medium" : ""}`}
+                    >
+                      <span>
+                        {PROVIDER_LABELS[p]}
+                        <span className="text-muted-foreground"> · {p === "runway" ? "high quality" : "high volume"}</span>
+                      </span>
+                      <span className="text-xs text-muted-foreground shrink-0">{estimateCreditCost(requestedDuration, p)} cr</span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <div className="hidden sm:block h-5 w-px bg-border/40 mx-0.5" />
+
               {/* Duration */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -544,7 +678,7 @@ export default function Generate() {
                     >
                       <span>{label}</span>
                       <span className="text-xs text-muted-foreground shrink-0">
-                        {estimateCreditCost(value)} cr{note ? ` · ${note}` : ""}
+                        {estimateCreditCost(value, aiProvider)} cr{note ? ` · ${note}` : ""}
                       </span>
                     </DropdownMenuItem>
                   ))}
@@ -1051,10 +1185,10 @@ export default function Generate() {
               <div className="flex items-center gap-2 min-w-0">
                 <FileText className="h-4 w-4 text-primary shrink-0" />
                 <Label htmlFor="lyrics-toggle" className="cursor-pointer font-medium">
-                  Captions / Lyrics Overlay
+                  Lyric video · timed captions
                 </Label>
                 <span className="text-xs text-muted-foreground hidden sm:inline">
-                  — burns subtitle text onto the video
+                  — lines appear one at a time, in sync with the track
                 </span>
               </div>
               <Switch
@@ -1071,7 +1205,7 @@ export default function Generate() {
                 exit={{ opacity: 0, height: 0 }}
               >
                 <Textarea
-                  placeholder="Paste your lyrics here. They'll be overlaid on the video as rolling subtitles..."
+                  placeholder="Paste your lyrics — one line per caption. Lines are spread evenly across the video so they land with the music..."
                   className="min-h-[120px] resize-none bg-background/50 border-input"
                   value={lyricsText}
                   onChange={(e) => setLyricsText(e.target.value)}
@@ -1125,7 +1259,7 @@ export default function Generate() {
 
           {/* ── Generate ── */}
           {(() => {
-            const cost = estimateCreditCost(requestedDuration);
+            const cost = estimateCreditCost(requestedDuration, aiProvider);
             const balance = statsData?.creditsRemaining ?? null;
             const canAfford = isAdmin || balance === null || balance >= cost;
             const isAnalyzingAudio =
@@ -1190,7 +1324,7 @@ export default function Generate() {
       if (!isLong) return null;
       const numClips = Math.ceil((durSec as number) / 10);
       const estimatedMin = durSec === 90 ? "~15 minutes" : "~20 minutes";
-      const creditCost = estimateCreditCost(requestedDuration);
+      const creditCost = estimateCreditCost(requestedDuration, aiProvider);
       return (
         <Dialog open={durationWarningOpen} onOpenChange={setDurationWarningOpen}>
           <DialogContent className="sm:max-w-md">
@@ -1217,6 +1351,10 @@ export default function Generate() {
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">AI clips generated</span>
                       <span className="font-medium">{numClips} clips</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">AI engine</span>
+                      <span className="font-medium">{PROVIDER_LABELS[aiProvider]}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Credit cost</span>
@@ -1288,7 +1426,7 @@ export default function Generate() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Credit cost</span>
-                  <span className="font-medium">{estimateCreditCost(requestedDuration)} credits</span>
+                  <span className="font-medium">{estimateCreditCost(requestedDuration, aiProvider)} credits</span>
                 </div>
               </div>
             </div>
