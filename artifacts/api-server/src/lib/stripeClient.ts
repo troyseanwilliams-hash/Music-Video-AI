@@ -145,17 +145,18 @@ export async function initStripe(): Promise<void> {
 
     const sync = await getStripeSync();
 
-    const replitDomain = process.env["REPLIT_DOMAINS"]?.split(",")[0];
-    if (replitDomain) {
-      const webhookUrl = `https://${replitDomain}/api/stripe/webhook`;
-      logger.info({ webhookUrl }, "Setting up managed Stripe webhook");
-      const result = await sync.findOrCreateManagedWebhook(webhookUrl);
-      logger.info(
-        { url: result?.url },
-        "Stripe webhook configured",
-      );
+    if (process.env["NODE_ENV"] !== "production") {
+      logger.info("Skipping managed Stripe webhook setup in development (dev domain is unreachable by Stripe)");
     } else {
-      logger.warn("REPLIT_DOMAINS not set — skipping managed webhook setup");
+      const replitDomain = process.env["REPLIT_DOMAINS"]?.split(",")[0];
+      if (replitDomain) {
+        const webhookUrl = `https://${replitDomain}/api/stripe/webhook`;
+        logger.info({ webhookUrl }, "Setting up managed Stripe webhook");
+        const result = await sync.findOrCreateManagedWebhook(webhookUrl);
+        logger.info({ url: result?.url }, "Stripe webhook configured");
+      } else {
+        logger.warn("REPLIT_DOMAINS not set — skipping managed webhook setup");
+      }
     }
 
     sync
