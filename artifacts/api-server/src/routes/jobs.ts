@@ -151,7 +151,7 @@ router.post("/jobs", async (req, res) => {
     .values({
       id: jobId,
       userId: req.user.id,
-      status: "pending_approval",
+      status: isAdmin || userRecord?.subscriptionStatus === "active" ? "queued" : "pending_approval",
       audioSourceType: audioSourceType as
         | "upload"
         | "youtube"
@@ -188,14 +188,16 @@ router.post("/jobs", async (req, res) => {
     "Job queued — credits will be deducted on success",
   );
 
-  // Fire-and-forget: notify admin of pending approval (never blocks or errors the response)
-  notifyJobPendingApproval({
-    id: job.id,
-    prompt: job.prompt,
-    style: job.style,
-    requestedDuration: job.requestedDuration,
-    userEmail: userRecord?.email ?? null,
-  });
+  // Fire-and-forget: notify admin only when the job actually needs approval
+  if (job.status === "pending_approval") {
+    notifyJobPendingApproval({
+      id: job.id,
+      prompt: job.prompt,
+      style: job.style,
+      requestedDuration: job.requestedDuration,
+      userEmail: userRecord?.email ?? null,
+    });
+  }
 
   res.status(201).json(job);
 });

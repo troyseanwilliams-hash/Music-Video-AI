@@ -15,6 +15,7 @@ import { generateClip, downloadClip, getActiveProvider } from "./videoApis.js";
 import { stitchVideoClips, extractVideoThumbnail } from "./videoStitcher.js";
 import { stitchEditorTimeline } from "./editorStitcher.js";
 import { calculateEditorCost } from "./editorCost.js";
+import { calculateCreditCost } from "./creditCost.js";
 
 const execAsync = promisify(exec);
 const MAX_RETRIES = 3;
@@ -899,6 +900,22 @@ async function processJob(job: JobRow): Promise<void> {
       clips: clipMetas as unknown as Record<string, unknown>,
       shareToken: randomUUID().replace(/-/g, "").slice(0, 16),
     });
+
+    // Deduct credits on success. Subscription bucket is drawn first so one-time
+    // top-ups survive monthly plan resets.
+    const creditCost = calculateCreditCost(job.requestedDuration);
+    await db
+      .update(creditsTable)
+      .set({
+        subscriptionCredits: sql`GREATEST(subscription_credits - ${creditCost}, 0)`,
+        topupCredits: sql`GREATEST(topup_credits - GREATEST(${creditCost} - subscription_credits, 0), 0)`,
+        creditsRemaining: sql`GREATEST(credits_remaining - ${creditCost}, 0)`,
+        creditsUsed: sql`credits_used + ${creditCost}`,
+        totalGenerations: sql`total_generations + 1`,
+        updatedAt: new Date(),
+      })
+      .where(eq(creditsTable.userId, job.userId));
+    logger.info({ jobId: job.id, userId: job.userId, creditCost }, "Credits deducted on success");
 
     await updateJobStatus(job.id, { status: "ready", progressPercent: 100, videoId });
     logger.info({ jobId: job.id, videoId, provider: getActiveProvider() }, "Job completed");
