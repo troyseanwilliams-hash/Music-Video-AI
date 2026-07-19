@@ -3,6 +3,7 @@ import { writeFile, readFile, unlink, mkdir, rm } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { randomUUID } from "crypto";
+import { buildTimedLines, buildAssKaraoke } from "./lyricTiming.js";
 
 export interface StitchInput {
   clips: { buffer: Buffer; targetDuration: number }[];
@@ -151,18 +152,44 @@ export async function stitchVideoClips(input: StitchInput): Promise<StitchResult
       "-movflags", "+faststart",
     ];
 
+    // Lyric mode: word-level karaoke via an ASS subtitle burn (libass). Falls
+    // back to the v1 line-timed drawtext filter if the subtitles filter is
+    // unavailable in the local ffmpeg build.
+    let assPath: string | null = null;
     if (input.lyricsText?.trim()) {
-      const lyricsFilter = buildLyricsFilter(input.lyricsText, input.totalDuration);
-      if (lyricsFilter) outputOptions.push("-vf", lyricsFilter);
+      const timedLines = buildTimedLines(input.lyricsText, input.totalDuration);
+      if (timedLines.length > 0) {
+        assPath = join(tmpDir, "lyrics.ass");
+        await writeFile(assPath, buildAssKaraoke(timedLines));
+      }
     }
 
-    await runFfmpeg(
-      ffmpeg()
-        .input(stitchedPath)
-        .input(audioPath)
-        .outputOptions(outputOptions)
-        .output(outputPath),
-    );
+    const karaokeOptions = assPath
+      ? [...outputOptions, "-vf", `subtitles=${assPath.replace(/([\\':])/g, "\\$1")}`]
+      : outputOptions;
+
+    try {
+      await runFfmpeg(
+        ffmpeg()
+          .input(stitchedPath)
+          .input(audioPath)
+          .outputOptions(karaokeOptions)
+          .output(outputPath),
+      );
+    } catch (err) {
+      if (!assPath) throw err;
+      // libass unavailable — retry with the simple drawtext lyric overlay.
+      const fallbackOptions = [...outputOptions];
+      const lyricsFilter = buildLyricsFilter(input.lyricsText!, input.totalDuration);
+      if (lyricsFilter) fallbackOptions.push("-vf", lyricsFilter);
+      await runFfmpeg(
+        ffmpeg()
+          .input(stitchedPath)
+          .input(audioPath)
+          .outputOptions(fallbackOptions)
+          .output(outputPath),
+      );
+    }
 
     const thumbTimestamp = Math.max(1, input.totalDuration * 0.3);
     await extractThumbnailFromFile(outputPath, thumbTimestamp, thumbPath);

@@ -1186,10 +1186,10 @@ export default function Generate() {
               <div className="flex items-center gap-2 min-w-0">
                 <FileText className="h-4 w-4 text-primary shrink-0" />
                 <Label htmlFor="lyrics-toggle" className="cursor-pointer font-medium">
-                  Lyric video · timed captions
+                  Lyric video · karaoke captions
                 </Label>
                 <span className="text-xs text-muted-foreground hidden sm:inline">
-                  — lines appear one at a time, in sync with the track
+                  — words fill in as they're sung, in sync with the track
                 </span>
               </div>
               <Switch
@@ -1206,7 +1206,7 @@ export default function Generate() {
                 exit={{ opacity: 0, height: 0 }}
               >
                 <Textarea
-                  placeholder="Paste your lyrics — one line per caption. Lines are spread evenly across the video so they land with the music..."
+                  placeholder="Paste plain lyrics — or an .lrc file with [mm:ss] timestamps for exact line sync (word-level <mm:ss> tags supported too)..."
                   className="min-h-[120px] resize-none bg-background/50 border-input"
                   value={lyricsText}
                   onChange={(e) => setLyricsText(e.target.value)}
@@ -1214,6 +1214,11 @@ export default function Generate() {
                 />
                 <p className="text-xs text-muted-foreground mt-1.5">
                   {lyricsText.length}/5000 characters
+                  {/\[\d{1,2}:\d{2}/.test(lyricsText)
+                    ? " · LRC timestamps detected — exact sync"
+                    : lyricsText.trim()
+                      ? " · no timestamps — lines will be spread evenly (paste LRC for exact sync)"
+                      : ""}
                 </p>
               </motion.div>
             )}
