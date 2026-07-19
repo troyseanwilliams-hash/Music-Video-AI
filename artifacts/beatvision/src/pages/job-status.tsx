@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from "recharts";
 import { motion, AnimatePresence } from "framer-motion";
+import SocialExportsPanel from "@/components/SocialExportsPanel";
 
 const TERMINAL_STATUSES = new Set(["ready", "failed"]);
 
@@ -691,6 +692,11 @@ export default function JobStatus() {
         {/* ── Remix clips ── */}
         {isComplete && job.videoId && (
           <RemixPanel jobId={job.id} requestedDuration={job.requestedDuration} />
+        )}
+
+        {/* ── Social exports (TikTok/Shorts teasers + Spotify Canvas) ── */}
+        {isComplete && job.videoId && (
+          <SocialExportsPanel videoId={job.videoId} />
         )}
 
         {/* ── Audio analysis ── */}

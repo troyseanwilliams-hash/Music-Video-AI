@@ -8,6 +8,10 @@ export const PROVIDER_LABELS: Record<AiProvider, string> = {
   luma: "Luma Dream Machine",
 };
 
+// Social export costs — mirror artifacts/api-server/src/lib/creditCost.ts.
+export const TEASER_PACK_COST = 15;
+export const CANVAS_EXPORT_COST = 10;
+
 const BASE_CREDITS = 20;
 const CREDITS_PER_SECOND = 1;
 const FULL_VIDEO_SECONDS = 120;

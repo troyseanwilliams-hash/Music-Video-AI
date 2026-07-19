@@ -100,6 +100,9 @@ export const videosTable = pgTable("videos", {
   // remixed (regenerated) later without rerunning the whole pipeline. Array of
   // VideoClipMeta: { index, startTime, endTime, durationSec, prompt, style, objectPath }.
   clips: jsonb("clips"),
+  // Auto-cut vertical teaser clips for TikTok/Shorts. Array of TeaserMeta:
+  // { index, objectPath, startTime, durationSec }. Null until generated.
+  teasers: jsonb("teasers"),
   shareToken: text("share_token").unique(),
   // Public gallery: opt-in visibility + denormalized like count for fast sorting.
   isPublic: boolean("is_public").notNull().default(false),

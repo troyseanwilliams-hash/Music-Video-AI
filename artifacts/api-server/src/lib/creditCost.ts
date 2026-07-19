@@ -59,3 +59,12 @@ export function calculateRemixCost(
   const perClip = calculateCreditCost(requestedDuration) / safeTotal;
   return Math.max(1, Math.ceil(perClip * safeRegen));
 }
+
+// Flat cost for a teaser pack (3 vertical TikTok/Shorts cuts of an existing
+// video). Pure ffmpeg — no AI generation — so it's priced like a small render.
+// Mirror in artifacts/beatvision/src/lib/creditPricing.ts.
+export const TEASER_PACK_COST = 15;
+
+// Flat cost for a Spotify Canvas export (one 9:16 loop, 3–8s, cut from an
+// existing video). Mirror in artifacts/beatvision/src/lib/creditPricing.ts.
+export const CANVAS_EXPORT_COST = 10;

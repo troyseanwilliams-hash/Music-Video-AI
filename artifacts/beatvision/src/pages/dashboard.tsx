@@ -14,28 +14,20 @@ function daysUntil(dateStr: string | null | undefined): number {
 }
 
 // Mirrors server-side calculateCreditCost — must stay in sync with creditCost.ts
-const MAX_CLIPS_PER_JOB = 3;
-const RUNWAY_TOKENS_PER_5S = 165;
-const RUNWAY_TOKENS_PER_10S = 330;
-const RUNWAY_USD_PER_TOKEN = 0.01;
-const MARKUP = 2;
-const USD_PER_CREDIT = 0.02;
+const BASE_CREDITS = 20;
+const CREDITS_PER_SECOND = 1;
+const FULL_VIDEO_SECONDS = 120;
 
 function estimateCreditCost(requestedDuration: string | null | undefined): number {
   const dur = requestedDuration ?? "full";
-  let clipDurationSec: 5 | 10;
-  let numClips: number;
+  let secs: number;
   if (dur === "full") {
-    clipDurationSec = 10;
-    numClips = MAX_CLIPS_PER_JOB;
+    secs = FULL_VIDEO_SECONDS;
   } else {
-    const durSec = parseInt(dur, 10);
-    clipDurationSec = durSec <= 5 ? 5 : 10;
-    numClips = Math.max(1, Math.ceil(durSec / clipDurationSec));
+    const n = parseInt(dur, 10);
+    secs = isNaN(n) || n <= 0 ? FULL_VIDEO_SECONDS : Math.min(n, FULL_VIDEO_SECONDS);
   }
-  const tokensPerClip = clipDurationSec === 5 ? RUNWAY_TOKENS_PER_5S : RUNWAY_TOKENS_PER_10S;
-  const chargeUSD = numClips * tokensPerClip * RUNWAY_USD_PER_TOKEN * MARKUP;
-  return Math.ceil(chargeUSD / USD_PER_CREDIT);
+  return BASE_CREDITS + Math.ceil(secs * CREDITS_PER_SECOND);
 }
 
 export default function Dashboard() {

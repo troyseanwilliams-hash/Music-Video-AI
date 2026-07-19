@@ -279,6 +279,18 @@ export class ObjectStorageService {
     return `/objects/clips/${videoId}/${index}.mp4`;
   }
 
+  // Persist a vertical teaser cut for TikTok/Shorts. Returns the /objects/...
+  // path stored on videos.teasers.
+  async uploadTeaserBuffer(buffer: Buffer, videoId: string, index: number): Promise<string> {
+    const privateObjectDir = this.getPrivateObjectDir();
+    const objectEntityPath = `${privateObjectDir}/teasers/${videoId}/${index}.mp4`;
+    const { bucketName, objectName } = parseObjectPath(objectEntityPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+    await file.save(buffer, { contentType: "video/mp4", resumable: buffer.length > 5 * 1024 * 1024 });
+    return `/objects/teasers/${videoId}/${index}.mp4`;
+  }
+
   normalizeObjectEntityPath(rawPath: string): string {
     if (!rawPath.startsWith("https://storage.googleapis.com/")) {
       return rawPath;

@@ -14,6 +14,7 @@ import adminVideosRouter from "./admin-videos.js";
 import audioRouter from "./audio.js";
 import studioRouter from "./studio.js";
 import referralsRouter from "./referrals.js";
+import teasersRouter from "./teasers.js";
 
 const router: IRouter = Router();
 
@@ -32,5 +33,6 @@ router.use(adminJobsRouter);
 router.use(adminVideosRouter);
 router.use(studioRouter);
 router.use(referralsRouter);
+router.use(teasersRouter);
 
 export default router;

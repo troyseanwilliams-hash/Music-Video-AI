@@ -9,6 +9,9 @@ export function Footer() {
           <Link href="/suno" className="hover:text-foreground transition-colors">
             Suno to Video
           </Link>
+          <Link href="/spotify-canvas" className="hover:text-foreground transition-colors">
+            Canvas Maker
+          </Link>
           <Link href="/terms" className="hover:text-foreground transition-colors">
             Terms of Service
           </Link>

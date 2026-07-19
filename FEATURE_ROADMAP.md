@@ -22,10 +22,10 @@ picking the next unchecked item — no prior context needed.
 - [x] 4. Platform export presets  *(generate page: TikTok/YouTube/Canvas/Square set aspect+duration)*
 - [ ] 5. Style variations pass
 - [ ] 6. Render-finished notifications
-- [ ] 7. Referral / share-to-earn credits
+- [x] 7. Referral / share-to-earn credits  *(shipped: codes, ?ref capture, idempotent grants, dashboard panel)*
 - [ ] 8. Contextual upsells + premium (4K/commercial) tier
 - [ ] 9. Creator mini-dashboard (views/likes)
-- [ ] 10. SEO style landing pages
+- [~] 10. SEO style landing pages  *(partial: /suno + /spotify-canvas live with meta + internal links)*
 
 ---
 

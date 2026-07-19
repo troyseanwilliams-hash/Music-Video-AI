@@ -204,11 +204,13 @@ export default function Pricing() {
           Choose your <span className="text-gradient-electric">plan</span>
         </h1>
         <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-          Credits are consumed per video generated. A 5-second clip costs{" "}
-          <strong className="text-foreground">165 credits</strong>, a
-          10-second clip costs{" "}
-          <strong className="text-foreground">330 credits</strong>. Plan
-          credits reset each cycle — top-up credits never expire.
+          Credits are consumed per video generated — from{" "}
+          <strong className="text-foreground">25 credits</strong> for a
+          5-second clip up to{" "}
+          <strong className="text-foreground">140 credits</strong> for a
+          full-length video. TikTok teaser packs cost 15, Spotify Canvas
+          loops 10. Plan credits reset each cycle — top-up credits never
+          expire, and you can earn more by referring friends.
         </p>
         {isAuthenticated && subscription && (
           <div
@@ -328,8 +330,8 @@ export default function Pricing() {
                       {price.credits.toLocaleString()} credits per{" "}
                       {price.interval === "year" ? "year" : "month"}{" "}
                       <span className="text-muted-foreground">
-                        (~{Math.floor(price.credits / 165)} × 5s or{" "}
-                        {Math.floor(price.credits / 330)} × 10s clips)
+                        (~{Math.floor(price.credits / 140)} full videos or{" "}
+                        {Math.floor(price.credits / 25)} × 5s clips)
                       </span>
                     </span>
                   </li>
@@ -340,6 +342,14 @@ export default function Pricing() {
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                     <span>Remix Lab — arrange clips, photos &amp; music with transitions</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                    <span>Karaoke lyric sync (LRC &amp; word-level timing)</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                    <span>TikTok/Shorts teaser cuts &amp; Spotify Canvas exports</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
