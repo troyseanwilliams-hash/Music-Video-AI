@@ -2,12 +2,12 @@
 // pricing model as AI generation (creditCost.ts): cost scales with the length
 // of the finished video, from a 5-second clip up to the full-length maximum.
 //
-// Scale: cost = BASE_CREDITS + seconds × CREDITS_PER_SECOND  (seconds capped at MAX)
-//   5s    → 25 credits   (minimum)
-//   10s   → 30 credits
-//   30s   → 50 credits
-//   60s   → 80 credits
-//   120s+ → 140 credits  (max)
+// Scale: cost = (BASE_CREDITS + seconds × CREDITS_PER_SECOND) × PRICE_MULTIPLIER
+//   5s    → 50 credits   (minimum)
+//   10s   → 60 credits
+//   30s   → 100 credits
+//   60s   → 160 credits
+//   120s+ → 280 credits  (max)
 //
 // Editor exports only cost credits once the user's free trial ends and they
 // have no active subscription (chargeCredits === true). USD_PER_CREDIT mirrors
@@ -22,6 +22,7 @@ export interface EditorCostInput {
 const BASE_CREDITS = 20; // floor so a 5s export ≈ half a 30s export
 const CREDITS_PER_SECOND = 1; // linear scale on top of the floor
 const MAX_BILLABLE_SECONDS = 120; // "full length" is billed as the maximum size
+const PRICE_MULTIPLIER = 2; // user-facing price = 2× the cost scale (see creditCost.ts)
 
 // Billable duration in seconds, clamped to the maximum.
 function billableSeconds(durationSec: number): number {
@@ -33,5 +34,5 @@ function billableSeconds(durationSec: number): number {
 // shown in the Editor and the deduction from the customer's balance on success).
 export function calculateEditorCost(input: EditorCostInput): number {
   const secs = billableSeconds(input.durationSec);
-  return BASE_CREDITS + Math.ceil(secs * CREDITS_PER_SECOND);
+  return (BASE_CREDITS + Math.ceil(secs * CREDITS_PER_SECOND)) * PRICE_MULTIPLIER;
 }

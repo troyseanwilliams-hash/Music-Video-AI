@@ -2,17 +2,22 @@
 // any AI-provider token math. A 5-second clip is the cheapest (about half the
 // cost of a 30-second video) and a full video is the most expensive.
 //
-// Scale: cost = BASE_CREDITS + seconds × CREDITS_PER_SECOND
-//   5s   → 25 credits   (minimum, ≈ ½ of 30s)
-//   10s  → 30 credits
-//   30s  → 50 credits
-//   60s  → 80 credits
-//   full → 140 credits  (max)
+// Scale: cost = (BASE_CREDITS + seconds × CREDITS_PER_SECOND) × PRICE_MULTIPLIER
+//   5s   → 50 credits   (minimum, ≈ ½ of 30s)
+//   10s  → 60 credits
+//   30s  → 100 credits
+//   60s  → 160 credits
+//   full → 280 credits  (max)
 const MAX_CLIPS_PER_JOB = 3;
 
 const BASE_CREDITS = 20; // floor so a 5s clip ≈ half a 30s clip
 const CREDITS_PER_SECOND = 1; // linear scale on top of the floor
 const FULL_VIDEO_SECONDS = 120; // "full" is billed as the maximum size
+
+// User-facing prices are always double the underlying cost scale. Mirror any
+// change here in artifacts/beatvision/src/lib/creditPricing.ts (and the local
+// estimators in dashboard.tsx, job-status.tsx, editor.tsx) + editorCost.ts.
+export const PRICE_MULTIPLIER = 2;
 
 export function getClipPlan(requestedDuration: string | null | undefined): {
   numClips: number;
@@ -41,7 +46,7 @@ function billableSeconds(requestedDuration: string | null | undefined): number {
 // shown to the customer and the deduction from their balance on success).
 export function calculateCreditCost(requestedDuration: string | null | undefined): number {
   const secs = billableSeconds(requestedDuration);
-  return BASE_CREDITS + Math.ceil(secs * CREDITS_PER_SECOND);
+  return (BASE_CREDITS + Math.ceil(secs * CREDITS_PER_SECOND)) * PRICE_MULTIPLIER;
 }
 
 // Cost to remix (regenerate) a subset of an existing video's clips. Charged
@@ -63,8 +68,8 @@ export function calculateRemixCost(
 // Flat cost for a teaser pack (3 vertical TikTok/Shorts cuts of an existing
 // video). Pure ffmpeg — no AI generation — so it's priced like a small render.
 // Mirror in artifacts/beatvision/src/lib/creditPricing.ts.
-export const TEASER_PACK_COST = 15;
+export const TEASER_PACK_COST = 15 * PRICE_MULTIPLIER;
 
 // Flat cost for a Spotify Canvas export (one 9:16 loop, 3–8s, cut from an
 // existing video). Mirror in artifacts/beatvision/src/lib/creditPricing.ts.
-export const CANVAS_EXPORT_COST = 10;
+export const CANVAS_EXPORT_COST = 10 * PRICE_MULTIPLIER;

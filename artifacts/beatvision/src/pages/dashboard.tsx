@@ -17,6 +17,7 @@ function daysUntil(dateStr: string | null | undefined): number {
 const BASE_CREDITS = 20;
 const CREDITS_PER_SECOND = 1;
 const FULL_VIDEO_SECONDS = 120;
+const PRICE_MULTIPLIER = 2; // user-facing price = 2× the cost scale
 
 function estimateCreditCost(requestedDuration: string | null | undefined): number {
   const dur = requestedDuration ?? "full";
@@ -27,7 +28,7 @@ function estimateCreditCost(requestedDuration: string | null | undefined): numbe
     const n = parseInt(dur, 10);
     secs = isNaN(n) || n <= 0 ? FULL_VIDEO_SECONDS : Math.min(n, FULL_VIDEO_SECONDS);
   }
-  return BASE_CREDITS + Math.ceil(secs * CREDITS_PER_SECOND);
+  return (BASE_CREDITS + Math.ceil(secs * CREDITS_PER_SECOND)) * PRICE_MULTIPLIER;
 }
 
 export default function Dashboard() {

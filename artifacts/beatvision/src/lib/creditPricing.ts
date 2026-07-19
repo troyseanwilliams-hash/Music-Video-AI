@@ -8,9 +8,12 @@ export const PROVIDER_LABELS: Record<AiProvider, string> = {
   luma: "Luma Dream Machine",
 };
 
+// User-facing price = 2× the cost scale — mirror creditCost.ts.
+export const PRICE_MULTIPLIER = 2;
+
 // Social export costs — mirror artifacts/api-server/src/lib/creditCost.ts.
-export const TEASER_PACK_COST = 15;
-export const CANVAS_EXPORT_COST = 10;
+export const TEASER_PACK_COST = 15 * PRICE_MULTIPLIER;
+export const CANVAS_EXPORT_COST = 10 * PRICE_MULTIPLIER;
 
 const BASE_CREDITS = 20;
 const CREDITS_PER_SECOND = 1;
@@ -28,5 +31,5 @@ export function estimateCreditCost(
     const n = parseInt(dur, 10);
     secs = isNaN(n) || n <= 0 ? FULL_VIDEO_SECONDS : Math.min(n, FULL_VIDEO_SECONDS);
   }
-  return BASE_CREDITS + Math.ceil(secs * CREDITS_PER_SECOND);
+  return (BASE_CREDITS + Math.ceil(secs * CREDITS_PER_SECOND)) * PRICE_MULTIPLIER;
 }

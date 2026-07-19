@@ -205,11 +205,11 @@ export default function Pricing() {
         </h1>
         <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
           Credits are consumed per video generated — from{" "}
-          <strong className="text-foreground">25 credits</strong> for a
+          <strong className="text-foreground">50 credits</strong> for a
           5-second clip up to{" "}
-          <strong className="text-foreground">140 credits</strong> for a
-          full-length video. TikTok teaser packs cost 15, Spotify Canvas
-          loops 10. Plan credits reset each cycle — top-up credits never
+          <strong className="text-foreground">280 credits</strong> for a
+          full-length video. TikTok teaser packs cost 30, Spotify Canvas
+          loops 20. Plan credits reset each cycle — top-up credits never
           expire, and you can earn more by referring friends.
         </p>
         {isAuthenticated && subscription && (
@@ -330,8 +330,8 @@ export default function Pricing() {
                       {price.credits.toLocaleString()} credits per{" "}
                       {price.interval === "year" ? "year" : "month"}{" "}
                       <span className="text-muted-foreground">
-                        (~{Math.floor(price.credits / 140)} full videos or{" "}
-                        {Math.floor(price.credits / 25)} × 5s clips)
+                        (~{Math.floor(price.credits / 280)} full videos or{" "}
+                        {Math.floor(price.credits / 50)} × 5s clips)
                       </span>
                     </span>
                   </li>
@@ -416,7 +416,7 @@ export default function Pricing() {
                 ? Math.round((1 - price.unitAmount / faceValueCents) * 100)
                 : 0;
               const perCreditCents = price.unitAmount / 100 / price.credits;
-              const estClips = Math.floor(price.credits / 330);
+              const estClips = Math.floor(price.credits / 60); // 10s clip = 60 credits
 
               return (
                 <Card

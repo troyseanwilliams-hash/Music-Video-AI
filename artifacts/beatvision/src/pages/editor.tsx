@@ -229,8 +229,8 @@ export default function Editor() {
 
   // Mirror of the server's size-based editor pricing (editorCost.ts): once the
   // trial ends and there's no subscription, each export deducts credits scaled
-  // by the finished video's length (BASE 20 + seconds, capped at 120 → max 140).
-  const estimatedCost = 20 + Math.ceil(Math.min(Math.max(totalDuration, 0), 120));
+  // by the finished video's length ((BASE 20 + seconds, capped at 120) × 2 → max 280).
+  const estimatedCost = (20 + Math.ceil(Math.min(Math.max(totalDuration, 0), 120))) * 2;
 
   function patchSegment(id: string, patch: Partial<Segment>) {
     setSegments((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));

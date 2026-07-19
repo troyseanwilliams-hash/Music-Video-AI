@@ -997,7 +997,7 @@ const REMIX_STYLES = [
 // cost = BASE_CREDITS + ceil(min(seconds, FULL_VIDEO_SECONDS)). Remix cost is
 // then proportional to the number of clips regenerated, never the full job.
 function fullJobCost(requestedDuration: string | null | undefined): number {
-  const BASE_CREDITS = 20, FULL_VIDEO_SECONDS = 120;
+  const BASE_CREDITS = 20, FULL_VIDEO_SECONDS = 120, PRICE_MULTIPLIER = 2;
   const dur = requestedDuration ?? "full";
   let secs: number;
   if (dur === "full") {
@@ -1006,7 +1006,7 @@ function fullJobCost(requestedDuration: string | null | undefined): number {
     const n = parseInt(dur, 10);
     secs = isNaN(n) || n <= 0 ? FULL_VIDEO_SECONDS : Math.min(n, FULL_VIDEO_SECONDS);
   }
-  return BASE_CREDITS + Math.ceil(secs);
+  return (BASE_CREDITS + Math.ceil(secs)) * PRICE_MULTIPLIER;
 }
 
 function estimateRemixCost(
