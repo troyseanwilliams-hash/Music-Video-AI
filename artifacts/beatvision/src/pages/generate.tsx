@@ -107,6 +107,7 @@ const ASPECT_RATIOS = [
 const RESOLUTIONS = [
   CreateJobRequestResolution["720p"],
   CreateJobRequestResolution["1080p"],
+  CreateJobRequestResolution["4k"],
 ] as const;
 
 const CHARACTERS = [

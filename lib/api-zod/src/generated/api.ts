@@ -355,7 +355,12 @@ export const CreateJobBody = zod.object({
     .nullish()
     .describe("Output video aspect ratio (defaults to 16:9)"),
   resolution: zod
-    .union([zod.literal("720p"), zod.literal("1080p"), zod.literal(null)])
+    .union([
+      zod.literal("720p"),
+      zod.literal("1080p"),
+      zod.literal("4k"),
+      zod.literal(null),
+    ])
     .nullish()
     .describe("Output video resolution (defaults to 720p)"),
   character: zod

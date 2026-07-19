@@ -453,7 +453,9 @@ async function processEditorJob(job: JobRow): Promise<void> {
       music = { buffer: buf, ext, mode: manifest.music.mode, volume: manifest.music.volume };
     }
 
-    const [width, height] = manifest.resolution === "1080p" ? [1920, 1080] : [1280, 720];
+    const [width, height] =
+      manifest.resolution === "4k" ? [3840, 2160] :
+      manifest.resolution === "1080p" ? [1920, 1080] : [1280, 720];
     await updateJobStatus(job.id, { progressPercent: 22 });
 
     // Drive progress smoothly from 25%→80% as each segment is normalized so the

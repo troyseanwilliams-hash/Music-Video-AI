@@ -270,6 +270,7 @@ export type CreateJobRequestResolution =
 export const CreateJobRequestResolution = {
   "720p": "720p",
   "1080p": "1080p",
+  "4k": "4k",
 } as const;
 
 /**

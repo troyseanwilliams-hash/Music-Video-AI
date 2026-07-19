@@ -1066,7 +1066,7 @@ components:
           description: Output video aspect ratio (defaults to 16:9)
         resolution:
           type: [string, 'null']
-          enum: ['720p', '1080p', null]
+          enum: ['720p', '1080p', '4k', null]
           description: Output video resolution (defaults to 720p)
         character:
           type: [string, 'null']
