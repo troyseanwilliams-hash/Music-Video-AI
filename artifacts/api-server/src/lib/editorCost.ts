@@ -22,7 +22,7 @@ export interface EditorCostInput {
 const BASE_CREDITS = 20; // floor so a 5s export ≈ half a 30s export
 const CREDITS_PER_SECOND = 1; // linear scale on top of the floor
 const MAX_BILLABLE_SECONDS = 120; // "full length" is billed as the maximum size
-const PRICE_MULTIPLIER = 2; // user-facing price = 2× the cost scale (see creditCost.ts)
+const PRICE_MULTIPLIER = 2; // profit margin: price = 2× cost, so half of every charge is site profit (see creditCost.ts)
 
 // Billable duration in seconds, clamped to the maximum.
 function billableSeconds(durationSec: number): number {

@@ -14,10 +14,18 @@ const BASE_CREDITS = 20; // floor so a 5s clip ≈ half a 30s clip
 const CREDITS_PER_SECOND = 1; // linear scale on top of the floor
 const FULL_VIDEO_SECONDS = 120; // "full" is billed as the maximum size
 
-// User-facing prices are always double the underlying cost scale. Mirror any
+// Profit margin: the user-facing price is always double the underlying cost
+// scale (BASE + seconds), so charge − cost = cost — i.e. the second half of
+// every charge is the site's profit (100% markup / 50% margin). Mirror any
 // change here in artifacts/beatvision/src/lib/creditPricing.ts (and the local
 // estimators in dashboard.tsx, job-status.tsx, editor.tsx) + editorCost.ts.
 export const PRICE_MULTIPLIER = 2;
+
+// The underlying (pre-markup) cost of a generation — what the render "costs"
+// the site on the credit scale. profit = calculateCreditCost − this.
+export function calculateBaseCost(requestedDuration: string | null | undefined): number {
+  return calculateCreditCost(requestedDuration) / PRICE_MULTIPLIER;
+}
 
 export function getClipPlan(requestedDuration: string | null | undefined): {
   numClips: number;

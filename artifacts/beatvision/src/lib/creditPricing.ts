@@ -8,7 +8,8 @@ export const PROVIDER_LABELS: Record<AiProvider, string> = {
   luma: "Luma Dream Machine",
 };
 
-// User-facing price = 2× the cost scale — mirror creditCost.ts.
+// Profit margin: price = 2× the underlying cost scale, so half of every
+// charge is the site's profit — mirror creditCost.ts.
 export const PRICE_MULTIPLIER = 2;
 
 // Social export costs — mirror artifacts/api-server/src/lib/creditCost.ts.
