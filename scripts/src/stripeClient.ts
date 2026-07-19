@@ -13,6 +13,13 @@ async function getCredentials(): Promise<{
   publishableKey: string;
   secretKey: string;
 }> {
+  // Sandbox override: use sandbox keys directly when set (bypasses the connector)
+  const sandboxSecret = process.env["STRIPE_SANDBOX_SECRET_KEY"];
+  const sandboxPublishable = process.env["STRIPE_SANDBOX_PUBLISHABLE_KEY"];
+  if (sandboxSecret && sandboxPublishable) {
+    return { publishableKey: sandboxPublishable, secretKey: sandboxSecret };
+  }
+
   const hostname = process.env["REPLIT_CONNECTORS_HOSTNAME"];
   const xReplitToken = process.env["REPL_IDENTITY"]
     ? "repl " + process.env["REPL_IDENTITY"]
