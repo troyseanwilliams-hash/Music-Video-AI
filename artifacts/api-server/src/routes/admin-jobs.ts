@@ -179,4 +179,47 @@ router.post("/admin/jobs/:id/reject", async (req, res) => {
   res.json(updated);
 });
 
+// Email delivery smoke test. Sends a test email to the admin, plus optionally
+// to any address passed as { to } — use this to verify the Resend API key and
+// domain before relying on reset/render emails.
+// POST /api/admin/test-email  { to?: string }
+router.post("/admin/test-email", async (req, res) => {
+  if (!req.isAuthenticated() || !isAdmin(req.user.email)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const key = process.env.RESEND_API_KEY;
+  if (!key) {
+    res.status(500).json({ ok: false, error: "RESEND_API_KEY is not set" });
+    return;
+  }
+
+  const targets = [process.env.ADMIN_EMAIL!];
+  const extra = typeof req.body?.to === "string" ? req.body.to.trim() : "";
+  if (extra && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(extra)) targets.push(extra);
+
+  const results: { to: string; ok: boolean; error?: string }[] = [];
+  for (const to of targets) {
+    try {
+      const r = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: "AI Beat Sync <notifications@aibeatsync.com>",
+          to,
+          subject: "AI Beat Sync — email delivery test",
+          html: `<div style="font-family:sans-serif;padding:24px"><h2>Email works ✔</h2><p>This is a delivery test sent from the admin panel at ${new Date().toISOString()}.</p></div>`,
+        }),
+      });
+      const body = await r.text();
+      results.push(r.ok ? { to, ok: true } : { to, ok: false, error: `Resend ${r.status}: ${body.slice(0, 200)}` });
+    } catch (err) {
+      results.push({ to, ok: false, error: String(err) });
+    }
+  }
+
+  req.log.info({ results }, "Admin email test");
+  res.json({ ok: results.every((r) => r.ok), results });
+});
+
 export default router;

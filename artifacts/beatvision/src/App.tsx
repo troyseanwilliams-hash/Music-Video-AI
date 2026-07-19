@@ -22,6 +22,8 @@ import Dmca from "@/pages/dmca";
 import Support from "@/pages/support";
 import SunoLanding from "@/pages/suno-landing";
 import CanvasLanding from "@/pages/canvas-landing";
+import ForgotPassword from "@/pages/forgot-password";
+import ResetPassword from "@/pages/reset-password";
 
 const queryClient = new QueryClient();
 
@@ -34,6 +36,8 @@ function Router() {
           <Route path="/" component={Home} />
           <Route path="/login" component={Login} />
           <Route path="/register" component={Register} />
+          <Route path="/forgot-password" component={ForgotPassword} />
+          <Route path="/reset-password" component={ResetPassword} />
           <Route path="/generate" component={Generate} />
           <Route path="/editor" component={Editor} />
           <Route path="/dashboard" component={Dashboard} />

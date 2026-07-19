@@ -115,7 +115,7 @@ router.post("/jobs", async (req, res) => {
     }
   }
 
-  const creditCost = calculateCreditCost(requestedDuration);
+  const creditCost = calculateCreditCost(requestedDuration, resolution);
 
   if (!isAdmin) {
     const credits = await db
@@ -581,7 +581,7 @@ router.post("/jobs/:id/remix", async (req, res) => {
     return;
   }
 
-  const remixCost = calculateRemixCost(job.requestedDuration, clips.length, validIndexes.length);
+  const remixCost = calculateRemixCost(job.requestedDuration, clips.length, validIndexes.length, job.resolution);
   const chargeCredits = !isAdmin;
 
   if (chargeCredits) {

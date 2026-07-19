@@ -10,6 +10,7 @@ import { writeFile, unlink } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { logger } from "./logger.js";
+import { notifyRenderReady, notifyRenderFailed } from "./renderEmail.js";
 import { ObjectStorageService } from "./objectStorage.js";
 import { analyzeAudioBuffer, type AudioAnalysis, type AudioSection } from "./audioAnalysis.js";
 import { generateClip, downloadClip, getActiveProvider } from "./videoApis.js";
@@ -342,6 +343,7 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
       errorMessage:
         "Your prompt was rejected by the AI provider's content policy. Please edit your prompt and try again.",
     });
+    void notifyRenderFailed(job, "The AI provider's content policy rejected the prompt.");
     return;
   }
 
@@ -375,6 +377,7 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
       status: "failed",
       errorMessage: `${errMsg} (max ${MAX_RETRIES} retries reached)`,
     });
+    void notifyRenderFailed(job, errMsg);
   }
 }
 
@@ -518,6 +521,7 @@ async function processEditorJob(job: JobRow): Promise<void> {
     }
 
     await updateJobStatus(job.id, { status: "ready", progressPercent: 100, videoId });
+    void notifyRenderReady(job);
     logger.info({ jobId: job.id, videoId }, "Editor render completed");
   } catch (err) {
     await retryOrFail(job, err);
@@ -715,6 +719,7 @@ async function processRemixJob(job: JobRow): Promise<void> {
     }
 
     await updateJobStatus(job.id, { status: "ready", progressPercent: 100, videoId: newVideoId });
+    void notifyRenderReady(job);
     logger.info({ jobId: job.id, newVideoId }, "Remix completed");
   } catch (err) {
     await retryOrFail(job, err);
@@ -853,7 +858,7 @@ async function processJob(job: JobRow): Promise<void> {
       shareToken: randomUUID().replace(/-/g, "").slice(0, 16),
     });
 
-    const creditCost = calculateCreditCost(job.requestedDuration);
+    const creditCost = calculateCreditCost(job.requestedDuration, job.resolution);
     // Deduct from the subscription bucket first, then top-up. This way one-time
     // top-ups survive any future "reset monthly credits at renewal" behavior.
     await db
@@ -870,6 +875,7 @@ async function processJob(job: JobRow): Promise<void> {
     logger.info({ jobId: job.id, userId: job.userId, creditCost }, "Credits deducted on success");
 
     await updateJobStatus(job.id, { status: "ready", progressPercent: 100, videoId });
+    void notifyRenderReady(job);
     logger.info({ jobId: job.id, videoId, provider: getActiveProvider() }, "Job completed");
   } catch (err) {
     await retryOrFail(job, err);

@@ -5,8 +5,12 @@ import { useAuth } from "@/hooks/useAuth";
 import { useGetDashboardStats, getGetDashboardStatsQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus, Film, CheckCircle2, Clock, AlertCircle, Crown, Play, Coins, Trash2 } from "lucide-react";
+import { Loader2, Plus, Film, CheckCircle2, Clock, AlertCircle, Crown, Play, Coins, Trash2, Zap, Mail } from "lucide-react";
 import ReferEarnCard from "@/components/ReferEarnCard";
+import { Switch } from "@/components/ui/switch";
+import { useQuery } from "@tanstack/react-query";
+
+const LOW_CREDIT_THRESHOLD = 60; // ≈ one 10s video left
 
 function daysUntil(dateStr: string | null | undefined): number {
   if (!dateStr) return 0;
@@ -74,6 +78,34 @@ export default function Dashboard() {
       enabled: isAuthenticated,
     }
   });
+
+  // Render-finished email preference.
+  const { data: prefs } = useQuery({
+    queryKey: ["auth", "preferences"],
+    queryFn: async () => {
+      const r = await fetch("/api/auth/preferences", { credentials: "include" });
+      if (!r.ok) throw new Error("prefs");
+      return r.json() as Promise<{ notifyOnComplete: boolean }>;
+    },
+    enabled: isAuthenticated,
+    staleTime: 5 * 60 * 1000,
+  });
+  const [notifyOverride, setNotifyOverride] = useState<boolean | null>(null);
+  const notifyOn = notifyOverride ?? prefs?.notifyOnComplete ?? true;
+
+  async function toggleNotify(value: boolean) {
+    setNotifyOverride(value);
+    try {
+      await fetch("/api/auth/preferences", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notifyOnComplete: value }),
+      });
+    } catch {
+      setNotifyOverride(!value); // revert on failure
+    }
+  }
 
   useEffect(() => {
     if (!isAuthLoading && !isAuthenticated) {
@@ -188,7 +220,41 @@ export default function Dashboard() {
             </Card>
           </div>
 
+          {stats.creditsRemaining < LOW_CREDIT_THRESHOLD && (
+            <div
+              className="flex items-center justify-between gap-4 rounded-lg border border-accent/40 bg-accent/5 px-4 py-3 text-sm"
+              data-testid="banner-low-credits"
+            >
+              <div className="flex items-center gap-2">
+                <Zap className="h-4 w-4 text-accent shrink-0" />
+                <span>
+                  {stats.creditsRemaining === 0
+                    ? "You're out of credits — top up or upgrade to keep creating."
+                    : <>Running low — <strong>{stats.creditsRemaining}</strong> credit{stats.creditsRemaining === 1 ? "" : "s"} left (a 10s video costs 60).</>}
+                </span>
+              </div>
+              <Link href="/pricing">
+                <Button size="sm" variant="outline" className="shrink-0 border-accent/40 text-accent hover:bg-accent/10">
+                  <Coins className="mr-1.5 h-3.5 w-3.5" />
+                  Get credits
+                </Button>
+              </Link>
+            </div>
+          )}
+
           <ReferEarnCard />
+
+          <div className="flex items-center justify-between rounded-lg border border-border/50 bg-card/30 px-4 py-3">
+            <div className="flex items-center gap-2 text-sm">
+              <Mail className="h-4 w-4 text-primary shrink-0" />
+              <span>Email me when renders finish or fail</span>
+            </div>
+            <Switch
+              checked={notifyOn}
+              onCheckedChange={toggleNotify}
+              data-testid="switch-notify-on-complete"
+            />
+          </div>
 
           <div>
             <h2 className="text-2xl font-semibold mb-6">Recent Activity</h2>

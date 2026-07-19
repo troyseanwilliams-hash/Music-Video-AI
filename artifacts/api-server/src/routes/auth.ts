@@ -22,6 +22,9 @@ function buildUserPayload(user: typeof usersTable.$inferSelect) {
   };
 }
 import { processReferralSignup } from "../lib/referrals.js";
+import { z } from "zod";
+import { Resend } from "resend";
+import { and, gt } from "drizzle-orm";
 import {
   clearSession,
   getSessionId,
@@ -158,6 +161,135 @@ router.post("/auth/login", async (req: Request, res: Response) => {
   const sid = await createSession(sessionData);
   setSessionCookie(res, sid);
   res.json(GetCurrentAuthUserResponse.parse({ user: payload }));
+});
+
+const APP_URL = process.env.APP_URL ?? "https://aibeatsync.com";
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+function hashResetToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+// Always responds 200 (no account enumeration). If the account exists, emails
+// a one-hour reset link.
+router.post("/auth/forgot-password", async (req: Request, res: Response) => {
+  const parsed = z.object({ email: z.string().email() }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "A valid email is required" });
+    return;
+  }
+  const normalizedEmail = parsed.data.email.toLowerCase().trim();
+  res.json({ ok: true }); // respond immediately, do the work after
+
+  try {
+    const [user] = await db
+      .select({ id: usersTable.id, email: usersTable.email })
+      .from(usersTable)
+      .where(eq(usersTable.email, normalizedEmail))
+      .limit(1);
+    if (!user) return;
+
+    const token = crypto.randomBytes(32).toString("hex");
+    await db
+      .update(usersTable)
+      .set({
+        passwordResetToken: hashResetToken(token),
+        passwordResetExpires: new Date(Date.now() + RESET_TOKEN_TTL_MS),
+      })
+      .where(eq(usersTable.id, user.id));
+
+    if (!process.env.RESEND_API_KEY) {
+      req.log.warn("RESEND_API_KEY not set — reset email skipped");
+      return;
+    }
+    const resetUrl = `${APP_URL}/reset-password?token=${token}`;
+    await new Resend(process.env.RESEND_API_KEY).emails.send({
+      from: "AI Beat Sync <notifications@aibeatsync.com>",
+      to: user.email!,
+      subject: "Reset your AI Beat Sync password",
+      html: `
+        <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+          <h2 style="margin:0 0 16px">Reset your password</h2>
+          <p>We received a request to reset your AI Beat Sync password. This link expires in 1 hour.</p>
+          <p style="margin:24px 0">
+            <a href="${resetUrl}" style="background:#7c3aed;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">
+              Choose a new password →
+            </a>
+          </p>
+          <p style="color:#666;font-size:13px">If you didn't request this, you can safely ignore this email — your password won't change.</p>
+        </div>
+      `,
+    });
+    req.log.info({ userId: user.id }, "Password reset email sent");
+  } catch (err) {
+    req.log.error({ err }, "Failed to process forgot-password");
+  }
+});
+
+router.post("/auth/reset-password", async (req: Request, res: Response) => {
+  const parsed = z
+    .object({ token: z.string().min(32), password: z.string().min(8) })
+    .safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Token and a password of at least 8 characters are required" });
+    return;
+  }
+
+  const [user] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(
+      and(
+        eq(usersTable.passwordResetToken, hashResetToken(parsed.data.token)),
+        gt(usersTable.passwordResetExpires, new Date()),
+      ),
+    )
+    .limit(1);
+
+  if (!user) {
+    res.status(400).json({ error: "This reset link is invalid or has expired. Please request a new one." });
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(parsed.data.password, SALT_ROUNDS);
+  await db
+    .update(usersTable)
+    .set({ passwordHash, passwordResetToken: null, passwordResetExpires: null })
+    .where(eq(usersTable.id, user.id));
+
+  req.log.info({ userId: user.id }, "Password reset completed");
+  res.json({ ok: true });
+});
+
+// Account preferences (currently just the render-finished email opt-out).
+router.patch("/auth/preferences", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const parsed = z.object({ notifyOnComplete: z.boolean() }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "notifyOnComplete (boolean) is required" });
+    return;
+  }
+  await db
+    .update(usersTable)
+    .set({ notifyOnComplete: parsed.data.notifyOnComplete })
+    .where(eq(usersTable.id, req.user.id));
+  res.json({ ok: true, notifyOnComplete: parsed.data.notifyOnComplete });
+});
+
+router.get("/auth/preferences", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const [user] = await db
+    .select({ notifyOnComplete: usersTable.notifyOnComplete })
+    .from(usersTable)
+    .where(eq(usersTable.id, req.user.id))
+    .limit(1);
+  res.json({ notifyOnComplete: user?.notifyOnComplete ?? true });
 });
 
 router.get("/logout", async (req: Request, res: Response) => {

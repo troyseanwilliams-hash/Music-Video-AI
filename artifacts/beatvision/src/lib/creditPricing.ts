@@ -21,9 +21,13 @@ const BASE_CREDITS = 20;
 const CREDITS_PER_SECOND = 1;
 const FULL_VIDEO_SECONDS = 120;
 
+// 4K renders carry a 50% premium — mirror creditCost.ts.
+export const FOURK_SURCHARGE = 1.5;
+
 export function estimateCreditCost(
   requestedDuration: CreateJobRequestRequestedDuration | null | undefined,
   _provider?: AiProvider,
+  resolution?: string | null,
 ): number {
   const dur = (requestedDuration ?? "full") as string;
   let secs: number;
@@ -33,5 +37,6 @@ export function estimateCreditCost(
     const n = parseInt(dur, 10);
     secs = isNaN(n) || n <= 0 ? FULL_VIDEO_SECONDS : Math.min(n, FULL_VIDEO_SECONDS);
   }
-  return (BASE_CREDITS + Math.ceil(secs * CREDITS_PER_SECOND)) * PRICE_MULTIPLIER;
+  const base = (BASE_CREDITS + Math.ceil(secs * CREDITS_PER_SECOND)) * PRICE_MULTIPLIER;
+  return resolution === "4k" ? Math.ceil(base * FOURK_SURCHARGE) : base;
 }

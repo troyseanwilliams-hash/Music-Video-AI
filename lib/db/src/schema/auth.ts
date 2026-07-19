@@ -30,6 +30,11 @@ export const usersTable = pgTable("users", {
   // Share-to-earn: this user's shareable referral code (generated lazily on
   // first visit to the Refer & Earn panel).
   referralCode: varchar("referral_code").unique(),
+  // Password reset: sha256 hash of the emailed token + its expiry.
+  passwordResetToken: varchar("password_reset_token"),
+  passwordResetExpires: timestamp("password_reset_expires", { withTimezone: true }),
+  // Render-finished email notifications (opt-out).
+  notifyOnComplete: boolean("notify_on_complete").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

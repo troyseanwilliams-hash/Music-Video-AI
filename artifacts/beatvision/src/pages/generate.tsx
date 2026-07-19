@@ -770,6 +770,9 @@ export default function Generate() {
                       className={resolution === r ? "text-primary font-medium" : ""}
                     >
                       {r}
+                      {r === "4k" && (
+                        <span className="ml-auto text-xs text-accent">+50%</span>
+                      )}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
@@ -1349,7 +1352,7 @@ export default function Generate() {
 
           {/* ── Generate ── */}
           {(() => {
-            const cost = estimateCreditCost(requestedDuration, aiProvider);
+            const cost = estimateCreditCost(requestedDuration, aiProvider, resolution);
             const balance = statsData?.creditsRemaining ?? null;
             const canAfford = isAdmin || balance === null || balance >= cost;
             const isAnalyzingAudio =
@@ -1414,7 +1417,7 @@ export default function Generate() {
       if (!isLong) return null;
       const numClips = Math.ceil((durSec as number) / 10);
       const estimatedMin = durSec === 90 ? "~15 minutes" : "~20 minutes";
-      const creditCost = estimateCreditCost(requestedDuration, aiProvider);
+      const creditCost = estimateCreditCost(requestedDuration, aiProvider, resolution);
       return (
         <Dialog open={durationWarningOpen} onOpenChange={setDurationWarningOpen}>
           <DialogContent className="sm:max-w-md">
@@ -1516,7 +1519,7 @@ export default function Generate() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Credit cost</span>
-                  <span className="font-medium">{estimateCreditCost(requestedDuration, aiProvider)} credits</span>
+                  <span className="font-medium">{estimateCreditCost(requestedDuration, aiProvider, resolution)} credits</span>
                 </div>
               </div>
             </div>

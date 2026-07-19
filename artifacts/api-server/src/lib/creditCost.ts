@@ -23,8 +23,11 @@ export const PRICE_MULTIPLIER = 2;
 
 // The underlying (pre-markup) cost of a generation — what the render "costs"
 // the site on the credit scale. profit = calculateCreditCost − this.
-export function calculateBaseCost(requestedDuration: string | null | undefined): number {
-  return calculateCreditCost(requestedDuration) / PRICE_MULTIPLIER;
+export function calculateBaseCost(
+  requestedDuration: string | null | undefined,
+  resolution?: string | null,
+): number {
+  return calculateCreditCost(requestedDuration, resolution) / PRICE_MULTIPLIER;
 }
 
 export function getClipPlan(requestedDuration: string | null | undefined): {
@@ -52,9 +55,16 @@ function billableSeconds(requestedDuration: string | null | undefined): number {
 
 // Estimated == actual cost (the same function backs the pre-flight estimate
 // shown to the customer and the deduction from their balance on success).
-export function calculateCreditCost(requestedDuration: string | null | undefined): number {
+// 4K renders carry a 50% premium on top of the standard price.
+export const FOURK_SURCHARGE = 1.5;
+
+export function calculateCreditCost(
+  requestedDuration: string | null | undefined,
+  resolution?: string | null,
+): number {
   const secs = billableSeconds(requestedDuration);
-  return (BASE_CREDITS + Math.ceil(secs * CREDITS_PER_SECOND)) * PRICE_MULTIPLIER;
+  const base = (BASE_CREDITS + Math.ceil(secs * CREDITS_PER_SECOND)) * PRICE_MULTIPLIER;
+  return resolution === "4k" ? Math.ceil(base * FOURK_SURCHARGE) : base;
 }
 
 // Cost to remix (regenerate) a subset of an existing video's clips. Charged
@@ -65,11 +75,12 @@ export function calculateRemixCost(
   requestedDuration: string | null | undefined,
   totalClips: number,
   regeneratedClips: number,
+  resolution?: string | null,
 ): number {
   const safeTotal = Math.max(1, totalClips);
   const safeRegen = Math.max(0, Math.min(regeneratedClips, safeTotal));
   if (safeRegen === 0) return 0;
-  const perClip = calculateCreditCost(requestedDuration) / safeTotal;
+  const perClip = calculateCreditCost(requestedDuration, resolution) / safeTotal;
   return Math.max(1, Math.ceil(perClip * safeRegen));
 }
 
