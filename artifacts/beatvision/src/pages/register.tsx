@@ -1,15 +1,20 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Music2, Eye, EyeOff, CheckCircle2 } from "lucide-react";
+import { Loader2, Music2, Eye, EyeOff, CheckCircle2, Gift } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function Register() {
   const { register } = useAuth();
   const [, setLocation] = useLocation();
+  // Referral code from a ?ref= share link (survives the SPA route).
+  const referralCode = useMemo(() => {
+    const ref = new URLSearchParams(window.location.search).get("ref");
+    return ref ? ref.trim().toUpperCase() : null;
+  }, []);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -35,7 +40,7 @@ export default function Register() {
 
     setIsSubmitting(true);
     try {
-      await register(name, email, password);
+      await register(name, email, password, referralCode ?? undefined);
       setLocation("/generate");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
@@ -68,6 +73,13 @@ export default function Register() {
             Start generating beat-synced music videos for free.
           </p>
         </div>
+
+        {referralCode && (
+          <div className="mb-6 flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm" data-testid="banner-referral">
+            <Gift className="h-4 w-4 text-primary shrink-0" />
+            <span>You were invited — you'll get <span className="font-semibold">50 bonus credits</span> when you sign up.</span>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
           <div className="space-y-2">

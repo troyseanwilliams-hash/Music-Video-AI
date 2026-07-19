@@ -61,6 +61,7 @@ export const RegisterUserBody = zod.object({
   email: zod.string().email().min(registerUserBodyEmailMin),
   password: zod.string().min(registerUserBodyPasswordMin),
   name: zod.string().min(1).max(registerUserBodyNameMax),
+  referralCode: zod.string().max(32).optional(),
 });
 
 export const RegisterUserResponse = zod.object({

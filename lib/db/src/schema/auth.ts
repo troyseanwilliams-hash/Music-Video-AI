@@ -27,6 +27,9 @@ export const usersTable = pgTable("users", {
   copyrightAcceptedAt: timestamp("copyright_accepted_at", { withTimezone: true }),
   stripeCustomerId: varchar("stripe_customer_id"),
   stripeSubscriptionId: varchar("stripe_subscription_id"),
+  // Share-to-earn: this user's shareable referral code (generated lazily on
+  // first visit to the Refer & Earn panel).
+  referralCode: varchar("referral_code").unique(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

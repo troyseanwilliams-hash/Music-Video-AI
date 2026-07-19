@@ -6,6 +6,7 @@ import { useGetDashboardStats, getGetDashboardStatsQueryKey } from "@workspace/a
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Plus, Film, CheckCircle2, Clock, AlertCircle, Crown, Play, Coins, Trash2 } from "lucide-react";
+import ReferEarnCard from "@/components/ReferEarnCard";
 
 function daysUntil(dateStr: string | null | undefined): number {
   if (!dateStr) return 0;
@@ -193,6 +194,8 @@ export default function Dashboard() {
               </CardContent>
             </Card>
           </div>
+
+          <ReferEarnCard />
 
           <div>
             <h2 className="text-2xl font-semibold mb-6">Recent Activity</h2>

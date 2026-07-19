@@ -244,6 +244,7 @@ export const creditGrantSourceEnum = pgEnum("credit_grant_source", [
   "topup",
   "trial",
   "admin",
+  "referral",
 ]);
 
 export const creditGrantsTable = pgTable("credit_grants", {
@@ -263,3 +264,26 @@ export const creditGrantsTable = pgTable("credit_grants", {
 });
 
 export type CreditGrant = typeof creditGrantsTable.$inferSelect;
+
+// Share-to-earn referrals. One row per referred signup; unique referred_id
+// makes the credit grant idempotent (a user can only ever be referred once).
+export const referralsTable = pgTable("referrals", {
+  id: text("id").primaryKey(),
+  referrerId: text("referrer_id")
+    .notNull()
+    .references(() => usersTable.id, { onDelete: "cascade" }),
+  referredId: text("referred_id")
+    .notNull()
+    .unique()
+    .references(() => usersTable.id, { onDelete: "cascade" }),
+  code: text("code").notNull(),
+  // "credited" once both sides have received their signup credits.
+  status: text("status").notNull().default("credited"),
+  referrerCredits: integer("referrer_credits").notNull().default(0),
+  referredCredits: integer("referred_credits").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type Referral = typeof referralsTable.$inferSelect;

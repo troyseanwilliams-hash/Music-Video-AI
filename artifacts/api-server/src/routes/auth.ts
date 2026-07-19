@@ -21,6 +21,7 @@ function buildUserPayload(user: typeof usersTable.$inferSelect) {
     isAdmin: isAdminEmail(user.email),
   };
 }
+import { processReferralSignup } from "../lib/referrals.js";
 import {
   clearSession,
   getSessionId,
@@ -65,7 +66,7 @@ router.post("/auth/register", async (req: Request, res: Response) => {
     return;
   }
 
-  const { email, password, name } = parsed.data;
+  const { email, password, name, referralCode } = parsed.data;
   const normalizedEmail = email.toLowerCase().trim();
 
   const existing = await db
@@ -100,6 +101,11 @@ router.post("/auth/register", async (req: Request, res: Response) => {
     .returning();
 
   req.log.info({ userId: user.id, email: user.email }, "User registered");
+
+  // Share-to-earn: credit referrer + new user. Never blocks or fails signup.
+  if (referralCode) {
+    await processReferralSignup(referralCode, user.id);
+  }
 
   const payload = buildUserPayload(user);
   const sessionData: SessionData = { user: payload };

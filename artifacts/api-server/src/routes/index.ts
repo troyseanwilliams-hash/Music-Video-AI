@@ -13,6 +13,7 @@ import adminJobsRouter from "./admin-jobs.js";
 import adminVideosRouter from "./admin-videos.js";
 import audioRouter from "./audio.js";
 import studioRouter from "./studio.js";
+import referralsRouter from "./referrals.js";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use(supportRouter);
 router.use(adminJobsRouter);
 router.use(adminVideosRouter);
 router.use(studioRouter);
+router.use(referralsRouter);
 
 export default router;

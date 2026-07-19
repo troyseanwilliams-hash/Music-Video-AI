@@ -617,6 +617,28 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
 
+  /referrals/me:
+    get:
+      tags: [Credits]
+      operationId: getMyReferrals
+      summary: Get current user's referral code, share stats, and reward config
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+      responses:
+        '200':
+          description: Referral info.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferralInfoResponse'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
   /billing/plans:
     get:
       tags: [Billing]
@@ -886,6 +908,26 @@ components:
           type: string
           minLength: 1
           maxLength: 100
+        referralCode:
+          type: string
+          maxLength: 32
+          description: Optional referral code captured from a ?ref= share link.
+    ReferralInfoResponse:
+      type: object
+      required: [code, referredCount, creditsEarned, rewardPerReferral, referredBonus, maxCreditedReferrals]
+      properties:
+        code:
+          type: string
+        referredCount:
+          type: integer
+        creditsEarned:
+          type: integer
+        rewardPerReferral:
+          type: integer
+        referredBonus:
+          type: integer
+        maxCreditedReferrals:
+          type: integer
     LoginRequest:
       type: object
       required: [email, password]
