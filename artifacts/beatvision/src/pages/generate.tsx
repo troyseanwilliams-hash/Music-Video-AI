@@ -40,8 +40,21 @@ import {
   Upload, Link as LinkIcon, Music, Sparkles, Loader2, CheckCircle2, XCircle,
   Users, Clapperboard, Layers, Zap, Film, Wand2, Video as VideoIcon, FileText,
   ChevronDown, User, Maximize2, Captions, Pencil, MonitorPlay, ImageIcon,
-  Lock, Crown, Coins, AlertTriangle, CreditCard, Clock, ShieldAlert,
+  Lock, Crown, Coins, AlertTriangle, CreditCard, Clock, ShieldAlert, Info,
 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+
+// Original sample lyrics (safe to ship — written for this app) showing all
+// three timing formats the karaoke engine understands: word-level tags on the
+// first lines, plain [mm:ss] line tags after, and a comment for plain text.
+const SAMPLE_LYRICS = `[00:02]<00:02.00>City <00:02.40>lights <00:02.90>are <00:03.10>calling <00:03.70>my <00:03.95>name
+[00:05]<00:05.00>Every <00:05.50>beat <00:05.90>is <00:06.10>burning <00:06.70>like <00:06.95>a <00:07.15>flame
+[00:08]I can feel the rhythm in the rain
+[00:11]Nothing's gonna stop us now
+[00:14]We were made to light the sky
+[00:17]Neon hearts that never die
+[00:20]Turn it up and let it fly
+[00:23]This is our tonight`;
 
 type ErrorDialogState = {
   open: boolean;
@@ -1213,6 +1226,40 @@ export default function Generate() {
                 <Label htmlFor="lyrics-toggle" className="cursor-pointer font-medium">
                   Lyric video · karaoke captions
                 </Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-primary transition-colors shrink-0"
+                      aria-label="How lyric timing works"
+                      data-testid="button-lyrics-info"
+                    >
+                      <Info className="h-4 w-4" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-80 text-sm" align="start">
+                    <p className="font-semibold mb-2">How karaoke timing works</p>
+                    <ul className="space-y-2 text-muted-foreground">
+                      <li>
+                        <span className="text-foreground font-medium">Plain lyrics</span> — lines are
+                        spread evenly across the track; word fill is estimated.
+                      </li>
+                      <li>
+                        <span className="text-foreground font-medium">LRC timestamps</span> —{" "}
+                        <code className="text-xs bg-muted/40 px-1 rounded">[00:12.50]</code> before a
+                        line makes it appear exactly then.
+                      </li>
+                      <li>
+                        <span className="text-foreground font-medium">Word-level tags</span> —{" "}
+                        <code className="text-xs bg-muted/40 px-1 rounded">&lt;00:12.80&gt;</code> before
+                        each word syncs the fill word-by-word.
+                      </li>
+                    </ul>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Tip: Suno and most lyric sites can export .lrc files — paste the contents here.
+                    </p>
+                  </PopoverContent>
+                </Popover>
                 <span className="text-xs text-muted-foreground hidden sm:inline">
                   — words fill in as they're sung, in sync with the track
                 </span>
@@ -1237,14 +1284,26 @@ export default function Generate() {
                   onChange={(e) => setLyricsText(e.target.value)}
                   maxLength={5000}
                 />
-                <p className="text-xs text-muted-foreground mt-1.5">
-                  {lyricsText.length}/5000 characters
-                  {/\[\d{1,2}:\d{2}/.test(lyricsText)
-                    ? " · LRC timestamps detected — exact sync"
-                    : lyricsText.trim()
-                      ? " · no timestamps — lines will be spread evenly (paste LRC for exact sync)"
-                      : ""}
-                </p>
+                <div className="flex items-center justify-between gap-3 mt-1.5">
+                  <p className="text-xs text-muted-foreground">
+                    {lyricsText.length}/5000 characters
+                    {/\[\d{1,2}:\d{2}/.test(lyricsText)
+                      ? " · LRC timestamps detected — exact sync"
+                      : lyricsText.trim()
+                        ? " · no timestamps — lines will be spread evenly (paste LRC for exact sync)"
+                        : ""}
+                  </p>
+                  {!lyricsText.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => setLyricsText(SAMPLE_LYRICS)}
+                      className="text-xs text-primary hover:underline shrink-0"
+                      data-testid="button-lyrics-sample"
+                    >
+                      Try a sample
+                    </button>
+                  )}
+                </div>
               </motion.div>
             )}
           </div>
