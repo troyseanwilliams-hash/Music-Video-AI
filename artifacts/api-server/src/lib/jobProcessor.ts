@@ -398,6 +398,7 @@ interface EditorManifest {
   resolution?: string;
   watermark?: boolean;
   chargeCredits?: boolean; // true only when trial ended and not subscribed
+  lyricsText?: string | null; // karaoke burn (plain / LRC / enhanced LRC)
 }
 
 // User-driven Studio timeline render — bypasses the AI analyze/generate stages.
@@ -458,6 +459,7 @@ async function processEditorJob(job: JobRow): Promise<void> {
       width,
       height,
       watermark: manifest.watermark === true,
+      lyricsText: manifest.lyricsText ?? undefined,
       onProgress: (done, total) => {
         const pct = total > 0 ? 25 + Math.round((done / total) * 55) : 25;
         if (pct > lastEditorPct) {

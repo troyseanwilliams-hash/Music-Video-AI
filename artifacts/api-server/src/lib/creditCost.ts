@@ -81,3 +81,7 @@ export const TEASER_PACK_COST = 15 * PRICE_MULTIPLIER;
 // Flat cost for a Spotify Canvas export (one 9:16 loop, 3–8s, cut from an
 // existing video). Mirror in artifacts/beatvision/src/lib/creditPricing.ts.
 export const CANVAS_EXPORT_COST = 10 * PRICE_MULTIPLIER;
+
+// Flat cost to burn karaoke lyrics onto an existing finished video (pure
+// ffmpeg re-encode). Mirror in artifacts/beatvision/src/lib/creditPricing.ts.
+export const LYRIC_OVERLAY_COST = 10 * PRICE_MULTIPLIER;

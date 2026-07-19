@@ -15,6 +15,7 @@ export const PRICE_MULTIPLIER = 2;
 // Social export costs — mirror artifacts/api-server/src/lib/creditCost.ts.
 export const TEASER_PACK_COST = 15 * PRICE_MULTIPLIER;
 export const CANVAS_EXPORT_COST = 10 * PRICE_MULTIPLIER;
+export const LYRIC_OVERLAY_COST = 10 * PRICE_MULTIPLIER;
 
 const BASE_CREDITS = 20;
 const CREDITS_PER_SECOND = 1;

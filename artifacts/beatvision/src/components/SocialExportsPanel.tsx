@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Share2, Download, Smartphone, Disc3, Coins } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Loader2, Share2, Download, Smartphone, Disc3, Coins, Mic2 } from "lucide-react";
 import {
   TEASER_PACK_COST,
   CANVAS_EXPORT_COST,
+  LYRIC_OVERLAY_COST,
 } from "@/lib/creditPricing";
 
 interface TeaserItem {
@@ -21,8 +23,11 @@ interface TeaserItem {
  */
 export default function SocialExportsPanel({ videoId }: { videoId: string }) {
   const [items, setItems] = useState<TeaserItem[]>([]);
-  const [busy, setBusy] = useState<"teaser" | "canvas" | null>(null);
+  const [busy, setBusy] = useState<"teaser" | "canvas" | "lyrics" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lyricsOpen, setLyricsOpen] = useState(false);
+  const [lyricsText, setLyricsText] = useState("");
+  const [lyricResult, setLyricResult] = useState<{ videoId: string; url: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,6 +58,27 @@ export default function SocialExportsPanel({ videoId }: { videoId: string }) {
       setItems((prev) => [...prev, ...((data.teasers as TeaserItem[]) ?? [])]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Export failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function burnLyrics() {
+    if (!lyricsText.trim()) return;
+    setBusy("lyrics");
+    setError(null);
+    try {
+      const r = await fetch(`/api/videos/${videoId}/lyrics`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lyricsText: lyricsText.trim() }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error ?? "Lyric burn failed");
+      setLyricResult({ videoId: data.videoId, url: data.url });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Lyric burn failed");
     } finally {
       setBusy(null);
     }
@@ -106,7 +132,67 @@ export default function SocialExportsPanel({ videoId }: { videoId: string }) {
               </span>
             </Button>
           )}
+          {!lyricResult && (
+            <Button
+              variant="outline"
+              disabled={busy !== null}
+              onClick={() => setLyricsOpen((v) => !v)}
+              data-testid="button-open-lyric-burn"
+            >
+              <Mic2 className="mr-2 h-4 w-4" />
+              Add karaoke lyrics
+              <span className="ml-2 flex items-center gap-1 text-xs text-accent">
+                <Coins className="h-3 w-3" />{LYRIC_OVERLAY_COST}
+              </span>
+            </Button>
+          )}
         </div>
+
+        {lyricsOpen && !lyricResult && (
+          <div className="space-y-2">
+            <Textarea
+              placeholder="Paste lyrics — plain text, or .lrc with [mm:ss] timestamps (word-level <mm:ss> tags supported) for exact sync..."
+              className="min-h-[100px] resize-none text-sm"
+              value={lyricsText}
+              onChange={(e) => setLyricsText(e.target.value)}
+              maxLength={5000}
+              data-testid="textarea-lyric-burn"
+            />
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-muted-foreground">
+                {/\[\d{1,2}:\d{2}/.test(lyricsText)
+                  ? "LRC timestamps detected — exact sync"
+                  : lyricsText.trim()
+                    ? "No timestamps — lines will be spread evenly"
+                    : "Creates a new video in your library; the original is untouched."}
+              </p>
+              <Button
+                size="sm"
+                disabled={busy !== null || !lyricsText.trim()}
+                onClick={burnLyrics}
+                data-testid="button-burn-lyrics"
+              >
+                {busy === "lyrics"
+                  ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Burning…</>
+                  : "Burn lyrics"}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {lyricResult && (
+          <div className="space-y-2">
+            <video
+              src={lyricResult.url}
+              controls
+              playsInline
+              className="w-full max-w-md rounded-lg border border-border bg-black"
+            />
+            <p className="text-xs text-muted-foreground">
+              Karaoke version saved to your library alongside the original.
+            </p>
+          </div>
+        )}
 
         {error && <p className="text-sm text-destructive">{error}</p>}
 

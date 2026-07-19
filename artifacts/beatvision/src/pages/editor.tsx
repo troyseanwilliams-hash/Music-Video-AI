@@ -22,7 +22,11 @@ import {
   Sparkles,
   Play,
   Pause,
+  Mic2,
+  Info,
 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 type Kind = "video" | "photo";
 
@@ -124,6 +128,7 @@ export default function Editor() {
   const [transition, setTransition] = useState("none");
   const [transitionDuration, setTransitionDuration] = useState(0.5);
   const [resolution, setResolution] = useState<"720p" | "1080p">("720p");
+  const [lyricsText, setLyricsText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   // Beat sync: detected from the added music track (BPM + beat times).
   const [beatInfo, setBeatInfo] = useState<{ bpm: number; beats: number[] } | null>(null);
@@ -484,6 +489,7 @@ export default function Editor() {
         transition: transition === "none" ? undefined : { type: transition, durationSec: transitionDuration },
         resolution,
         acceptCopyright: true,
+        lyricsText: lyricsText.trim() || undefined,
       };
       const res = await fetch("/api/studio/render", {
         method: "POST",
@@ -798,6 +804,62 @@ export default function Editor() {
                 <SelectItem value="1080p">1080p</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="mt-4">
+            <div className="mb-2 flex items-center gap-1.5 text-sm font-medium">
+              <Mic2 className="h-3.5 w-3.5 text-primary" />
+              Karaoke lyrics
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="text-muted-foreground hover:text-primary transition-colors"
+                    aria-label="How lyric timing works"
+                    data-testid="button-editor-lyrics-info"
+                  >
+                    <Info className="h-3.5 w-3.5" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 text-sm" align="start">
+                  <p className="font-semibold mb-2">How karaoke timing works</p>
+                  <ul className="space-y-2 text-muted-foreground">
+                    <li>
+                      <span className="text-foreground font-medium">Plain lyrics</span> — lines are
+                      spread evenly across the video; word fill is estimated.
+                    </li>
+                    <li>
+                      <span className="text-foreground font-medium">LRC timestamps</span> —{" "}
+                      <code className="text-xs bg-muted/40 px-1 rounded">[00:12.50]</code> before a
+                      line makes it appear exactly then.
+                    </li>
+                    <li>
+                      <span className="text-foreground font-medium">Word-level tags</span> —{" "}
+                      <code className="text-xs bg-muted/40 px-1 rounded">&lt;00:12.80&gt;</code> before
+                      each word syncs the fill word-by-word.
+                    </li>
+                  </ul>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Words fill in as they're sung, burned into the export.
+                  </p>
+                </PopoverContent>
+              </Popover>
+            </div>
+            <Textarea
+              placeholder="Optional — paste lyrics (plain or .lrc) to burn karaoke captions into the export..."
+              className="min-h-[90px] resize-none text-sm"
+              value={lyricsText}
+              onChange={(e) => setLyricsText(e.target.value)}
+              maxLength={5000}
+              data-testid="textarea-editor-lyrics"
+            />
+            {lyricsText.trim() && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                {/\[\d{1,2}:\d{2}/.test(lyricsText)
+                  ? "LRC timestamps detected — exact sync"
+                  : "No timestamps — lines will be spread evenly"}
+              </p>
+            )}
           </div>
         </Card>
       </div>

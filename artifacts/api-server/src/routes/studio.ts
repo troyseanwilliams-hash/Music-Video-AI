@@ -39,6 +39,9 @@ const RenderSchema = z.object({
     .optional(),
   resolution: z.enum(["720p", "1080p"]).default("720p"),
   acceptCopyright: z.boolean().optional(),
+  // Karaoke lyric burn (same engine as the generator): plain text, LRC, or
+  // word-level enhanced LRC.
+  lyricsText: z.string().max(5000).optional(),
 });
 
 // POST /api/studio/render — enqueue an editor_render job from a timeline manifest.
@@ -127,6 +130,7 @@ router.post("/studio/render", async (req, res) => {
     resolution,
     watermark: false,
     chargeCredits,
+    lyricsText: input.lyricsText?.trim() || null,
   };
 
   const jobId = randomUUID();

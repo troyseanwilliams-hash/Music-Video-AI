@@ -16,7 +16,10 @@ import {
   TEASER_COUNT,
   TEASER_DURATION_SEC,
 } from "../lib/teaserGenerator.js";
-import { TEASER_PACK_COST, CANVAS_EXPORT_COST } from "../lib/creditCost.js";
+import { TEASER_PACK_COST, CANVAS_EXPORT_COST, LYRIC_OVERLAY_COST } from "../lib/creditCost.js";
+import { burnLyricsOnVideo } from "../lib/lyricOverlay.js";
+import { extractVideoThumbnail } from "../lib/videoStitcher.js";
+import { z } from "zod";
 
 const router: IRouter = Router();
 const storageService = new ObjectStorageService();
@@ -205,6 +208,83 @@ function makeHandler(kind: "teaser" | "canvas") {
 
 router.post("/videos/:id/teasers", makeHandler("teaser"));
 router.post("/videos/:id/canvas", makeHandler("canvas"));
+
+// Burn karaoke lyrics onto a finished video → saved as a NEW video in the
+// user's library (the original is untouched). Charged flat; refunded on
+// failure. Lyrics accept plain text, LRC, or word-level enhanced LRC.
+const LyricsBody = z.object({ lyricsText: z.string().min(1).max(5000) });
+
+router.post("/videos/:id/lyrics", async (req: Request<{ id: string }>, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const parsed = LyricsBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "lyricsText is required (max 5000 chars)" });
+    return;
+  }
+
+  const video = await loadOwnedVideo(req.user.id, req.params.id);
+  if (!video) {
+    res.status(404).json({ error: "Video not found" });
+    return;
+  }
+
+  const charge = await chargeCredits(req.user.id, LYRIC_OVERLAY_COST);
+  if (!charge.ok) {
+    res.status(402).json({
+      error: `Burning lyrics costs ${LYRIC_OVERLAY_COST} credits but you only have ${charge.remaining}.`,
+      code: "INSUFFICIENT_CREDITS",
+      creditsRequired: LYRIC_OVERLAY_COST,
+      creditsRemaining: charge.remaining,
+    });
+    return;
+  }
+
+  try {
+    const file = await storageService.getObjectEntityFile(video.videoObjectPath);
+    const [srcBuffer] = await file.download();
+    const durationSeconds = video.durationSeconds ?? 30;
+
+    const outBuffer = await burnLyricsOnVideo(srcBuffer, parsed.data.lyricsText, durationSeconds);
+    const thumbnailBuffer = await extractVideoThumbnail(outBuffer, Math.max(1, durationSeconds * 0.3));
+
+    const newVideoId = randomUUID();
+    const [videoObjectPath, thumbnailObjectPath] = await Promise.all([
+      storageService.uploadVideoBuffer(outBuffer, newVideoId),
+      storageService.uploadThumbnailBuffer(thumbnailBuffer, newVideoId),
+    ]);
+
+    await db.insert(videosTable).values({
+      id: newVideoId,
+      userId: req.user.id,
+      jobId: video.jobId,
+      videoObjectPath,
+      thumbnailObjectPath,
+      title: `${video.title ?? "Video"} — lyrics`,
+      durationSeconds: video.durationSeconds,
+      style: video.style,
+      prompt: video.prompt,
+      shareToken: randomUUID().replace(/-/g, "").slice(0, 16),
+    });
+
+    const url = await storageService.getObjectEntitySignedUrl(videoObjectPath, 3600);
+    res.json({ videoId: newVideoId, url, charged: LYRIC_OVERLAY_COST });
+  } catch (err) {
+    await db
+      .update(creditsTable)
+      .set({
+        topupCredits: sql`topup_credits + ${LYRIC_OVERLAY_COST}`,
+        creditsRemaining: sql`credits_remaining + ${LYRIC_OVERLAY_COST}`,
+        creditsUsed: sql`GREATEST(credits_used - ${LYRIC_OVERLAY_COST}, 0)`,
+        updatedAt: new Date(),
+      })
+      .where(eq(creditsTable.userId, req.user.id));
+    req.log.error({ err, videoId: video.id }, "Lyric overlay failed (refunded)");
+    res.status(500).json({ error: "Lyric burn failed — credits refunded. Please try again." });
+  }
+});
 
 // Existing cuts (both kinds) with fresh signed URLs — used to hydrate the UI.
 router.get("/videos/:id/teasers", async (req, res) => {

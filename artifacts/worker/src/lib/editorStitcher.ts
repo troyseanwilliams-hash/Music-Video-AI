@@ -10,6 +10,7 @@ import { writeFile, readFile, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
+import { buildTimedLines, buildAssKaraoke } from "./lyricTiming.js";
 
 export interface EditorSegmentInput {
   buffer: Buffer;
@@ -33,6 +34,10 @@ export interface EditorStitchInput {
   height?: number;
   fps?: number;
   watermark?: boolean; // free tier
+  // Karaoke lyric burn (same engine as the generator): plain text, LRC line
+  // timestamps, or word-level enhanced LRC. Skipped (non-fatal) if the local
+  // ffmpeg lacks libass.
+  lyricsText?: string;
   // Fires once per normalized segment so the caller can surface a files-based
   // progress/ETA. done counts processed segments (success or skip); total is the
   // segment count.
@@ -294,6 +299,30 @@ export async function stitchEditorTimeline(
       const fast = join(dir, "final.mp4");
       await run(["-y", "-i", current, "-c", "copy", "-movflags", "+faststart", fast]);
       current = fast;
+    }
+
+    // 4.5. Karaoke lyric burn (ASS subtitles via libass). Non-fatal: if the
+    // subtitles filter is unavailable, the render ships without lyrics rather
+    // than failing the whole export.
+    if (input.lyricsText?.trim()) {
+      try {
+        const lyricDuration = await probeDuration(current);
+        const timedLines = buildTimedLines(input.lyricsText, lyricDuration);
+        if (timedLines.length > 0) {
+          const assPath = join(dir, "lyrics.ass");
+          await writeFile(assPath, buildAssKaraoke(timedLines));
+          const withLyrics = join(dir, "lyrics.mp4");
+          await run([
+            "-y", "-i", current,
+            "-vf", `subtitles=${assPath.replace(/([\\':])/g, "\\$1")}`,
+            "-c:v", "libx264", "-preset", "fast", "-crf", "22", "-threads", "2", "-pix_fmt", "yuv420p",
+            "-c:a", "copy", "-movflags", "+faststart", withLyrics,
+          ]);
+          current = withLyrics;
+        }
+      } catch {
+        // libass missing or burn failed — continue without lyrics.
+      }
     }
 
     // 5. Thumbnail + read out.
