@@ -1342,11 +1342,7 @@ export default function Generate() {
               className="mt-0.5 h-4 w-4 shrink-0 accent-primary cursor-pointer"
             />
             <span className="text-xs text-muted-foreground leading-relaxed group-hover:text-foreground/80 transition-colors">
-              I confirm that I own the rights to the audio I'm uploading, or have obtained the necessary licenses to use it. I understand that uploading copyrighted music without permission violates the{" "}
-              <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline" onClick={(e) => e.stopPropagation()}>
-                Terms of Service
-              </a>{" "}
-              and may result in account termination.
+              I confirm I have the right to use this audio (owned, licensed, or royalty-free).
             </span>
           </label>
 
