@@ -14,7 +14,6 @@ import {
 } from "@workspace/api-zod";
 import { calculateCreditCost, calculateRemixCost } from "../lib/creditCost.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
-import { notifyJobPendingApproval } from "../lib/notifications.js";
 
 const router = Router();
 
@@ -151,7 +150,7 @@ router.post("/jobs", async (req, res) => {
     .values({
       id: jobId,
       userId: req.user.id,
-      status: isAdmin || userRecord?.subscriptionStatus === "active" ? "queued" : "pending_approval",
+      status: "queued",
       audioSourceType: audioSourceType as
         | "upload"
         | "youtube"
@@ -187,17 +186,6 @@ router.post("/jobs", async (req, res) => {
     { userId: req.user.id, requestedDuration, creditCost, isAdmin },
     "Job queued — credits will be deducted on success",
   );
-
-  // Fire-and-forget: notify admin only when the job actually needs approval
-  if (job.status === "pending_approval") {
-    notifyJobPendingApproval({
-      id: job.id,
-      prompt: job.prompt,
-      style: job.style,
-      requestedDuration: job.requestedDuration,
-      userEmail: userRecord?.email ?? null,
-    });
-  }
 
   res.status(201).json(job);
 });
