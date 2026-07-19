@@ -133,6 +133,7 @@ export default function Generate() {
   );
   const [audioUrl, setAudioUrl] = useState("");
   const [sunoInputUrl, setSunoInputUrl] = useState("");
+  const [sunoAutoResolve, setSunoAutoResolve] = useState(false);
   const [sunoResolving, setSunoResolving] = useState(false);
   const [sunoResolved, setSunoResolved] = useState<{ audioUrl: string; title: string; artist: string } | null>(null);
   const [sunoError, setSunoError] = useState<string | null>(null);
@@ -318,6 +319,22 @@ export default function Generate() {
     }
   }, [isAuthLoading, isAuthenticated, setLocation]);
 
+  // Deep link from the /suno landing page (or a shared link): ?suno=<url>.
+  // Also checks localStorage so the link survives a login/register detour.
+  const sunoDeepLinkHandled = useRef(false);
+  useEffect(() => {
+    if (sunoDeepLinkHandled.current || !isAuthenticated) return;
+    const fromQuery = new URLSearchParams(window.location.search).get("suno");
+    const fromStorage = localStorage.getItem("pendingSunoUrl");
+    const pending = fromQuery || fromStorage;
+    if (!pending) return;
+    sunoDeepLinkHandled.current = true;
+    localStorage.removeItem("pendingSunoUrl");
+    setSourceType(CreateJobRequestAudioSourceType.suno);
+    setSunoInputUrl(pending);
+    setSunoAutoResolve(true);
+  }, [isAuthenticated]);
+
   const handleSunoResolve = useCallback(async () => {
     if (!sunoInputUrl.trim() || sunoResolving) return;
     setSunoResolving(true);
@@ -335,6 +352,14 @@ export default function Generate() {
       setSunoResolving(false);
     }
   }, [sunoInputUrl, sunoResolving]);
+
+  // Auto-resolve a deep-linked Suno URL once it's been set in state.
+  useEffect(() => {
+    if (sunoAutoResolve && sunoInputUrl.trim() && !sunoResolving) {
+      setSunoAutoResolve(false);
+      void handleSunoResolve();
+    }
+  }, [sunoAutoResolve, sunoInputUrl, sunoResolving, handleSunoResolve]);
 
   if (isAuthLoading) {
     return (
