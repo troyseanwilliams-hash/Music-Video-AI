@@ -4,6 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
 
+    <!-- Theme boot: apply saved theme before first paint (default: dark) -->
+    <script>
+      (function () {
+        try {
+          if (localStorage.getItem("bv-theme") === "light") {
+            document.documentElement.classList.remove("dark");
+          } else {
+            document.documentElement.classList.add("dark");
+          }
+        } catch (e) {
+          document.documentElement.classList.add("dark");
+        }
+      })();
+    </script>
+
     <!-- Primary Meta -->
     <title>AI Beat Sync — AI Music Video Generator | Turn Audio Into Cinematic Visuals</title>
     <meta name="description" content="AI Beat Sync is the #1 AI music video generator. Upload any song and our AI creates stunning, beat-synced cinematic visuals in minutes. Try free — no credit card needed." />

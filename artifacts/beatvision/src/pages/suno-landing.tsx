@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Music2, Wand2, Clapperboard, Mic2, ArrowRight, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
+import { AuroraBackground } from "@/components/AuroraBackground";
 
 const SUNO_URL_RE = /suno\.(?:com|ai)\/song\/[a-f0-9-]{36}/i;
 
@@ -70,6 +71,7 @@ export default function SunoLanding() {
   return (
     <div className="relative overflow-hidden">
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[700px] bg-primary/8 rounded-full blur-[160px] pointer-events-none" />
+      <AuroraBackground className="opacity-60" />
 
       {/* Hero */}
       <section className="container mx-auto px-6 pt-20 pb-16 max-w-3xl text-center relative z-10">

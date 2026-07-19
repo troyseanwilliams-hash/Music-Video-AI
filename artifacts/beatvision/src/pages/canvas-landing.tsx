@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Disc3, Wand2, Upload, ArrowRight, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
+import { AuroraBackground } from "@/components/AuroraBackground";
 
 /**
  * SEO landing page: "Spotify Canvas maker." Public — funnels into the
@@ -45,6 +46,7 @@ export default function CanvasLanding() {
   return (
     <div className="relative overflow-hidden">
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[700px] bg-primary/8 rounded-full blur-[160px] pointer-events-none" />
+      <AuroraBackground className="opacity-60" />
 
       <section className="container mx-auto px-6 pt-20 pb-16 max-w-3xl text-center relative z-10">
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>

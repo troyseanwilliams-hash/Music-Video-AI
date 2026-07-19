@@ -60,7 +60,70 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-:root, .dark {
+/* ── Light theme (opt-in via the navbar toggle; dark remains the default —
+   a boot script in index.html applies .dark before first paint) ── */
+:root {
+  --button-outline: rgba(0,0,0, .10);
+  --badge-outline: rgba(0,0,0, .05);
+  --opaque-button-border-intensity: -9;
+  --elevate-1: rgba(0,0,0, .03);
+  --elevate-2: rgba(0,0,0, .07);
+
+  /* Soft light backgrounds with the same electric brand colors */
+  --background: 240 20% 98%;
+  --foreground: 240 10% 10%;
+  --border: 240 8% 87%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 240 10% 10%;
+  --card-border: 240 8% 89%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 10% 10%;
+  --popover-border: 240 8% 87%;
+
+  /* Electric violet — slightly deepened for contrast on white */
+  --primary: 270 90% 52%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 240 10% 93%;
+  --secondary-foreground: 240 10% 12%;
+
+  --muted: 240 10% 93%;
+  --muted-foreground: 240 5% 42%;
+
+  /* Electric blue */
+  --accent: 210 100% 44%;
+  --accent-foreground: 0 0% 100%;
+
+  --destructive: 0 78% 50%;
+  --destructive-foreground: 0 0% 100%;
+
+  --input: 240 8% 86%;
+  --ring: 270 90% 52%;
+
+  --sidebar: 0 0% 100%;
+  --sidebar-foreground: 240 10% 10%;
+  --sidebar-border: 240 8% 89%;
+  --sidebar-primary: 270 90% 52%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 240 10% 93%;
+  --sidebar-accent-foreground: 240 10% 12%;
+  --sidebar-ring: 270 90% 52%;
+
+  --app-font-sans: 'Inter', sans-serif;
+  --app-font-serif: Georgia, serif;
+  --app-font-mono: Menlo, monospace;
+  --radius: 0.5rem;
+
+  --chart-1: 270 90% 52%;
+  --chart-2: 210 100% 44%;
+  --chart-3: 180 100% 32%;
+  --chart-4: 320 90% 45%;
+  --chart-5: 0 90% 52%;
+}
+
+.dark {
   --button-outline: rgba(255,255,255, .10);
   --badge-outline: rgba(255,255,255, .05);
   --opaque-button-border-intensity: 9;
@@ -185,4 +248,26 @@ input[type="range"].waveform-range:active::-moz-range-thumb    { cursor: grabbin
   .shadow-glow {
     box-shadow: 0 0 20px -5px hsl(var(--primary) / 0.5);
   }
+}
+
+/* ── Aurora hero background animations (AuroraBackground.tsx) ────────────── */
+.aurora-drift-1 { animation: aurora-drift-1 26s ease-in-out infinite alternate; }
+.aurora-drift-2 { animation: aurora-drift-2 34s ease-in-out infinite alternate; }
+.aurora-bar     { animation: aurora-pulse 3.2s ease-in-out infinite alternate; transform-origin: bottom; transform-box: fill-box; }
+
+@keyframes aurora-drift-1 {
+  from { transform: translateX(-60px) translateY(0); }
+  to   { transform: translateX(60px) translateY(-24px); }
+}
+@keyframes aurora-drift-2 {
+  from { transform: translateX(40px) translateY(0); }
+  to   { transform: translateX(-40px) translateY(16px); }
+}
+@keyframes aurora-pulse {
+  from { transform: scaleY(0.55); }
+  to   { transform: scaleY(1.15); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora-drift-1, .aurora-drift-2, .aurora-bar { animation: none; }
 }
