@@ -25,10 +25,23 @@ async function getCredentials(): Promise<{
 }> {
   const isProduction = process.env["REPLIT_DEPLOYMENT"] === "1";
 
+  // Development override: use sandbox keys when provided, so dev/test traffic
+  // is isolated from the live Stripe account.
+  if (!isProduction) {
+    const sandboxSecret = process.env["STRIPE_SANDBOX_SECRET_KEY"];
+    const sandboxPublishable = process.env["STRIPE_SANDBOX_PUBLISHABLE_KEY"];
+    if (sandboxSecret && sandboxPublishable) {
+      logCredentialSource("sandbox-secrets");
+      return {
+        publishableKey: sandboxPublishable,
+        secretKey: sandboxSecret,
+      };
+    }
+  }
+
   // Production override: when live Stripe keys are supplied as secrets, use them
   // directly instead of the Replit connector. This lets the deployed app run on a
-  // Stripe account that the connector cannot bind. Development is never affected —
-  // it always resolves keys through the connector (test mode).
+  // Stripe account that the connector cannot bind.
   if (isProduction) {
     const overrideSecret = process.env["STRIPE_SECRET_KEY"];
     const overridePublishable = process.env["STRIPE_PUBLISHABLE_KEY"];
