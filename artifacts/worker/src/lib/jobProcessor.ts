@@ -424,7 +424,6 @@ interface EditorManifest {
   music?: { objectPath: string; mode: "mix" | "replace"; volume: number };
   transition?: { type: string; durationSec: number };
   resolution?: string; // "720p" | "1080p"
-  orientation?: "landscape" | "portrait"; // 16:9 (default) or 9:16 mobile
   watermark?: boolean;
   chargeCredits?: boolean; // true only when trial ended and not subscribed
   lyricsText?: string | null; // karaoke burn (plain / LRC / enhanced LRC)
@@ -458,11 +457,9 @@ async function processEditorJob(job: JobRow): Promise<void> {
       music = { buffer: buf, ext, mode: manifest.music.mode, volume: manifest.music.volume };
     }
 
-    const [landW, landH] =
+    const [width, height] =
       manifest.resolution === "4k" ? [3840, 2160] :
       manifest.resolution === "1080p" ? [1920, 1080] : [1280, 720];
-    const [width, height] =
-      manifest.orientation === "portrait" ? [landH, landW] : [landW, landH];
     await updateJobStatus(job.id, { progressPercent: 22 });
 
     // Drive progress smoothly from 25%→80% as each segment is normalized so the
