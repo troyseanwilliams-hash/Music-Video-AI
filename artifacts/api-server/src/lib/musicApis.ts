@@ -138,8 +138,9 @@ async function simulateSong(durationSeconds: number): Promise<SongResult> {
 
 // ── Public entry ─────────────────────────────────────────────────────────────
 
-// Songs can run up to 5 minutes (300s). Providers may cap lower internally.
-export const MAX_SONG_SECONDS = 300;
+// Songs can run up to ~5.5 minutes (330s) so "Full" length lands around a
+// natural full-song runtime. Providers may cap lower internally.
+export const MAX_SONG_SECONDS = 330;
 
 export async function generateSong(req: SongRequest): Promise<SongResult> {
   const provider = getActiveMusicProvider(req.provider ?? null);
