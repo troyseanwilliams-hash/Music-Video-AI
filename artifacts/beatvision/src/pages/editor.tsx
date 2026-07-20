@@ -519,7 +519,9 @@ export default function Editor() {
         segments: ready.map((s) => ({
           objectPath: s.objectPath,
           kind: s.kind,
-          durationSec: Math.max(0.5, s.durationSec || 3),
+          // Clamp to the server's accepted range (0.5–600s) so a long clip
+          // never triggers a validation error on the render request.
+          durationSec: Math.min(600, Math.max(0.5, s.durationSec || 3)),
         })),
         music: music?.objectPath ? { objectPath: music.objectPath, mode: music.mode, volume: music.volume } : undefined,
         transition: transition === "none" ? undefined : { type: transition, durationSec: transitionDuration },
@@ -540,7 +542,11 @@ export default function Editor() {
         if (e.code === "INSUFFICIENT_CREDITS" || e.code === "UPGRADE_REQUIRED" || e.code === "TRIAL_ENDED") setLocation("/pricing");
         return;
       }
-      if (!res.ok) throw new Error(`Render request failed (${res.status})`);
+      if (!res.ok) {
+        // Surface the server's actual error instead of a bare status code.
+        const e = await res.json().catch(() => ({} as { error?: string }));
+        throw new Error(e.error || `Render request failed (${res.status})`);
+      }
       const { job } = await res.json();
       setLocation(`/jobs/${job.id}`);
     } catch (err) {

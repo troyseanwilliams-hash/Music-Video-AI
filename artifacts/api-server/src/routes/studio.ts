@@ -54,7 +54,9 @@ router.post("/studio/render", async (req, res) => {
 
   const parsed = RenderSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    const first = parsed.error.issues[0];
+    const where = first?.path?.length ? ` (${first.path.join(".")})` : "";
+    res.status(400).json({ error: `${first?.message ?? "Invalid render request"}${where}` });
     return;
   }
   const input = parsed.data;
