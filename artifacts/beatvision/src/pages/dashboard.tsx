@@ -58,6 +58,21 @@ export default function Dashboard() {
     }
   }
 
+  // Delete a failed generation (the job itself, which has no video).
+  async function handleDeleteJob(jobId: string) {
+    if (!window.confirm("Delete this failed generation? This can't be undone.")) return;
+    setDeletingId(jobId);
+    try {
+      const r = await fetch(`/api/jobs/${jobId}`, { method: "DELETE", credentials: "include" });
+      if (!r.ok) throw new Error("delete failed");
+      await queryClient.invalidateQueries({ queryKey: getGetDashboardStatsQueryKey() });
+    } catch {
+      // silently ignore
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   async function handleWatch(jobId: string) {
     setWatchingJobId(jobId);
     try {
@@ -316,10 +331,25 @@ export default function Dashboard() {
                             )}
                           </>
                         ) : isFailed ? (
-                          <span className="flex items-center gap-1.5 text-sm text-destructive">
-                            <AlertCircle className="h-4 w-4 shrink-0" />
-                            Failed
-                          </span>
+                          <>
+                            <span className="flex items-center gap-1.5 text-sm text-destructive">
+                              <AlertCircle className="h-4 w-4 shrink-0" />
+                              Failed
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                              title="Delete failed generation"
+                              disabled={deletingId === job.id}
+                              onClick={(e) => { e.preventDefault(); handleDeleteJob(job.id); }}
+                              data-testid={`delete-failed-${job.id}`}
+                            >
+                              {deletingId === job.id
+                                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                : <Trash2 className="h-3.5 w-3.5" />}
+                            </Button>
+                          </>
                         ) : (
                           <span className="flex items-center gap-1.5 text-sm text-primary">
                             <Loader2 className="h-4 w-4 animate-spin shrink-0" />

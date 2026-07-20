@@ -33,7 +33,7 @@ export function notifyJobPendingApproval(job: JobInfo): void {
   if (resend && adminEmail) {
     resend.emails
       .send({
-        from: "AIBeatSync <notifications@aibeatsync.com>",
+        from: "AI Beat Sync <notifications@aibeatsync.com>",
         to: adminEmail,
         subject: `New job awaiting approval — ${job.id.slice(0, 8)}`,
         html: `
@@ -89,7 +89,7 @@ export function notifyNewSupportTicket(ticket: SupportTicketInfo): void {
   if (resend && adminEmail) {
     resend.emails
       .send({
-        from: "AIBeatSync <notifications@aibeatsync.com>",
+        from: "AI Beat Sync <notifications@aibeatsync.com>",
         to: adminEmail,
         subject: `[Support] ${ticket.subject}`,
         html: `

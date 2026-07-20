@@ -492,6 +492,36 @@ router.post("/jobs/:id/retry", async (req, res) => {
   res.json(updated);
 });
 
+// DELETE /api/jobs/:id — remove a user's own job. Restricted to terminal
+// states (failed jobs) so a running/queued job can't be yanked mid-flight.
+// Jobs that produced a video should be deleted via the video endpoint instead.
+router.delete("/jobs/:id", async (req, res) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const jobId = req.params.id;
+  const [job] = await db
+    .select()
+    .from(jobsTable)
+    .where(and(eq(jobsTable.id, jobId), eq(jobsTable.userId, req.user.id)))
+    .limit(1);
+
+  if (!job) {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
+  if (job.status !== "failed") {
+    res.status(400).json({ error: "Only failed generations can be deleted from here." });
+    return;
+  }
+
+  await db.delete(jobsTable).where(eq(jobsTable.id, jobId));
+  req.log.info({ jobId, userId: req.user.id }, "User deleted failed job");
+  res.json({ ok: true });
+});
+
 const RemixBody = z.object({
   clipIndexes: z.array(z.number().int().min(0)).min(1).max(64),
   style: z

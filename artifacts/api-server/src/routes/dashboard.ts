@@ -32,28 +32,17 @@ router.get("/dashboard/stats", async (req, res) => {
       .where(and(eq(videosTable.userId, userId), isNull(videosTable.deletedAt))),
   ]);
 
-  // Recent Activity: show processing + failed jobs first, then completed jobs
-  // whose video still exists, sorted by most recent. Deleted-video ready jobs
-  // are hidden; everything in-flight or failed is always shown.
+  // Recent Activity shows ONLY active saved videos: completed jobs whose video
+  // still exists and hasn't been deleted. Everything else is excluded —
+  // failed/in-progress jobs (no saved video), and videos deleted earlier whether
+  // soft-deleted now or hard-deleted under older behavior (the row is gone).
   const liveJobIds = new Set(
     liveVideoRows.map((r) => r.jobId).filter((x): x is string => !!x),
   );
-  const PROCESSING = new Set(["queued", "analyzing", "generating", "stitching"]);
   const recentJobs = [...allJobs]
-    .filter((j) => {
-      if (PROCESSING.has(j.status)) return true;
-      if (j.status === "failed") return true;
-      if (j.status === "ready" && !!j.videoId && liveJobIds.has(j.id)) return true;
-      return false;
-    })
-    .sort((a, b) => {
-      // Processing jobs bubble to the top
-      const aProc = PROCESSING.has(a.status) ? 1 : 0;
-      const bProc = PROCESSING.has(b.status) ? 1 : 0;
-      if (bProc !== aProc) return bProc - aProc;
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    })
-    .slice(0, 10);
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .filter((j) => j.status === "ready" && !!j.videoId && liveJobIds.has(j.id))
+    .slice(0, 5);
 
   let creditsRemaining = 10;
   let subscriptionCredits = 10;
