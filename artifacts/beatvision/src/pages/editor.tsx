@@ -944,8 +944,7 @@ export default function Editor() {
           className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
         />
         <span>
-          I confirm I own or have the rights/license to use every clip, photo, and track in this video. Uploading
-          content you don't have rights to may get the video removed and your account suspended.
+          I confirm I have the right to use this content (owned, licensed, or royalty-free).
         </span>
       </label>
 
