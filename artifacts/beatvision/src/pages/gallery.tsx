@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useListVideos, useDeleteVideo, getListVideosQueryKey, getGetDashboardStatsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Loader2, Trash2, Play, Film, Download, Scissors, Globe } from "lucide-react";
+import { Loader2, Trash2, Play, Film, Download, Scissors, Globe, Pencil } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -51,6 +51,27 @@ export default function Gallery() {
   const queryClient = useQueryClient();
   const [loadingAction, setLoadingAction] = useState<Record<string, "watch" | "download" | undefined>>({});
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+
+  async function saveRename(videoId: string) {
+    const title = renameValue.trim();
+    if (!title) { setRenamingId(null); return; }
+    try {
+      await fetch(`/api/videos/${videoId}/title`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+      queryClient.invalidateQueries({ queryKey: getListVideosQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetDashboardStatsQueryKey() });
+    } catch {
+      /* ignore */
+    } finally {
+      setRenamingId(null);
+    }
+  }
 
   async function toggleVisibility(videoId: string, makePublic: boolean) {
     setTogglingId(videoId);
@@ -184,14 +205,40 @@ export default function Gallery() {
               </Link>
 
               <div className="p-4 flex-1 flex flex-col gap-3">
-                <Link href={`/jobs/${video.jobId}`} className="block">
-                  <h3
-                    className="font-semibold text-base line-clamp-2 hover:text-primary transition-colors"
-                    title={video.prompt || video.title || "Untitled"}
-                  >
-                    {video.title || video.prompt || "Untitled"}
-                  </h3>
-                </Link>
+                {renamingId === video.id ? (
+                  <input
+                    autoFocus
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onBlur={() => saveRename(video.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") saveRename(video.id);
+                      if (e.key === "Escape") setRenamingId(null);
+                    }}
+                    maxLength={120}
+                    className="w-full rounded-md border border-primary bg-background px-2 py-1 text-base font-semibold focus:outline-none focus:ring-1 focus:ring-primary/30"
+                    data-testid={`rename-input-${video.id}`}
+                  />
+                ) : (
+                  <div className="flex items-start gap-1.5">
+                    <Link href={`/jobs/${video.jobId}`} className="block min-w-0 flex-1">
+                      <h3
+                        className="font-semibold text-base line-clamp-2 hover:text-primary transition-colors"
+                        title={video.prompt || video.title || "Untitled"}
+                      >
+                        {video.title || video.prompt || "Untitled"}
+                      </h3>
+                    </Link>
+                    <button
+                      onClick={() => { setRenameValue(video.title || video.prompt || ""); setRenamingId(video.id); }}
+                      className="shrink-0 text-muted-foreground hover:text-primary transition-colors p-0.5"
+                      title="Rename video"
+                      data-testid={`rename-btn-${video.id}`}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
 
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs font-medium px-2 py-1 rounded-md bg-secondary text-secondary-foreground capitalize">

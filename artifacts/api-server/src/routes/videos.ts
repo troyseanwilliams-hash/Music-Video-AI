@@ -205,6 +205,42 @@ router.patch("/videos/:id/visibility", async (req, res) => {
   res.json({ id, isPublic });
 });
 
+// ── Rename a video (owner or admin). Powers inline rename in the gallery
+// and dashboard.
+router.patch("/videos/:id/title", async (req, res) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const id = String(req.params.id || "");
+  const rawTitle = (req.body as { title?: unknown })?.title;
+  if (typeof rawTitle !== "string") {
+    res.status(400).json({ error: "title (string) is required" });
+    return;
+  }
+  const title = rawTitle.trim().slice(0, 120);
+  if (!title) {
+    res.status(400).json({ error: "Title can't be empty." });
+    return;
+  }
+
+  const [video] = await db.select().from(videosTable).where(eq(videosTable.id, id)).limit(1);
+  if (!video) {
+    res.status(404).json({ error: "Video not found" });
+    return;
+  }
+  if (video.userId !== req.user.id) {
+    const [u] = await db.select().from(usersTable).where(eq(usersTable.id, req.user.id)).limit(1);
+    if (!isAdminEmail(u?.email)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+  }
+
+  await db.update(videosTable).set({ title }).where(eq(videosTable.id, id));
+  res.json({ id, title });
+});
+
 // ── Like a public video (idempotent; never double-counts).
 router.post("/videos/:id/like", async (req, res) => {
   if (!req.isAuthenticated()) {
