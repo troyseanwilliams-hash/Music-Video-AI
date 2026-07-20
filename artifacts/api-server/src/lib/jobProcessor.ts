@@ -434,7 +434,6 @@ async function processEditorJob(job: JobRow): Promise<void> {
 
     // Landscape (16:9) dimensions by size; portrait (9:16) swaps W/H for mobile.
     const [landW, landH] =
-      manifest.resolution === "4k" ? [3840, 2160] :
       manifest.resolution === "1080p" ? [1920, 1080] : [1280, 720];
     const [width, height] =
       manifest.orientation === "portrait" ? [landH, landW] : [landW, landH];

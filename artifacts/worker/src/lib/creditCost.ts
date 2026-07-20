@@ -55,16 +55,14 @@ function billableSeconds(requestedDuration: string | null | undefined): number {
 
 // Estimated == actual cost (the same function backs the pre-flight estimate
 // shown to the customer and the deduction from their balance on success).
-// 4K renders carry a 50% premium on top of the standard price.
-export const FOURK_SURCHARGE = 1.5;
-
+// Priced purely on duration — resolution tiers are ffmpeg upscales of the same
+// 720p render, so they carry no extra provider cost and no surcharge.
 export function calculateCreditCost(
   requestedDuration: string | null | undefined,
-  resolution?: string | null,
+  _resolution?: string | null,
 ): number {
   const secs = billableSeconds(requestedDuration);
-  const base = (BASE_CREDITS + Math.ceil(secs * CREDITS_PER_SECOND)) * PRICE_MULTIPLIER;
-  return resolution === "4k" ? Math.ceil(base * FOURK_SURCHARGE) : base;
+  return (BASE_CREDITS + Math.ceil(secs * CREDITS_PER_SECOND)) * PRICE_MULTIPLIER;
 }
 
 // Cost to remix (regenerate) a subset of an existing video's clips. Charged

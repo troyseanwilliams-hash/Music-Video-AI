@@ -1,9 +1,68 @@
 import { Router } from "express";
+import { randomUUID } from "crypto";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
 import { analyzeAudioBuffer } from "../lib/audioAnalysis.js";
+import { resolveSunoUrl } from "../lib/sunoResolver.js";
 
 const router = Router();
 const storageService = new ObjectStorageService();
+
+// Import audio from a Suno (fully supported) or YouTube link into object
+// storage so it can be used like an uploaded track — powers "Add from link"
+// in the Remix Lab. Returns { objectPath, url, title } on success.
+router.post("/audio/import-from-link", async (req, res) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const rawUrl = String((req.body as Record<string, unknown>)?.url ?? "").trim();
+  if (!rawUrl) {
+    res.status(400).json({ error: "A Suno or YouTube link is required." });
+    return;
+  }
+
+  const isSuno = /suno\.(?:com|ai)\/song\//i.test(rawUrl);
+  const isYouTube = /(?:youtube\.com\/watch|youtu\.be\/|music\.youtube\.com)/i.test(rawUrl);
+
+  try {
+    let audioUrl: string;
+    let title = "Imported track";
+
+    if (isSuno) {
+      const track = await resolveSunoUrl(rawUrl);
+      audioUrl = track.audioUrl;
+      title = track.title || title;
+    } else if (isYouTube) {
+      // Server-side YouTube audio extraction requires a dedicated downloader
+      // (yt-dlp) that isn't available in this environment, and is subject to
+      // YouTube's Terms of Service. Fail clearly rather than silently.
+      res.status(422).json({
+        error: "YouTube import isn't available yet. For now, download the audio and upload it, or paste a Suno link.",
+        code: "YOUTUBE_UNAVAILABLE",
+      });
+      return;
+    } else {
+      res.status(400).json({ error: "Paste a Suno song link (suno.com/song/…) or a YouTube link." });
+      return;
+    }
+
+    // Download the resolved audio and store it.
+    const dl = await fetch(audioUrl, { headers: { "User-Agent": "AIBeatSync/1.0" } });
+    if (!dl.ok) {
+      res.status(422).json({ error: `Could not fetch the track (status ${dl.status}). Make sure it's public.` });
+      return;
+    }
+    const buffer = Buffer.from(await dl.arrayBuffer());
+    const songId = randomUUID();
+    const objectPath = await storageService.uploadAudioBuffer(buffer, songId, "mp3");
+    const signedUrl = await storageService.getObjectEntitySignedUrl(objectPath, 3600);
+
+    res.json({ objectPath, url: signedUrl, title });
+  } catch (err) {
+    req.log.warn({ err, url: rawUrl }, "Audio import failed");
+    res.status(502).json({ error: err instanceof Error ? err.message : "Could not import audio from link" });
+  }
+});
 
 router.post("/audio/analyze", async (req, res) => {
   if (!req.isAuthenticated()) {

@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/dialog";
 import { motion } from "framer-motion";
 import {
-  Upload, Link as LinkIcon, Music, Sparkles, Loader2, CheckCircle2, XCircle,
+  Upload, Music, Sparkles, Loader2, CheckCircle2, XCircle,
   Users, Clapperboard, Layers, Zap, Film, Wand2, Video as VideoIcon, FileText,
   ChevronDown, User, Maximize2, Captions, Pencil, MonitorPlay, ImageIcon,
   Lock, Crown, Coins, AlertTriangle, CreditCard, Clock, ShieldAlert, Info,
@@ -120,7 +120,6 @@ const ASPECT_RATIOS = [
 const RESOLUTIONS = [
   CreateJobRequestResolution["720p"],
   CreateJobRequestResolution["1080p"],
-  CreateJobRequestResolution["4k"],
 ] as const;
 
 const CHARACTERS = [
@@ -144,7 +143,6 @@ export default function Generate() {
   const [sourceType, setSourceType] = useState<CreateJobRequestAudioSourceType>(
     CreateJobRequestAudioSourceType.upload,
   );
-  const [audioUrl, setAudioUrl] = useState("");
   const [sunoInputUrl, setSunoInputUrl] = useState("");
   const [sunoAutoResolve, setSunoAutoResolve] = useState(false);
   const [sunoResolving, setSunoResolving] = useState(false);
@@ -453,7 +451,6 @@ export default function Generate() {
           audioObjectPath:
             sourceType === CreateJobRequestAudioSourceType.upload ? objectPath : null,
           audioSourceUrl:
-            sourceType === CreateJobRequestAudioSourceType.youtube ? audioUrl :
             sourceType === CreateJobRequestAudioSourceType.suno ? (sunoResolved?.audioUrl ?? null) : null,
           lyricsText: lyricsEnabled && lyricsText.trim() ? lyricsText.trim() : null,
           aspectRatio,
@@ -522,9 +519,6 @@ export default function Generate() {
     }
     if (sourceType === CreateJobRequestAudioSourceType.upload && !objectPath) {
       errors.audio = isUploading ? "Still uploading — wait a moment." : "Please upload an audio file.";
-    }
-    if (sourceType === CreateJobRequestAudioSourceType.youtube && !audioUrl.trim()) {
-      errors.audio = "Please paste a YouTube URL.";
     }
     if (sourceType === CreateJobRequestAudioSourceType.suno && !sunoResolved) {
       errors.audio = sunoResolving ? "Loading track — wait a moment." : "Please load a Suno track first.";
@@ -770,9 +764,6 @@ export default function Generate() {
                       className={resolution === r ? "text-primary font-medium" : ""}
                     >
                       {r}
-                      {r === "4k" && (
-                        <span className="ml-auto text-xs text-accent">+50%</span>
-                      )}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
@@ -822,20 +813,13 @@ export default function Generate() {
             onValueChange={(v) => { setSourceType(v as CreateJobRequestAudioSourceType); setFieldErrors((e) => ({ ...e, audio: undefined })); }}
             className="w-full"
           >
-            <TabsList className="grid w-full grid-cols-3 mb-6">
+            <TabsList className="grid w-full grid-cols-2 mb-6">
               <TabsTrigger
                 value={CreateJobRequestAudioSourceType.upload}
                 className="flex items-center gap-1.5 text-xs sm:text-sm"
               >
                 <Upload className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
                 <span>Audio</span>
-              </TabsTrigger>
-              <TabsTrigger
-                value={CreateJobRequestAudioSourceType.youtube}
-                className="flex items-center gap-1.5 text-xs sm:text-sm"
-              >
-                <LinkIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-                <span>YouTube</span>
               </TabsTrigger>
               <TabsTrigger
                 value={CreateJobRequestAudioSourceType.suno}
@@ -1021,19 +1005,6 @@ export default function Generate() {
                   </div>
                 </div>
               )}
-            </TabsContent>
-
-            <TabsContent value={CreateJobRequestAudioSourceType.youtube} className="mt-0">
-              <div className="space-y-4">
-                <Label htmlFor="audio-url">YouTube URL</Label>
-                <Input
-                  id="audio-url"
-                  placeholder="https://youtube.com/watch?v=..."
-                  value={audioUrl}
-                  onChange={(e) => { setAudioUrl(e.target.value); setFieldErrors((fe) => ({ ...fe, audio: undefined })); }}
-                  className={`h-12 bg-background/50 ${fieldErrors.audio ? "border-destructive" : "border-input"}`}
-                />
-              </div>
             </TabsContent>
 
             <TabsContent value={CreateJobRequestAudioSourceType.suno} className="mt-0">

@@ -459,7 +459,6 @@ async function processEditorJob(job: JobRow): Promise<void> {
     }
 
     const [landW, landH] =
-      manifest.resolution === "4k" ? [3840, 2160] :
       manifest.resolution === "1080p" ? [1920, 1080] : [1280, 720];
     const [width, height] =
       manifest.orientation === "portrait" ? [landH, landW] : [landW, landH];

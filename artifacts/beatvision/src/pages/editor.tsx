@@ -24,6 +24,7 @@ import {
   Pause,
   Mic2,
   Info,
+  Link2,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -451,6 +452,34 @@ export default function Editor() {
     }
   }
 
+  // Import a track from a Suno link into the timeline as the music.
+  async function addMusicFromLink() {
+    const url = window.prompt("Paste a public Suno song link (suno.com/song/…)");
+    if (!url || !url.trim()) return;
+    setMusic({ name: "Loading…", objectPath: null, localUrl: null, mode: "mix", volume: 0.6, uploading: true });
+    try {
+      const r = await fetch("/api/audio/import-from-link", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: url.trim() }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Import failed");
+      setMusic({
+        name: data.title || "Imported track",
+        objectPath: data.objectPath,
+        localUrl: data.url,
+        mode: "mix",
+        volume: 0.6,
+        uploading: false,
+      });
+    } catch (err) {
+      setMusic(null);
+      toast({ title: "Couldn't import track", description: String((err as Error).message), variant: "destructive" });
+    }
+  }
+
   function removeSegment(id: string) {
     pause();
     idxRef.current = -1;
@@ -624,6 +653,9 @@ export default function Editor() {
         <input ref={musicInputRef} type="file" accept="audio/*" hidden onChange={(e) => addMusic(e.target.files)} />
         <Button variant="outline" onClick={() => musicInputRef.current?.click()}>
           <Music className="mr-2 h-4 w-4" /> {music ? "Change music" : "Add music"}
+        </Button>
+        <Button variant="outline" onClick={addMusicFromLink} data-testid="add-music-from-link">
+          <Link2 className="mr-2 h-4 w-4" /> Add from Suno
         </Button>
       </div>
 
