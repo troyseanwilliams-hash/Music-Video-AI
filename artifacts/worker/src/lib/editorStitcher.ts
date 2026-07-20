@@ -124,10 +124,18 @@ function hasAudio(file: string): Promise<boolean> {
 export async function stitchEditorTimeline(
   input: EditorStitchInput,
 ): Promise<EditorStitchResult> {
-  // Hard-cap at 720p — 1080p encoding exhausts RAM on the production VM.
-  // Raise this limit only after upgrading the deployment to a higher-memory tier.
-  const W = Math.min(input.width ?? 1280, 1280);
-  const H = Math.min(input.height ?? 720, 720);
+  // Hard-cap total pixels at ~720p worth (1280×720) — 1080p encoding exhausts
+  // RAM on the production VM — but preserve the requested aspect ratio so
+  // portrait (9:16) renders as 720×1280, not a cropped landscape frame.
+  const MAX_PIXELS = 1280 * 720;
+  let W = input.width ?? 1280;
+  let H = input.height ?? 720;
+  if (W * H > MAX_PIXELS) {
+    const scale = Math.sqrt(MAX_PIXELS / (W * H));
+    // Keep dimensions even (H.264 requirement).
+    W = Math.round((W * scale) / 2) * 2;
+    H = Math.round((H * scale) / 2) * 2;
+  }
   const FPS = input.fps ?? 30;
   const vf =
     `scale=${W}:${H}:force_original_aspect_ratio=decrease,` +
