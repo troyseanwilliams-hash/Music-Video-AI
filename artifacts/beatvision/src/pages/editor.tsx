@@ -128,6 +128,7 @@ export default function Editor() {
   const [transition, setTransition] = useState("none");
   const [transitionDuration, setTransitionDuration] = useState(0.5);
   const [resolution, setResolution] = useState<"720p" | "1080p">("720p");
+  const [orientation, setOrientation] = useState<"landscape" | "portrait">("landscape");
   const [lyricsText, setLyricsText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   // Beat sync: detected from the added music track (BPM + beat times).
@@ -488,6 +489,7 @@ export default function Editor() {
         music: music?.objectPath ? { objectPath: music.objectPath, mode: music.mode, volume: music.volume } : undefined,
         transition: transition === "none" ? undefined : { type: transition, durationSec: transitionDuration },
         resolution,
+        orientation,
         acceptCopyright: true,
         lyricsText: lyricsText.trim() || undefined,
       };
@@ -807,6 +809,43 @@ export default function Editor() {
           </div>
 
           <div className="mt-4">
+            <div className="mb-2 text-sm font-medium">Orientation</div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setOrientation("landscape")}
+                className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors ${
+                  orientation === "landscape"
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border bg-secondary/30 text-muted-foreground hover:text-foreground"
+                }`}
+                data-testid="orientation-landscape"
+              >
+                <span className="inline-block w-5 h-3 rounded-[3px] border-2 border-current" />
+                16:9 · Wide
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrientation("portrait")}
+                className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors ${
+                  orientation === "portrait"
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border bg-secondary/30 text-muted-foreground hover:text-foreground"
+                }`}
+                data-testid="orientation-portrait"
+              >
+                <span className="inline-block w-3 h-5 rounded-[3px] border-2 border-current" />
+                9:16 · Mobile
+              </button>
+            </div>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {orientation === "portrait"
+                ? "Portrait — for TikTok, Reels & YouTube Shorts."
+                : "Widescreen — for YouTube & desktop."}
+            </p>
+          </div>
+
+          <div className="mt-4">
             <div className="mb-2 flex items-center gap-1.5 text-sm font-medium">
               <Mic2 className="h-3.5 w-3.5 text-primary" />
               Karaoke lyrics
@@ -873,7 +912,8 @@ export default function Editor() {
           className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
         />
         <span>
-          I confirm I have the right to use the content in this video (owned, licensed, or royalty-free).
+          I confirm I own or have the rights/license to use every clip, photo, and track in this video. Uploading
+          content you don't have rights to may get the video removed and your account suspended.
         </span>
       </label>
 
