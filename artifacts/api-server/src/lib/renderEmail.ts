@@ -49,18 +49,19 @@ export async function notifyRenderReady(job: RenderEmailJob): Promise<void> {
     await sendViaResend(
       user.email,
       "Your video is ready 🎬",
-      `
-      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
-        <h2 style="margin:0 0 12px">Your video is ready</h2>
-        <p style="color:#444">"${title}" just finished rendering.</p>
-        <p style="margin:24px 0">
-          <a href="${APP_URL}/jobs/${job.id}" style="background:#7c3aed;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">
-            Watch it now →
-          </a>
-        </p>
-        <p style="color:#888;font-size:12px">You can turn these emails off from your dashboard.</p>
-      </div>
-      `,
+      `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+  <h2 style="margin:0 0 12px">Your video is ready</h2>
+  <p style="color:#444">"${title}" just finished rendering.</p>
+  <p style="margin:24px 0">
+    <a
+      href="${APP_URL}/jobs/${job.id}"
+      style="background:#7c3aed;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600"
+    >
+      Watch it now →
+    </a>
+  </p>
+  <p style="color:#888;font-size:12px">You can turn these emails off from your dashboard.</p>
+</div>`,
     );
     logger.info({ jobId: job.id }, "Render-ready email sent");
   } catch (err) {
