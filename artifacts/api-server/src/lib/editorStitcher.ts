@@ -268,23 +268,36 @@ export async function stitchEditorTimeline(
 
     let current = joined;
 
-    // 3. Music (mix with or replace clip audio).
+    // 3. Music (mix with or replace clip audio). The track loops for the full
+    // length of the video and is cut exactly at the video's end: if the song
+    // is shorter it replays until the video finishes; if it's longer it stops
+    // when the video does. We hard-cap the output to the probed video duration
+    // rather than relying on `-shortest`, which is unreliable with an
+    // infinitely looped input.
     if (input.music) {
+      const videoDuration = await probeDuration(current);
       const musicPath = join(dir, `music.${input.music.ext || "mp3"}`);
       await writeFile(musicPath, input.music.buffer);
       const vol = Math.max(0, Math.min(2, input.music.volume || 0.6));
       const withMusic = join(dir, "music.mp4");
+      // -stream_loop -1 on the music input makes it repeat indefinitely; -t
+      // <videoDuration> trims the whole output to the video length.
       const args = ["-y", "-i", current, "-stream_loop", "-1", "-i", musicPath];
       if (input.music.mode === "replace") {
         args.push("-filter_complex", `[1:a]volume=${vol}[a]`, "-map", "0:v:0", "-map", "[a]");
       } else {
+        // duration=longest keeps the (looped) music going; the -t cap below
+        // ends the file at the video's end.
         args.push(
           "-filter_complex",
-          `[1:a]volume=${vol}[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=0[a]`,
+          `[1:a]volume=${vol}[m];[0:a][m]amix=inputs=2:duration=longest:dropout_transition=0[a]`,
           "-map", "0:v:0", "-map", "[a]",
         );
       }
-      args.push("-c:v", "copy", "-c:a", "aac", "-ar", String(SAR), "-ac", "2", "-shortest", withMusic);
+      args.push("-c:v", "copy", "-c:a", "aac", "-ar", String(SAR), "-ac", "2");
+      if (videoDuration > 0) args.push("-t", videoDuration.toFixed(3));
+      else args.push("-shortest");
+      args.push(withMusic);
       await run(args);
       current = withMusic;
     }
