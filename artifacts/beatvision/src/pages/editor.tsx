@@ -130,6 +130,7 @@ export default function Editor() {
   const [transitionDuration, setTransitionDuration] = useState(0.5);
   const [resolution, setResolution] = useState<"720p" | "1080p">("720p");
   const [orientation, setOrientation] = useState<"landscape" | "portrait">("landscape");
+  const [videoName, setVideoName] = useState("");
   const [lyricsText, setLyricsText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   // Beat sync: detected from the added music track (BPM + beat times).
@@ -508,8 +509,13 @@ export default function Editor() {
     pause();
     setSubmitting(true);
     try {
+      // Fall back to a friendly, dated default when the user leaves it blank —
+      // never the generic "Editor export".
+      const finalName =
+        videoName.trim() ||
+        `Remix Lab · ${new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
       const body = {
-        name: "Editor export",
+        name: finalName,
         segments: ready.map((s) => ({
           objectPath: s.objectPath,
           kind: s.kind,
@@ -827,6 +833,19 @@ export default function Editor() {
           ) : (
             <p className="text-muted-foreground text-sm">No track. Add one to score your video.</p>
           )}
+          <div className="mt-4">
+            <div className="mb-2 text-sm font-medium">Video name</div>
+            <input
+              type="text"
+              value={videoName}
+              onChange={(e) => setVideoName(e.target.value)}
+              placeholder="Name your video (optional)"
+              maxLength={120}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
+              data-testid="editor-video-name"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">Shown in your library and gallery. Leave blank for a dated default.</p>
+          </div>
           <div className="mt-4">
             <div className="mb-2 text-sm font-medium">Resolution</div>
             <Select value={resolution} onValueChange={(v) => setResolution(v as "720p" | "1080p")}>

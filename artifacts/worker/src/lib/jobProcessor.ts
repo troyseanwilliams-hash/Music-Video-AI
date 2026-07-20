@@ -523,7 +523,7 @@ async function processEditorJob(job: JobRow): Promise<void> {
       jobId: job.id,
       videoObjectPath,
       thumbnailObjectPath,
-      title: "Studio export",
+      title: job.prompt?.trim() || "Studio export",
       durationSeconds: result.durationSeconds,
       shareToken: randomUUID().replace(/-/g, "").slice(0, 16),
     });
