@@ -202,6 +202,16 @@ export default function Editor() {
     : 0;
   const fullAccess = !!user && (user.isAdmin || user.subscriptionStatus === "active" || trialActive);
 
+  // Free-Remix quota (only relevant for non-subscribers after trial).
+  const [quota, setQuota] = useState<{ used: number; free: number; remaining: number; overageCost: number } | null>(null);
+  useEffect(() => {
+    if (!isAuthenticated || fullAccess) return;
+    fetch("/api/studio/quota", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setQuota(d))
+      .catch(() => {});
+  }, [isAuthenticated, fullAccess]);
+
   useEffect(() => {
     if (!isAuthLoading && !isAuthenticated) setLocation("/login");
   }, [isAuthLoading, isAuthenticated, setLocation]);
@@ -602,12 +612,24 @@ export default function Editor() {
       )}
       {!fullAccess && (
         <Card className="border-primary/30 bg-primary/5 mb-6 p-4 text-sm">
-          Your free trial has ended.{" "}
+          {quota && quota.remaining > 0 ? (
+            <>
+              <strong>{quota.remaining} of {quota.free} free Remix exports</strong> left this month. After that,
+              each export is just {quota.overageCost} credits (~$
+              {(quota.overageCost * 0.02).toFixed(2)}).{" "}
+            </>
+          ) : quota ? (
+            <>
+              You've used all {quota.free} free Remix exports this month. Each additional export is{" "}
+              <strong>{quota.overageCost} credits</strong> (~${(quota.overageCost * 0.02).toFixed(2)}).{" "}
+            </>
+          ) : (
+            <>The first {10} Remix exports each month are free.{" "}</>
+          )}
           <button className="text-primary font-medium underline" onClick={() => setLocation("/pricing")}>
             Subscribe
           </button>{" "}
-          for unlimited editing — or each export costs credits based on length
-          {segments.length > 0 ? <> (~{estimatedCost} credits for this {totalDuration.toFixed(0)}s video)</> : null}.
+          for unlimited exports.
         </Card>
       )}
 
@@ -988,9 +1010,11 @@ export default function Editor() {
           <span className="text-muted-foreground text-sm tabular-nums">
             {trialActive ? (
               <>Would use {estimatedCost} credits · <span className="text-primary">free during trial</span></>
-            ) : (
-              <>Est. cost: {estimatedCost} credits</>
-            )}
+            ) : quota && quota.remaining > 0 ? (
+              <span className="text-primary">Free · {quota.remaining} of {quota.free} left this month</span>
+            ) : quota ? (
+              <>Est. cost: {quota.overageCost} credits</>
+            ) : null}
           </span>
         )}
       </div>

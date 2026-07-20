@@ -341,7 +341,10 @@ export default function Pricing() {
                   </li>
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                    <span>Remix Lab — arrange clips, photos &amp; music with transitions</span>
+                    <span>
+                      <strong>Unlimited</strong> Remix Lab exports — arrange clips, photos &amp; music with
+                      transitions (free plan: 10 exports/month, then 15 credits each)
+                    </span>
                   </li>
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />

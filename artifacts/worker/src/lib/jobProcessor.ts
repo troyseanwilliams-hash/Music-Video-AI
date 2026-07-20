@@ -15,7 +15,6 @@ import { analyzeAudioBuffer, type AudioAnalysis, type AudioSection } from "./aud
 import { generateClip, downloadClip, getActiveProvider } from "./videoApis.js";
 import { stitchVideoClips, extractVideoThumbnail } from "./videoStitcher.js";
 import { stitchEditorTimeline } from "./editorStitcher.js";
-import { calculateEditorCost } from "./editorCost.js";
 import { calculateCreditCost } from "./creditCost.js";
 
 const execAsync = promisify(exec);
@@ -426,7 +425,8 @@ interface EditorManifest {
   resolution?: string; // "720p" | "1080p"
   orientation?: "landscape" | "portrait"; // 16:9 (default) or 9:16 mobile
   watermark?: boolean;
-  chargeCredits?: boolean; // true only when trial ended and not subscribed
+  chargeCredits?: boolean; // true only when the free monthly allotment is used up
+  chargeAmount?: number; // flat credits to deduct when chargeCredits is true
   lyricsText?: string | null; // karaoke burn (plain / LRC / enhanced LRC)
 }
 
@@ -530,11 +530,7 @@ async function processEditorJob(job: JobRow): Promise<void> {
 
     // Trial/subscription renders are free; post-trial renders deduct credits.
     if (manifest.chargeCredits) {
-      const creditCost = calculateEditorCost({
-        durationSec: result.durationSeconds,
-        resolution: manifest.resolution,
-        hasTransitions: !!manifest.transition && manifest.transition.type !== "none",
-      });
+      const creditCost = manifest.chargeAmount ?? 0;
       // Deduct from the subscription bucket first, then top-up — same split as
       // AI generation — so creditsRemaining stays equal to sub + top-up.
       await db

@@ -1,10 +1,10 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { jobsTable, creditsTable, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, and, gte, ne, count } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { z } from "zod";
-import { calculateEditorCost } from "../lib/editorCost.js";
+import { FREE_EDITOR_EXPORTS_PER_MONTH, EDITOR_OVERAGE_COST } from "../lib/editorCost.js";
 
 const router = Router();
 
@@ -43,6 +43,34 @@ const RenderSchema = z.object({
   // Karaoke lyric burn (same engine as the generator): plain text, LRC, or
   // word-level enhanced LRC.
   lyricsText: z.string().max(5000).optional(),
+});
+
+// GET /api/studio/quota — this month's free-Remix usage for the current user.
+router.get("/studio/quota", async (req, res) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const monthStart = new Date();
+  monthStart.setUTCDate(1);
+  monthStart.setUTCHours(0, 0, 0, 0);
+  const [{ used }] = await db
+    .select({ used: count() })
+    .from(jobsTable)
+    .where(
+      and(
+        eq(jobsTable.userId, req.user.id),
+        eq(jobsTable.jobType, "editor_render"),
+        gte(jobsTable.createdAt, monthStart),
+        ne(jobsTable.status, "failed"),
+      ),
+    );
+  res.json({
+    used,
+    free: FREE_EDITOR_EXPORTS_PER_MONTH,
+    remaining: Math.max(0, FREE_EDITOR_EXPORTS_PER_MONTH - used),
+    overageCost: EDITOR_OVERAGE_COST,
+  });
 });
 
 // POST /api/studio/render — enqueue an editor_render job from a timeline manifest.
@@ -91,40 +119,63 @@ router.post("/studio/render", async (req, res) => {
   // Full, free Editor access during the 7-day trial, with a subscription, or for admins.
   const fullAccess = isAdmin || isSubscribed || trialActive;
 
-  const totalDuration = input.segments.reduce((s, seg) => s + (seg.durationSec || 0), 0);
-  const hasTransitions = !!input.transition && input.transition.type !== "none";
-
   const resolution = input.resolution;
   const transition = input.transition;
-  // Once the trial ends and there's no subscription, each export costs credits.
-  const chargeCredits = !fullAccess;
+  const totalDuration = input.segments.reduce((sum, s) => sum + (s.durationSec ?? 0), 0);
 
-  // Always compute the estimate so the client can show what an export would cost
-  // — even during the free trial, when it isn't actually charged.
-  const creditCost = calculateEditorCost({ durationSec: totalDuration, resolution, hasTransitions });
+  // Freemium Remix Lab: admins/subscribers/trial are unlimited. Everyone else
+  // gets FREE_EDITOR_EXPORTS_PER_MONTH free exports per calendar month, then a
+  // flat low overage per export.
+  let chargeCredits = false;
+  let chargeAmount = 0;
 
-  if (chargeCredits) {
-    let [userCredits] = await db
-      .select()
-      .from(creditsTable)
-      .where(eq(creditsTable.userId, req.user.id))
-      .limit(1);
-    if (!userCredits) {
-      [userCredits] = await db
-        .insert(creditsTable)
-        .values({ id: randomUUID(), userId: req.user.id })
-        .returning();
-    }
-    if (userCredits.creditsRemaining < creditCost) {
-      res.status(402).json({
-        error: `Your free trial has ended. Subscribe for unlimited editing — or this export costs ${creditCost} credits (you have ${userCredits.creditsRemaining}).`,
-        code: "TRIAL_ENDED",
-        creditsRequired: creditCost,
-        creditsRemaining: userCredits.creditsRemaining,
-      });
-      return;
+  if (!fullAccess) {
+    const monthStart = new Date();
+    monthStart.setUTCDate(1);
+    monthStart.setUTCHours(0, 0, 0, 0);
+    // Count this month's editor renders (exclude failed so a broken render
+    // doesn't burn a free slot).
+    const [{ used }] = await db
+      .select({ used: count() })
+      .from(jobsTable)
+      .where(
+        and(
+          eq(jobsTable.userId, req.user.id),
+          eq(jobsTable.jobType, "editor_render"),
+          gte(jobsTable.createdAt, monthStart),
+          ne(jobsTable.status, "failed"),
+        ),
+      );
+
+    if (used >= FREE_EDITOR_EXPORTS_PER_MONTH) {
+      chargeCredits = true;
+      chargeAmount = EDITOR_OVERAGE_COST;
+
+      let [userCredits] = await db
+        .select()
+        .from(creditsTable)
+        .where(eq(creditsTable.userId, req.user.id))
+        .limit(1);
+      if (!userCredits) {
+        [userCredits] = await db
+          .insert(creditsTable)
+          .values({ id: randomUUID(), userId: req.user.id })
+          .returning();
+      }
+      if (userCredits.creditsRemaining < chargeAmount) {
+        res.status(402).json({
+          error: `You've used your ${FREE_EDITOR_EXPORTS_PER_MONTH} free Remix exports this month. Each extra export is ${chargeAmount} credits (you have ${userCredits.creditsRemaining}). Subscribe for unlimited editing.`,
+          code: "FREE_EXPORTS_USED",
+          creditsRequired: chargeAmount,
+          creditsRemaining: userCredits.creditsRemaining,
+        });
+        return;
+      }
     }
   }
+
+  // Estimate shown to the client (0 when the export is free).
+  const creditCost = chargeAmount;
 
   const manifest = {
     segments: input.segments,
@@ -134,6 +185,7 @@ router.post("/studio/render", async (req, res) => {
     orientation: input.orientation,
     watermark: false,
     chargeCredits,
+    chargeAmount,
     lyricsText: input.lyricsText?.trim() || null,
   };
 
