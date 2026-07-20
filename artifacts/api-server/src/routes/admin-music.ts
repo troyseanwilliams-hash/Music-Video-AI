@@ -6,7 +6,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomUUID } from "crypto";
 import { z } from "zod";
-import { generateSong, getActiveMusicProvider, type MusicProvider } from "../lib/musicApis.js";
+import { generateSong, getActiveMusicProvider, MAX_SONG_SECONDS, type MusicProvider } from "../lib/musicApis.js";
+import { generateLyrics, lyricsProviderAvailable } from "../lib/lyricsGen.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { logger } from "../lib/logger.js";
 
@@ -32,13 +33,40 @@ router.get("/admin/music/status", (req: Request, res: Response) => {
     hasReplicateKey: !!process.env.REPLICATE_API_TOKEN,
     aceStepReady: !!process.env.MUSIC_ACESTEP_VERSION,
     musicGenReady: !!process.env.MUSIC_MUSICGEN_VERSION,
+    lyricsProvider: lyricsProviderAvailable(),
   });
+});
+
+// Generate lyrics from a theme (AI when a key is set, template otherwise).
+const LyricsBody = z.object({
+  theme: z.string().min(2).max(300),
+  genre: z.string().max(120).optional(),
+  mood: z.string().max(120).optional(),
+});
+
+router.post("/admin/music/lyrics", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated() || !isAdmin(req.user.email)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const parsed = LyricsBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+    return;
+  }
+  try {
+    const { lyrics, source } = await generateLyrics(parsed.data);
+    res.json({ lyrics, source });
+  } catch (err) {
+    logger.error({ err }, "Admin lyric generation failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Lyric generation failed" });
+  }
 });
 
 const GenerateBody = z.object({
   prompt: z.string().min(3).max(600),
   lyrics: z.string().max(5000).optional(),
-  durationSeconds: z.number().int().min(5).max(240).default(30),
+  durationSeconds: z.number().int().min(5).max(MAX_SONG_SECONDS).default(30),
   provider: z.enum(["simulation", "acestep", "musicgen"]).optional(),
 });
 

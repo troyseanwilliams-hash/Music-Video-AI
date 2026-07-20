@@ -118,7 +118,9 @@ async function simulateSong(durationSeconds: number): Promise<SongResult> {
   const { randomUUID } = await import("node:crypto");
   const execAsync = promisify(exec);
   const out = join(tmpdir(), `bv_song_${randomUUID()}.mp3`);
-  const dur = Math.min(Math.max(durationSeconds, 5), 60);
+  // Honor the requested length (so the length selector is visibly working),
+  // capped at 5.5 min like the real providers.
+  const dur = Math.min(Math.max(durationSeconds, 5), MAX_SONG_SECONDS);
   try {
     await execAsync(
       `ffmpeg -y -f lavfi -i "sine=frequency=220:duration=${dur}" ` +
@@ -136,9 +138,13 @@ async function simulateSong(durationSeconds: number): Promise<SongResult> {
 
 // ── Public entry ─────────────────────────────────────────────────────────────
 
+// Songs can run up to ~5.5 minutes (330s) so "Full" length lands around a
+// natural full-song runtime. Providers may cap lower internally.
+export const MAX_SONG_SECONDS = 330;
+
 export async function generateSong(req: SongRequest): Promise<SongResult> {
   const provider = getActiveMusicProvider(req.provider ?? null);
-  const dur = Math.min(Math.max(req.durationSeconds || 30, 5), 240);
+  const dur = Math.min(Math.max(req.durationSeconds || 30, 5), MAX_SONG_SECONDS);
 
   if (provider === "simulation") {
     return simulateSong(dur);

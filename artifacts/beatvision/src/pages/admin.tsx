@@ -446,14 +446,26 @@ interface FailedJob extends PendingJob {
 }
 
 /* ─── Admin song generator (Beta, admin-only) ─── */
+// Descriptive lengths — no exact seconds shown to the user; "Full" lands
+// around a natural 5-minute song.
+const LENGTH_OPTIONS: { key: string; label: string; seconds: number }[] = [
+  { key: "short", label: "Short (~30s)", seconds: 30 },
+  { key: "medium", label: "Medium (~1 min)", seconds: 60 },
+  { key: "long", label: "Long (~2.5 min)", seconds: 150 },
+  { key: "full", label: "Full song (~5 min)", seconds: 300 },
+];
+
 function AdminMusicPanel() {
   const { toast } = useToast();
+  const [theme, setTheme] = useState("");
   const [prompt, setPrompt] = useState("");
   const [lyrics, setLyrics] = useState("");
-  const [duration, setDuration] = useState(30);
+  const [lengthKey, setLengthKey] = useState("full");
   const [result, setResult] = useState<{ url: string; provider: string; hasVocals: boolean; objectPath: string } | null>(null);
 
-  const { data: status } = useQuery<{ activeProvider: string; hasReplicateKey: boolean; aceStepReady: boolean; musicGenReady: boolean }>({
+  const duration = LENGTH_OPTIONS.find((l) => l.key === lengthKey)?.seconds ?? 300;
+
+  const { data: status } = useQuery<{ activeProvider: string; hasReplicateKey: boolean; aceStepReady: boolean; musicGenReady: boolean; lyricsProvider: string }>({
     queryKey: ["admin", "music", "status"],
     queryFn: async () => {
       const res = await fetch("/api/admin/music/status", { credentials: "include" });
@@ -476,6 +488,22 @@ function AdminMusicPanel() {
       return data as { url: string; provider: string; hasVocals: boolean; objectPath: string };
     },
     onSuccess: (data) => { setResult(data); toast({ title: "Song generated", description: `Provider: ${data.provider}` }); },
+    onError: (err: Error) => toast({ title: "Failed", description: err.message, variant: "destructive" }),
+  });
+
+  const genLyrics = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/admin/music/lyrics", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theme, genre: prompt.trim() || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lyric generation failed");
+      return data as { lyrics: string; source: string };
+    },
+    onSuccess: (data) => { setLyrics(data.lyrics); toast({ title: "Lyrics generated", description: `Source: ${data.source}` }); },
     onError: (err: Error) => toast({ title: "Failed", description: err.message, variant: "destructive" }),
   });
 
@@ -507,15 +535,39 @@ function AdminMusicPanel() {
           <Input value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="relaxing lofi hip hop, mellow mechanical textures, 72 BPM, vinyl crackle" className="mt-1" data-testid="admin-music-prompt" />
         </div>
 
+        {/* Lyrics + AI generation */}
         <div>
-          <label className="text-sm font-medium">Lyrics <span className="text-muted-foreground font-normal">(optional — vocal models only; leave blank for instrumental)</span></label>
-          <Textarea value={lyrics} onChange={(e) => setLyrics(e.target.value)} placeholder="[verse]\nMidnight on the factory floor..." className="mt-1 min-h-[100px]" maxLength={5000} data-testid="admin-music-lyrics" />
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-sm font-medium">Lyrics <span className="text-muted-foreground font-normal">(optional — vocal models; blank = instrumental)</span></label>
+            <div className="flex items-center gap-2">
+              <Input
+                value={theme}
+                onChange={(e) => setTheme(e.target.value)}
+                placeholder="theme, e.g. late-night city drive"
+                className="h-8 w-56 text-xs"
+                data-testid="admin-lyrics-theme"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => genLyrics.mutate()}
+                disabled={genLyrics.isPending || theme.trim().length < 2}
+                data-testid="admin-generate-lyrics"
+              >
+                {genLyrics.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><Sparkles className="mr-1.5 h-3.5 w-3.5" /> Write lyrics</>}
+              </Button>
+            </div>
+          </div>
+          <Textarea value={lyrics} onChange={(e) => setLyrics(e.target.value)} placeholder="Enter a theme above and click Write lyrics, or paste your own. [Verse] / [Chorus] tags recommended." className="mt-1 min-h-[140px]" maxLength={5000} data-testid="admin-music-lyrics" />
+          {status?.lyricsProvider === "template" && (
+            <p className="mt-1 text-[11px] text-amber-400/80">Lyrics use a built-in template. Set ANTHROPIC_API_KEY or OPENAI_API_KEY for AI-written lyrics.</p>
+          )}
         </div>
 
         <div className="flex items-center gap-3">
           <label className="text-sm font-medium">Length</label>
-          <select value={duration} onChange={(e) => setDuration(parseInt(e.target.value, 10))} className="rounded-md border border-input bg-background px-3 py-1.5 text-sm">
-            {[15, 30, 60, 90, 120].map((d) => <option key={d} value={d}>{d}s</option>)}
+          <select value={lengthKey} onChange={(e) => setLengthKey(e.target.value)} className="rounded-md border border-input bg-background px-3 py-1.5 text-sm" data-testid="admin-music-length">
+            {LENGTH_OPTIONS.map((l) => <option key={l.key} value={l.key}>{l.label}</option>)}
           </select>
           <Button onClick={() => gen.mutate()} disabled={gen.isPending || prompt.trim().length < 3} className="ml-auto bg-gradient-electric text-white shadow-glow">
             {gen.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating…</> : <><Sparkles className="mr-2 h-4 w-4" /> Generate song</>}
