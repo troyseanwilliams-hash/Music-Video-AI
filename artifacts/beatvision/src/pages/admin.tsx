@@ -11,7 +11,7 @@ import {
   Loader2, Search, ShieldCheck, Coins, Check, X,
   MessageSquare, Users, ChevronDown, ChevronUp,
   CircleDot, Clock, CheckCircle2, XCircle, RotateCcw, AlertTriangle, RefreshCw,
-  Film, Ban, Trash2, Play,
+  Film, Ban, Trash2, Play, Music2, Sparkles,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -445,8 +445,103 @@ interface FailedJob extends PendingJob {
   updatedAt: string;
 }
 
+/* ─── Admin song generator (Beta, admin-only) ─── */
+function AdminMusicPanel() {
+  const { toast } = useToast();
+  const [prompt, setPrompt] = useState("");
+  const [lyrics, setLyrics] = useState("");
+  const [duration, setDuration] = useState(30);
+  const [result, setResult] = useState<{ url: string; provider: string; hasVocals: boolean; objectPath: string } | null>(null);
+
+  const { data: status } = useQuery<{ activeProvider: string; hasReplicateKey: boolean; aceStepReady: boolean; musicGenReady: boolean }>({
+    queryKey: ["admin", "music", "status"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/music/status", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+
+  const gen = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/admin/music/generate", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, lyrics: lyrics.trim() || undefined, durationSeconds: duration }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Generation failed");
+      return data as { url: string; provider: string; hasVocals: boolean; objectPath: string };
+    },
+    onSuccess: (data) => { setResult(data); toast({ title: "Song generated", description: `Provider: ${data.provider}` }); },
+    onError: (err: Error) => toast({ title: "Failed", description: err.message, variant: "destructive" }),
+  });
+
+  const isSim = status?.activeProvider === "simulation";
+
+  return (
+    <Card className="bg-card/50 border-card-border">
+      <CardHeader className="pb-4">
+        <div className="flex items-center gap-2">
+          <Music2 className="h-5 w-5 text-primary" />
+          <CardTitle className="text-lg">AI Song Generator</CardTitle>
+          <Badge variant="outline" className="text-[10px]">Beta · Admin only</Badge>
+        </div>
+        <CardDescription>
+          Generate a song with an open, commercially-licensed model. Not exposed in the product yet.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className={`rounded-lg border px-3 py-2 text-xs ${isSim ? "border-amber-500/30 bg-amber-500/10 text-amber-300" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"}`}>
+          {isSim ? (
+            <>Running in <b>simulation mode</b> (placeholder audio). Set <code>REPLICATE_API_TOKEN</code> + a model version env (<code>MUSIC_ACESTEP_VERSION</code> for vocals, <code>MUSIC_MUSICGEN_VERSION</code> for instrumental) to go live.</>
+          ) : (
+            <>Live provider: <b>{status?.activeProvider}</b> {status?.aceStepReady ? "· ACE-Step (vocals) ready" : ""} {status?.musicGenReady ? "· MusicGen (instrumental) ready" : ""}</>
+          )}
+        </div>
+
+        <div>
+          <label className="text-sm font-medium">Style / genre prompt</label>
+          <Input value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="relaxing lofi hip hop, mellow mechanical textures, 72 BPM, vinyl crackle" className="mt-1" data-testid="admin-music-prompt" />
+        </div>
+
+        <div>
+          <label className="text-sm font-medium">Lyrics <span className="text-muted-foreground font-normal">(optional — vocal models only; leave blank for instrumental)</span></label>
+          <Textarea value={lyrics} onChange={(e) => setLyrics(e.target.value)} placeholder="[verse]\nMidnight on the factory floor..." className="mt-1 min-h-[100px]" maxLength={5000} data-testid="admin-music-lyrics" />
+        </div>
+
+        <div className="flex items-center gap-3">
+          <label className="text-sm font-medium">Length</label>
+          <select value={duration} onChange={(e) => setDuration(parseInt(e.target.value, 10))} className="rounded-md border border-input bg-background px-3 py-1.5 text-sm">
+            {[15, 30, 60, 90, 120].map((d) => <option key={d} value={d}>{d}s</option>)}
+          </select>
+          <Button onClick={() => gen.mutate()} disabled={gen.isPending || prompt.trim().length < 3} className="ml-auto bg-gradient-electric text-white shadow-glow">
+            {gen.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating…</> : <><Sparkles className="mr-2 h-4 w-4" /> Generate song</>}
+          </Button>
+        </div>
+
+        {result && (
+          <div className="rounded-lg border border-border bg-background/40 p-4 space-y-2">
+            <div className="text-sm font-semibold flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              Generated · {result.provider} {result.hasVocals ? "· with vocals" : "· instrumental"}
+            </div>
+            <audio src={result.url} controls className="w-full" />
+            <p className="text-xs text-muted-foreground break-all">
+              objectPath: <code>{result.objectPath}</code> — this is the audio source you'll wire into the generator when the feature ships.
+            </p>
+            <a href={result.url} download className="text-xs text-primary hover:underline">Download</a>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 /* ─── Main admin page ─── */
-type Tab = "users" | "support" | "jobs" | "deleted";
+type Tab = "users" | "support" | "jobs" | "deleted" | "music";
 
 interface DeletedVideo {
   id: string;
@@ -698,7 +793,21 @@ export default function AdminPage() {
           <Trash2 className="h-4 w-4" />
           Deleted Files
         </button>
+        <button
+          onClick={() => setTab("music")}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            tab === "music"
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Music2 className="h-4 w-4" />
+          Music
+          <span className="ml-1 px-1.5 py-0.5 rounded-full bg-primary/20 text-primary text-[10px] font-mono leading-none">Beta</span>
+        </button>
       </div>
+
+      {tab === "music" && <AdminMusicPanel />}
 
       {/* ── Users tab ── */}
       {tab === "users" && (

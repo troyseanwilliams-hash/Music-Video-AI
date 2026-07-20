@@ -257,6 +257,18 @@ export class ObjectStorageService {
     return `/objects/videos/${videoId}.mp4`;
   }
 
+  // Persist an AI-generated song so it can feed the generator like an upload.
+  async uploadAudioBuffer(buffer: Buffer, songId: string, ext = "mp3"): Promise<string> {
+    const privateObjectDir = this.getPrivateObjectDir();
+    const objectEntityPath = `${privateObjectDir}/audio/${songId}.${ext}`;
+    const { bucketName, objectName } = parseObjectPath(objectEntityPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+    const contentType = ext === "wav" ? "audio/wav" : "audio/mpeg";
+    await file.save(buffer, { contentType, resumable: buffer.length > 5 * 1024 * 1024 });
+    return `/objects/audio/${songId}.${ext}`;
+  }
+
   async uploadThumbnailBuffer(buffer: Buffer, videoId: string): Promise<string> {
     const privateObjectDir = this.getPrivateObjectDir();
     const objectEntityPath = `${privateObjectDir}/thumbnails/${videoId}.jpg`;
