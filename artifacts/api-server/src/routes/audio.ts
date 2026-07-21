@@ -23,15 +23,20 @@ router.post("/audio/import-from-link", async (req, res) => {
 
   const isSuno = /suno\.(?:com|ai)\/song\//i.test(rawUrl);
   const isYouTube = /(?:youtube\.com\/watch|youtu\.be\/|music\.youtube\.com)/i.test(rawUrl);
+  // A direct audio file link (e.g. a track generated on Digital Drift, or any
+  // hosted mp3/wav). Lets partner sites hand a song straight into the editor.
+  const isDirectAudio = /^https?:\/\/.+\.(?:mp3|wav|m4a|ogg|aac|flac)(?:\?.*)?$/i.test(rawUrl);
 
   try {
     let audioUrl: string;
-    let title = "Imported track";
+    let title = String((req.body as Record<string, unknown>)?.title ?? "").trim() || "Imported track";
 
     if (isSuno) {
       const track = await resolveSunoUrl(rawUrl);
       audioUrl = track.audioUrl;
       title = track.title || title;
+    } else if (isDirectAudio) {
+      audioUrl = rawUrl;
     } else if (isYouTube) {
       // Server-side YouTube audio extraction requires a dedicated downloader
       // (yt-dlp) that isn't available in this environment, and is subject to
@@ -42,7 +47,7 @@ router.post("/audio/import-from-link", async (req, res) => {
       });
       return;
     } else {
-      res.status(400).json({ error: "Paste a Suno song link (suno.com/song/…) or a YouTube link." });
+      res.status(400).json({ error: "Paste a Suno song link (suno.com/song/…) or a direct audio file link (.mp3/.wav)." });
       return;
     }
 

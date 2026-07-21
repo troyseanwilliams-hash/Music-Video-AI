@@ -164,6 +164,39 @@ export default function Editor() {
     segmentsRef.current = segments;
   }, [segments]);
 
+  // Auto-import a track handed off from a partner site (e.g. Digital Drift):
+  // /editor?audio=<url>&title=<name> loads the song as the music track, like a
+  // Suno link. Runs once, after auth (import requires a signed-in user).
+  const autoImportedRef = useRef(false);
+  useEffect(() => {
+    if (autoImportedRef.current || !isAuthenticated) return;
+    const params = new URLSearchParams(window.location.search);
+    const audio = params.get("audio");
+    if (!audio) return;
+    autoImportedRef.current = true;
+    const title = params.get("title") || "Imported track";
+    // Strip the params so a refresh doesn't re-import.
+    window.history.replaceState({}, "", window.location.pathname);
+    setMusic({ name: "Loading…", objectPath: null, localUrl: null, mode: "mix", volume: 0.6, uploading: true });
+    (async () => {
+      try {
+        const r = await fetch("/api/audio/import-from-link", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: audio, title }),
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || "Import failed");
+        setMusic({ name: data.title || title, objectPath: data.objectPath, localUrl: data.url, mode: "mix", volume: 0.6, uploading: false });
+        toast({ title: "Track loaded", description: "Your song is ready — add clips or photos and render." });
+      } catch (err) {
+        setMusic(null);
+        toast({ title: "Couldn't load the track", description: String((err as Error).message), variant: "destructive" });
+      }
+    })();
+  }, [isAuthenticated, toast]);
+
   // When a music track finishes uploading, analyze it for BPM + beat times so
   // the user can auto-cut photos to the beat.
   useEffect(() => {
