@@ -56,6 +56,7 @@ export default function Pricing() {
   const [interval, setInterval] = useState<Interval>("month");
   const [busyPriceId, setBusyPriceId] = useState<string | null>(null);
   const [portalBusy, setPortalBusy] = useState(false);
+  const [redeemBusy, setRedeemBusy] = useState(false);
 
   const { data: plans, isLoading: plansLoading } = useListBillingPlans();
   const { data: subscription } = useGetBillingSubscription({
@@ -143,6 +144,40 @@ export default function Pricing() {
         variant: "destructive",
       });
       setBusyPriceId(null);
+    }
+  };
+
+  const handleRedeemDriftPro = async () => {
+    if (!isAuthenticated) {
+      setLocation("/login");
+      return;
+    }
+    setRedeemBusy(true);
+    try {
+      const res = await fetch("/api/billing/redeem-drift-pro", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast({
+          title: "Membership activated",
+          description: data.message ?? "Your Digital Drift Pro perk is now active.",
+        });
+        queryClient.invalidateQueries({ queryKey: getGetBillingSubscriptionQueryKey() });
+        queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEY });
+      } else {
+        toast({
+          title: "Couldn't activate",
+          description: data.error ?? "No active Digital Drift Pro subscription found for your email.",
+          variant: "destructive",
+        });
+      }
+    } catch {
+      toast({ title: "Something went wrong", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setRedeemBusy(false);
     }
   };
 
@@ -268,6 +303,25 @@ export default function Pricing() {
           </div>
         </div>
       )}
+
+      {/* Digital Drift Pro perk — included AI Beat Sync membership */}
+      <section className="mb-12">
+        <div className="rounded-xl border border-primary/30 bg-primary/5 p-5 md:p-6 flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
+          <div>
+            <p className="text-sm font-semibold">Have a Digital Drift <span className="text-primary">Pro</span> membership?</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Your Pro plan includes AI Beat Sync — activate it here. Use the same email you subscribed with on digitaldriftproductions.
+            </p>
+          </div>
+          <button
+            onClick={handleRedeemDriftPro}
+            disabled={redeemBusy}
+            className="shrink-0 rounded-lg bg-primary text-primary-foreground font-semibold px-5 py-3 text-sm hover:opacity-90 transition disabled:opacity-50"
+          >
+            {redeemBusy ? "Activating…" : "Activate included membership"}
+          </button>
+        </div>
+      </section>
 
       <section className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
         {subscriptions.map((plan) => {

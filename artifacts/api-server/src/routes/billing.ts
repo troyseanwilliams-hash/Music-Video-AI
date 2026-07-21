@@ -441,4 +441,78 @@ router.post("/billing/portal", async (req, res) => {
   }
 });
 
+// POST /billing/redeem-drift-pro — comp AI Beat Sync membership for Digital
+// Drift *Pro* subscribers. Both sites share one Stripe account, so we verify
+// against Stripe directly (no shared secret codes): if the logged-in user's
+// email has an active Digital Drift Pro subscription (price lookup_key starting
+// "creator_pro"), grant them an active AI Beat Sync membership. Tied to their
+// own email, so it can't be claimed with someone else's subscription.
+const DRIFT_PRO_LOOKUP_PREFIX = "creator_pro";
+
+router.post("/billing/redeem-drift-pro", async (req, res) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  try {
+    const [user] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.id, req.user.id))
+      .limit(1);
+    if (!user) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const email = user.email;
+    if (!email) {
+      res.status(400).json({ error: "Your account has no email on file." });
+      return;
+    }
+
+    const stripe = await getUncachableStripeClient();
+    const customers = await stripe.customers.list({ email, limit: 20 });
+
+    let hasDriftPro = false;
+    for (const customer of customers.data) {
+      for (const status of ["active", "trialing"] as const) {
+        const subs = await stripe.subscriptions.list({ customer: customer.id, status, limit: 50 });
+        for (const sub of subs.data) {
+          for (const item of sub.items.data) {
+            const lk = item.price.lookup_key ?? "";
+            if (lk.startsWith(DRIFT_PRO_LOOKUP_PREFIX)) hasDriftPro = true;
+          }
+        }
+        if (hasDriftPro) break;
+      }
+      if (hasDriftPro) break;
+    }
+
+    if (!hasDriftPro) {
+      res.status(404).json({
+        error: `No active Digital Drift Pro subscription found for ${email}. Make sure you subscribed to Pro using this same email.`,
+        code: "NO_DRIFT_PRO",
+      });
+      return;
+    }
+
+    // Grant a comped active membership. Digital Drift subscription webhooks key
+    // on their own customer IDs, so this won't be reset by them. A 1-year
+    // trialEndsAt backstop keeps access even if status is later recomputed.
+    await db
+      .update(usersTable)
+      .set({
+        subscriptionStatus: "active",
+        trialEndsAt: new Date(Date.now() + 370 * 24 * 60 * 60 * 1000),
+      })
+      .where(eq(usersTable.id, user.id));
+
+    req.log.info({ userId: user.id, email }, "Digital Drift Pro bundle redeemed");
+    res.json({ success: true, message: "AI Beat Sync membership activated through your Digital Drift Pro plan." });
+  } catch (err) {
+    req.log.error({ err }, "Failed to redeem Digital Drift Pro bundle");
+    res.status(500).json({ error: "Could not verify your Digital Drift Pro membership. Please try again." });
+  }
+});
+
 export default router;
