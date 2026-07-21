@@ -856,8 +856,8 @@ export default function Generate() {
                 }}
               />
 
-              {/* ── Drop zone — only shown when no file selected yet ── */}
-              {!uploadedFile ? (
+              {/* ── Drop zone — shown when no file AND no pre-loaded track ── */}
+              {!uploadedFile && !objectPath ? (
                 <div
                   className="border-2 border-dashed rounded-xl p-5 sm:p-8 flex flex-col items-center justify-center text-center transition-colors cursor-pointer border-border hover:border-primary/50 hover:bg-primary/5"
                   onClick={() => fileInputRef.current?.click()}
