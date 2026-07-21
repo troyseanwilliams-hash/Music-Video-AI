@@ -13,16 +13,18 @@ export interface ClipResult {
   provider: string;
 }
 
-type Provider = "runway" | "luma" | "kling";
+type Provider = "runway" | "luma" | "kling" | "pixazo";
 
 function getProvider(): Provider | null {
   const env = process.env.VIDEO_API?.toLowerCase();
   if (env === "runway" && process.env.RUNWAY_API_KEY) return "runway";
   if (env === "luma" && process.env.LUMA_API_KEY) return "luma";
   if (env === "kling" && process.env.KLING_API_KEY) return "kling";
+  if (env === "pixazo" && process.env.PIXAZO_API_KEY) return "pixazo";
   if (process.env.RUNWAY_API_KEY) return "runway";
   if (process.env.LUMA_API_KEY) return "luma";
   if (process.env.KLING_API_KEY) return "kling";
+  if (process.env.PIXAZO_API_KEY) return "pixazo";
   return null;
 }
 
@@ -31,6 +33,7 @@ export function getActiveProvider(hint?: string | null): string {
   if (h === "runway" && process.env.RUNWAY_API_KEY) return "runway";
   if (h === "kling" && process.env.KLING_API_KEY) return "kling";
   if (h === "luma" && process.env.LUMA_API_KEY) return "luma";
+  if (h === "pixazo" && process.env.PIXAZO_API_KEY) return "pixazo";
   return getProvider() ?? "simulation";
 }
 
@@ -231,6 +234,48 @@ async function generateWithKling(req: ClipRequest): Promise<string> {
   throw new Error("Kling task timed out after 10 minutes");
 }
 
+// Pixazo (pixazo.ai) — a unified gateway that fronts Kling, Runway, Veo, etc.
+// behind one API key (Ocp-Apim-Subscription-Key). Submit to a model endpoint,
+// then poll the universal status endpoint for the result. Pick your exact model
+// slug from the Pixazo dashboard and set it as PIXAZO_MODEL.
+async function generateWithPixazo(req: ClipRequest): Promise<string> {
+  const key = process.env.PIXAZO_API_KEY!;
+  const model = process.env.PIXAZO_MODEL?.trim() || "kling-video-v3-turbo-pro-text-to-video";
+  const duration = req.durationSeconds <= 5 ? "5" : "10";
+
+  const submit = await fetch(`https://gateway.pixazo.ai/${model}/v1/${model}-request`, {
+    method: "POST",
+    headers: {
+      "Ocp-Apim-Subscription-Key": key,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ prompt: req.prompt.slice(0, 2500), duration }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!submit.ok) throw new Error(`Pixazo ${submit.status}: ${(await submit.text()).slice(0, 200)}`);
+  const submitData = (await submit.json()) as { request_id?: string; polling_url?: string };
+  const requestId = submitData.request_id;
+  if (!requestId) throw new Error("Pixazo: no request_id returned");
+  const pollUrl = submitData.polling_url ?? `https://gateway.pixazo.ai/v2/requests/status/${requestId}`;
+
+  for (let i = 0; i < 120; i++) {
+    await delay(5000);
+    const pollRes = await fetch(pollUrl, {
+      headers: { "Ocp-Apim-Subscription-Key": key },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!pollRes.ok) continue;
+    const d = (await pollRes.json()) as {
+      status?: string;
+      error?: string | null;
+      output?: { media_url?: string[] };
+    };
+    if (d.status === "COMPLETED" && d.output?.media_url?.[0]) return d.output.media_url[0];
+    if (d.status === "FAILED" || d.status === "ERROR") throw new Error(`Pixazo ${d.status}: ${d.error ?? "unknown error"}`);
+  }
+  throw new Error("Pixazo task timed out after 10 minutes");
+}
+
 export async function generateClip(req: ClipRequest): Promise<ClipResult | null> {
   const provider = getProvider();
   if (!provider) return null;
@@ -245,6 +290,9 @@ export async function generateClip(req: ClipRequest): Promise<ClipResult | null>
       break;
     case "kling":
       videoUrl = await generateWithKling(req);
+      break;
+    case "pixazo":
+      videoUrl = await generateWithPixazo(req);
       break;
   }
   return { videoUrl, provider };
