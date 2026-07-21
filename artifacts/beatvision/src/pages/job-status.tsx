@@ -993,20 +993,29 @@ const REMIX_STYLES = [
 ] as const;
 
 // Mirror of the server's credit math (creditCost.ts) so the estimate shown
-// matches what will actually be charged. Pricing is size-based:
-// cost = BASE_CREDITS + ceil(min(seconds, FULL_VIDEO_SECONDS)). Remix cost is
-// then proportional to the number of clips regenerated, never the full job.
+// matches what will actually be charged. Charge = real clip cost × tiered markup
+// (2× single-clip / 1.5× multi-clip). Remix cost is then proportional to the
+// number of clips regenerated, never the full job.
 function fullJobCost(requestedDuration: string | null | undefined): number {
-  const BASE_CREDITS = 20, FULL_VIDEO_SECONDS = 120, PRICE_MULTIPLIER = 2;
+  const MAX_CLIPS_PER_JOB = 3, RUNWAY_USD_PER_SECOND = 0.12, USD_PER_CREDIT = 0.015;
   const dur = requestedDuration ?? "full";
-  let secs: number;
+  let numClips: number;
+  let clipDurationSec: 5 | 10;
   if (dur === "full") {
-    secs = FULL_VIDEO_SECONDS;
+    numClips = MAX_CLIPS_PER_JOB;
+    clipDurationSec = 10;
   } else {
     const n = parseInt(dur, 10);
-    secs = isNaN(n) || n <= 0 ? FULL_VIDEO_SECONDS : Math.min(n, FULL_VIDEO_SECONDS);
+    if (isNaN(n) || n <= 0) {
+      numClips = MAX_CLIPS_PER_JOB;
+      clipDurationSec = 10;
+    } else {
+      clipDurationSec = n <= 5 ? 5 : 10;
+      numClips = Math.max(1, Math.ceil(n / clipDurationSec));
+    }
   }
-  return (BASE_CREDITS + Math.ceil(secs)) * PRICE_MULTIPLIER;
+  const costCredits = (numClips * clipDurationSec * RUNWAY_USD_PER_SECOND) / USD_PER_CREDIT;
+  return Math.ceil(costCredits * (numClips <= 1 ? 2 : 1.5));
 }
 
 function estimateRemixCost(

@@ -1,18 +1,26 @@
-// Credit cost for an AI generation. Priced by the requested video size — not by
-// any AI-provider token math. A 5-second clip is the cheapest (about half the
-// cost of a 30-second video) and a full video is the most expensive.
+// Credit cost for an AI generation. Priced above the *real* provider cost so
+// every duration is profitable. Cost tracks how many provider clips a job
+// actually generates (see getClipPlan) × the provider per-second rate. Runway
+// Gen-4.5 ($0.12/s) is the (most expensive) basis, so cheaper providers only
+// widen the margin. Markup is tiered: single-clip (short) videos at 2× (100%
+// margin), multi-clip (longer) videos at 1.5× (50% margin) to stay competitive.
 //
-// Scale: cost = (BASE_CREDITS + seconds × CREDITS_PER_SECOND) × PRICE_MULTIPLIER
-//   5s   → 50 credits   (minimum, ≈ ½ of 30s)
-//   10s  → 60 credits
-//   30s  → 100 credits
-//   60s  → 160 credits
-//   full → 280 credits  (max)
+// Scale (Runway basis, ~$0.015/credit):
+//   5s   → 80 credits    (1 clip × 5s  = $0.60 → ×2   = $1.20)
+//   10s  → 160 credits   (1 clip × 10s = $1.20 → ×2   = $2.40)
+//   30s  → 360 credits   (3 clips×10s  = $3.60 → ×1.5 = $5.40)
+//   60s  → 720 credits   (6 clips×10s  = $7.20 → ×1.5 = $10.80)
+//   full → 360 credits   (capped 3 clips, looped = $3.60 → ×1.5 = $5.40)
 const MAX_CLIPS_PER_JOB = 3;
 
-const BASE_CREDITS = 20; // floor so a 5s clip ≈ half a 30s clip
-const CREDITS_PER_SECOND = 1; // linear scale on top of the floor
-const FULL_VIDEO_SECONDS = 120; // "full" is billed as the maximum size
+// Real provider cost basis: Runway Gen-4.5 API = 12 credits/s @ $0.01 = $0.12/s.
+const RUNWAY_USD_PER_SECOND = 0.12;
+// Dollar value of one credit, set below the cheapest plan's rate (Studio:
+// $79 / 5,000 = $0.0158/credit) so the margin holds on every plan.
+const USD_PER_CREDIT = 0.015;
+// Tiered markup: short (single-clip) videos 2×, longer (multi-clip) 1.5×.
+const SHORT_MARKUP = 2;
+const LONG_MARKUP = 1.5;
 
 // Profit margin: the user-facing price is always double the underlying cost
 // scale (BASE + seconds), so charge − cost = cost — i.e. the second half of
@@ -21,13 +29,24 @@ const FULL_VIDEO_SECONDS = 120; // "full" is billed as the maximum size
 // estimators in dashboard.tsx, job-status.tsx, editor.tsx) + editorCost.ts.
 export const PRICE_MULTIPLIER = 2;
 
-// The underlying (pre-markup) cost of a generation — what the render "costs"
-// the site on the credit scale. profit = calculateCreditCost − this.
+// Real (pre-markup) provider cost of a generation, in credits.
+// profit = calculateCreditCost − this.
+function providerCostCredits(requestedDuration: string | null | undefined): number {
+  const { numClips, clipDurationSec } = getClipPlan(requestedDuration);
+  const usd = numClips * clipDurationSec * RUNWAY_USD_PER_SECOND;
+  return usd / USD_PER_CREDIT;
+}
+
+// 2× markup for single-clip (short) videos, 1.5× for multi-clip (longer) ones.
+function markupFor(requestedDuration: string | null | undefined): number {
+  return getClipPlan(requestedDuration).numClips <= 1 ? SHORT_MARKUP : LONG_MARKUP;
+}
+
 export function calculateBaseCost(
   requestedDuration: string | null | undefined,
-  resolution?: string | null,
+  _resolution?: string | null,
 ): number {
-  return calculateCreditCost(requestedDuration, resolution) / PRICE_MULTIPLIER;
+  return Math.ceil(providerCostCredits(requestedDuration));
 }
 
 export function getClipPlan(requestedDuration: string | null | undefined): {
@@ -44,25 +63,15 @@ export function getClipPlan(requestedDuration: string | null | undefined): {
   return { numClips, clipDurationSec };
 }
 
-// Billable duration in seconds, resolved from the requested duration.
-function billableSeconds(requestedDuration: string | null | undefined): number {
-  const dur = requestedDuration ?? "full";
-  if (dur === "full") return FULL_VIDEO_SECONDS;
-  const n = parseInt(dur, 10);
-  if (isNaN(n) || n <= 0) return FULL_VIDEO_SECONDS;
-  return Math.min(n, FULL_VIDEO_SECONDS);
-}
-
 // Estimated == actual cost (the same function backs the pre-flight estimate
 // shown to the customer and the deduction from their balance on success).
-// Priced purely on duration — resolution tiers are ffmpeg upscales of the same
-// 720p render, so they carry no extra provider cost and no surcharge.
+// charge = ceil(real provider cost in credits × tiered markup). Resolution
+// tiers are ffmpeg upscales of the same render, so they carry no surcharge.
 export function calculateCreditCost(
   requestedDuration: string | null | undefined,
   _resolution?: string | null,
 ): number {
-  const secs = billableSeconds(requestedDuration);
-  return (BASE_CREDITS + Math.ceil(secs * CREDITS_PER_SECOND)) * PRICE_MULTIPLIER;
+  return Math.ceil(providerCostCredits(requestedDuration) * markupFor(requestedDuration));
 }
 
 // Cost to remix (regenerate) a subset of an existing video's clips. Charged

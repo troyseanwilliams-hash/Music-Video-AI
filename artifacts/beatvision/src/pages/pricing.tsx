@@ -240,9 +240,9 @@ export default function Pricing() {
         </h1>
         <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
           Credits are consumed per video generated — from{" "}
-          <strong className="text-foreground">50 credits</strong> for a
+          <strong className="text-foreground">80 credits</strong> for a
           5-second clip up to{" "}
-          <strong className="text-foreground">280 credits</strong> for a
+          <strong className="text-foreground">360 credits</strong> for a
           full-length video. TikTok teaser packs cost 30, Spotify Canvas
           loops 20. Plan credits reset each cycle — top-up credits never
           expire, and you can earn more by referring friends.

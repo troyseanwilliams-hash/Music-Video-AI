@@ -17,22 +17,31 @@ function daysUntil(dateStr: string | null | undefined): number {
   return Math.max(0, Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86_400_000));
 }
 
-// Mirrors server-side calculateCreditCost — must stay in sync with creditCost.ts
-const BASE_CREDITS = 20;
-const CREDITS_PER_SECOND = 1;
-const FULL_VIDEO_SECONDS = 120;
-const PRICE_MULTIPLIER = 2; // user-facing price = 2× the cost scale
+// Mirrors server-side calculateCreditCost — must stay in sync with creditCost.ts.
+// Charge = real clip cost × tiered markup (2× single-clip / 1.5× multi-clip).
+const MAX_CLIPS_PER_JOB = 3;
+const RUNWAY_USD_PER_SECOND = 0.12;
+const USD_PER_CREDIT = 0.015;
 
 function estimateCreditCost(requestedDuration: string | null | undefined): number {
   const dur = requestedDuration ?? "full";
-  let secs: number;
+  let numClips: number;
+  let clipDurationSec: 5 | 10;
   if (dur === "full") {
-    secs = FULL_VIDEO_SECONDS;
+    numClips = MAX_CLIPS_PER_JOB;
+    clipDurationSec = 10;
   } else {
     const n = parseInt(dur, 10);
-    secs = isNaN(n) || n <= 0 ? FULL_VIDEO_SECONDS : Math.min(n, FULL_VIDEO_SECONDS);
+    if (isNaN(n) || n <= 0) {
+      numClips = MAX_CLIPS_PER_JOB;
+      clipDurationSec = 10;
+    } else {
+      clipDurationSec = n <= 5 ? 5 : 10;
+      numClips = Math.max(1, Math.ceil(n / clipDurationSec));
+    }
   }
-  return (BASE_CREDITS + Math.ceil(secs * CREDITS_PER_SECOND)) * PRICE_MULTIPLIER;
+  const costCredits = (numClips * clipDurationSec * RUNWAY_USD_PER_SECOND) / USD_PER_CREDIT;
+  return Math.ceil(costCredits * (numClips <= 1 ? 2 : 1.5));
 }
 
 export default function Dashboard() {
