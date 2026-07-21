@@ -5,6 +5,7 @@ import { eq, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { getStripeSync, getUncachableStripeClient } from "./stripeClient.js";
 import { logger } from "./logger.js";
+import { notifyPayment } from "./notifications.js";
 
 function parseCreditsFromMetadata(
   metadata: Stripe.Metadata | null | undefined,
@@ -396,6 +397,13 @@ async function handleInvoicePaid(
       .set({ subscriptionStatus: "active" })
       .where(eq(usersTable.id, user.id));
   }
+
+  notifyPayment({
+    email: user.email,
+    kind: "subscription",
+    amountUsd: (invoice.amount_paid ?? 0) / 100,
+    detail: `${totalCredits} credits`,
+  });
 }
 
 async function handleCheckoutCompleted(
@@ -447,6 +455,13 @@ async function handleCheckoutCompleted(
     stripeEventId: event.id,
     stripeCheckoutSessionId: session.id ?? null,
     stripePriceId: firstPriceId,
+  });
+
+  notifyPayment({
+    email: user.email,
+    kind: "topup",
+    amountUsd: (fullSession.amount_total ?? 0) / 100,
+    detail: `${totalCredits} credits`,
   });
 }
 

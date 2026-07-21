@@ -22,6 +22,7 @@ function buildUserPayload(user: typeof usersTable.$inferSelect) {
   };
 }
 import { processReferralSignup } from "../lib/referrals.js";
+import { notifyNewUser } from "../lib/notifications.js";
 import { z } from "zod";
 import { Resend } from "resend";
 import { and, gt } from "drizzle-orm";
@@ -104,6 +105,9 @@ router.post("/auth/register", async (req: Request, res: Response) => {
     .returning();
 
   req.log.info({ userId: user.id, email: user.email }, "User registered");
+
+  // Best-effort admin notification of the new signup (never blocks signup).
+  notifyNewUser({ id: user.id, email: user.email, name: [user.firstName, user.lastName].filter(Boolean).join(" ") || null });
 
   // Share-to-earn: credit referrer + new user. Never blocks or fails signup.
   if (referralCode) {

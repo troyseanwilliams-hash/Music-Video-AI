@@ -128,3 +128,86 @@ export function notifyNewSupportTicket(ticket: SupportTicketInfo): void {
       .catch((err: unknown) => logger.error({ err, ticketId: ticket.id }, "Failed to send support ticket SMS"));
   }
 }
+
+// Notify admin(s) when a new user signs up. Sent to NOTIFY_EMAIL if set,
+// otherwise ADMIN_EMAIL. Never throws — best-effort.
+export function notifyNewUser(user: { id: string; email?: string | null; name?: string | null }): void {
+  const adminEmail = process.env.NOTIFY_EMAIL || process.env.ADMIN_EMAIL;
+  const resend = getResend();
+  if (resend && adminEmail) {
+    resend.emails
+      .send({
+        from: "AI Beat Sync <notifications@aibeatsync.com>",
+        to: adminEmail,
+        subject: `🎉 New signup — ${user.email ?? user.id.slice(0, 8)}`,
+        html: `
+          <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+            <h2 style="margin:0 0 16px">New user signed up</h2>
+            <table style="width:100%;border-collapse:collapse">
+              <tr><td style="padding:8px 0;color:#666;width:120px">Email</td><td style="padding:8px 0;font-weight:600">${user.email ?? "—"}</td></tr>
+              ${user.name ? `<tr><td style="padding:8px 0;color:#666">Name</td><td style="padding:8px 0">${user.name}</td></tr>` : ""}
+              <tr><td style="padding:8px 0;color:#666">User ID</td><td style="padding:8px 0;font-family:monospace">${user.id}</td></tr>
+              <tr><td style="padding:8px 0;color:#666">When</td><td style="padding:8px 0">${new Date().toLocaleString()}</td></tr>
+            </table>
+          </div>
+        `,
+      })
+      .then(() => logger.info({ userId: user.id }, "New-user email sent"))
+      .catch((err: unknown) => logger.error({ err, userId: user.id }, "Failed to send new-user email"));
+  }
+
+  const sms = getSmsClient();
+  const fromNumber = process.env.TWILIO_FROM_NUMBER;
+  const adminPhone = process.env.ADMIN_PHONE;
+  if (sms && fromNumber && adminPhone) {
+    sms.messages
+      .create({ body: `AiBeatSync: New signup — ${user.email ?? user.id.slice(0, 8)}`, from: fromNumber, to: adminPhone })
+      .then(() => logger.info({ userId: user.id }, "New-user SMS sent"))
+      .catch((err: unknown) => logger.error({ err, userId: user.id }, "Failed to send new-user SMS"));
+  }
+}
+
+// Notify admin(s) when money is spent (subscription payment or credit top-up).
+export function notifyPayment(p: {
+  email?: string | null;
+  kind: "subscription" | "topup";
+  amountUsd?: number | null;
+  detail?: string | null;
+}): void {
+  const adminEmail = process.env.NOTIFY_EMAIL || process.env.ADMIN_EMAIL;
+  const amount = p.amountUsd != null ? `$${p.amountUsd.toFixed(2)}` : "—";
+  const kindLabel = p.kind === "subscription" ? "Subscription payment" : "Credit top-up";
+  const resend = getResend();
+  if (resend && adminEmail) {
+    resend.emails
+      .send({
+        from: "AI Beat Sync <notifications@aibeatsync.com>",
+        to: adminEmail,
+        subject: `💰 ${amount} — ${kindLabel} from ${p.email ?? "a customer"}`,
+        html: `
+          <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+            <h2 style="margin:0 0 16px">${kindLabel} received</h2>
+            <table style="width:100%;border-collapse:collapse">
+              <tr><td style="padding:8px 0;color:#666;width:120px">Amount</td><td style="padding:8px 0;font-weight:700;font-size:18px">${amount}</td></tr>
+              <tr><td style="padding:8px 0;color:#666">Customer</td><td style="padding:8px 0">${p.email ?? "—"}</td></tr>
+              <tr><td style="padding:8px 0;color:#666">Type</td><td style="padding:8px 0">${kindLabel}</td></tr>
+              ${p.detail ? `<tr><td style="padding:8px 0;color:#666">Detail</td><td style="padding:8px 0">${p.detail}</td></tr>` : ""}
+              <tr><td style="padding:8px 0;color:#666">When</td><td style="padding:8px 0">${new Date().toLocaleString()}</td></tr>
+            </table>
+          </div>
+        `,
+      })
+      .then(() => logger.info({ email: p.email, amount }, "Payment email sent"))
+      .catch((err: unknown) => logger.error({ err }, "Failed to send payment email"));
+  }
+
+  const sms = getSmsClient();
+  const fromNumber = process.env.TWILIO_FROM_NUMBER;
+  const adminPhone = process.env.ADMIN_PHONE;
+  if (sms && fromNumber && adminPhone) {
+    sms.messages
+      .create({ body: `AiBeatSync: ${amount} ${kindLabel} from ${p.email ?? "customer"}`, from: fromNumber, to: adminPhone })
+      .then(() => logger.info({ email: p.email }, "Payment SMS sent"))
+      .catch((err: unknown) => logger.error({ err }, "Failed to send payment SMS"));
+  }
+}
