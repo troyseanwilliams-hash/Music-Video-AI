@@ -182,6 +182,18 @@ export default function Generate() {
   const [isUploadingRefImage, setIsUploadingRefImage] = useState(false);
   const [refImageError, setRefImageError] = useState<string | null>(null);
 
+  // Handoff from the AI Song Generator: /generate?audioObjectPath=<path>&title=<name>
+  // preloads that song as the uploaded audio source, ready to generate a video.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const op = params.get("audioObjectPath");
+    if (!op) return;
+    setSourceType(CreateJobRequestAudioSourceType.upload);
+    setObjectPath(op);
+    setUploadedFileName(params.get("title") || "AI Song");
+    window.history.replaceState({}, "", window.location.pathname);
+  }, []);
+
   const handleRefImageSelect = async (file: File) => {
     if (!file) return;
     setRefImageError(null);

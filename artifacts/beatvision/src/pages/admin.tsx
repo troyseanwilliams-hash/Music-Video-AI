@@ -11,7 +11,7 @@ import {
   Loader2, Search, ShieldCheck, Coins, Check, X,
   MessageSquare, Users, ChevronDown, ChevronUp,
   CircleDot, Clock, CheckCircle2, XCircle, RotateCcw, AlertTriangle, RefreshCw,
-  Film, Ban, Trash2, Play, Music2, Sparkles,
+  Film, Ban, Trash2, Play, Music2, Sparkles, Scissors,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -457,6 +457,7 @@ const LENGTH_OPTIONS: { key: string; label: string; seconds: number }[] = [
 
 function AdminMusicPanel() {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [theme, setTheme] = useState("");
   const [prompt, setPrompt] = useState("");
   const [lyrics, setLyrics] = useState("");
@@ -582,9 +583,31 @@ function AdminMusicPanel() {
             </div>
             <audio src={result.url} controls className="w-full" />
             <p className="text-xs text-muted-foreground break-all">
-              objectPath: <code>{result.objectPath}</code> — this is the audio source you'll wire into the generator when the feature ships.
+              objectPath: <code>{result.objectPath}</code>
             </p>
-            <a href={result.url} download className="text-xs text-primary hover:underline">Download</a>
+            {(() => {
+              const title = prompt.trim().split(/\s+/).slice(0, 4).join(" ") || "AI Song";
+              return (
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <Button
+                    size="sm"
+                    onClick={() => navigate(`/editor?audio=${encodeURIComponent(result.url)}&title=${encodeURIComponent(title)}`)}
+                    data-testid="song-to-remix"
+                  >
+                    <Scissors className="mr-1.5 h-3.5 w-3.5" /> Make a Remix video
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => navigate(`/generate?audioObjectPath=${encodeURIComponent(result.objectPath)}&title=${encodeURIComponent(title)}`)}
+                    data-testid="song-to-generate"
+                  >
+                    <Sparkles className="mr-1.5 h-3.5 w-3.5" /> Generate a video
+                  </Button>
+                  <a href={result.url} download className="text-xs text-primary hover:underline ml-1">Download</a>
+                </div>
+              );
+            })()}
           </div>
         )}
       </CardContent>
