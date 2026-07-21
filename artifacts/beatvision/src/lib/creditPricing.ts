@@ -1,10 +1,9 @@
 import type { CreateJobRequestRequestedDuration } from "@workspace/api-client-react";
 
-export type AiProvider = "runway" | "kling" | "luma";
+export type AiProvider = "runway" | "luma";
 
 export const PROVIDER_LABELS: Record<AiProvider, string> = {
   runway: "Runway Gen-4",
-  kling: "Kling",
   luma: "Luma Dream Machine",
 };
 

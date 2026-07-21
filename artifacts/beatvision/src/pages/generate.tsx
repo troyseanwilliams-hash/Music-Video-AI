@@ -680,7 +680,7 @@ export default function Generate() {
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-64">
-                  {(["runway", "kling"] as const).map((p) => (
+                  {(["runway"] as const).map((p) => (
                     <DropdownMenuItem
                       key={p}
                       onClick={() => setAiProvider(p)}
