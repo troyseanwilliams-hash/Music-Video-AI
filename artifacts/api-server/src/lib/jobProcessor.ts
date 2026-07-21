@@ -220,7 +220,7 @@ async function generateClips(
 
   // Use the same clip plan as the credit formula so the number of provider calls
   // matches exactly what was charged.
-  const { numClips: maxClips } = getClipPlan(requestedDur);
+  const { numClips: maxClips } = getClipPlan(requestedDur, analysis.durationSeconds);
   // selectSections picks the best unique sections; cycle through them to fill
   // the required clip count (matches worker's buildGenerationPlan approach).
   const baseSections = await selectSections(analysis.sections, maxClips);
@@ -243,7 +243,7 @@ async function generateClips(
   // the full audio file and each clip gets looped for the entire song duration.
   const totalOutputDuration =
     !requestedDur || requestedDur === "full"
-      ? analysis.durationSeconds
+      ? Math.min(analysis.durationSeconds, 300) // full videos cap at 5 minutes
       : parseInt(requestedDur, 10);
   const perClipTargetDuration = Math.max(1, totalOutputDuration / sections.length);
 
@@ -857,7 +857,7 @@ async function processJob(job: JobRow): Promise<void> {
       shareToken: randomUUID().replace(/-/g, "").slice(0, 16),
     });
 
-    const creditCost = calculateCreditCost(job.requestedDuration, job.resolution);
+    const creditCost = calculateCreditCost(job.requestedDuration, job.resolution, analysis.durationSeconds);
     // Deduct from the subscription bucket first, then top-up. This way one-time
     // top-ups survive any future "reset monthly credits at renewal" behavior.
     await db

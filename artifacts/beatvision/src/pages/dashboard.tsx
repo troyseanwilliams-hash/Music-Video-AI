@@ -19,26 +19,23 @@ function daysUntil(dateStr: string | null | undefined): number {
 
 // Mirrors server-side calculateCreditCost — must stay in sync with creditCost.ts.
 // Charge = real clip cost × tiered markup (2× single-clip / 1.5× multi-clip).
-const MAX_CLIPS_PER_JOB = 3;
+// Full videos scale 3–10 clips with song length, capped at 5 min.
 const RUNWAY_USD_PER_SECOND = 0.12;
 const USD_PER_CREDIT = 0.015;
+const MAX_FULL_SECONDS = 300;
 
-function estimateCreditCost(requestedDuration: string | null | undefined): number {
+function estimateCreditCost(requestedDuration: string | null | undefined, songDurationSec?: number | null): number {
   const dur = requestedDuration ?? "full";
   let numClips: number;
   let clipDurationSec: 5 | 10;
-  if (dur === "full") {
-    numClips = MAX_CLIPS_PER_JOB;
+  const n = parseInt(dur ?? "", 10);
+  if (dur === "full" || isNaN(n) || n <= 0) {
+    const secs = songDurationSec && songDurationSec > 0 ? songDurationSec : MAX_FULL_SECONDS;
+    numClips = Math.max(3, Math.min(10, Math.ceil(Math.min(secs, MAX_FULL_SECONDS) / 30)));
     clipDurationSec = 10;
   } else {
-    const n = parseInt(dur, 10);
-    if (isNaN(n) || n <= 0) {
-      numClips = MAX_CLIPS_PER_JOB;
-      clipDurationSec = 10;
-    } else {
-      clipDurationSec = n <= 5 ? 5 : 10;
-      numClips = Math.max(1, Math.ceil(n / clipDurationSec));
-    }
+    clipDurationSec = n <= 5 ? 5 : 10;
+    numClips = Math.max(1, Math.ceil(n / clipDurationSec));
   }
   const costCredits = (numClips * clipDurationSec * RUNWAY_USD_PER_SECOND) / USD_PER_CREDIT;
   return Math.ceil(costCredits * (numClips <= 1 ? 2 : 1.5));
@@ -295,7 +292,7 @@ export default function Dashboard() {
                 
                 <div className="divide-y divide-border/50">
                   {stats.recentJobs.map((job) => {
-                    const cost = estimateCreditCost((job as { requestedDuration?: string | null }).requestedDuration);
+                    const cost = estimateCreditCost((job as { requestedDuration?: string | null }).requestedDuration, (job as { durationSeconds?: number | null }).durationSeconds);
                     const videoId = (job as { videoId?: string | null }).videoId ?? null;
                     const isReady = job.status === 'ready';
                     const isFailed = job.status === 'failed';

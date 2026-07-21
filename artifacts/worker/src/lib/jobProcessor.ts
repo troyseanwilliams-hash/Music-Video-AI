@@ -20,11 +20,10 @@ import { calculateCreditCost } from "./creditCost.js";
 const execAsync = promisify(exec);
 const MAX_RETRIES = 3;
 const POLL_INTERVAL_MS = 5000;
-// For "full" mode only: cap at 3 clips to keep costs predictable.
-// Numeric durations (5/10/30/60/90/120s) derive their clip count dynamically
-// via Math.ceil(durSec / clipDurationSec) and cycle sections as needed —
-// so 90s → 9 clips and 120s → 12 clips work correctly without this cap.
-const FULL_MODE_MAX_CLIPS = 3;
+// "Full" videos are capped at 5 minutes and scale unique clips with (capped)
+// song length: ~1 clip per 30s, min 3, max 10. Numeric durations derive their
+// clip count dynamically via Math.ceil(durSec / clipDurationSec).
+const MAX_FULL_SECONDS = 300;
 
 async function extractAudioClip(
   audio: { buffer: Buffer; ext: string },
@@ -63,17 +62,17 @@ function buildGenerationPlan(
   const dur = requestedDuration ?? "full";
 
   if (dur === "full") {
-    const selected = sections.length <= FULL_MODE_MAX_CLIPS
-      ? sections
-      : (() => {
-          const sorted = [...sections].sort((a, b) => b.energy - a.energy);
-          const picked = new Set<number>();
-          picked.add(sections.indexOf(sorted[0]!));
-          picked.add(0);
-          picked.add(sections.length - 1);
-          return Array.from(picked).sort((a, b) => a - b).map((i) => sections[i]!).slice(0, FULL_MODE_MAX_CLIPS);
-        })();
-    return { sections: selected, clipDurationSec: 10, targetOutputDuration: audioDurationSec };
+    // Full videos are capped at 5 minutes and scale unique clips with length:
+    // ~1 clip per 30s of (capped) song, min 3, max 10. Clips are looped/arranged
+    // to fill the whole video, so cost tracks variety, not runtime.
+    const cappedDuration = Math.min(audioDurationSec, MAX_FULL_SECONDS);
+    const fullClips = Math.max(3, Math.min(10, Math.ceil(cappedDuration / 30)));
+    const sorted = [...sections].sort((a, b) => b.energy - a.energy);
+    const selected: AudioSection[] = [];
+    for (let i = 0; i < fullClips; i++) {
+      selected.push(sorted[i % sorted.length]!);
+    }
+    return { sections: selected, clipDurationSec: 10, targetOutputDuration: cappedDuration };
   }
 
   const durSec = parseInt(dur, 10); // 5, 8, 10, 30, 60
@@ -909,8 +908,8 @@ async function processJob(job: JobRow): Promise<void> {
     });
 
     // Deduct credits on success. Subscription bucket is drawn first so one-time
-    // top-ups survive monthly plan resets.
-    const creditCost = calculateCreditCost(job.requestedDuration, job.resolution);
+    // top-ups survive monthly plan resets. Song duration sizes "full" videos.
+    const creditCost = calculateCreditCost(job.requestedDuration, job.resolution, analysis.durationSeconds);
     await db
       .update(creditsTable)
       .set({

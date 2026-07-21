@@ -283,6 +283,8 @@ export default function Generate() {
   const createJob = useCreateJob();
   const { data: statsData } = useGetDashboardStats({});
   const analyzeAudio = useAnalyzeAudio();
+  // Analyzed song length — sizes/prices "full" videos (clips scale with length).
+  const songDurationSec = (analyzeAudio.data as { durationSeconds?: number } | undefined)?.durationSeconds;
   // Track which objectPath the current analysis result belongs to.
   // This prevents stale results from a previous upload being submitted with a new job.
   const [analysisForPath, setAnalysisForPath] = useState<string | null>(null);
@@ -690,7 +692,7 @@ export default function Generate() {
                         {PROVIDER_LABELS[p]}
                         <span className="text-muted-foreground"> · {p === "runway" ? "high quality" : "high volume"}</span>
                       </span>
-                      <span className="text-xs text-muted-foreground shrink-0">{estimateCreditCost(requestedDuration, p)} cr</span>
+                      <span className="text-xs text-muted-foreground shrink-0">{estimateCreditCost(requestedDuration, p, undefined, songDurationSec)} cr</span>
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
@@ -723,7 +725,7 @@ export default function Generate() {
                     >
                       <span>{label}</span>
                       <span className="text-xs text-muted-foreground shrink-0">
-                        {estimateCreditCost(value, aiProvider)} cr{note ? ` · ${note}` : ""}
+                        {estimateCreditCost(value, aiProvider, undefined, songDurationSec)} cr{note ? ` · ${note}` : ""}
                       </span>
                     </DropdownMenuItem>
                   ))}
@@ -1331,7 +1333,7 @@ export default function Generate() {
 
           {/* ── Generate ── */}
           {(() => {
-            const cost = estimateCreditCost(requestedDuration, aiProvider, resolution);
+            const cost = estimateCreditCost(requestedDuration, aiProvider, resolution, songDurationSec);
             const balance = statsData?.creditsRemaining ?? null;
             const canAfford = isAdmin || balance === null || balance >= cost;
             const isAnalyzingAudio =
@@ -1396,7 +1398,7 @@ export default function Generate() {
       if (!isLong) return null;
       const numClips = Math.ceil((durSec as number) / 10);
       const estimatedMin = durSec === 90 ? "~15 minutes" : "~20 minutes";
-      const creditCost = estimateCreditCost(requestedDuration, aiProvider, resolution);
+      const creditCost = estimateCreditCost(requestedDuration, aiProvider, resolution, songDurationSec);
       return (
         <Dialog open={durationWarningOpen} onOpenChange={setDurationWarningOpen}>
           <DialogContent className="sm:max-w-md">
@@ -1498,7 +1500,7 @@ export default function Generate() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Credit cost</span>
-                  <span className="font-medium">{estimateCreditCost(requestedDuration, aiProvider, resolution)} credits</span>
+                  <span className="font-medium">{estimateCreditCost(requestedDuration, aiProvider, resolution, songDurationSec)} credits</span>
                 </div>
               </div>
             </div>

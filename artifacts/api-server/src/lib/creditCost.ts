@@ -10,8 +10,8 @@
 //   10s  → 160 credits   (1 clip × 10s = $1.20 → ×2   = $2.40)
 //   30s  → 360 credits   (3 clips×10s  = $3.60 → ×1.5 = $5.40)
 //   60s  → 720 credits   (6 clips×10s  = $7.20 → ×1.5 = $10.80)
-//   full → 360 credits   (capped 3 clips, looped = $3.60 → ×1.5 = $5.40)
-const MAX_CLIPS_PER_JOB = 3;
+//   full → 360–1200      (3–10 clips scaled by song length, capped at 5 min)
+//          e.g. 2min→480, 3min→720, 4min→960, 5min→1200 credits
 
 // Real provider cost basis: Runway Gen-4.5 API = 12 credits/s @ $0.01 = $0.12/s.
 const RUNWAY_USD_PER_SECOND = 0.12;
@@ -29,33 +29,21 @@ const LONG_MARKUP = 1.5;
 // estimators in dashboard.tsx, job-status.tsx, editor.tsx) + editorCost.ts.
 export const PRICE_MULTIPLIER = 2;
 
-// Real (pre-markup) provider cost of a generation, in credits.
-// profit = calculateCreditCost − this.
-function providerCostCredits(requestedDuration: string | null | undefined): number {
-  const { numClips, clipDurationSec } = getClipPlan(requestedDuration);
-  const usd = numClips * clipDurationSec * RUNWAY_USD_PER_SECOND;
-  return usd / USD_PER_CREDIT;
+// Full videos are capped at 5 minutes and scale unique clips with (capped) song
+// length: ~1 clip per 30s, min 3, max 10.
+const MAX_FULL_SECONDS = 300;
+export function fullClipCount(songDurationSec?: number | null): number {
+  const secs = songDurationSec && songDurationSec > 0 ? songDurationSec : MAX_FULL_SECONDS;
+  return Math.max(3, Math.min(10, Math.ceil(Math.min(secs, MAX_FULL_SECONDS) / 30)));
 }
 
-// 2× markup for single-clip (short) videos, 1.5× for multi-clip (longer) ones.
-function markupFor(requestedDuration: string | null | undefined): number {
-  return getClipPlan(requestedDuration).numClips <= 1 ? SHORT_MARKUP : LONG_MARKUP;
-}
-
-export function calculateBaseCost(
+export function getClipPlan(
   requestedDuration: string | null | undefined,
-  _resolution?: string | null,
-): number {
-  return Math.ceil(providerCostCredits(requestedDuration));
-}
-
-export function getClipPlan(requestedDuration: string | null | undefined): {
-  numClips: number;
-  clipDurationSec: 5 | 10;
-} {
+  songDurationSec?: number | null,
+): { numClips: number; clipDurationSec: 5 | 10 } {
   const dur = requestedDuration ?? "full";
   if (dur === "full") {
-    return { numClips: MAX_CLIPS_PER_JOB, clipDurationSec: 10 };
+    return { numClips: fullClipCount(songDurationSec), clipDurationSec: 10 };
   }
   const durSec = parseInt(dur, 10);
   const clipDurationSec: 5 | 10 = durSec <= 5 ? 5 : 10;
@@ -63,15 +51,44 @@ export function getClipPlan(requestedDuration: string | null | undefined): {
   return { numClips, clipDurationSec };
 }
 
+// Real (pre-markup) provider cost of a generation, in credits.
+// profit = calculateCreditCost − this.
+function providerCostCredits(
+  requestedDuration: string | null | undefined,
+  songDurationSec?: number | null,
+): number {
+  const { numClips, clipDurationSec } = getClipPlan(requestedDuration, songDurationSec);
+  const usd = numClips * clipDurationSec * RUNWAY_USD_PER_SECOND;
+  return usd / USD_PER_CREDIT;
+}
+
+// 2× markup for single-clip (short) videos, 1.5× for multi-clip (longer) ones.
+function markupFor(
+  requestedDuration: string | null | undefined,
+  songDurationSec?: number | null,
+): number {
+  return getClipPlan(requestedDuration, songDurationSec).numClips <= 1 ? SHORT_MARKUP : LONG_MARKUP;
+}
+
+export function calculateBaseCost(
+  requestedDuration: string | null | undefined,
+  _resolution?: string | null,
+  songDurationSec?: number | null,
+): number {
+  return Math.ceil(providerCostCredits(requestedDuration, songDurationSec));
+}
+
 // Estimated == actual cost (the same function backs the pre-flight estimate
 // shown to the customer and the deduction from their balance on success).
 // charge = ceil(real provider cost in credits × tiered markup). Resolution
 // tiers are ffmpeg upscales of the same render, so they carry no surcharge.
+// songDurationSec sizes "full" videos (clips scale with length, capped at 5 min).
 export function calculateCreditCost(
   requestedDuration: string | null | undefined,
   _resolution?: string | null,
+  songDurationSec?: number | null,
 ): number {
-  return Math.ceil(providerCostCredits(requestedDuration) * markupFor(requestedDuration));
+  return Math.ceil(providerCostCredits(requestedDuration, songDurationSec) * markupFor(requestedDuration, songDurationSec));
 }
 
 // Cost to remix (regenerate) a subset of an existing video's clips. Charged

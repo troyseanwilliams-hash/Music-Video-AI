@@ -115,7 +115,8 @@ router.post("/jobs", async (req, res) => {
     }
   }
 
-  const creditCost = calculateCreditCost(requestedDuration, resolution);
+  const songDurationSec = (audioAnalysis as { durationSeconds?: number } | null | undefined)?.durationSeconds;
+  const creditCost = calculateCreditCost(requestedDuration, resolution, songDurationSec);
 
   if (!isAdmin) {
     const credits = await db

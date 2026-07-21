@@ -992,32 +992,8 @@ const REMIX_STYLES = [
   "neon", "vintage", "fantasy", "documentary",
 ] as const;
 
-// Mirror of the server's credit math (creditCost.ts) so the estimate shown
-// matches what will actually be charged. Charge = real clip cost × tiered markup
-// (2× single-clip / 1.5× multi-clip). Remix cost is then proportional to the
-// number of clips regenerated, never the full job.
-function fullJobCost(requestedDuration: string | null | undefined): number {
-  const MAX_CLIPS_PER_JOB = 3, RUNWAY_USD_PER_SECOND = 0.12, USD_PER_CREDIT = 0.015;
-  const dur = requestedDuration ?? "full";
-  let numClips: number;
-  let clipDurationSec: 5 | 10;
-  if (dur === "full") {
-    numClips = MAX_CLIPS_PER_JOB;
-    clipDurationSec = 10;
-  } else {
-    const n = parseInt(dur, 10);
-    if (isNaN(n) || n <= 0) {
-      numClips = MAX_CLIPS_PER_JOB;
-      clipDurationSec = 10;
-    } else {
-      clipDurationSec = n <= 5 ? 5 : 10;
-      numClips = Math.max(1, Math.ceil(n / clipDurationSec));
-    }
-  }
-  const costCredits = (numClips * clipDurationSec * RUNWAY_USD_PER_SECOND) / USD_PER_CREDIT;
-  return Math.ceil(costCredits * (numClips <= 1 ? 2 : 1.5));
-}
-
+// Mirror of the server's credit math (creditCost.ts): remix cost is per
+// regenerated clip (each is its own Runway generation), never the full job.
 function estimateRemixCost(
   requestedDuration: string | null | undefined,
   totalClips: number,
@@ -1026,7 +1002,12 @@ function estimateRemixCost(
   const total = Math.max(1, totalClips);
   const r = Math.max(0, Math.min(regen, total));
   if (r === 0) return 0;
-  return Math.max(1, Math.ceil((fullJobCost(requestedDuration) / total) * r));
+  // Each regenerated clip is its own Runway generation: per-clip cost × markup.
+  const RUNWAY_USD_PER_SECOND = 0.12, USD_PER_CREDIT = 0.015;
+  const clipSec = requestedDuration && parseInt(requestedDuration, 10) <= 5 ? 5 : 10;
+  const perClip = (clipSec * RUNWAY_USD_PER_SECOND) / USD_PER_CREDIT; // pre-markup
+  const markup = total <= 1 ? 2 : 1.5;
+  return Math.max(1, Math.ceil(perClip * markup * r));
 }
 
 function fmtTime(sec: number): string {
