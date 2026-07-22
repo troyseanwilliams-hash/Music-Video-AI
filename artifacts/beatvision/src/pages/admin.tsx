@@ -449,10 +449,22 @@ interface FailedJob extends PendingJob {
 // Descriptive lengths — no exact seconds shown to the user; "Full" lands
 // around a natural 5-minute song.
 const LENGTH_OPTIONS: { key: string; label: string; seconds: number }[] = [
-  { key: "short", label: "Short (~30s)", seconds: 30 },
-  { key: "medium", label: "Medium (~1 min)", seconds: 60 },
-  { key: "long", label: "Long (~2.5 min)", seconds: 150 },
-  { key: "full", label: "Full song (~5 min)", seconds: 300 },
+  { key: "loop5", label: "5s loop", seconds: 5 },
+  { key: "loop10", label: "10s loop", seconds: 10 },
+  { key: "short", label: "~30s", seconds: 30 },
+  { key: "medium", label: "~1 min", seconds: 60 },
+  { key: "long", label: "~2.5 min", seconds: 150 },
+  { key: "full", label: "Full (~5 min)", seconds: 300 },
+];
+
+// Loop the (cheap) short clip to fill this length — free, matches your video.
+const LOOP_OPTIONS: { key: string; label: string; seconds: number }[] = [
+  { key: "off", label: "No loop", seconds: 0 },
+  { key: "15", label: "15s", seconds: 15 },
+  { key: "30", label: "30s", seconds: 30 },
+  { key: "60", label: "1 min", seconds: 60 },
+  { key: "90", label: "1.5 min", seconds: 90 },
+  { key: "120", label: "2 min", seconds: 120 },
 ];
 
 const INSTRUMENTAL_PRESETS: { label: string; prompt: string }[] = [
@@ -472,10 +484,12 @@ function AdminMusicPanel() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [prompt, setPrompt] = useState("");
-  const [lengthKey, setLengthKey] = useState("medium");
-  const [result, setResult] = useState<{ url: string; provider: string; hasVocals: boolean; objectPath: string } | null>(null);
+  const [lengthKey, setLengthKey] = useState("loop10");
+  const [loopKey, setLoopKey] = useState("off");
+  const [result, setResult] = useState<{ url: string; provider: string; hasVocals: boolean; objectPath: string; loopedToSeconds?: number | null } | null>(null);
 
-  const duration = LENGTH_OPTIONS.find((l) => l.key === lengthKey)?.seconds ?? 60;
+  const duration = LENGTH_OPTIONS.find((l) => l.key === lengthKey)?.seconds ?? 10;
+  const loopToSeconds = LOOP_OPTIONS.find((l) => l.key === loopKey)?.seconds ?? 0;
 
   const { data: status } = useQuery<{ activeProvider: string; hasReplicateKey: boolean; aceStepReady: boolean; musicGenReady: boolean; lyricsProvider: string }>({
     queryKey: ["admin", "music", "status"],
@@ -493,11 +507,15 @@ function AdminMusicPanel() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, durationSeconds: duration }),
+        body: JSON.stringify({
+          prompt,
+          durationSeconds: duration,
+          ...(loopToSeconds > duration ? { loopToSeconds } : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Generation failed");
-      return data as { url: string; provider: string; hasVocals: boolean; objectPath: string };
+      return data as { url: string; provider: string; hasVocals: boolean; objectPath: string; loopedToSeconds?: number | null };
     },
     onSuccess: (data) => { setResult(data); toast({ title: "Track generated", description: `Provider: ${data.provider}` }); },
     onError: (err: Error) => toast({ title: "Failed", description: err.message, variant: "destructive" }),
@@ -571,21 +589,21 @@ function AdminMusicPanel() {
           </div>
         </div>
 
-        {/* Length */}
+        {/* Clip length */}
         <div>
           <div className="flex items-center justify-between mb-1.5">
-            <label className="text-sm font-medium">Length</label>
-            <span className="text-xs text-muted-foreground" title="What a subscriber is charged (admins generate free)">
+            <label className="text-sm font-medium">Clip length</label>
+            <span className="text-xs text-muted-foreground" title="Charged for the clip you generate. Looping is free.">
               ≈ {songCredits(duration)} credits for users
             </span>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
             {LENGTH_OPTIONS.map((l) => (
               <button
                 key={l.key}
                 type="button"
                 onClick={() => setLengthKey(l.key)}
-                className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+                className={`rounded-lg border px-2 py-2 text-xs font-medium transition-colors ${
                   lengthKey === l.key ? "border-primary bg-primary/10 text-primary" : "border-border bg-background/40 text-muted-foreground hover:border-primary/50"
                 }`}
                 data-testid={`admin-music-length-${l.key}`}
@@ -594,6 +612,36 @@ function AdminMusicPanel() {
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Loop to fill */}
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-sm font-medium">Loop to fill</label>
+            <span className="text-xs text-emerald-400/80">Free · repeats the clip</span>
+          </div>
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+            {LOOP_OPTIONS.map((l) => {
+              const dim = l.seconds > 0 && l.seconds <= duration; // no point looping to ≤ clip length
+              return (
+                <button
+                  key={l.key}
+                  type="button"
+                  onClick={() => setLoopKey(l.key)}
+                  disabled={dim}
+                  className={`rounded-lg border px-2 py-2 text-xs font-medium transition-colors disabled:opacity-30 ${
+                    loopKey === l.key ? "border-primary bg-primary/10 text-primary" : "border-border bg-background/40 text-muted-foreground hover:border-primary/50"
+                  }`}
+                  data-testid={`admin-music-loop-${l.key}`}
+                >
+                  {l.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-1.5">
+            Generate a cheap 5–10s loop and repeat it to any length — same low credit cost, perfect for backing a video.
+          </p>
         </div>
 
         {/* Generate */}
@@ -618,6 +666,7 @@ function AdminMusicPanel() {
             <div className="text-sm font-semibold flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-emerald-400" />
               Your instrumental is ready
+              {result.loopedToSeconds ? <Badge variant="outline" className="text-[10px]">Looped to {result.loopedToSeconds}s</Badge> : null}
               <Badge variant="outline" className="text-[10px] ml-auto">{result.provider}</Badge>
             </div>
             <audio src={result.url} controls className="w-full" />

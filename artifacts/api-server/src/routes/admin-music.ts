@@ -8,7 +8,7 @@ import { randomUUID } from "crypto";
 import { z } from "zod";
 import { db, creditsTable, usersTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
-import { generateSong, getActiveMusicProvider, MAX_SONG_SECONDS, type MusicProvider } from "../lib/musicApis.js";
+import { generateSong, getActiveMusicProvider, loopAudioToLength, MAX_SONG_SECONDS, type MusicProvider } from "../lib/musicApis.js";
 import { generateLyrics, lyricsProviderAvailable } from "../lib/lyricsGen.js";
 import { calculateSongCost } from "../lib/creditCost.js";
 import { notifyFeatureRequest } from "../lib/notifications.js";
@@ -79,7 +79,9 @@ const GenerateBody = z.object({
   prompt: z.string().min(3).max(600),
   lyrics: z.string().max(5000).optional(),
   durationSeconds: z.number().int().min(5).max(MAX_SONG_SECONDS).default(30),
-  provider: z.enum(["simulation", "acestep", "musicgen"]).optional(),
+  // Loop the generated clip (via ffmpeg, free) to this length to match a video.
+  loopToSeconds: z.number().int().min(1).max(MAX_SONG_SECONDS).optional(),
+  provider: z.enum(["simulation", "acestep", "musicgen", "pixazo"]).optional(),
 });
 
 router.post("/admin/music/generate", async (req: Request, res: Response) => {
@@ -132,8 +134,20 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
       provider: parsed.data.provider as MusicProvider | undefined,
     });
 
+    // Optionally loop the (short, cheap) clip to a longer length — free ffmpeg,
+    // no extra provider cost, so you pay only for the short generation.
+    let audioBuffer = song.audioBuffer;
+    let ext = song.ext;
+    let loopedToSeconds: number | null = null;
+    if (parsed.data.loopToSeconds && parsed.data.loopToSeconds > parsed.data.durationSeconds) {
+      const looped = await loopAudioToLength(song.audioBuffer, song.ext, parsed.data.loopToSeconds);
+      audioBuffer = looped.buffer;
+      ext = looped.ext;
+      loopedToSeconds = parsed.data.loopToSeconds;
+    }
+
     const songId = randomUUID();
-    const objectPath = await storageService.uploadAudioBuffer(song.audioBuffer, songId, song.ext);
+    const objectPath = await storageService.uploadAudioBuffer(audioBuffer, songId, ext);
     const url = await storageService.getObjectEntitySignedUrl(objectPath, 3600);
 
     // Deduct on success (non-admins only). Subscription bucket drawn first.
@@ -149,14 +163,15 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
         .where(eq(creditsTable.userId, req.user.id));
     }
 
-    logger.info({ songId, provider: song.provider, cost, admin }, "Song generated");
+    logger.info({ songId, provider: song.provider, cost, admin, loopedToSeconds }, "Song generated");
     res.json({
       songId,
       objectPath, // feed this straight into the video generator as the audio source
       url,
       provider: song.provider,
       hasVocals: song.hasVocals,
-      ext: song.ext,
+      ext,
+      loopedToSeconds, // null unless the clip was looped
       creditsCharged: admin ? 0 : cost,
     });
   } catch (err) {

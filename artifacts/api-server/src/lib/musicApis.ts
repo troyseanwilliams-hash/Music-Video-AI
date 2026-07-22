@@ -190,6 +190,41 @@ async function generateWithPixazoMusic(req: SongRequest): Promise<string> {
   throw new Error("Pixazo music generation timed out");
 }
 
+// Loop a short clip to fill a target length (free — pure ffmpeg, no AI cost).
+// Lets you generate a cheap 5–10s loop and repeat it to match a video.
+export async function loopAudioToLength(
+  buffer: Buffer,
+  ext: string,
+  targetSeconds: number,
+): Promise<{ buffer: Buffer; ext: string }> {
+  const { exec } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const { readFile, writeFile, unlink } = await import("node:fs/promises");
+  const { randomUUID } = await import("node:crypto");
+  const execAsync = promisify(exec);
+  const id = randomUUID();
+  const inPath = join(tmpdir(), `bv_loopin_${id}.${ext || "mp3"}`);
+  const outPath = join(tmpdir(), `bv_loopout_${id}.mp3`);
+  const target = Math.min(Math.max(Math.round(targetSeconds), 1), MAX_SONG_SECONDS);
+  try {
+    await writeFile(inPath, buffer);
+    // -stream_loop -1 repeats the clip indefinitely; -t cuts it at the target.
+    // A short fade in/out trims any hard edges at the ends.
+    await execAsync(
+      `ffmpeg -y -stream_loop -1 -i "${inPath}" -t ${target} ` +
+        `-af "afade=t=in:st=0:d=0.05,afade=t=out:st=${Math.max(0, target - 0.1)}:d=0.1" ` +
+        `-c:a libmp3lame -b:a 192k "${outPath}"`,
+      { timeout: 60_000 },
+    );
+    return { buffer: await readFile(outPath), ext: "mp3" };
+  } finally {
+    await unlink(inPath).catch(() => {});
+    await unlink(outPath).catch(() => {});
+  }
+}
+
 // ── Public entry ─────────────────────────────────────────────────────────────
 
 // Songs can run up to ~5.5 minutes (330s) so "Full" length lands around a
