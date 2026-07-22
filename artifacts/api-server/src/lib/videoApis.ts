@@ -15,17 +15,39 @@ export interface ClipResult {
 
 type Provider = "runway" | "luma" | "kling" | "pixazo";
 
+function providerAvailable(p: Provider): boolean {
+  if (p === "runway") return !!process.env.RUNWAY_API_KEY;
+  if (p === "luma") return !!process.env.LUMA_API_KEY;
+  if (p === "kling") return !!process.env.KLING_API_KEY;
+  if (p === "pixazo") return !!process.env.PIXAZO_API_KEY;
+  return false;
+}
+
+// Ordered provider chain with automatic fallback. Default order runs Runway
+// first (to burn existing Runway credits), then Pixazo, then Kling/Luma —
+// filtered to providers whose keys are set. So with only RUNWAY_API_KEY it uses
+// Runway; add PIXAZO_API_KEY and Pixazo becomes the automatic fallback.
+// Override the whole order with VIDEO_API_CHAIN="pixazo,runway"; VIDEO_API pins
+// the primary.
+export function getProviderChain(): Provider[] {
+  const chainEnv = process.env.VIDEO_API_CHAIN
+    ?.toLowerCase()
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean) as Provider[] | undefined;
+  const primary = process.env.VIDEO_API?.toLowerCase() as Provider | undefined;
+  let order: Provider[];
+  if (chainEnv && chainEnv.length) {
+    order = chainEnv;
+  } else {
+    order = ["runway", "pixazo", "kling", "luma"];
+    if (primary && order.includes(primary)) order = [primary, ...order.filter((p) => p !== primary)];
+  }
+  return order.filter(providerAvailable);
+}
+
 function getProvider(): Provider | null {
-  const env = process.env.VIDEO_API?.toLowerCase();
-  if (env === "runway" && process.env.RUNWAY_API_KEY) return "runway";
-  if (env === "luma" && process.env.LUMA_API_KEY) return "luma";
-  if (env === "kling" && process.env.KLING_API_KEY) return "kling";
-  if (env === "pixazo" && process.env.PIXAZO_API_KEY) return "pixazo";
-  if (process.env.RUNWAY_API_KEY) return "runway";
-  if (process.env.LUMA_API_KEY) return "luma";
-  if (process.env.KLING_API_KEY) return "kling";
-  if (process.env.PIXAZO_API_KEY) return "pixazo";
-  return null;
+  return getProviderChain()[0] ?? null;
 }
 
 export function getActiveProvider(hint?: string | null): string {
@@ -279,26 +301,53 @@ async function generateWithPixazo(req: ClipRequest): Promise<string> {
   throw new Error("Pixazo task timed out after 10 minutes");
 }
 
-export async function generateClip(req: ClipRequest): Promise<ClipResult | null> {
-  const provider = getProvider();
-  if (!provider) return null;
+// After Runway reports out-of-credits, skip it for a while so we don't retry an
+// exhausted account on every clip (cleared on the next successful Runway call).
+let runwaySkipUntil = 0;
 
-  let videoUrl: string;
+function isCreditError(err: unknown): boolean {
+  const m = String(err instanceof Error ? err.message : err).toLowerCase();
+  return ["402", "credit", "quota", "insufficient", "exceeded", "payment", "balance"].some((s) => m.includes(s));
+}
+
+async function callProvider(provider: Provider, req: ClipRequest): Promise<string> {
   switch (provider) {
     case "runway":
-      videoUrl = await generateWithRunway(req);
-      break;
+      return generateWithRunway(req);
     case "luma":
-      videoUrl = await generateWithLuma(req);
-      break;
+      return generateWithLuma(req);
     case "kling":
-      videoUrl = await generateWithKling(req);
-      break;
+      return generateWithKling(req);
     case "pixazo":
-      videoUrl = await generateWithPixazo(req);
-      break;
+      return generateWithPixazo(req);
   }
-  return { videoUrl, provider };
+  throw new Error(`Unknown video provider: ${provider}`);
+}
+
+// Try providers in order, automatically falling back to the next on failure
+// (e.g. Runway credits exhausted → Pixazo). Returns the first success.
+export async function generateClip(req: ClipRequest): Promise<ClipResult | null> {
+  const chain = getProviderChain();
+  if (chain.length === 0) return null;
+
+  let lastErr: unknown;
+  for (let i = 0; i < chain.length; i++) {
+    const provider = chain[i]!;
+    const isLast = i === chain.length - 1;
+    // Skip a recently-exhausted Runway when there's another provider to try.
+    if (provider === "runway" && runwaySkipUntil > Date.now() && !isLast) continue;
+    try {
+      const videoUrl = await callProvider(provider, req);
+      if (provider === "runway") runwaySkipUntil = 0;
+      return { videoUrl, provider };
+    } catch (err) {
+      lastErr = err;
+      if (provider === "runway" && isCreditError(err)) {
+        runwaySkipUntil = Date.now() + 6 * 60 * 60 * 1000; // 6h — fall back to the next provider
+      }
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error("All video providers failed");
 }
 
 export async function downloadClip(url: string): Promise<Buffer> {
