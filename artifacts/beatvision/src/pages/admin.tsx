@@ -525,7 +525,7 @@ function AdminMusicPanel() {
       <CardContent className="space-y-4">
         <div className={`rounded-lg border px-3 py-2 text-xs ${isSim ? "border-amber-500/30 bg-amber-500/10 text-amber-300" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"}`}>
           {isSim ? (
-            <>Running in <b>simulation mode</b> (placeholder audio). Set <code>REPLICATE_API_TOKEN</code> + a model version env (<code>MUSIC_ACESTEP_VERSION</code> for vocals, <code>MUSIC_MUSICGEN_VERSION</code> for instrumental) to go live.</>
+            <>Running in <b>simulation mode</b> (placeholder audio). Set <code>REPLICATE_API_TOKEN</code> to enable real <b>instrumental</b> generation (MusicGen). Add <code>MUSIC_ACESTEP_MODEL</code> for vocal songs.</>
           ) : (
             <>Live provider: <b>{status?.activeProvider}</b> {status?.aceStepReady ? "· ACE-Step (vocals) ready" : ""} {status?.musicGenReady ? "· MusicGen (instrumental) ready" : ""}</>
           )}

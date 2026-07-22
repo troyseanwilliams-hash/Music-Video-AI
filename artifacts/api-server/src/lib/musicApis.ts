@@ -37,15 +37,20 @@ function getEnv(name: string): string | undefined {
   return v && v.trim() ? v.trim() : undefined;
 }
 
+// ACE-Step (vocals) needs an explicit model/version. Instrumental MusicGen
+// works with just the token — it defaults to the public "meta/musicgen" slug.
+function aceStepConfigured(): boolean {
+  return !!(getEnv("MUSIC_ACESTEP_VERSION") || getEnv("MUSIC_ACESTEP_MODEL"));
+}
+
 export function getActiveMusicProvider(hint?: MusicProvider | null): MusicProvider {
   const key = getEnv("REPLICATE_API_TOKEN");
   if (!key) return "simulation";
-  if (hint === "acestep" && getEnv("MUSIC_ACESTEP_VERSION")) return "acestep";
-  if (hint === "musicgen" && getEnv("MUSIC_MUSICGEN_VERSION")) return "musicgen";
-  // Default preference: full-song vocal model, then instrumental.
-  if (getEnv("MUSIC_ACESTEP_VERSION")) return "acestep";
-  if (getEnv("MUSIC_MUSICGEN_VERSION")) return "musicgen";
-  return "simulation";
+  if (hint === "acestep" && aceStepConfigured()) return "acestep";
+  if (hint === "musicgen") return "musicgen";
+  // Default: free/cheap instrumental (MusicGen). ACE-Step (vocals) only when
+  // explicitly configured with a model/version.
+  return "musicgen";
 }
 
 function delay(ms: number) {
@@ -54,15 +59,23 @@ function delay(ms: number) {
 
 // ── Replicate prediction runner ──────────────────────────────────────────────
 
-async function runReplicate(version: string, input: Record<string, unknown>): Promise<string> {
+// Accepts either a pinned version hash (40+ hex chars) or an "owner/name" model
+// slug. Slugs hit the model endpoint (latest version) so no hash hunting is
+// needed — e.g. "meta/musicgen" works out of the box.
+async function runReplicate(modelOrVersion: string, input: Record<string, unknown>): Promise<string> {
   const token = getEnv("REPLICATE_API_TOKEN")!;
-  const create = await fetch(`${REPLICATE_BASE}/predictions`, {
+  const isVersion = /^[0-9a-f]{40,}$/i.test(modelOrVersion);
+  const url = isVersion
+    ? `${REPLICATE_BASE}/predictions`
+    : `${REPLICATE_BASE}/models/${modelOrVersion}/predictions`;
+  const body = isVersion ? { version: modelOrVersion, input } : { input };
+  const create = await fetch(url, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ version, input }),
+    body: JSON.stringify(body),
   });
   if (!create.ok) {
     throw new Error(`Replicate create failed (${create.status}): ${(await create.text()).slice(0, 300)}`);
@@ -151,11 +164,10 @@ export async function generateSong(req: SongRequest): Promise<SongResult> {
   }
 
   if (provider === "acestep") {
-    const version = getEnv("MUSIC_ACESTEP_VERSION")!;
-    // ACE-Step takes a style/tags prompt + lyrics. Field names follow the
-    // common Replicate ACE-Step schema; adjust here if your pinned version
-    // differs (kept in one place on purpose).
-    const url = await runReplicate(version, {
+    // ACE-Step takes a style/tags prompt + lyrics. Configure via a model slug
+    // (MUSIC_ACESTEP_MODEL) or a pinned version (MUSIC_ACESTEP_VERSION).
+    const model = getEnv("MUSIC_ACESTEP_MODEL") || getEnv("MUSIC_ACESTEP_VERSION")!;
+    const url = await runReplicate(model, {
       tags: req.prompt,
       lyrics: req.lyrics ?? "[inst]",
       duration: dur,
@@ -164,12 +176,15 @@ export async function generateSong(req: SongRequest): Promise<SongResult> {
     return { audioBuffer: buffer, ext, provider: "acestep", hasVocals: true };
   }
 
-  // musicgen (instrumental)
-  const version = getEnv("MUSIC_MUSICGEN_VERSION")!;
-  const url = await runReplicate(version, {
+  // musicgen (instrumental) — defaults to the public "meta/musicgen" model slug
+  // so it works with just REPLICATE_API_TOKEN (no version hash needed). Override
+  // with MUSIC_MUSICGEN_MODEL (slug) or MUSIC_MUSICGEN_VERSION (pinned hash).
+  const model = getEnv("MUSIC_MUSICGEN_MODEL") || getEnv("MUSIC_MUSICGEN_VERSION") || "meta/musicgen";
+  const url = await runReplicate(model, {
     prompt: req.prompt,
     duration: dur,
     output_format: "mp3",
+    normalization_strategy: "peak",
   });
   const { buffer, ext } = await downloadAudio(url);
   return { audioBuffer: buffer, ext, provider: "musicgen", hasVocals: false };
