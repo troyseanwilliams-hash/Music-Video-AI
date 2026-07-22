@@ -211,3 +211,29 @@ export function notifyPayment(p: {
       .catch((err: unknown) => logger.error({ err }, "Failed to send payment SMS"));
   }
 }
+
+// Notify admin(s) that someone requested a not-yet-live feature (e.g. vocals).
+export function notifyFeatureRequest(p: { email?: string | null; feature: string }): void {
+  const adminEmail = process.env.NOTIFY_EMAIL || process.env.ADMIN_EMAIL;
+  const resend = getResend();
+  if (resend && adminEmail) {
+    resend.emails
+      .send({
+        from: "AI Beat Sync <notifications@aibeatsync.com>",
+        to: adminEmail,
+        subject: `👋 Feature request: ${p.feature} — ${p.email ?? "a user"}`,
+        html: `
+          <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+            <h2 style="margin:0 0 16px">Someone wants: ${p.feature}</h2>
+            <table style="width:100%;border-collapse:collapse">
+              <tr><td style="padding:8px 0;color:#666;width:120px">Feature</td><td style="padding:8px 0;font-weight:600">${p.feature}</td></tr>
+              <tr><td style="padding:8px 0;color:#666">From</td><td style="padding:8px 0">${p.email ?? "—"}</td></tr>
+              <tr><td style="padding:8px 0;color:#666">When</td><td style="padding:8px 0">${new Date().toLocaleString()}</td></tr>
+            </table>
+          </div>
+        `,
+      })
+      .then(() => logger.info({ feature: p.feature }, "Feature-request email sent"))
+      .catch((err: unknown) => logger.error({ err }, "Failed to send feature-request email"));
+  }
+}

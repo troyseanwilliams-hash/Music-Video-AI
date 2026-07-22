@@ -455,16 +455,27 @@ const LENGTH_OPTIONS: { key: string; label: string; seconds: number }[] = [
   { key: "full", label: "Full song (~5 min)", seconds: 300 },
 ];
 
+const INSTRUMENTAL_PRESETS: { label: string; prompt: string }[] = [
+  { label: "Lofi chill", prompt: "Lofi hip hop, mellow Rhodes piano, vinyl crackle, soft drums, 72 BPM" },
+  { label: "Cinematic", prompt: "Cinematic orchestral score, building strings, epic percussion, emotional" },
+  { label: "Trap", prompt: "Dark trap beat, heavy 808 bass, crisp hi-hats, moody, 140 BPM" },
+  { label: "Synthwave", prompt: "Upbeat synthwave, retro arpeggios, driving bassline, neon, 110 BPM" },
+  { label: "Acoustic", prompt: "Warm acoustic guitar, laid-back, coffee-shop, gentle percussion" },
+  { label: "Ambient", prompt: "Ambient pads, ethereal, slow and dreamy soundscape, reverb" },
+];
+
+function songCredits(seconds: number): number {
+  return Math.max(5, Math.ceil((Math.min(Math.max(seconds, 5), 330) * 0.002 * 2) / 0.015));
+}
+
 function AdminMusicPanel() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
-  const [theme, setTheme] = useState("");
   const [prompt, setPrompt] = useState("");
-  const [lyrics, setLyrics] = useState("");
-  const [lengthKey, setLengthKey] = useState("full");
+  const [lengthKey, setLengthKey] = useState("medium");
   const [result, setResult] = useState<{ url: string; provider: string; hasVocals: boolean; objectPath: string } | null>(null);
 
-  const duration = LENGTH_OPTIONS.find((l) => l.key === lengthKey)?.seconds ?? 300;
+  const duration = LENGTH_OPTIONS.find((l) => l.key === lengthKey)?.seconds ?? 60;
 
   const { data: status } = useQuery<{ activeProvider: string; hasReplicateKey: boolean; aceStepReady: boolean; musicGenReady: boolean; lyricsProvider: string }>({
     queryKey: ["admin", "music", "status"],
@@ -482,132 +493,145 @@ function AdminMusicPanel() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, lyrics: lyrics.trim() || undefined, durationSeconds: duration }),
+        body: JSON.stringify({ prompt, durationSeconds: duration }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Generation failed");
       return data as { url: string; provider: string; hasVocals: boolean; objectPath: string };
     },
-    onSuccess: (data) => { setResult(data); toast({ title: "Song generated", description: `Provider: ${data.provider}` }); },
+    onSuccess: (data) => { setResult(data); toast({ title: "Track generated", description: `Provider: ${data.provider}` }); },
     onError: (err: Error) => toast({ title: "Failed", description: err.message, variant: "destructive" }),
   });
 
-  const genLyrics = useMutation({
+  const requestVocals = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/admin/music/lyrics", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ theme, genre: prompt.trim() || undefined }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Lyric generation failed");
-      return data as { lyrics: string; source: string };
+      const res = await fetch("/api/music/request-vocals", { method: "POST", credentials: "include" });
+      if (!res.ok) throw new Error("Request failed");
+      return res.json();
     },
-    onSuccess: (data) => { setLyrics(data.lyrics); toast({ title: "Lyrics generated", description: `Source: ${data.source}` }); },
-    onError: (err: Error) => toast({ title: "Failed", description: err.message, variant: "destructive" }),
+    onSuccess: () => toast({ title: "Thanks — noted!", description: "We'll let you know when vocals & lyrics go live." }),
+    onError: () => toast({ title: "Couldn't send", description: "Please try again.", variant: "destructive" }),
   });
 
   const isSim = status?.activeProvider === "simulation";
 
   return (
-    <Card className="bg-card/50 border-card-border">
+    <Card className="bg-card/50 border-card-border overflow-hidden">
+      <div className="h-1 w-full bg-gradient-electric" />
       <CardHeader className="pb-4">
         <div className="flex items-center gap-2">
-          <Music2 className="h-5 w-5 text-primary" />
-          <CardTitle className="text-lg">AI Song Generator</CardTitle>
-          <Badge variant="outline" className="text-[10px]">Beta · Admin only</Badge>
-        </div>
-        <CardDescription>
-          Generate a song with an open, commercially-licensed model. Not exposed in the product yet.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className={`rounded-lg border px-3 py-2 text-xs ${isSim ? "border-amber-500/30 bg-amber-500/10 text-amber-300" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"}`}>
-          {isSim ? (
-            <>Running in <b>simulation mode</b> (placeholder audio). Set <code>REPLICATE_API_TOKEN</code> to enable real <b>instrumental</b> generation (MusicGen). Add <code>MUSIC_ACESTEP_MODEL</code> for vocal songs.</>
-          ) : (
-            <>Live provider: <b>{status?.activeProvider}</b> {status?.aceStepReady ? "· ACE-Step (vocals) ready" : ""} {status?.musicGenReady ? "· MusicGen (instrumental) ready" : ""}</>
-          )}
-        </div>
-
-        <div>
-          <label className="text-sm font-medium">Style / genre prompt</label>
-          <Input value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="relaxing lofi hip hop, mellow mechanical textures, 72 BPM, vinyl crackle" className="mt-1" data-testid="admin-music-prompt" />
-        </div>
-
-        {/* Lyrics + AI generation */}
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <label className="text-sm font-medium">Lyrics <span className="text-muted-foreground font-normal">(optional — vocal models; blank = instrumental)</span></label>
-            <div className="flex items-center gap-2">
-              <Input
-                value={theme}
-                onChange={(e) => setTheme(e.target.value)}
-                placeholder="theme, e.g. late-night city drive"
-                className="h-8 w-56 text-xs"
-                data-testid="admin-lyrics-theme"
-              />
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => genLyrics.mutate()}
-                disabled={genLyrics.isPending || theme.trim().length < 2}
-                data-testid="admin-generate-lyrics"
-              >
-                {genLyrics.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><Sparkles className="mr-1.5 h-3.5 w-3.5" /> Write lyrics</>}
-              </Button>
+          <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
+            <Music2 className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <CardTitle className="text-lg leading-tight">Instrumental Studio</CardTitle>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <Badge variant="outline" className="text-[10px]">Beta · Admin</Badge>
+              <span className={`inline-flex items-center gap-1 text-[10px] ${isSim ? "text-amber-400" : "text-emerald-400"}`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${isSim ? "bg-amber-400" : "bg-emerald-400"}`} />
+                {isSim ? "Simulation" : "Live"}
+              </span>
             </div>
           </div>
-          <Textarea value={lyrics} onChange={(e) => setLyrics(e.target.value)} placeholder="Enter a theme above and click Write lyrics, or paste your own. [Verse] / [Chorus] tags recommended." className="mt-1 min-h-[140px]" maxLength={5000} data-testid="admin-music-lyrics" />
-          {status?.lyricsProvider === "template" && (
-            <p className="mt-1 text-[11px] text-amber-400/80">Lyrics use a built-in template. Set ANTHROPIC_API_KEY or OPENAI_API_KEY for AI-written lyrics.</p>
-          )}
+        </div>
+        <CardDescription className="mt-2">
+          Generate a royalty-free instrumental track, then drop it straight into a Remix or AI video.
+        </CardDescription>
+      </CardHeader>
+
+      <CardContent className="space-y-5">
+        {isSim && (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-300 px-3 py-2 text-xs">
+            <b>Simulation mode</b> (placeholder audio). Set <code>REPLICATE_API_TOKEN</code> to generate real instrumentals with MusicGen.
+          </div>
+        )}
+
+        {/* Describe */}
+        <div>
+          <label className="text-sm font-medium">Describe the instrumental</label>
+          <Textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            rows={3}
+            placeholder="e.g. warm lofi hip hop, mellow Rhodes, vinyl crackle, 72 BPM"
+            className="mt-1.5 resize-none"
+            data-testid="admin-music-prompt"
+          />
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {INSTRUMENTAL_PRESETS.map((p) => (
+              <button
+                key={p.label}
+                type="button"
+                onClick={() => setPrompt(p.prompt)}
+                className="text-xs px-2.5 py-1 rounded-full border border-border bg-background/40 text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <label className="text-sm font-medium">Length</label>
-          <select value={lengthKey} onChange={(e) => setLengthKey(e.target.value)} className="rounded-md border border-input bg-background px-3 py-1.5 text-sm" data-testid="admin-music-length">
-            {LENGTH_OPTIONS.map((l) => <option key={l.key} value={l.key}>{l.label}</option>)}
-          </select>
-          <span className="text-xs text-muted-foreground" title="What a subscriber is charged (admins generate free)">
-            ≈ {Math.max(5, Math.ceil((Math.min(Math.max(duration, 5), 330) * 0.002 * 2) / 0.015))} credits for users
-          </span>
-          <Button onClick={() => gen.mutate()} disabled={gen.isPending || prompt.trim().length < 3} className="ml-auto bg-gradient-electric text-white shadow-glow">
-            {gen.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating…</> : <><Sparkles className="mr-2 h-4 w-4" /> Generate song</>}
+        {/* Length */}
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-sm font-medium">Length</label>
+            <span className="text-xs text-muted-foreground" title="What a subscriber is charged (admins generate free)">
+              ≈ {songCredits(duration)} credits for users
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {LENGTH_OPTIONS.map((l) => (
+              <button
+                key={l.key}
+                type="button"
+                onClick={() => setLengthKey(l.key)}
+                className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+                  lengthKey === l.key ? "border-primary bg-primary/10 text-primary" : "border-border bg-background/40 text-muted-foreground hover:border-primary/50"
+                }`}
+                data-testid={`admin-music-length-${l.key}`}
+              >
+                {l.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Generate */}
+        <Button
+          onClick={() => gen.mutate()}
+          disabled={gen.isPending || prompt.trim().length < 3}
+          className="w-full h-11 bg-gradient-electric text-white shadow-glow"
+        >
+          {gen.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating… (up to a minute)</> : <><Sparkles className="mr-2 h-4 w-4" /> Generate instrumental</>}
+        </Button>
+
+        {/* Vocals request */}
+        <div className="rounded-lg border border-dashed border-border bg-background/30 px-3 py-2.5 flex items-center justify-between gap-3">
+          <span className="text-xs text-muted-foreground">🎤 Want <b className="text-foreground">vocals &amp; lyrics</b>? Not available yet.</span>
+          <Button size="sm" variant="outline" onClick={() => requestVocals.mutate()} disabled={requestVocals.isPending} data-testid="request-vocals">
+            {requestVocals.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Request it"}
           </Button>
         </div>
 
         {result && (
-          <div className="rounded-lg border border-border bg-background/40 p-4 space-y-2">
+          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/[0.06] p-4 space-y-3">
             <div className="text-sm font-semibold flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-              Generated · {result.provider} {result.hasVocals ? "· with vocals" : "· instrumental"}
+              Your instrumental is ready
+              <Badge variant="outline" className="text-[10px] ml-auto">{result.provider}</Badge>
             </div>
             <audio src={result.url} controls className="w-full" />
-            <p className="text-xs text-muted-foreground break-all">
-              objectPath: <code>{result.objectPath}</code>
-            </p>
             {(() => {
-              const title = prompt.trim().split(/\s+/).slice(0, 4).join(" ") || "AI Song";
+              const title = prompt.trim().split(/\s+/).slice(0, 4).join(" ") || "AI Instrumental";
               return (
-                <div className="flex flex-wrap items-center gap-2 pt-1">
-                  <Button
-                    size="sm"
-                    onClick={() => navigate(`/editor?audio=${encodeURIComponent(result.url)}&title=${encodeURIComponent(title)}`)}
-                    data-testid="song-to-remix"
-                  >
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button size="sm" onClick={() => navigate(`/editor?audio=${encodeURIComponent(result.url)}&title=${encodeURIComponent(title)}`)} data-testid="song-to-remix">
                     <Scissors className="mr-1.5 h-3.5 w-3.5" /> Make a Remix video
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => navigate(`/generate?audioObjectPath=${encodeURIComponent(result.objectPath)}&title=${encodeURIComponent(title)}`)}
-                    data-testid="song-to-generate"
-                  >
+                  <Button size="sm" variant="outline" onClick={() => navigate(`/generate?audioObjectPath=${encodeURIComponent(result.objectPath)}&title=${encodeURIComponent(title)}`)} data-testid="song-to-generate">
                     <Sparkles className="mr-1.5 h-3.5 w-3.5" /> Generate a video
                   </Button>
-                  <a href={result.url} download className="text-xs text-primary hover:underline ml-1">Download</a>
+                  <a href={result.url} download className="text-xs text-primary hover:underline ml-auto">Download</a>
                 </div>
               );
             })()}

@@ -11,6 +11,7 @@ import { eq, sql } from "drizzle-orm";
 import { generateSong, getActiveMusicProvider, MAX_SONG_SECONDS, type MusicProvider } from "../lib/musicApis.js";
 import { generateLyrics, lyricsProviderAvailable } from "../lib/lyricsGen.js";
 import { calculateSongCost } from "../lib/creditCost.js";
+import { notifyFeatureRequest } from "../lib/notifications.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { logger } from "../lib/logger.js";
 
@@ -162,6 +163,17 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
       error: err instanceof Error ? err.message : "Song generation failed",
     });
   }
+});
+
+// Capture interest in vocals/lyrics (not live yet). Any signed-in user.
+router.post("/music/request-vocals", (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  notifyFeatureRequest({ email: req.user.email, feature: "Vocals & lyrics for the song generator" });
+  logger.info({ userId: req.user.id }, "Vocals feature requested");
+  res.json({ success: true });
 });
 
 export default router;
