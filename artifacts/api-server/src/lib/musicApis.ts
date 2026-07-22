@@ -10,7 +10,7 @@
 // once their public API ships. Nothing calls this outside the admin routes,
 // so it stays isolated from the product until you're ready to expose it.
 
-export type MusicProvider = "simulation" | "acestep" | "musicgen";
+export type MusicProvider = "simulation" | "acestep" | "musicgen" | "pixazo";
 
 export interface SongRequest {
   prompt: string; // style/genre description
@@ -44,13 +44,15 @@ function aceStepConfigured(): boolean {
 }
 
 export function getActiveMusicProvider(hint?: MusicProvider | null): MusicProvider {
-  const key = getEnv("REPLICATE_API_TOKEN");
-  if (!key) return "simulation";
-  if (hint === "acestep" && aceStepConfigured()) return "acestep";
-  if (hint === "musicgen") return "musicgen";
-  // Default: free/cheap instrumental (MusicGen). ACE-Step (vocals) only when
-  // explicitly configured with a model/version.
-  return "musicgen";
+  const hasPixazo = !!getEnv("PIXAZO_API_KEY");
+  const hasReplicate = !!getEnv("REPLICATE_API_TOKEN");
+  // Explicit Replicate hints win when Replicate is configured.
+  if (hasReplicate && hint === "acestep" && aceStepConfigured()) return "acestep";
+  if (hasReplicate && hint === "musicgen") return "musicgen";
+  // Prefer Pixazo — one key shared with the video provider, no Replicate needed.
+  if (hasPixazo) return "pixazo";
+  if (hasReplicate) return "musicgen"; // free/cheap instrumental
+  return "simulation";
 }
 
 function delay(ms: number) {
@@ -149,6 +151,45 @@ async function simulateSong(durationSeconds: number): Promise<SongResult> {
   }
 }
 
+// ── Pixazo (unified gateway) ─────────────────────────────────────────────────
+// Uses the same PIXAZO_API_KEY as the video provider. Submits to a music model
+// endpoint, polls the universal status endpoint, returns the audio URL. Defaults
+// to MiniMax Music with is_instrumental=true; override the model/operation via
+// PIXAZO_MUSIC_MODEL / PIXAZO_MUSIC_OP.
+async function generateWithPixazoMusic(req: SongRequest): Promise<string> {
+  const key = getEnv("PIXAZO_API_KEY")!;
+  const model = getEnv("PIXAZO_MUSIC_MODEL") || "minimax-music-generation-2-6";
+  const op = getEnv("PIXAZO_MUSIC_OP") || "generate";
+  const wantsVocals = !!(req.lyrics && req.lyrics.trim() && req.lyrics.trim() !== "[inst]");
+
+  const submit = await fetch(`https://gateway.pixazo.ai/${model}/v1/${op}`, {
+    method: "POST",
+    headers: { "Ocp-Apim-Subscription-Key": key, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      prompt: req.prompt,
+      is_instrumental: !wantsVocals,
+      ...(wantsVocals ? { lyrics: req.lyrics } : {}),
+    }),
+  });
+  if (!submit.ok) {
+    throw new Error(`Pixazo music error (${submit.status}): ${(await submit.text()).slice(0, 300)}`);
+  }
+  const data = (await submit.json()) as { request_id?: string; polling_url?: string };
+  const requestId = data.request_id;
+  if (!requestId) throw new Error("Pixazo music: no request_id returned");
+  const pollUrl = data.polling_url ?? `https://gateway.pixazo.ai/v2/requests/status/${requestId}`;
+
+  for (let i = 0; i < 120; i++) {
+    await delay(3000);
+    const poll = await fetch(pollUrl, { headers: { "Ocp-Apim-Subscription-Key": key } });
+    if (!poll.ok) continue;
+    const d = (await poll.json()) as { status?: string; error?: string | null; output?: { media_url?: string[] } };
+    if (d.status === "COMPLETED" && d.output?.media_url?.[0]) return d.output.media_url[0];
+    if (d.status === "FAILED" || d.status === "ERROR") throw new Error(`Pixazo music ${d.status}: ${d.error ?? "unknown error"}`);
+  }
+  throw new Error("Pixazo music generation timed out");
+}
+
 // ── Public entry ─────────────────────────────────────────────────────────────
 
 // Songs can run up to ~5.5 minutes (330s) so "Full" length lands around a
@@ -161,6 +202,13 @@ export async function generateSong(req: SongRequest): Promise<SongResult> {
 
   if (provider === "simulation") {
     return simulateSong(dur);
+  }
+
+  if (provider === "pixazo") {
+    const url = await generateWithPixazoMusic(req);
+    const { buffer, ext } = await downloadAudio(url);
+    const hasVocals = !!(req.lyrics && req.lyrics.trim() && req.lyrics.trim() !== "[inst]");
+    return { audioBuffer: buffer, ext, provider: "pixazo", hasVocals };
   }
 
   if (provider === "acestep") {

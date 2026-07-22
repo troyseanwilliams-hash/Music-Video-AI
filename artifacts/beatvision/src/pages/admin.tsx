@@ -542,7 +542,7 @@ function AdminMusicPanel() {
       <CardContent className="space-y-5">
         {isSim && (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-300 px-3 py-2 text-xs">
-            <b>Simulation mode</b> (placeholder audio). Set <code>REPLICATE_API_TOKEN</code> to generate real instrumentals with MusicGen.
+            <b>Simulation mode</b> (placeholder audio). Set <code>PIXAZO_API_KEY</code> (same key as your video provider — recommended) or <code>REPLICATE_API_TOKEN</code> to generate real instrumentals.
           </div>
         )}
 

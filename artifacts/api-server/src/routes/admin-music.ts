@@ -39,10 +39,12 @@ router.get("/admin/music/status", (req: Request, res: Response) => {
   res.json({
     activeProvider: getActiveMusicProvider(),
     hasReplicateKey: !!process.env.REPLICATE_API_TOKEN,
+    hasPixazoKey: !!process.env.PIXAZO_API_KEY,
     // ACE-Step (vocals) needs an explicit model/version; MusicGen (instrumental)
-    // is ready whenever the token is set (defaults to the meta/musicgen slug).
+    // is ready whenever the Replicate token is set; Pixazo generates with its key.
     aceStepReady: !!(process.env.MUSIC_ACESTEP_VERSION || process.env.MUSIC_ACESTEP_MODEL),
     musicGenReady: !!process.env.REPLICATE_API_TOKEN,
+    pixazoReady: !!process.env.PIXAZO_API_KEY,
     lyricsProvider: lyricsProviderAvailable(),
   });
 });

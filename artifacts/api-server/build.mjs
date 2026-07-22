@@ -30,14 +30,6 @@ async function buildAll() {
     external: [
       "*.node",
       "stripe-replit-sync",
-      // Heavy SDKs externalized to keep the bundle small and builds fast.
-      // They MUST stay in "dependencies" (not devDependencies) so they
-      // resolve from node_modules at runtime in the VM deployment.
-      "twilio",
-      "stripe",
-      "resend",
-      "google-auth-library",
-      "openid-client",
       "sharp",
       "better-sqlite3",
       "sqlite3",
