@@ -6,13 +6,20 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomUUID } from "crypto";
 import { z } from "zod";
+import { db, creditsTable, usersTable } from "@workspace/db";
+import { eq, sql } from "drizzle-orm";
 import { generateSong, getActiveMusicProvider, MAX_SONG_SECONDS, type MusicProvider } from "../lib/musicApis.js";
 import { generateLyrics, lyricsProviderAvailable } from "../lib/lyricsGen.js";
+import { calculateSongCost } from "../lib/creditCost.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { logger } from "../lib/logger.js";
 
 const router: IRouter = Router();
 const storageService = new ObjectStorageService();
+
+// Flip to "true" (env) to expose the audio generator to all active subscribers,
+// metered on credits. While false it stays admin-only (admins never charged).
+const SONG_GENERATOR_PUBLIC = process.env.SONG_GENERATOR_PUBLIC === "true";
 
 function isAdmin(email: string | null | undefined): boolean {
   return !!(
@@ -73,14 +80,45 @@ const GenerateBody = z.object({
 });
 
 router.post("/admin/music/generate", async (req: Request, res: Response) => {
-  if (!req.isAuthenticated() || !isAdmin(req.user.email)) {
-    res.status(403).json({ error: "Forbidden" });
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const admin = isAdmin(req.user.email);
+  // Admins can always generate; regular users only when the feature is public.
+  if (!admin && !SONG_GENERATOR_PUBLIC) {
+    res.status(403).json({ error: "The audio generator isn't available yet." });
     return;
   }
   const parsed = GenerateBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
     return;
+  }
+
+  const cost = calculateSongCost(parsed.data.durationSeconds);
+
+  // Metered for non-admins (admins are unlimited): require active subscription
+  // and sufficient credits; deducted on success only.
+  if (!admin) {
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.user.id)).limit(1);
+    if ((user?.subscriptionStatus ?? "none") !== "active") {
+      res.status(403).json({ error: "A subscription is required to generate audio.", code: "SUBSCRIPTION_REQUIRED" });
+      return;
+    }
+    let [credits] = await db.select().from(creditsTable).where(eq(creditsTable.userId, req.user.id)).limit(1);
+    if (!credits) {
+      [credits] = await db.insert(creditsTable).values({ id: randomUUID(), userId: req.user.id }).returning();
+    }
+    if ((credits?.creditsRemaining ?? 0) < cost) {
+      res.status(402).json({
+        error: `This track costs ${cost} credits but you have ${credits?.creditsRemaining ?? 0}.`,
+        code: "INSUFFICIENT_CREDITS",
+        creditsRequired: cost,
+        creditsRemaining: credits?.creditsRemaining ?? 0,
+      });
+      return;
+    }
   }
 
   try {
@@ -95,7 +133,20 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
     const objectPath = await storageService.uploadAudioBuffer(song.audioBuffer, songId, song.ext);
     const url = await storageService.getObjectEntitySignedUrl(objectPath, 3600);
 
-    logger.info({ songId, provider: song.provider }, "Admin generated a song");
+    // Deduct on success (non-admins only). Subscription bucket drawn first.
+    if (!admin) {
+      await db
+        .update(creditsTable)
+        .set({
+          subscriptionCredits: sql`GREATEST(subscription_credits - ${cost}, 0)`,
+          topupCredits: sql`GREATEST(topup_credits - GREATEST(${cost} - subscription_credits, 0), 0)`,
+          creditsRemaining: sql`GREATEST(credits_remaining - ${cost}, 0)`,
+          creditsUsed: sql`credits_used + ${cost}`,
+        })
+        .where(eq(creditsTable.userId, req.user.id));
+    }
+
+    logger.info({ songId, provider: song.provider, cost, admin }, "Song generated");
     res.json({
       songId,
       objectPath, // feed this straight into the video generator as the audio source
@@ -103,6 +154,7 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
       provider: song.provider,
       hasVocals: song.hasVocals,
       ext: song.ext,
+      creditsCharged: admin ? 0 : cost,
     });
   } catch (err) {
     logger.error({ err }, "Admin song generation failed");

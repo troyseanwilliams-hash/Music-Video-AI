@@ -570,6 +570,9 @@ function AdminMusicPanel() {
           <select value={lengthKey} onChange={(e) => setLengthKey(e.target.value)} className="rounded-md border border-input bg-background px-3 py-1.5 text-sm" data-testid="admin-music-length">
             {LENGTH_OPTIONS.map((l) => <option key={l.key} value={l.key}>{l.label}</option>)}
           </select>
+          <span className="text-xs text-muted-foreground" title="What a subscriber is charged (admins generate free)">
+            ≈ {Math.max(5, Math.ceil((Math.min(Math.max(duration, 5), 330) * 0.002 * 2) / 0.015))} credits for users
+          </span>
           <Button onClick={() => gen.mutate()} disabled={gen.isPending || prompt.trim().length < 3} className="ml-auto bg-gradient-electric text-white shadow-glow">
             {gen.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating…</> : <><Sparkles className="mr-2 h-4 w-4" /> Generate song</>}
           </Button>
