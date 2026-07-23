@@ -292,7 +292,18 @@ export default function Dashboard() {
                 
                 <div className="divide-y divide-border/50">
                   {stats.recentJobs.map((job) => {
-                    const cost = estimateCreditCost((job as { requestedDuration?: string | null }).requestedDuration, (job as { durationSeconds?: number | null }).durationSeconds);
+                    const j = job as {
+                      jobType?: string | null;
+                      requestedDuration?: string | null;
+                      durationSeconds?: number | null;
+                      manifest?: { chargeCredits?: boolean; chargeAmount?: number } | null;
+                    };
+                    // Remix Lab (editor_render) is pure ffmpeg — show the ACTUAL
+                    // charge (0 when free on trial/subscription or within the monthly
+                    // free allotment, else the flat overage), never the AI estimate.
+                    const cost = j.jobType === "editor_render"
+                      ? (j.manifest?.chargeCredits ? (j.manifest?.chargeAmount ?? 0) : 0)
+                      : estimateCreditCost(j.requestedDuration, j.durationSeconds);
                     const videoId = (job as { videoId?: string | null }).videoId ?? null;
                     const isReady = job.status === 'ready';
                     const isFailed = job.status === 'failed';
