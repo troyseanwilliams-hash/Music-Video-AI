@@ -22,9 +22,9 @@ const TERMINAL_STATUSES = new Set(["ready", "failed"]);
 const STAGES = [
   {
     key: "pending_approval",
-    label: "Awaiting Approval",
+    label: "Preparing",
     icon: ShieldAlert,
-    description: "Waiting for admin approval before processing begins…",
+    description: "Getting your job ready to process…",
   },
   {
     key: "queued",
@@ -823,7 +823,7 @@ function StatusBadge({ status, autoRetrying }: { status: string; autoRetrying: b
   if (status === "pending_approval") {
     return (
       <span className="inline-flex items-center gap-2 rounded-full border border-yellow-500/30 bg-yellow-500/10 px-4 py-1.5 text-sm font-medium text-yellow-400">
-        <ShieldAlert className="h-4 w-4" /> Awaiting Approval
+        <ShieldAlert className="h-4 w-4" /> Preparing
       </span>
     );
   }
