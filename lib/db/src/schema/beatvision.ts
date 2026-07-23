@@ -137,6 +137,36 @@ export const videoLikesTable = pgTable(
 
 export type VideoLike = typeof videoLikesTable.$inferSelect;
 
+// AI-generated instrumental "Soundtracks". Persisted so each user has a library
+// they can replay, download, reuse in a video, delete, or share/make public.
+export const soundtracksTable = pgTable("soundtracks", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => usersTable.id, { onDelete: "cascade" }),
+  title: text("title"),
+  prompt: text("prompt"),
+  // Object-storage path to the audio file (feed straight into the video generator).
+  objectPath: text("object_path").notNull(),
+  ext: text("ext").notNull().default("mp3"),
+  durationSeconds: integer("duration_seconds"),
+  // Set when the clip was looped (via ffmpeg) to a longer length; null otherwise.
+  loopedToSeconds: integer("looped_to_seconds"),
+  provider: text("provider"),
+  // Public gallery / share-by-link, mirroring videosTable.
+  isPublic: boolean("is_public").notNull().default(false),
+  shareToken: text("share_token").unique(),
+  // Soft delete: hidden from the user's library but retained for the admin.
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const insertSoundtrackSchema = createInsertSchema(soundtracksTable);
+export type InsertSoundtrack = z.infer<typeof insertSoundtrackSchema>;
+export type Soundtrack = typeof soundtracksTable.$inferSelect;
+
 export const creditsTable = pgTable("credits", {
   id: text("id").primaryKey(),
   userId: text("user_id")

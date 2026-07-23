@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useGetDashboardStats, getGetDashboardStatsQueryKey } from "@workspace/api-client-react";
 import {
   Video, LayoutDashboard, Wand2, LogOut, Loader2, ShieldCheck,
-  MessageSquare, Menu, X, Film, CreditCard, Compass,
+  MessageSquare, Menu, X, Film, CreditCard, Compass, Music2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -35,6 +35,7 @@ export function Navbar() {
       { href: "/generate", label: "Generate", icon: Wand2 },
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "/gallery", label: "Gallery", icon: Film },
+      { href: "/soundtracks", label: "Soundtracks", icon: Music2 },
     ] : []),
     { href: "/explore", label: "Explore", icon: Compass },
     { href: "/pricing", label: "Pricing", icon: CreditCard },
@@ -80,6 +81,12 @@ export function Navbar() {
                     className={`text-sm font-medium transition-colors hover:text-primary ${location === '/gallery' ? 'text-foreground' : 'text-muted-foreground'}`}
                   >
                     Gallery
+                  </Link>
+                  <Link
+                    href="/soundtracks"
+                    className={`text-sm font-medium transition-colors hover:text-primary ${location === '/soundtracks' ? 'text-foreground' : 'text-muted-foreground'}`}
+                  >
+                    Soundtracks
                   </Link>
                 </>
               )}

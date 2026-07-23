@@ -13,6 +13,8 @@ import Generate from "@/pages/generate";
 import Editor from "@/pages/editor";
 import Dashboard from "@/pages/dashboard";
 import Gallery from "@/pages/gallery";
+import Soundtracks from "@/pages/soundtracks";
+import SharedSoundtrack from "@/pages/shared-soundtrack";
 import Explore from "@/pages/explore";
 import JobStatus from "@/pages/job-status";
 import Pricing from "@/pages/pricing";
@@ -42,6 +44,8 @@ function Router() {
           <Route path="/editor" component={Editor} />
           <Route path="/dashboard" component={Dashboard} />
           <Route path="/gallery" component={Gallery} />
+          <Route path="/soundtracks" component={Soundtracks} />
+          <Route path="/s/:token" component={SharedSoundtrack} />
           <Route path="/explore" component={Explore} />
           <Route path="/jobs/:id" component={JobStatus} />
           <Route path="/pricing" component={Pricing} />

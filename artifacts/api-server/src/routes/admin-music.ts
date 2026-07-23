@@ -6,8 +6,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomUUID } from "crypto";
 import { z } from "zod";
-import { db, creditsTable, usersTable } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { db, creditsTable, usersTable, soundtracksTable } from "@workspace/db";
+import { eq, sql, and, desc, isNull } from "drizzle-orm";
 import { generateSong, getActiveMusicProvider, loopAudioToLength, MAX_SONG_SECONDS, type MusicProvider } from "../lib/musicApis.js";
 import { generateLyrics, lyricsProviderAvailable } from "../lib/lyricsGen.js";
 import { calculateSongCost, freeSoundtracksFor, NEW_USER_FREE_SOUNDTRACKS } from "../lib/creditCost.js";
@@ -227,6 +227,20 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
       }
     }
 
+    // Persist to the user's Soundtracks library (play/download/reuse/share).
+    const title = parsed.data.prompt.trim().split(/\s+/).slice(0, 5).join(" ") || "AI Soundtrack";
+    await db.insert(soundtracksTable).values({
+      id: songId,
+      userId: req.user.id,
+      title,
+      prompt: parsed.data.prompt,
+      objectPath,
+      ext,
+      durationSeconds: parsed.data.durationSeconds,
+      loopedToSeconds,
+      provider: song.provider,
+    });
+
     logger.info({ songId, provider: song.provider, cost, admin, isFree, loopedToSeconds }, "Soundtrack generated");
     res.json({
       songId,
@@ -298,6 +312,104 @@ router.post("/music/request-vocals", (req: Request, res: Response) => {
   notifyFeatureRequest({ email: req.user.email, feature: "Vocals & lyrics for the song generator" });
   logger.info({ userId: req.user.id }, "Vocals feature requested");
   res.json({ success: true });
+});
+
+// ── Soundtracks library (per-user) ──────────────────────────────────────────
+
+// List the signed-in user's Soundtracks (newest first), each with a fresh
+// signed audio URL for inline playback/download.
+router.get("/music/soundtracks", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const rows = await db
+    .select()
+    .from(soundtracksTable)
+    .where(and(eq(soundtracksTable.userId, req.user.id), isNull(soundtracksTable.deletedAt)))
+    .orderBy(desc(soundtracksTable.createdAt))
+    .limit(200);
+
+  const items = await Promise.all(
+    rows.map(async (s) => ({
+      id: s.id,
+      title: s.title,
+      prompt: s.prompt,
+      objectPath: s.objectPath,
+      ext: s.ext,
+      durationSeconds: s.durationSeconds,
+      loopedToSeconds: s.loopedToSeconds,
+      provider: s.provider,
+      isPublic: s.isPublic,
+      shareToken: s.shareToken,
+      createdAt: s.createdAt,
+      url: await storageService.getObjectEntitySignedUrl(s.objectPath, 3600),
+    })),
+  );
+  res.json({ soundtracks: items });
+});
+
+// Soft-delete one of the user's Soundtracks.
+router.delete("/music/soundtracks/:id", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const [row] = await db
+    .select()
+    .from(soundtracksTable)
+    .where(and(eq(soundtracksTable.id, req.params.id), eq(soundtracksTable.userId, req.user.id)))
+    .limit(1);
+  if (!row) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  await db.update(soundtracksTable).set({ deletedAt: new Date() }).where(eq(soundtracksTable.id, row.id));
+  res.json({ success: true });
+});
+
+// Toggle a Soundtrack public (mints a share token on first publish) or private.
+router.post("/music/soundtracks/:id/public", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const makePublic = req.body?.isPublic !== false; // default to publishing
+  const [row] = await db
+    .select()
+    .from(soundtracksTable)
+    .where(and(eq(soundtracksTable.id, req.params.id), eq(soundtracksTable.userId, req.user.id)))
+    .limit(1);
+  if (!row) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  const shareToken = row.shareToken ?? randomUUID().replace(/-/g, "");
+  await db
+    .update(soundtracksTable)
+    .set({ isPublic: makePublic, shareToken })
+    .where(eq(soundtracksTable.id, row.id));
+  res.json({ isPublic: makePublic, shareToken, sharePath: `/s/${shareToken}` });
+});
+
+// Public resolve by share token (no auth) — powers share links / public gallery.
+router.get("/music/shared/:token", async (req: Request, res: Response) => {
+  const [row] = await db
+    .select()
+    .from(soundtracksTable)
+    .where(and(eq(soundtracksTable.shareToken, req.params.token), eq(soundtracksTable.isPublic, true), isNull(soundtracksTable.deletedAt)))
+    .limit(1);
+  if (!row) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  res.json({
+    title: row.title,
+    prompt: row.prompt,
+    provider: row.provider,
+    createdAt: row.createdAt,
+    url: await storageService.getObjectEntitySignedUrl(row.objectPath, 3600),
+  });
 });
 
 export default router;
