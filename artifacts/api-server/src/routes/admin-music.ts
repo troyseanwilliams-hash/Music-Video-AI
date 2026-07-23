@@ -228,20 +228,28 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
     }
 
     // Persist to the user's Soundtracks library (play/download/reuse/share).
+    // Non-fatal: if this fails (e.g. the table isn't migrated yet), the user
+    // still gets their generated track back rather than losing the generation.
     const title = parsed.data.prompt.trim().split(/\s+/).slice(0, 5).join(" ") || "AI Soundtrack";
-    await db.insert(soundtracksTable).values({
-      id: songId,
-      userId: req.user.id,
-      title,
-      prompt: parsed.data.prompt,
-      objectPath,
-      ext,
-      durationSeconds: parsed.data.durationSeconds,
-      loopedToSeconds,
-      provider: song.provider,
-    });
+    let savedToLibrary = true;
+    try {
+      await db.insert(soundtracksTable).values({
+        id: songId,
+        userId: req.user.id,
+        title,
+        prompt: parsed.data.prompt,
+        objectPath,
+        ext,
+        durationSeconds: parsed.data.durationSeconds,
+        loopedToSeconds,
+        provider: song.provider,
+      });
+    } catch (persistErr) {
+      savedToLibrary = false;
+      logger.error({ err: persistErr, songId }, "Soundtrack generated but failed to save to library (is the soundtracks table migrated?)");
+    }
 
-    logger.info({ songId, provider: song.provider, cost, admin, isFree, loopedToSeconds }, "Soundtrack generated");
+    logger.info({ songId, provider: song.provider, cost, admin, isFree, loopedToSeconds, savedToLibrary }, "Soundtrack generated");
     res.json({
       songId,
       objectPath, // feed this straight into the video generator as the audio source
@@ -253,6 +261,7 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
       creditsCharged: isFree ? 0 : cost,
       wasFree: isFree, // true when covered by the monthly free allowance
       freeRemaining, // free tracks left this month (null for admins)
+      savedToLibrary, // false if the library insert failed (track still returned)
     });
   } catch (err) {
     logger.error({ err }, "Admin song generation failed");
