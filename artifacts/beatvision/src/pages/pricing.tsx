@@ -332,6 +332,8 @@ export default function Pricing() {
             plan.prices[0];
           if (!price) return null;
           const Icon = TIER_ICONS[plan.name.toLowerCase()] ?? Sparkles;
+          const soundtracksPerMonth =
+            ({ starter: 25, pro: 100, studio: 300 } as Record<string, number>)[plan.name.toLowerCase()] ?? 25;
           const isCurrent =
             subscription?.priceLookupKey &&
             price.lookupKey === subscription.priceLookupKey;
@@ -393,6 +395,15 @@ export default function Pricing() {
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                     <span>Beat-synced AI music videos</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                    <span>
+                      <strong>{soundtracksPerMonth} free AI Soundtracks</strong>/month{" "}
+                      <span className="ml-1 rounded-full bg-primary/20 text-primary text-[10px] font-semibold px-1.5 py-0.5 align-middle">Beta</span>
+                      {" "}— royalty-free instrumentals for your videos{" "}
+                      <span className="text-muted-foreground">(3 free to try on signup; extra tracks from 5 credits)</span>
+                    </span>
                   </li>
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />

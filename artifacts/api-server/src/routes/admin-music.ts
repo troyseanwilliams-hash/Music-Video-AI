@@ -34,9 +34,9 @@ async function getUserTier(user: { stripeSubscriptionId?: string | null }): Prom
 const router: IRouter = Router();
 const storageService = new ObjectStorageService();
 
-// Flip to "true" (env) to expose the audio generator to all active subscribers,
-// metered on credits. While false it stays admin-only (admins never charged).
-const SONG_GENERATOR_PUBLIC = process.env.SONG_GENERATOR_PUBLIC === "true";
+// Soundtracks is live for active subscribers (metered per the freemium model).
+// Set SONG_GENERATOR_PUBLIC="false" as a kill switch to make it admin-only again.
+const SONG_GENERATOR_PUBLIC = process.env.SONG_GENERATOR_PUBLIC !== "false";
 
 function isAdmin(email: string | null | undefined): boolean {
   return !!(
@@ -292,6 +292,7 @@ router.get("/music/soundtracks-status", async (req: Request, res: Response) => {
 
   res.json({
     admin, // admins generate unlimited/free
+    enabled: SONG_GENERATOR_PUBLIC || admin, // whether this user can generate now
     tier,
     isSignupBonus: !active, // freeAllowance is the one-time new-user bonus
     freeAllowance,
