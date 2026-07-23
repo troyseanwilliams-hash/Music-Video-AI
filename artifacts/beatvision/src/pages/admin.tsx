@@ -575,7 +575,7 @@ function AdminMusicPanel() {
                 <div className="text-[11px] text-muted-foreground">
                   {useFreeModel
                     ? `Free tier · ${status?.freeMusicModel || "not configured"}`
-                    : `Paid model · ${status?.paidMusicModel || "meta-musicgen"} (charges your Pixazo wallet)`}
+                    : `Paid model · ${status?.paidMusicModel || "stable-audio-3-small"} (charges your Pixazo wallet)`}
                 </div>
               </div>
               <button

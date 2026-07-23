@@ -64,7 +64,7 @@ router.get("/admin/music/status", (req: Request, res: Response) => {
     lyricsProvider: lyricsProviderAvailable(),
     // Which Pixazo models are wired. When freeMusicModel is unset, the free
     // tier has no $0 model to call and falls back to the paid one (which charges).
-    paidMusicModel: process.env.PIXAZO_MUSIC_MODEL || "meta-musicgen",
+    paidMusicModel: process.env.PIXAZO_MUSIC_MODEL || "stable-audio-3-small-music-text-to-audio",
     freeMusicModel: process.env.PIXAZO_FREE_MUSIC_MODEL || null,
     hasFreeMusicModel: !!process.env.PIXAZO_FREE_MUSIC_MODEL,
   });

@@ -159,11 +159,13 @@ async function simulateSong(durationSeconds: number): Promise<SongResult> {
 // PIXAZO_MUSIC_MODEL / PIXAZO_MUSIC_OP.
 async function generateWithPixazoMusic(req: SongRequest): Promise<string> {
   const key = getEnv("PIXAZO_API_KEY")!;
-  // Free-tier tracks use the $0 Pixazo model (PIXAZO_FREE_MUSIC_MODEL) when set;
-  // otherwise default to a cheap per-second instrumental model (MusicGen) rather
-  // than the flat-priced full-song MiniMax. Override slug/op via env.
+  // Default to Stable Audio 3 Small — a cheap, per-second text-to-audio model —
+  // NOT the flat-priced ($0.15/gen) MiniMax. The op is "<model>-request", so the
+  // full call is /stable-audio-3-small-music-text-to-audio/v1/<model>-request.
+  // Free-tier tracks use PIXAZO_FREE_MUSIC_MODEL when set; override slug/op via env.
+  const DEFAULT_MUSIC_MODEL = "stable-audio-3-small-music-text-to-audio";
   const freeModel = getEnv("PIXAZO_FREE_MUSIC_MODEL");
-  const model = req.useFreeModel && freeModel ? freeModel : getEnv("PIXAZO_MUSIC_MODEL") || "meta-musicgen";
+  const model = req.useFreeModel && freeModel ? freeModel : getEnv("PIXAZO_MUSIC_MODEL") || DEFAULT_MUSIC_MODEL;
   const op = getEnv("PIXAZO_MUSIC_OP") || `${model}-request`;
   const duration = Math.min(Math.max(req.durationSeconds || 10, 3), MAX_SONG_SECONDS);
   const wantsVocals = !!(req.lyrics && req.lyrics.trim() && req.lyrics.trim() !== "[inst]");
