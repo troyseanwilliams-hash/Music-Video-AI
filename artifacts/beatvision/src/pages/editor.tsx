@@ -278,10 +278,12 @@ export default function Editor() {
   const totalDuration = segments.reduce((s, x) => s + (x.durationSec || 0), 0);
   const uploadsPending = segments.some((s) => s.uploading) || music?.uploading;
 
-  // Mirror of the server's size-based editor pricing (editorCost.ts): once the
-  // trial ends and there's no subscription, each export deducts credits scaled
-  // by the finished video's length ((BASE 20 + seconds, capped at 120) × 2 → max 280).
-  const estimatedCost = (20 + Math.ceil(Math.min(Math.max(totalDuration, 0), 120))) * 2;
+  // Remix Lab is pure ffmpeg (no AI cost), so the real charge is the flat
+  // freemium overage (studio.ts): free on trial/subscription and within the
+  // monthly free allotment, otherwise a small flat fee per export — never
+  // size-scaled. Mirror the server's quota.overageCost so the shown estimate
+  // matches what's actually charged.
+  const estimatedCost = quota?.overageCost ?? 15;
 
   function patchSegment(id: string, patch: Partial<Segment>) {
     setSegments((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
