@@ -292,7 +292,7 @@ export default function Dashboard() {
                 {activeJobs.map((j) => {
                   const pct = typeof j.progressPercent === "number" ? j.progressPercent : null;
                   const label =
-                    j.status === "pending_approval" ? "Waiting for approval"
+                    j.status === "pending_approval" ? "Preparing"
                     : j.status === "queued" ? "Queued"
                     : j.status === "analyzing" ? "Analyzing audio"
                     : j.status === "generating" ? "Generating clips"
