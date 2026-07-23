@@ -555,7 +555,7 @@ function AdminMusicPanel() {
           </div>
         </div>
         <CardDescription className="mt-2">
-          Generate a royalty-free soundtrack, then drop it straight into a Remix or AI video. Subscribers get a batch of free Soundtracks every month (Starter 5 · Pro 20 · Studio 50); extra tracks cost credits.
+          Generate a royalty-free soundtrack, then drop it straight into a Remix or AI video. Subscribers get a batch of free Soundtracks every month (Starter 25 · Pro 100 · Studio 300); extra tracks cost credits.
         </CardDescription>
       </CardHeader>
 

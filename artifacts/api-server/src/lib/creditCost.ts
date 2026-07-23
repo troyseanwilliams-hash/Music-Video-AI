@@ -93,10 +93,13 @@ export function calculateCreditCost(
 
 // Free monthly "Soundtracks" (instrumental) allowance by subscription tier —
 // a bonus that upsells higher plans. Beyond it, tracks cost credits.
+// Provider cost is fixed at ~$0.0217/track, so a generous allowance stays cheap:
+// Starter 25 ≈ $0.54/mo, Pro 100 ≈ $2.17/mo, Studio 300 ≈ $6.51/mo — small
+// fractions of each plan. Competitive with the music-gen market as a bonus.
 export const FREE_SOUNDTRACKS_BY_TIER: Record<string, number> = {
-  starter: 5,
-  pro: 20,
-  studio: 50,
+  starter: 25,
+  pro: 100,
+  studio: 300,
 };
 export function freeSoundtracksFor(tier?: string | null): number {
   if (!tier) return 0;
