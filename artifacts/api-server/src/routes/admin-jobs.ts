@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { jobsTable, usersTable } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, inArray } from "drizzle-orm";
 
 function isAdmin(email: string | null | undefined): boolean {
   return !!(
@@ -12,6 +12,38 @@ function isAdmin(email: string | null | undefined): boolean {
 }
 
 const router = Router();
+
+// Jobs currently in-flight (queued / analyzing / generating / stitching).
+// Used by the admin to spot stuck jobs and force-fail them.
+router.get("/admin/jobs/active", async (req, res) => {
+  if (!req.isAuthenticated() || !isAdmin(req.user.email)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const jobs = await db
+    .select({
+      id: jobsTable.id,
+      userId: jobsTable.userId,
+      email: usersTable.email,
+      status: jobsTable.status,
+      jobType: jobsTable.jobType,
+      prompt: jobsTable.prompt,
+      style: jobsTable.style,
+      errorMessage: jobsTable.errorMessage,
+      retryCount: jobsTable.retryCount,
+      claimedAt: jobsTable.claimedAt,
+      createdAt: jobsTable.createdAt,
+      updatedAt: jobsTable.updatedAt,
+    })
+    .from(jobsTable)
+    .leftJoin(usersTable, eq(jobsTable.userId, usersTable.id))
+    .where(inArray(jobsTable.status, ["queued", "analyzing", "generating", "stitching"]))
+    .orderBy(desc(jobsTable.updatedAt))
+    .limit(50);
+
+  res.json({ jobs });
+});
 
 router.get("/admin/jobs/pending", async (req, res) => {
   if (!req.isAuthenticated() || !isAdmin(req.user.email)) {
@@ -139,6 +171,46 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
     .returning();
 
   req.log.info({ jobId: id }, "Admin retried failed job — moving to queued");
+  res.json(updated);
+});
+
+// Force-fail any in-progress job (stitching / generating / etc.) without
+// waiting for the auto-recovery timeout. Admin only.
+router.post("/admin/jobs/:id/force-fail", async (req, res) => {
+  if (!req.isAuthenticated() || !isAdmin(req.user.email)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const { id } = req.params;
+  const [job] = await db
+    .select()
+    .from(jobsTable)
+    .where(eq(jobsTable.id, id))
+    .limit(1);
+
+  if (!job) {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
+
+  if (job.status === "ready" || job.status === "failed") {
+    res.status(400).json({ error: `Job is already ${job.status}` });
+    return;
+  }
+
+  const [updated] = await db
+    .update(jobsTable)
+    .set({
+      status: "failed",
+      errorMessage: "Manually force-failed by admin",
+      claimedAt: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(jobsTable.id, id))
+    .returning();
+
+  req.log.info({ jobId: id, previousStatus: job.status }, "Admin force-failed job");
   res.json(updated);
 });
 

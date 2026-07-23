@@ -365,10 +365,11 @@ router.delete("/music/soundtracks/:id", async (req: Request, res: Response) => {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
+  const id = String(req.params.id);
   const [row] = await db
     .select()
     .from(soundtracksTable)
-    .where(and(eq(soundtracksTable.id, req.params.id), eq(soundtracksTable.userId, req.user.id)))
+    .where(and(eq(soundtracksTable.id, id), eq(soundtracksTable.userId, req.user.id)))
     .limit(1);
   if (!row) {
     res.status(404).json({ error: "Not found" });
@@ -384,6 +385,7 @@ router.post("/music/soundtracks/:id/rename", async (req: Request, res: Response)
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
+  const id = String(req.params.id);
   const title = String(req.body?.title ?? "").trim().slice(0, 120);
   if (!title) {
     res.status(400).json({ error: "Title is required" });
@@ -392,7 +394,7 @@ router.post("/music/soundtracks/:id/rename", async (req: Request, res: Response)
   const [row] = await db
     .select()
     .from(soundtracksTable)
-    .where(and(eq(soundtracksTable.id, req.params.id), eq(soundtracksTable.userId, req.user.id)))
+    .where(and(eq(soundtracksTable.id, id), eq(soundtracksTable.userId, req.user.id)))
     .limit(1);
   if (!row) {
     res.status(404).json({ error: "Not found" });
@@ -440,11 +442,12 @@ router.post("/music/soundtracks/:id/public", async (req: Request, res: Response)
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
+  const id = String(req.params.id);
   const makePublic = req.body?.isPublic !== false; // default to publishing
   const [row] = await db
     .select()
     .from(soundtracksTable)
-    .where(and(eq(soundtracksTable.id, req.params.id), eq(soundtracksTable.userId, req.user.id)))
+    .where(and(eq(soundtracksTable.id, id), eq(soundtracksTable.userId, req.user.id)))
     .limit(1);
   if (!row) {
     res.status(404).json({ error: "Not found" });
@@ -460,10 +463,11 @@ router.post("/music/soundtracks/:id/public", async (req: Request, res: Response)
 
 // Public resolve by share token (no auth) — powers share links / public gallery.
 router.get("/music/shared/:token", async (req: Request, res: Response) => {
+  const token = String(req.params.token);
   const [row] = await db
     .select()
     .from(soundtracksTable)
-    .where(and(eq(soundtracksTable.shareToken, req.params.token), eq(soundtracksTable.isPublic, true), isNull(soundtracksTable.deletedAt)))
+    .where(and(eq(soundtracksTable.shareToken, token), eq(soundtracksTable.isPublic, true), isNull(soundtracksTable.deletedAt)))
     .limit(1);
   if (!row) {
     res.status(404).json({ error: "Not found" });
