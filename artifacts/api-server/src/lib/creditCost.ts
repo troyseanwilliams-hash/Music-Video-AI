@@ -101,6 +101,9 @@ export const FREE_SOUNDTRACKS_BY_TIER: Record<string, number> = {
   pro: 100,
   studio: 300,
 };
+// One-time signup bonus: brand-new (non-subscriber) users get this many free
+// Soundtracks to try the feature before subscribing. Lifetime, not monthly.
+export const NEW_USER_FREE_SOUNDTRACKS = 3;
 export function freeSoundtracksFor(tier?: string | null): number {
   if (!tier) return 0;
   const t = tier.toLowerCase();

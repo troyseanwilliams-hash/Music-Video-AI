@@ -17,7 +17,6 @@ export interface SongRequest {
   lyrics?: string; // used by vocal models (acestep); ignored by musicgen
   durationSeconds: number; // target length
   provider?: MusicProvider; // explicit override
-  useFreeModel?: boolean; // route free-tier tracks to the $0 Pixazo model
 }
 
 export interface SongResult {
@@ -159,13 +158,12 @@ async function simulateSong(durationSeconds: number): Promise<SongResult> {
 // PIXAZO_MUSIC_MODEL / PIXAZO_MUSIC_OP.
 async function generateWithPixazoMusic(req: SongRequest): Promise<string> {
   const key = getEnv("PIXAZO_API_KEY")!;
-  // Default to Stable Audio 3 Small — a cheap, per-second text-to-audio model —
-  // NOT the flat-priced ($0.15/gen) MiniMax. The op is "<model>-request", so the
-  // full call is /stable-audio-3-small-music-text-to-audio/v1/<model>-request.
-  // Free-tier tracks use PIXAZO_FREE_MUSIC_MODEL when set; override slug/op via env.
+  // Single model for every Soundtrack: Stable Audio 3 Small — a cheap
+  // (~$0.0217/file) text-to-audio model, NOT the flat-priced ($0.15/gen)
+  // MiniMax. The op is "<model>-request", so the full call is
+  // /stable-audio-3-small-music-text-to-audio/v1/<model>-request. Override via env.
   const DEFAULT_MUSIC_MODEL = "stable-audio-3-small-music-text-to-audio";
-  const freeModel = getEnv("PIXAZO_FREE_MUSIC_MODEL");
-  const model = req.useFreeModel && freeModel ? freeModel : getEnv("PIXAZO_MUSIC_MODEL") || DEFAULT_MUSIC_MODEL;
+  const model = getEnv("PIXAZO_MUSIC_MODEL") || DEFAULT_MUSIC_MODEL;
   const op = getEnv("PIXAZO_MUSIC_OP") || `${model}-request`;
   const duration = Math.min(Math.max(req.durationSeconds || 10, 3), MAX_SONG_SECONDS);
   const wantsVocals = !!(req.lyrics && req.lyrics.trim() && req.lyrics.trim() !== "[inst]");

@@ -486,13 +486,12 @@ function AdminMusicPanel() {
   const [prompt, setPrompt] = useState("");
   const [lengthKey, setLengthKey] = useState("loop10");
   const [loopKey, setLoopKey] = useState("off");
-  const [useFreeModel, setUseFreeModel] = useState(true);
   const [result, setResult] = useState<{ url: string; provider: string; hasVocals: boolean; objectPath: string; loopedToSeconds?: number | null } | null>(null);
 
   const duration = LENGTH_OPTIONS.find((l) => l.key === lengthKey)?.seconds ?? 10;
   const loopToSeconds = LOOP_OPTIONS.find((l) => l.key === loopKey)?.seconds ?? 0;
 
-  const { data: status } = useQuery<{ activeProvider: string; hasReplicateKey: boolean; aceStepReady: boolean; musicGenReady: boolean; lyricsProvider: string; paidMusicModel?: string; freeMusicModel?: string | null; hasFreeMusicModel?: boolean }>({
+  const { data: status } = useQuery<{ activeProvider: string; hasReplicateKey: boolean; aceStepReady: boolean; musicGenReady: boolean; lyricsProvider: string; musicModel?: string }>({
     queryKey: ["admin", "music", "status"],
     queryFn: async () => {
       const res = await fetch("/api/admin/music/status", { credentials: "include" });
@@ -511,7 +510,6 @@ function AdminMusicPanel() {
         body: JSON.stringify({
           prompt,
           durationSeconds: duration,
-          useFreeModel,
           ...(loopToSeconds > duration ? { loopToSeconds } : {}),
         }),
       });
@@ -563,35 +561,6 @@ function AdminMusicPanel() {
         {isSim && (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-300 px-3 py-2 text-xs">
             <b>Simulation mode</b> (placeholder audio). Set <code>PIXAZO_API_KEY</code> (same key as your video provider — recommended) or <code>REPLICATE_API_TOKEN</code> to generate real instrumentals.
-          </div>
-        )}
-
-        {/* Model routing (admin test control). Free model = $0 tier; paid = credits. */}
-        {!isSim && (
-          <div className="rounded-lg border border-border bg-background/40 px-3 py-2.5 space-y-2">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-sm font-medium">Use free model</div>
-                <div className="text-[11px] text-muted-foreground">
-                  {useFreeModel
-                    ? `Free tier · ${status?.freeMusicModel || "not configured"}`
-                    : `Paid model · ${status?.paidMusicModel || "stable-audio-3-small"} (charges your Pixazo wallet)`}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setUseFreeModel((v) => !v)}
-                className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${useFreeModel ? "bg-primary" : "bg-muted"}`}
-                aria-pressed={useFreeModel}
-              >
-                <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${useFreeModel ? "left-[22px]" : "left-0.5"}`} />
-              </button>
-            </div>
-            {useFreeModel && status && !status.hasFreeMusicModel && (
-              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 text-amber-300 px-2.5 py-1.5 text-[11px] leading-snug">
-                No free model set — set <code>PIXAZO_FREE_MUSIC_MODEL</code> to your $0 Pixazo model slug. Until then this falls back to the <b>paid</b> model and will charge your wallet.
-              </div>
-            )}
           </div>
         )}
 
