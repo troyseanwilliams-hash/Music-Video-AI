@@ -821,6 +821,70 @@ export default function Editor() {
               <Slider min={0.2} max={2} step={0.1} value={[transitionDuration]} onValueChange={(v) => setTransitionDuration(v[0]!)} />
             </div>
           )}
+
+          <div className="mt-6">
+            <div className="mb-2 text-sm font-medium">Video name</div>
+            <input
+              type="text"
+              value={videoName}
+              onChange={(e) => setVideoName(e.target.value)}
+              placeholder="Name your video (optional)"
+              maxLength={120}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
+              data-testid="editor-video-name"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">Shown in your library and gallery. Leave blank for a dated default.</p>
+          </div>
+
+          <div className="mt-4">
+            <div className="mb-2 text-sm font-medium">Resolution</div>
+            <Select value={resolution} onValueChange={(v) => setResolution(v as "720p" | "1080p")}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="720p">720p</SelectItem>
+                <SelectItem value="1080p">1080p</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="mt-4">
+            <div className="mb-2 text-sm font-medium">Orientation</div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setOrientation("landscape")}
+                className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors ${
+                  orientation === "landscape"
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border bg-secondary/30 text-muted-foreground hover:text-foreground"
+                }`}
+                data-testid="orientation-landscape"
+              >
+                <span className="inline-block w-5 h-3 rounded-[3px] border-2 border-current" />
+                16:9 · Wide
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrientation("portrait")}
+                className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors ${
+                  orientation === "portrait"
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border bg-secondary/30 text-muted-foreground hover:text-foreground"
+                }`}
+                data-testid="orientation-portrait"
+              >
+                <span className="inline-block w-3 h-5 rounded-[3px] border-2 border-current" />
+                9:16 · Mobile
+              </button>
+            </div>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {orientation === "portrait"
+                ? "Portrait — for TikTok, Reels & YouTube Shorts."
+                : "Widescreen — for YouTube & desktop."}
+            </p>
+          </div>
         </Card>
 
         <Card className="p-4">
@@ -896,70 +960,8 @@ export default function Editor() {
           ) : (
             <p className="text-muted-foreground text-sm">No track. Add one to score your video.</p>
           )}
-          <div className="mt-4">
-            <div className="mb-2 text-sm font-medium">Video name</div>
-            <input
-              type="text"
-              value={videoName}
-              onChange={(e) => setVideoName(e.target.value)}
-              placeholder="Name your video (optional)"
-              maxLength={120}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
-              data-testid="editor-video-name"
-            />
-            <p className="mt-1 text-xs text-muted-foreground">Shown in your library and gallery. Leave blank for a dated default.</p>
-          </div>
-          <div className="mt-4">
-            <div className="mb-2 text-sm font-medium">Resolution</div>
-            <Select value={resolution} onValueChange={(v) => setResolution(v as "720p" | "1080p")}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="720p">720p</SelectItem>
-                <SelectItem value="1080p">1080p</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
 
-          <div className="mt-4">
-            <div className="mb-2 text-sm font-medium">Orientation</div>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setOrientation("landscape")}
-                className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors ${
-                  orientation === "landscape"
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border bg-secondary/30 text-muted-foreground hover:text-foreground"
-                }`}
-                data-testid="orientation-landscape"
-              >
-                <span className="inline-block w-5 h-3 rounded-[3px] border-2 border-current" />
-                16:9 · Wide
-              </button>
-              <button
-                type="button"
-                onClick={() => setOrientation("portrait")}
-                className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors ${
-                  orientation === "portrait"
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border bg-secondary/30 text-muted-foreground hover:text-foreground"
-                }`}
-                data-testid="orientation-portrait"
-              >
-                <span className="inline-block w-3 h-5 rounded-[3px] border-2 border-current" />
-                9:16 · Mobile
-              </button>
-            </div>
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              {orientation === "portrait"
-                ? "Portrait — for TikTok, Reels & YouTube Shorts."
-                : "Widescreen — for YouTube & desktop."}
-            </p>
-          </div>
-
-          <div className="mt-4">
+          <div className="mt-6">
             <div className="mb-2 flex items-center gap-1.5 text-sm font-medium">
               <Mic2 className="h-3.5 w-3.5 text-primary" />
               Karaoke lyrics
