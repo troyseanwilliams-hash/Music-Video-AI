@@ -517,7 +517,7 @@ function AdminMusicPanel() {
       if (!res.ok) throw new Error(data.error || "Generation failed");
       return data as { url: string; provider: string; hasVocals: boolean; objectPath: string; loopedToSeconds?: number | null };
     },
-    onSuccess: (data) => { setResult(data); toast({ title: "Track generated", description: `Provider: ${data.provider}` }); },
+    onSuccess: (data) => { setResult(data); toast({ title: "Soundtrack generated", description: "Saved to your library." }); },
     onError: (err: Error) => toast({ title: "Failed", description: err.message, variant: "destructive" }),
   });
 
@@ -665,9 +665,11 @@ function AdminMusicPanel() {
           <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/[0.06] p-4 space-y-3">
             <div className="text-sm font-semibold flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-              Your instrumental is ready
+              Your soundtrack is ready
               {result.loopedToSeconds ? <Badge variant="outline" className="text-[10px]">Looped to {result.loopedToSeconds}s</Badge> : null}
-              <Badge variant="outline" className="text-[10px] ml-auto">{result.provider}</Badge>
+              <span className="text-[11px] font-normal text-muted-foreground ml-auto">
+                Saved to your <Link href="/soundtracks" className="text-primary hover:underline">library</Link>
+              </span>
             </div>
             <audio src={result.url} controls className="w-full" />
             {(() => {
