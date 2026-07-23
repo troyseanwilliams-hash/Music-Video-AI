@@ -101,7 +101,7 @@ export default function Soundtracks() {
     enabled: isAuthenticated,
   });
 
-  const { data: tracks, isLoading, error } = useQuery({
+  const { data: tracks, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ["soundtracks"],
     queryFn: async (): Promise<Soundtrack[]> => {
       const res = await fetch("/api/music/soundtracks", { credentials: "include" });
@@ -330,9 +330,27 @@ export default function Soundtracks() {
       {isLoading ? (
         <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
       ) : error ? (
-        <div className="py-12 text-center text-sm text-destructive">Failed to load your soundtracks.</div>
+        <div className="rounded-xl border border-border bg-card/30 py-14 px-6 text-center">
+          <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-secondary/60">
+            <Music2 className="h-5 w-5 text-muted-foreground" />
+          </div>
+          <p className="font-medium">Your library will show up here</p>
+          <p className="mt-1 text-sm text-muted-foreground">We couldn't reach it just now. Give it a moment and try again.</p>
+          <Button variant="outline" size="sm" className="mt-4" onClick={() => refetch()} disabled={isRefetching}>
+            {isRefetching ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : null}
+            Try again
+          </Button>
+        </div>
       ) : !tracks || tracks.length === 0 ? (
-        <div className="py-12 text-center text-sm text-muted-foreground">No soundtracks yet — generate your first one above.</div>
+        <div className="rounded-xl border border-dashed border-border bg-card/20 py-14 px-6 text-center">
+          <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-primary/10">
+            <Music2 className="h-5 w-5 text-primary" />
+          </div>
+          <p className="font-medium">No soundtracks yet</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Generate your first one above — it'll appear here automatically, ready to play, download, or drop into a video.
+          </p>
+        </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {tracks.map((s) => (
