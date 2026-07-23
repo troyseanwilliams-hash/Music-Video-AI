@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Loader2, Music2, Download, Video, Trash2, Share2, Link2, Lock, Wand2, Sparkles,
+  Loader2, Music2, Download, Video, Trash2, Share2, Link2, Lock, Wand2, Sparkles, Pencil, Check, X, Scissors,
 } from "lucide-react";
 
 interface Soundtrack {
@@ -88,6 +88,8 @@ export default function Soundtracks() {
   const [lengthKey, setLengthKey] = useState("loop10");
   const [loopKey, setLoopKey] = useState("off");
   const [progress, setProgress] = useState(0);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
   const duration = LENGTH_OPTIONS.find((l) => l.key === lengthKey)?.seconds ?? 10;
   const loopToSeconds = LOOP_OPTIONS.find((l) => l.key === loopKey)?.seconds ?? 0;
 
@@ -182,9 +184,26 @@ export default function Soundtracks() {
     onError: () => toast({ title: "Couldn't update sharing", variant: "destructive" }),
   });
 
-  const reuse = (s: Soundtrack) => {
+  const rename = useMutation({
+    mutationFn: async ({ id, title }: { id: string; title: string }) => {
+      const res = await fetch(`/api/music/soundtracks/${id}/rename`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title }),
+      });
+      if (!res.ok) throw new Error("Rename failed");
+      return res.json();
+    },
+    onSuccess: () => { setEditingId(null); queryClient.invalidateQueries({ queryKey: ["soundtracks"] }); },
+    onError: () => toast({ title: "Couldn't rename", variant: "destructive" }),
+  });
+
+  const useInGenerate = (s: Soundtrack) => {
     const t = encodeURIComponent(s.title || "AI Soundtrack");
     navigate(`/generate?audioObjectPath=${encodeURIComponent(s.objectPath)}&title=${t}`);
+  };
+  const useInRemix = (s: Soundtrack) => {
+    const t = encodeURIComponent(s.title || "AI Soundtrack");
+    navigate(`/editor?audio=${encodeURIComponent(s.url)}&title=${t}`);
   };
   const copyLink = (s: Soundtrack) => {
     if (!s.shareToken) return;
@@ -358,8 +377,31 @@ export default function Soundtracks() {
               <div className="h-1 w-full bg-gradient-electric" />
               <CardContent className="p-4 space-y-3">
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <h3 className="font-semibold truncate">{s.title || "AI Soundtrack"}</h3>
+                  <div className="min-w-0 flex-1">
+                    {editingId === s.id ? (
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          value={editTitle}
+                          onChange={(e) => setEditTitle(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && editTitle.trim()) rename.mutate({ id: s.id, title: editTitle.trim() });
+                            if (e.key === "Escape") setEditingId(null);
+                          }}
+                          autoFocus
+                          maxLength={120}
+                          className="min-w-0 flex-1 rounded border border-border bg-background px-2 py-1 text-sm"
+                        />
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 shrink-0" disabled={!editTitle.trim()} onClick={() => rename.mutate({ id: s.id, title: editTitle.trim() })}><Check className="h-3.5 w-3.5" /></Button>
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 shrink-0" onClick={() => setEditingId(null)}><X className="h-3.5 w-3.5" /></Button>
+                      </div>
+                    ) : (
+                      <h3 className="font-semibold flex items-center gap-1.5">
+                        <span className="truncate">{s.title || "AI Soundtrack"}</span>
+                        <button onClick={() => { setEditingId(s.id); setEditTitle(s.title || ""); }} className="text-muted-foreground hover:text-primary shrink-0" title="Rename">
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                      </h3>
+                    )}
                     {s.prompt && <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{s.prompt}</p>}
                   </div>
                   {s.isPublic && <Badge variant="outline" className="text-[10px] shrink-0">Public</Badge>}
@@ -370,8 +412,11 @@ export default function Soundtracks() {
                 </div>
                 <audio controls preload="none" src={s.url} className="w-full h-9" />
                 <div className="flex flex-wrap items-center gap-2 pt-1">
-                  <Button size="sm" onClick={() => reuse(s)} className="bg-gradient-electric text-white border-0 h-8">
-                    <Video className="h-3.5 w-3.5 mr-1.5" /> Use in video
+                  <Button size="sm" onClick={() => useInRemix(s)} className="bg-gradient-electric text-white border-0 h-8">
+                    <Scissors className="h-3.5 w-3.5 mr-1.5" /> Remix
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => useInGenerate(s)} className="h-8">
+                    <Video className="h-3.5 w-3.5 mr-1.5" /> Generate
                   </Button>
                   <a href={s.url} download={`${(s.title || "soundtrack").replace(/[^\w-]+/g, "_")}.${s.ext}`}>
                     <Button size="sm" variant="outline" className="h-8"><Download className="h-3.5 w-3.5 mr-1.5" /> Download</Button>

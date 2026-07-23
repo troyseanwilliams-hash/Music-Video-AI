@@ -3,7 +3,16 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { useSEO } from "@/hooks/useSEO";
 import { Button } from "@/components/ui/button";
-import { Heart, Play, Loader2, Globe, EyeOff } from "lucide-react";
+import { Heart, Play, Loader2, Globe, EyeOff, Music2, Download } from "lucide-react";
+
+interface PublicSoundtrack {
+  id: string;
+  title: string | null;
+  prompt: string | null;
+  creatorName: string | null;
+  createdAt: string;
+  url: string;
+}
 
 interface GalleryVideo {
   id: string;
@@ -120,6 +129,7 @@ export default function Explore() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [soundtracks, setSoundtracks] = useState<PublicSoundtrack[]>([]);
   const isAdmin = !!user?.isAdmin;
 
   useSEO({
@@ -158,6 +168,10 @@ export default function Explore() {
 
   useEffect(() => {
     load(1);
+    fetch("/api/music/public")
+      .then((r) => (r.ok ? r.json() : { soundtracks: [] }))
+      .then((d) => setSoundtracks(d.soundtracks ?? []))
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -213,6 +227,32 @@ export default function Explore() {
           your favorites.
         </p>
       </header>
+
+      {soundtracks.length > 0 && (
+        <section className="mb-12">
+          <div className="mb-4 flex items-center gap-2">
+            <Music2 className="h-5 w-5 text-primary" />
+            <h2 className="text-xl font-semibold">Community soundtracks</h2>
+            <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">Beta</span>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {soundtracks.map((s) => (
+              <div key={s.id} className="rounded-xl border border-card-border bg-card p-4 shadow-lg">
+                <div className="mb-2 flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium" title={s.title || "Untitled"}>{s.title || "AI Soundtrack"}</p>
+                    <p className="text-xs text-muted-foreground">by {s.creatorName || "a creator"}</p>
+                  </div>
+                  <a href={s.url} download title="Download" className="shrink-0 text-muted-foreground hover:text-primary">
+                    <Download className="h-4 w-4" />
+                  </a>
+                </div>
+                <audio controls preload="none" src={s.url} className="h-9 w-full" />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {loading && videos.length === 0 ? (
         <div className="flex items-center justify-center py-24">

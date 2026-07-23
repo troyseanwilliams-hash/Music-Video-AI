@@ -378,6 +378,61 @@ router.delete("/music/soundtracks/:id", async (req: Request, res: Response) => {
   res.json({ success: true });
 });
 
+// Rename one of the user's Soundtracks.
+router.post("/music/soundtracks/:id/rename", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const title = String(req.body?.title ?? "").trim().slice(0, 120);
+  if (!title) {
+    res.status(400).json({ error: "Title is required" });
+    return;
+  }
+  const [row] = await db
+    .select()
+    .from(soundtracksTable)
+    .where(and(eq(soundtracksTable.id, req.params.id), eq(soundtracksTable.userId, req.user.id)))
+    .limit(1);
+  if (!row) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  await db.update(soundtracksTable).set({ title }).where(eq(soundtracksTable.id, row.id));
+  res.json({ id: row.id, title });
+});
+
+// Public gallery feed for Explore: all public, non-deleted Soundtracks.
+router.get("/music/public", async (_req: Request, res: Response) => {
+  const rows = await db
+    .select({
+      id: soundtracksTable.id,
+      title: soundtracksTable.title,
+      prompt: soundtracksTable.prompt,
+      objectPath: soundtracksTable.objectPath,
+      shareToken: soundtracksTable.shareToken,
+      createdAt: soundtracksTable.createdAt,
+      creatorName: usersTable.firstName,
+    })
+    .from(soundtracksTable)
+    .leftJoin(usersTable, eq(soundtracksTable.userId, usersTable.id))
+    .where(and(eq(soundtracksTable.isPublic, true), isNull(soundtracksTable.deletedAt)))
+    .orderBy(desc(soundtracksTable.createdAt))
+    .limit(60);
+  const soundtracks = await Promise.all(
+    rows.map(async (s) => ({
+      id: s.id,
+      title: s.title,
+      prompt: s.prompt,
+      shareToken: s.shareToken,
+      creatorName: s.creatorName,
+      createdAt: s.createdAt,
+      url: await storageService.getObjectEntitySignedUrl(s.objectPath, 3600),
+    })),
+  );
+  res.json({ soundtracks });
+});
+
 // Toggle a Soundtrack public (mints a share token on first publish) or private.
 router.post("/music/soundtracks/:id/public", async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
