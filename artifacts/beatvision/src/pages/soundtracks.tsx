@@ -90,6 +90,8 @@ export default function Soundtracks() {
   const [progress, setProgress] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
+  const [libSearch, setLibSearch] = useState("");
+  const [libSort, setLibSort] = useState<"new" | "old" | "name">("new");
   const duration = LENGTH_OPTIONS.find((l) => l.key === lengthKey)?.seconds ?? 10;
   const loopToSeconds = LOOP_OPTIONS.find((l) => l.key === loopKey)?.seconds ?? 0;
 
@@ -234,6 +236,19 @@ export default function Soundtracks() {
         : `${status.freeRemaining} of ${status.freeAllowance} free this month`
     : null;
 
+  const visibleTracks = (tracks ?? [])
+    .filter((s) => {
+      const q = libSearch.trim().toLowerCase();
+      if (!q) return true;
+      return (s.title || "").toLowerCase().includes(q) || (s.prompt || "").toLowerCase().includes(q);
+    })
+    .sort((a, b) => {
+      if (libSort === "name") return (a.title || "").localeCompare(b.title || "");
+      const at = new Date(a.createdAt).getTime();
+      const bt = new Date(b.createdAt).getTime();
+      return libSort === "old" ? at - bt : bt - at;
+    });
+
   return (
     <div className="container mx-auto px-4 py-8 max-w-5xl">
       <div className="flex items-center justify-between gap-4 mb-6">
@@ -345,7 +360,28 @@ export default function Soundtracks() {
       </Card>
 
       {/* Library */}
-      <h2 className="text-lg font-semibold mb-3">Your library</h2>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold">Your library</h2>
+        {tracks && tracks.length > 0 && (
+          <div className="flex items-center gap-2">
+            <input
+              value={libSearch}
+              onChange={(e) => setLibSearch(e.target.value)}
+              placeholder="Search…"
+              className="h-8 w-40 rounded-md border border-input bg-background px-2.5 text-sm focus:border-primary focus:outline-none"
+            />
+            <select
+              value={libSort}
+              onChange={(e) => setLibSort(e.target.value as "new" | "old" | "name")}
+              className="h-8 rounded-md border border-input bg-background px-2 text-sm focus:border-primary focus:outline-none"
+            >
+              <option value="new">Newest</option>
+              <option value="old">Oldest</option>
+              <option value="name">Name (A–Z)</option>
+            </select>
+          </div>
+        )}
+      </div>
       {isLoading ? (
         <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
       ) : error ? (
@@ -370,9 +406,11 @@ export default function Soundtracks() {
             Generate your first one above — it'll appear here automatically, ready to play, download, or drop into a video.
           </p>
         </div>
+      ) : visibleTracks.length === 0 ? (
+        <div className="py-12 text-center text-sm text-muted-foreground">No soundtracks match “{libSearch}”.</div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
-          {tracks.map((s) => (
+          {visibleTracks.map((s) => (
             <Card key={s.id} className="bg-card/50 border-card-border overflow-hidden">
               <div className="h-1 w-full bg-gradient-electric" />
               <CardContent className="p-4 space-y-3">

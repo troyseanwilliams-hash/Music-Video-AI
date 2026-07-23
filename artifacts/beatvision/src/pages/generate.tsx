@@ -20,6 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SoundtrackPickerDialog } from "@/components/SoundtrackPickerDialog";
 import { Switch } from "@/components/ui/switch";
 import {
   DropdownMenu,
@@ -826,6 +827,22 @@ export default function Generate() {
                 <span>Suno</span>
               </TabsTrigger>
             </TabsList>
+
+            <div className="mb-6 -mt-2 flex items-center justify-center gap-2 text-xs text-muted-foreground">
+              <span className="hidden sm:inline">or</span>
+              <SoundtrackPickerDialog
+                onSelect={(t) => {
+                  setSourceType(CreateJobRequestAudioSourceType.upload);
+                  setObjectPath(t.objectPath);
+                  setUploadedFileName(t.title);
+                  setFieldErrors((e) => ({ ...e, audio: undefined }));
+                }}
+              >
+                <Button type="button" variant="outline" size="sm">
+                  <Music className="mr-1.5 h-4 w-4 text-primary" /> Use one of your Soundtracks
+                </Button>
+              </SoundtrackPickerDialog>
+            </div>
 
             <TabsContent value={CreateJobRequestAudioSourceType.upload} className="mt-0 space-y-4">
               {/* Hidden native file input */}

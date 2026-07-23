@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
+import { SoundtrackPickerDialog } from "@/components/SoundtrackPickerDialog";
 import {
   Select,
   SelectContent,
@@ -726,6 +727,15 @@ export default function Editor() {
         <Button variant="outline" onClick={addMusicFromLink} data-testid="add-music-from-link">
           <Link2 className="mr-2 h-4 w-4" /> Add from Suno
         </Button>
+        <SoundtrackPickerDialog
+          onSelect={(t) =>
+            setMusic({ name: t.title, objectPath: t.objectPath, localUrl: t.url, mode: "mix", volume: 0.6, uploading: false })
+          }
+        >
+          <Button variant="outline" data-testid="add-music-from-soundtracks">
+            <Music className="mr-2 h-4 w-4 text-primary" /> Add from Soundtracks
+          </Button>
+        </SoundtrackPickerDialog>
       </div>
 
       {/* Timeline */}

@@ -427,6 +427,7 @@ router.get("/music/public", async (_req: Request, res: Response) => {
       shareToken: s.shareToken,
       creatorName: s.creatorName,
       createdAt: s.createdAt,
+      objectPath: s.objectPath, // lets a viewer push it into the video generator
       url: await storageService.getObjectEntitySignedUrl(s.objectPath, 3600),
     })),
   );

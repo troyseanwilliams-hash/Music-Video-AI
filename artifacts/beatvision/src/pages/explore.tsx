@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { useSEO } from "@/hooks/useSEO";
 import { Button } from "@/components/ui/button";
-import { Heart, Play, Loader2, Globe, EyeOff, Music2, Download } from "lucide-react";
+import { Heart, Play, Loader2, Globe, EyeOff, Music2, Download, Scissors, Video } from "lucide-react";
 
 interface PublicSoundtrack {
   id: string;
@@ -11,6 +11,7 @@ interface PublicSoundtrack {
   prompt: string | null;
   creatorName: string | null;
   createdAt: string;
+  objectPath: string;
   url: string;
 }
 
@@ -236,20 +237,39 @@ export default function Explore() {
             <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">Beta</span>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {soundtracks.map((s) => (
-              <div key={s.id} className="rounded-xl border border-card-border bg-card p-4 shadow-lg">
-                <div className="mb-2 flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium" title={s.title || "Untitled"}>{s.title || "AI Soundtrack"}</p>
-                    <p className="text-xs text-muted-foreground">by {s.creatorName || "a creator"}</p>
+            {soundtracks.map((s) => {
+              const title = encodeURIComponent(s.title || "AI Soundtrack");
+              return (
+                <div key={s.id} className="overflow-hidden rounded-xl border border-card-border bg-card shadow-lg transition-all hover:border-primary/50">
+                  <div className="h-1 w-full bg-gradient-electric" />
+                  <div className="p-4">
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-medium text-primary">
+                          {(s.creatorName || "A").trim().charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium" title={s.title || "Untitled"}>{s.title || "AI Soundtrack"}</p>
+                          <p className="text-xs text-muted-foreground">by {s.creatorName || "a creator"}</p>
+                        </div>
+                      </div>
+                      <a href={s.url} download title="Download" className="shrink-0 text-muted-foreground hover:text-primary">
+                        <Download className="h-4 w-4" />
+                      </a>
+                    </div>
+                    <audio controls preload="none" src={s.url} className="h-9 w-full" />
+                    <div className="mt-3 flex items-center gap-2">
+                      <Button size="sm" className="h-8 border-0 bg-gradient-electric text-white" onClick={() => setLocation(`/editor?audio=${encodeURIComponent(s.url)}&title=${title}`)}>
+                        <Scissors className="mr-1.5 h-3.5 w-3.5" /> Remix
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-8" onClick={() => setLocation(`/generate?audioObjectPath=${encodeURIComponent(s.objectPath)}&title=${title}`)}>
+                        <Video className="mr-1.5 h-3.5 w-3.5" /> Generate
+                      </Button>
+                    </div>
                   </div>
-                  <a href={s.url} download title="Download" className="shrink-0 text-muted-foreground hover:text-primary">
-                    <Download className="h-4 w-4" />
-                  </a>
                 </div>
-                <audio controls preload="none" src={s.url} className="h-9 w-full" />
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}
