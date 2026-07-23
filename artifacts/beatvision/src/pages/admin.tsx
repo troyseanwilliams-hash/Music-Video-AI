@@ -542,7 +542,7 @@ function AdminMusicPanel() {
             <Music2 className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <CardTitle className="text-lg leading-tight">Instrumental Studio</CardTitle>
+            <CardTitle className="text-lg leading-tight">Soundtracks</CardTitle>
             <div className="flex items-center gap-1.5 mt-0.5">
               <Badge variant="outline" className="text-[10px]">Beta · Admin</Badge>
               <span className={`inline-flex items-center gap-1 text-[10px] ${isSim ? "text-amber-400" : "text-emerald-400"}`}>
@@ -553,7 +553,7 @@ function AdminMusicPanel() {
           </div>
         </div>
         <CardDescription className="mt-2">
-          Generate a royalty-free instrumental track, then drop it straight into a Remix or AI video.
+          Generate a royalty-free soundtrack, then drop it straight into a Remix or AI video. Subscribers get a batch of free Soundtracks every month (Starter 5 · Pro 20 · Studio 50); extra tracks cost credits.
         </CardDescription>
       </CardHeader>
 
@@ -671,7 +671,7 @@ function AdminMusicPanel() {
             </div>
             <audio src={result.url} controls className="w-full" />
             {(() => {
-              const title = prompt.trim().split(/\s+/).slice(0, 4).join(" ") || "AI Instrumental";
+              const title = prompt.trim().split(/\s+/).slice(0, 4).join(" ") || "AI Soundtrack";
               return (
                 <div className="flex flex-wrap items-center gap-2">
                   <Button size="sm" onClick={() => navigate(`/editor?audio=${encodeURIComponent(result.url)}&title=${encodeURIComponent(title)}`)} data-testid="song-to-remix">
@@ -953,7 +953,7 @@ export default function AdminPage() {
           }`}
         >
           <Music2 className="h-4 w-4" />
-          Music
+          Soundtracks
           <span className="ml-1 px-1.5 py-0.5 rounded-full bg-primary/20 text-primary text-[10px] font-mono leading-none">Beta</span>
         </button>
       </div>

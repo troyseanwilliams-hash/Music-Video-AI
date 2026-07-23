@@ -153,6 +153,9 @@ export const creditsTable = pgTable("credits", {
   topupCredits: integer("topup_credits").notNull().default(0),
   creditsUsed: integer("credits_used").notNull().default(0),
   totalGenerations: integer("total_generations").notNull().default(0),
+  // Free monthly "Soundtracks" (instrumental) allowance usage, reset monthly.
+  freeSoundtracksUsed: integer("free_soundtracks_used").notNull().default(0),
+  freeSoundtracksResetAt: timestamp("free_soundtracks_reset_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow()

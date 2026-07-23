@@ -17,6 +17,7 @@ export interface SongRequest {
   lyrics?: string; // used by vocal models (acestep); ignored by musicgen
   durationSeconds: number; // target length
   provider?: MusicProvider; // explicit override
+  useFreeModel?: boolean; // route free-tier tracks to the $0 Pixazo model
 }
 
 export interface SongResult {
@@ -158,9 +159,11 @@ async function simulateSong(durationSeconds: number): Promise<SongResult> {
 // PIXAZO_MUSIC_MODEL / PIXAZO_MUSIC_OP.
 async function generateWithPixazoMusic(req: SongRequest): Promise<string> {
   const key = getEnv("PIXAZO_API_KEY")!;
-  // Default to a cheap, per-second instrumental model (MusicGen) rather than the
-  // flat-priced full-song MiniMax model. Override slug/op via env.
-  const model = getEnv("PIXAZO_MUSIC_MODEL") || "meta-musicgen";
+  // Free-tier tracks use the $0 Pixazo model (PIXAZO_FREE_MUSIC_MODEL) when set;
+  // otherwise default to a cheap per-second instrumental model (MusicGen) rather
+  // than the flat-priced full-song MiniMax. Override slug/op via env.
+  const freeModel = getEnv("PIXAZO_FREE_MUSIC_MODEL");
+  const model = req.useFreeModel && freeModel ? freeModel : getEnv("PIXAZO_MUSIC_MODEL") || "meta-musicgen";
   const op = getEnv("PIXAZO_MUSIC_OP") || `${model}-request`;
   const duration = Math.min(Math.max(req.durationSeconds || 10, 3), MAX_SONG_SECONDS);
   const wantsVocals = !!(req.lyrics && req.lyrics.trim() && req.lyrics.trim() !== "[inst]");

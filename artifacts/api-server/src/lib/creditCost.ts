@@ -91,6 +91,22 @@ export function calculateCreditCost(
   return Math.ceil(providerCostCredits(requestedDuration, songDurationSec) * markupFor(requestedDuration, songDurationSec));
 }
 
+// Free monthly "Soundtracks" (instrumental) allowance by subscription tier —
+// a bonus that upsells higher plans. Beyond it, tracks cost credits.
+export const FREE_SOUNDTRACKS_BY_TIER: Record<string, number> = {
+  starter: 5,
+  pro: 20,
+  studio: 50,
+};
+export function freeSoundtracksFor(tier?: string | null): number {
+  if (!tier) return 0;
+  const t = tier.toLowerCase();
+  for (const [prefix, n] of Object.entries(FREE_SOUNDTRACKS_BY_TIER)) {
+    if (t.startsWith(prefix)) return n;
+  }
+  return 0;
+}
+
 // Cost to generate an instrumental audio track (MusicGen). Priced at 2× real
 // provider cost (~$0.06 for 30s → ~$0.002/s), scaled by length. e.g. 30s → 8,
 // 60s → 16, full (~5min) → 80 credits.
