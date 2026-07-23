@@ -22,6 +22,13 @@ on long timelines despite existing mitigations (720p cap, ultrafast preset, glob
 normalized segments) — xfade errors out on mismatched input video timebases
 (`timebase (1/15360) do not match ... (1/30000)`).
 
+**Third root cause (crash loop):** the job-processor poll loop originally fire-and-forgot
+`processJob`, so two heavy renders could be claimed seconds apart in one process → whole-VM
+OOM crash → both jobs re-queued by stale recovery → claimed together again → repeat forever.
+Fix: a per-process `busy` flag in `startJobProcessor` — skip claiming while a job is in
+flight (cross-process parallelism still works via `FOR UPDATE SKIP LOCKED`). Keep this guard
+in BOTH jobProcessor copies.
+
 **How to apply:** any new ffmpeg encode path in editorStitcher/videoStitcher (both api-server
 AND worker copies — keep in lockstep) needs the output-side `-threads 2`, and multi-input
 filter graphs should be avoided in favor of pairwise/sequential processing.

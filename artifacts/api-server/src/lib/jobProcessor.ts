@@ -927,16 +927,29 @@ export async function startJobProcessor(): Promise<void> {
   recoverStaleJobs();
   setInterval(recoverStaleJobs, STALE_CHECK_INTERVAL_MS);
 
+  // Only one job at a time per process: renders run heavy ffmpeg pipelines,
+  // and two concurrent renders can exhaust memory and crash the whole server
+  // (which re-queues both jobs and repeats the crash loop). Claiming is
+  // skipped while a job is in flight; other workers still pick up queued jobs
+  // via FOR UPDATE SKIP LOCKED.
+  let busy = false;
   const poll = async () => {
-    try {
-      const job = await claimNextJob();
-      if (job) {
-        processJob(job).catch((err) =>
-          logger.error({ err, jobId: job.id }, "Unhandled job error"),
-        );
+    if (!busy) {
+      try {
+        const job = await claimNextJob();
+        if (job) {
+          busy = true;
+          processJob(job)
+            .catch((err) =>
+              logger.error({ err, jobId: job.id }, "Unhandled job error"),
+            )
+            .finally(() => {
+              busy = false;
+            });
+        }
+      } catch (err) {
+        logger.error({ err }, "Poll error");
       }
-    } catch (err) {
-      logger.error({ err }, "Poll error");
     }
     setTimeout(poll, POLL_INTERVAL_MS);
   };
