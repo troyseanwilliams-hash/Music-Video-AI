@@ -62,6 +62,11 @@ router.get("/admin/music/status", (req: Request, res: Response) => {
     musicGenReady: !!process.env.REPLICATE_API_TOKEN,
     pixazoReady: !!process.env.PIXAZO_API_KEY,
     lyricsProvider: lyricsProviderAvailable(),
+    // Which Pixazo models are wired. When freeMusicModel is unset, the free
+    // tier has no $0 model to call and falls back to the paid one (which charges).
+    paidMusicModel: process.env.PIXAZO_MUSIC_MODEL || "meta-musicgen",
+    freeMusicModel: process.env.PIXAZO_FREE_MUSIC_MODEL || null,
+    hasFreeMusicModel: !!process.env.PIXAZO_FREE_MUSIC_MODEL,
   });
 });
 
@@ -98,6 +103,9 @@ const GenerateBody = z.object({
   // Loop the generated clip (via ffmpeg, free) to this length to match a video.
   loopToSeconds: z.number().int().min(1).max(MAX_SONG_SECONDS).optional(),
   provider: z.enum(["simulation", "acestep", "musicgen", "pixazo"]).optional(),
+  // Admin-only: force the free ($0) Pixazo model so the free tier can be tested
+  // without funding the wallet. Ignored for non-admins (their routing is automatic).
+  useFreeModel: z.boolean().optional(),
 });
 
 router.post("/admin/music/generate", async (req: Request, res: Response) => {
@@ -123,7 +131,9 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
   // "Soundtracks" allowance by tier (a bonus that upsells higher plans); beyond
   // it, each track costs credits. Free tracks use the $0 Pixazo model.
   let isFree = admin; // no credit charge for this generation
-  let useFreeModel = false; // route to the free Pixazo model
+  // Admins can opt into the free model (default on) to test the free tier
+  // without funding the wallet; they can flip it off to test the paid model.
+  let useFreeModel = admin ? parsed.data.useFreeModel !== false : false;
   let freeRemaining: number | null = null;
 
   if (!admin) {
