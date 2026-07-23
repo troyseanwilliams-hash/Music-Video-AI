@@ -97,8 +97,14 @@ export default function Dashboard() {
     query: {
       queryKey: getGetDashboardStatsQueryKey(),
       enabled: isAuthenticated,
+      // Auto-refresh while any video is still processing so status stays live.
+      refetchInterval: 6000,
     }
   });
+
+  const activeJobs = ((stats as unknown as { activeJobs?: Array<{
+    id: string; prompt: string | null; status: string; progressPercent: number | null; jobType?: string | null;
+  }> })?.activeJobs) ?? [];
 
   // Render-finished email preference.
   const { data: prefs } = useQuery({
@@ -276,6 +282,48 @@ export default function Dashboard() {
               data-testid="switch-notify-on-complete"
             />
           </div>
+
+          {activeJobs.length > 0 && (
+            <div className="mb-8">
+              <h2 className="mb-4 flex items-center gap-2 text-2xl font-semibold">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" /> Processing
+              </h2>
+              <div className="space-y-3">
+                {activeJobs.map((j) => {
+                  const pct = typeof j.progressPercent === "number" ? j.progressPercent : null;
+                  const label =
+                    j.status === "pending_approval" ? "Waiting for approval"
+                    : j.status === "queued" ? "Queued"
+                    : j.status === "analyzing" ? "Analyzing audio"
+                    : j.status === "generating" ? "Generating clips"
+                    : j.status === "stitching" ? "Finishing up"
+                    : j.status;
+                  return (
+                    <div key={j.id} className="rounded-xl border border-primary/20 bg-primary/[0.04] p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">
+                            {j.prompt || (j.jobType === "editor_render" ? "Remix Lab export" : "AI video")}
+                          </p>
+                          <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <Loader2 className="h-3 w-3 animate-spin text-primary" /> {label}{pct !== null ? ` · ${pct}%` : ""}
+                          </p>
+                        </div>
+                        <Button size="sm" variant="outline" className="shrink-0" onClick={() => setLocation(`/jobs/${j.id}`)}>
+                          View status
+                        </Button>
+                      </div>
+                      {pct !== null && (
+                        <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-secondary/60">
+                          <div className="h-full rounded-full bg-gradient-electric transition-[width] duration-500" style={{ width: `${Math.max(4, pct)}%` }} />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div>
             <h2 className="text-2xl font-semibold mb-6">Recent Activity</h2>

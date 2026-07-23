@@ -44,6 +44,21 @@ router.get("/dashboard/stats", async (req, res) => {
     .filter((j) => j.status === "ready" && !!j.videoId && liveJobIds.has(j.id))
     .slice(0, 5);
 
+  // Jobs still being processed, so the user can jump back to their status page.
+  const IN_PROGRESS = ["pending_approval", "queued", "analyzing", "generating", "stitching"];
+  const activeJobs = [...allJobs]
+    .filter((j) => IN_PROGRESS.includes(j.status))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 10)
+    .map((j) => ({
+      id: j.id,
+      prompt: j.prompt,
+      status: j.status,
+      progressPercent: j.progressPercent,
+      jobType: j.jobType,
+      createdAt: j.createdAt,
+    }));
+
   let creditsRemaining = 10;
   let subscriptionCredits = 10;
   let topupCredits = 0;
@@ -82,6 +97,7 @@ router.get("/dashboard/stats", async (req, res) => {
     subscriptionCredits,
     topupCredits,
     recentJobs,
+    activeJobs,
   });
 });
 
