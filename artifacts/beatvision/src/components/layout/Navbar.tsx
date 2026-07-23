@@ -33,9 +33,9 @@ export function Navbar() {
     ...(isAuthenticated ? [
       { href: "/editor", label: "Remix Lab", icon: Video },
       { href: "/generate", label: "Generate", icon: Wand2 },
+      { href: "/soundtracks", label: "Soundtracks", icon: Music2 },
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "/gallery", label: "Gallery", icon: Film },
-      { href: "/soundtracks", label: "Soundtracks", icon: Music2 },
     ] : []),
     { href: "/explore", label: "Explore", icon: Compass },
     { href: "/pricing", label: "Pricing", icon: CreditCard },
@@ -71,6 +71,12 @@ export function Navbar() {
                     Generate
                   </Link>
                   <Link
+                    href="/soundtracks"
+                    className={`text-sm font-medium transition-colors hover:text-primary ${location === '/soundtracks' ? 'text-foreground' : 'text-muted-foreground'}`}
+                  >
+                    Soundtracks
+                  </Link>
+                  <Link
                     href="/dashboard"
                     className={`text-sm font-medium transition-colors hover:text-primary ${location === '/dashboard' ? 'text-foreground' : 'text-muted-foreground'}`}
                   >
@@ -81,12 +87,6 @@ export function Navbar() {
                     className={`text-sm font-medium transition-colors hover:text-primary ${location === '/gallery' ? 'text-foreground' : 'text-muted-foreground'}`}
                   >
                     Gallery
-                  </Link>
-                  <Link
-                    href="/soundtracks"
-                    className={`text-sm font-medium transition-colors hover:text-primary ${location === '/soundtracks' ? 'text-foreground' : 'text-muted-foreground'}`}
-                  >
-                    Soundtracks
                   </Link>
                 </>
               )}
