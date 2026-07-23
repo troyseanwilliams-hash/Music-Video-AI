@@ -304,25 +304,6 @@ export default function Generate() {
     handleDurationChange(p.duration);
   }
 
-  // Quick-start: load a bundled royalty-free demo track so new users can try a
-  // generation without hunting for audio. Requires public/demo-song.mp3.
-  async function loadDemoSong() {
-    try {
-      setSourceType(CreateJobRequestAudioSourceType.upload);
-      const res = await fetch("/demo-song.mp3");
-      if (!res.ok) throw new Error("missing");
-      const blob = await res.blob();
-      const file = new File([blob], "demo-song.mp3", { type: blob.type || "audio/mpeg" });
-      await handleFileSelect(file);
-    } catch {
-      toast({
-        title: "Demo song unavailable",
-        description: "Add a royalty-free public/demo-song.mp3 to enable this.",
-        variant: "destructive",
-      });
-    }
-  }
-
   // Trigger server-side analysis as soon as the upload path is available.
   // Reset mutation state immediately when objectPath changes so old badges disappear.
   useEffect(() => {
@@ -590,9 +571,11 @@ export default function Generate() {
             <span className="flex items-center gap-1.5 text-sm font-semibold">
               <Sparkles className="h-4 w-4 text-primary" /> Quick start
             </span>
-            <Button variant="outline" size="sm" onClick={loadDemoSong}>
-              <Music className="mr-1.5 h-3.5 w-3.5" /> Try a demo song
-            </Button>
+            <Link href="/soundtracks">
+              <Button variant="outline" size="sm">
+                <Music className="mr-1.5 h-3.5 w-3.5" /> Create a Song
+              </Button>
+            </Link>
           </div>
           <div className="flex flex-wrap gap-2">
             {TEMPLATES.map((t) => (
