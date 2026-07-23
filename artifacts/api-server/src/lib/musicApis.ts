@@ -239,9 +239,9 @@ export async function loopAudioToLength(
 
 // ── Public entry ─────────────────────────────────────────────────────────────
 
-// Songs can run up to ~5.5 minutes (330s) so "Full" length lands around a
-// natural full-song runtime. Providers may cap lower internally.
-export const MAX_SONG_SECONDS = 330;
+// Capped at 2 minutes (120s) to match the max video length and the Pixazo
+// music API limit. The looper fills longer needs by repeating a short clip.
+export const MAX_SONG_SECONDS = 120;
 
 export async function generateSong(req: SongRequest): Promise<SongResult> {
   const provider = getActiveMusicProvider(req.provider ?? null);

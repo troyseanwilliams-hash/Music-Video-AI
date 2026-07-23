@@ -112,7 +112,7 @@ export function freeSoundtracksFor(tier?: string | null): number {
 // 60s → 16, full (~5min) → 80 credits.
 const SONG_USD_PER_SECOND = 0.002;
 const SONG_MIN_SECONDS = 5;
-const SONG_MAX_SECONDS = 330;
+const SONG_MAX_SECONDS = 120;
 export function calculateSongCost(durationSeconds: number | null | undefined): number {
   const secs = Math.min(Math.max(durationSeconds || 30, SONG_MIN_SECONDS), SONG_MAX_SECONDS);
   return Math.max(5, Math.ceil((secs * SONG_USD_PER_SECOND * PRICE_MULTIPLIER) / USD_PER_CREDIT));

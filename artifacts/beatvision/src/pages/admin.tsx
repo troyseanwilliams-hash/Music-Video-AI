@@ -453,8 +453,8 @@ const LENGTH_OPTIONS: { key: string; label: string; seconds: number }[] = [
   { key: "loop10", label: "10s loop", seconds: 10 },
   { key: "short", label: "~30s", seconds: 30 },
   { key: "medium", label: "~1 min", seconds: 60 },
-  { key: "long", label: "~2.5 min", seconds: 150 },
-  { key: "full", label: "Full (~5 min)", seconds: 300 },
+  { key: "long", label: "~1.5 min", seconds: 90 },
+  { key: "full", label: "Max (2 min)", seconds: 120 },
 ];
 
 // Loop the (cheap) short clip to fill this length — free, matches your video.
@@ -477,7 +477,7 @@ const INSTRUMENTAL_PRESETS: { label: string; prompt: string }[] = [
 ];
 
 function songCredits(seconds: number): number {
-  return Math.max(5, Math.ceil((Math.min(Math.max(seconds, 5), 330) * 0.002 * 2) / 0.015));
+  return Math.max(5, Math.ceil((Math.min(Math.max(seconds, 5), 120) * 0.002 * 2) / 0.015));
 }
 
 function AdminMusicPanel() {
