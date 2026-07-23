@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -65,6 +65,13 @@ const PRESETS = [
 function songCredits(seconds: number): number {
   return Math.min(10, Math.max(5, Math.ceil((Math.min(Math.max(seconds, 5), 120) * 0.002 * 2) / 0.015)));
 }
+function genPhase(p: number): string {
+  if (p >= 99) return "Finishing up…";
+  if (p >= 80) return "Mixing & mastering…";
+  if (p >= 55) return "Laying down the groove…";
+  if (p >= 25) return "Arranging the instruments…";
+  return "Composing your track…";
+}
 function fmtLen(s: Soundtrack): string {
   if (s.loopedToSeconds) return `${s.loopedToSeconds}s (looped)`;
   if (s.durationSeconds) return `${s.durationSeconds}s`;
@@ -80,6 +87,7 @@ export default function Soundtracks() {
   const [prompt, setPrompt] = useState("");
   const [lengthKey, setLengthKey] = useState("loop10");
   const [loopKey, setLoopKey] = useState("off");
+  const [progress, setProgress] = useState(0);
   const duration = LENGTH_OPTIONS.find((l) => l.key === lengthKey)?.seconds ?? 10;
   const loopToSeconds = LOOP_OPTIONS.find((l) => l.key === loopKey)?.seconds ?? 0;
 
@@ -116,15 +124,33 @@ export default function Soundtracks() {
       return data as { wasFree: boolean; creditsCharged: number; freeRemaining: number | null };
     },
     onSuccess: (data) => {
+      setProgress(100);
       queryClient.invalidateQueries({ queryKey: ["soundtracks"] });
       queryClient.invalidateQueries({ queryKey: ["soundtracks", "status"] });
       toast({
         title: "Soundtrack ready",
         description: data.wasFree ? "Used one of your free Soundtracks." : `${data.creditsCharged} credits used.`,
       });
+      setTimeout(() => setProgress(0), 900);
     },
-    onError: (err: Error) => toast({ title: "Couldn't generate", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => {
+      setProgress(0);
+      toast({ title: "Couldn't generate", description: err.message, variant: "destructive" });
+    },
   });
+
+  // Simulated progress while generating (no server-side events): ease toward 95%
+  // over ~28s, then jump to 100% on success. Feels responsive without lying.
+  useEffect(() => {
+    if (!gen.isPending) return;
+    setProgress(6);
+    const start = Date.now();
+    const id = window.setInterval(() => {
+      const elapsed = Date.now() - start;
+      setProgress(Math.min(95, 95 * (1 - Math.exp(-elapsed / 14000))));
+    }, 300);
+    return () => window.clearInterval(id);
+  }, [gen.isPending]);
 
   const del = useMutation({
     mutationFn: async (id: string) => {
@@ -269,14 +295,31 @@ export default function Soundtracks() {
                 </div>
               </div>
 
-              <Button
-                onClick={() => gen.mutate()}
-                disabled={gen.isPending || prompt.trim().length < 3}
-                className="bg-gradient-electric text-white border-0"
-              >
-                {gen.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Wand2 className="h-4 w-4 mr-2" />}
-                Generate Soundtrack
-              </Button>
+              {gen.isPending || progress > 0 ? (
+                <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/[0.04] p-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="flex items-center gap-1.5 font-medium text-foreground">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> {genPhase(progress)}
+                    </span>
+                    <span className="tabular-nums text-muted-foreground">{Math.round(progress)}%</span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-secondary/60">
+                    <div
+                      className="h-full rounded-full bg-gradient-electric transition-[width] duration-300 ease-out"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">This usually takes 15–40 seconds — hang tight.</p>
+                </div>
+              ) : (
+                <Button
+                  onClick={() => gen.mutate()}
+                  disabled={prompt.trim().length < 3}
+                  className="bg-gradient-electric text-white border-0"
+                >
+                  <Wand2 className="h-4 w-4 mr-2" /> Generate Soundtrack
+                </Button>
+              )}
             </>
           )}
         </CardContent>
