@@ -477,7 +477,7 @@ const INSTRUMENTAL_PRESETS: { label: string; prompt: string }[] = [
 ];
 
 function songCredits(seconds: number): number {
-  return Math.max(5, Math.ceil((Math.min(Math.max(seconds, 5), 120) * 0.002 * 2) / 0.015));
+  return Math.min(10, Math.max(5, Math.ceil((Math.min(Math.max(seconds, 5), 120) * 0.002 * 2) / 0.015)));
 }
 
 function AdminMusicPanel() {

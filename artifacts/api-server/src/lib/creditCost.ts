@@ -107,15 +107,19 @@ export function freeSoundtracksFor(tier?: string | null): number {
   return 0;
 }
 
-// Cost to generate an instrumental audio track (MusicGen). Priced at 2× real
-// provider cost (~$0.06 for 30s → ~$0.002/s), scaled by length. e.g. 30s → 8,
-// 60s → 16, full (~5min) → 80 credits.
+// Cost to generate a Soundtrack. The provider cost is FIXED per file (Stable
+// Audio 3 Small ≈ $0.0217, any length), so the charge is a small band: it
+// scales a little by length but is capped at 10 credits for a full 2-min track
+// to keep it cheap and predictable. Range: 5 credits (short) → 10 credits (2 min).
 const SONG_USD_PER_SECOND = 0.002;
+const SONG_MIN_CREDITS = 5;
+const SONG_MAX_CREDITS = 10;
 const SONG_MIN_SECONDS = 5;
 const SONG_MAX_SECONDS = 120;
 export function calculateSongCost(durationSeconds: number | null | undefined): number {
   const secs = Math.min(Math.max(durationSeconds || 30, SONG_MIN_SECONDS), SONG_MAX_SECONDS);
-  return Math.max(5, Math.ceil((secs * SONG_USD_PER_SECOND * PRICE_MULTIPLIER) / USD_PER_CREDIT));
+  const scaled = Math.ceil((secs * SONG_USD_PER_SECOND * PRICE_MULTIPLIER) / USD_PER_CREDIT);
+  return Math.min(SONG_MAX_CREDITS, Math.max(SONG_MIN_CREDITS, scaled));
 }
 
 // Cost to remix (regenerate) a subset of an existing video's clips. Charged
