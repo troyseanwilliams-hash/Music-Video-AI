@@ -857,7 +857,7 @@ async function processJob(job: JobRow): Promise<void> {
       shareToken: randomUUID().replace(/-/g, "").slice(0, 16),
     });
 
-    const creditCost = calculateCreditCost(job.requestedDuration, job.resolution, analysis.durationSeconds);
+    const creditCost = calculateCreditCost(job.requestedDuration, job.resolution, analysis.durationSeconds, (job as JobRow & { aiProvider?: string | null }).aiProvider ?? undefined);
     // Deduct from the subscription bucket first, then top-up. This way one-time
     // top-ups survive any future "reset monthly credits at renewal" behavior.
     await db

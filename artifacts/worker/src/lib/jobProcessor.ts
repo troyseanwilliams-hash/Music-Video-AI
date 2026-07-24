@@ -909,7 +909,7 @@ async function processJob(job: JobRow): Promise<void> {
 
     // Deduct credits on success. Subscription bucket is drawn first so one-time
     // top-ups survive monthly plan resets. Song duration sizes "full" videos.
-    const creditCost = calculateCreditCost(job.requestedDuration, job.resolution, analysis.durationSeconds);
+    const creditCost = calculateCreditCost(job.requestedDuration, job.resolution, analysis.durationSeconds, (job as JobRow & { aiProvider?: string | null }).aiProvider ?? undefined);
     await db
       .update(creditsTable)
       .set({
