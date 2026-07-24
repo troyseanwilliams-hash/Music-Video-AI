@@ -217,23 +217,37 @@ async function generateWithLuma(req: ClipRequest): Promise<string> {
 // slug from the Pixazo dashboard and set it as PIXAZO_MODEL.
 async function generateWithPixazo(req: ClipRequest, modelOverride?: string): Promise<string> {
   const key = process.env.PIXAZO_API_KEY!;
-  const model = modelOverride || process.env.PIXAZO_MODEL?.trim() || "kling-video-v3-turbo-pro-text-to-video";
   const duration = req.durationSeconds <= 5 ? "5" : "10";
+  const r = (req.resolution ?? "").toLowerCase();
+  const is4k = r === "4k" || r === "2160p";
+  const hasImage = !!req.imageUrl;
 
-  // Always pass the aspect ratio so portrait/landscape renders match the request
-  // (previously omitted — the gateway defaulted everything to landscape).
+  // Pick the model: when a reference image is supplied, use Kling image-to-video
+  // so the reference is actually used (text-to-video ignores it). 4K uses the
+  // dedicated O3 4K slug. All slugs are env-overridable.
+  let model: string;
+  if (hasImage) {
+    model = is4k
+      ? (process.env.PIXAZO_KLING_4K_I2V_MODEL?.trim() || "kling-video-o3-4k-image-to-video")
+      : (process.env.PIXAZO_KLING_I2V_MODEL?.trim() || "kling-video-v3-turbo-pro-image-to-video");
+  } else {
+    model = modelOverride || process.env.PIXAZO_MODEL?.trim() || "kling-video-v3-turbo-pro-text-to-video";
+  }
+
   const body: Record<string, unknown> = {
     prompt: req.prompt.slice(0, 2500),
     duration,
-    aspect_ratio: req.aspectRatio ?? "16:9",
   };
-  // Resolution hint. Kling standard supports 720p/1080p; 4K is primarily handled
-  // by the dedicated model slug (see klingModel), but we still send the hint so a
-  // gateway that switches output on it produces the right size.
-  const r = (req.resolution ?? "").toLowerCase();
-  if (r === "1080p") body.resolution = "1080p";
-  else if (r === "4k" || r === "2160p") body.resolution = "4k";
-  else if (r === "720p") body.resolution = "720p";
+  if (hasImage) {
+    // Image-to-video: feed the reference image (aspect ratio comes from the image).
+    body.image_url = req.imageUrl;
+  } else {
+    // Text-to-video: pass aspect ratio + resolution hint (4K also via model slug).
+    body.aspect_ratio = req.aspectRatio ?? "16:9";
+    if (r === "1080p") body.resolution = "1080p";
+    else if (is4k) body.resolution = "4k";
+    else if (r === "720p") body.resolution = "720p";
+  }
 
   const submit = await fetch(`https://gateway.pixazo.ai/${model}/v1/${model}-request`, {
     method: "POST",

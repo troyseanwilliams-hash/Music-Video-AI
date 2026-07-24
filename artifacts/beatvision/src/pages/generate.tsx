@@ -577,7 +577,7 @@ export default function Generate() {
       ? null
       : parseInt(requestedDuration as string, 10);
 
-    if (durSec === 90 || durSec === 120) {
+    if (durSec !== null && durSec >= 90) {
       setDurationWarningOpen(true);
       return;
     }
@@ -734,11 +734,16 @@ export default function Generate() {
                 <DropdownMenuTrigger asChild>
                   <button className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 px-3 py-1.5 text-sm font-medium transition-colors">
                     <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span>{requestedDuration === CreateJobRequestRequestedDuration.full ? "full" : `${durationToSeconds(requestedDuration)}s`}</span>
+                    <span>{
+                      requestedDuration === CreateJobRequestRequestedDuration.full ? "full"
+                        : (requestedDuration as string) === "300" ? "5 min"
+                        : (requestedDuration as string) === "600" ? "10 min"
+                        : `${durationToSeconds(requestedDuration)}s`
+                    }</span>
                     <ChevronDown className="h-3 w-3 text-muted-foreground ml-0.5" />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-52">
+                <DropdownMenuContent align="start" className="w-64">
                   {([
                     { value: CreateJobRequestRequestedDuration.NUMBER_5, label: "5 seconds", note: null },
                     { value: CreateJobRequestRequestedDuration.NUMBER_10, label: "10 seconds", note: null },
@@ -747,18 +752,25 @@ export default function Generate() {
                     { value: CreateJobRequestRequestedDuration.NUMBER_60, label: "60 seconds", note: null },
                     { value: CreateJobRequestRequestedDuration.NUMBER_90, label: "90 seconds", note: "~15 min" },
                     { value: CreateJobRequestRequestedDuration.NUMBER_120, label: "120 seconds", note: "~20 min" },
-                  ] as const).map(({ value, label, note }) => (
-                    <DropdownMenuItem
-                      key={value}
-                      onClick={() => handleDurationChange(value)}
-                      className={`flex items-center justify-between gap-3 ${requestedDuration === value ? "text-primary font-medium" : ""}`}
-                    >
-                      <span>{label}</span>
-                      <span className="text-xs text-muted-foreground shrink-0">
-                        {estimateCreditCost(value, aiProvider, undefined, songDurationSec)} cr{note ? ` · ${note}` : ""}
-                      </span>
-                    </DropdownMenuItem>
-                  ))}
+                    { value: CreateJobRequestRequestedDuration.NUMBER_300, label: "5 minutes", note: "~30 min" },
+                    { value: CreateJobRequestRequestedDuration.NUMBER_600, label: "10 minutes", note: "~30 min" },
+                  ] as const).map(({ value, label, note }) => {
+                    const base = estimateCreditCost(value, aiProvider, resolution, songDurationSec);
+                    const is4k = (resolution as string) === "4k";
+                    const fourK = is4k ? null : estimateCreditCost(value, "kling", CreateJobRequestResolution["4k"], songDurationSec);
+                    return (
+                      <DropdownMenuItem
+                        key={value}
+                        onClick={() => handleDurationChange(value)}
+                        className={`flex items-center justify-between gap-3 ${requestedDuration === value ? "text-primary font-medium" : ""}`}
+                      >
+                        <span>{label}</span>
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          {base.toLocaleString()} cr{fourK ? ` · 4K ${fourK.toLocaleString()}` : ""}{note ? ` · ${note}` : ""}
+                        </span>
+                      </DropdownMenuItem>
+                    );
+                  })}
                   <div className="px-2 pt-1 pb-1.5">
                     <p className="text-[10px] text-muted-foreground/60 leading-tight">
                       Longer videos use more clips and take more time to generate.
@@ -1359,7 +1371,12 @@ export default function Generate() {
           {/* ── Settings Summary ── */}
           <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
             <span className="rounded-full border border-border/40 bg-secondary/30 px-2.5 py-1">
-              {aspectRatio} · {resolution} · {requestedDuration === CreateJobRequestRequestedDuration.full ? "full" : `${durationToSeconds(requestedDuration)}s`}
+              {aspectRatio} · {resolution} · {
+                requestedDuration === CreateJobRequestRequestedDuration.full ? "full"
+                  : (requestedDuration as string) === "300" ? "5 min"
+                  : (requestedDuration as string) === "600" ? "10 min"
+                  : `${durationToSeconds(requestedDuration)}s`
+              }
             </span>
             {character !== "none" && (
               <span className="rounded-full border border-border/40 bg-secondary/30 px-2.5 py-1">
@@ -1454,10 +1471,11 @@ export default function Generate() {
       const durSec = requestedDuration === CreateJobRequestRequestedDuration.full
         ? null
         : parseInt(requestedDuration as string, 10);
-      const isLong = durSec === 90 || durSec === 120;
+      const isLong = durSec !== null && durSec >= 90;
       if (!isLong) return null;
-      const numClips = Math.ceil((durSec as number) / 10);
-      const estimatedMin = durSec === 90 ? "~15 minutes" : "~20 minutes";
+      const numClips = Math.min(20, Math.ceil((durSec as number) / 10));
+      const estimatedMin = durSec === 90 ? "~15 minutes" : durSec === 120 ? "~20 minutes" : "~30 minutes";
+      const durLabel = durSec === 300 ? "5-minute" : durSec === 600 ? "10-minute" : `${durSec}-second`;
       const creditCost = estimateCreditCost(requestedDuration, aiProvider, resolution, songDurationSec);
       return (
         <Dialog open={durationWarningOpen} onOpenChange={setDurationWarningOpen}>
@@ -1472,7 +1490,7 @@ export default function Generate() {
               <DialogDescription asChild>
                 <div className="text-left space-y-3 mt-1">
                   <p className="text-sm text-muted-foreground leading-relaxed">
-                    A <strong className="text-foreground">{durSec}-second</strong> video requires{" "}
+                    A <strong className="text-foreground">{durLabel}</strong> video requires{" "}
                     <strong className="text-foreground">{numClips} separate AI clip generations</strong> and
                     typically takes <strong className="text-foreground">{estimatedMin}</strong> to complete.
                     The job may appear idle for several minutes — this is normal.

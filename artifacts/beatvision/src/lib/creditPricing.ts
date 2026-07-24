@@ -52,7 +52,8 @@ function getClipPlan(requestedDuration: string | null | undefined, songDurationS
   const durSec = parseInt(dur, 10);
   if (isNaN(durSec) || durSec <= 0) return { numClips: fullClipCount(songDurationSec), clipDurationSec: 10 };
   const clipDurationSec: 5 | 10 = durSec <= 5 ? 5 : 10;
-  return { numClips: Math.max(1, Math.ceil(durSec / clipDurationSec)), clipDurationSec };
+  // Cap explicit long durations at 20 clips (same ceiling as "full"): 300s/600s -> ~20 clips.
+  return { numClips: Math.min(20, Math.max(1, Math.ceil(durSec / clipDurationSec))), clipDurationSec };
 }
 
 // Priced on real clip cost × tiered markup × resolution multiplier (mirror
