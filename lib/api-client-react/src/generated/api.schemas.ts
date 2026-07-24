@@ -57,6 +57,20 @@ export interface RegisterRequest {
    * @maxLength 100
    */
   name: string;
+  /**
+   * Optional referral code captured from a ?ref= share link.
+   * @maxLength 32
+   */
+  referralCode?: string;
+}
+
+export interface ReferralInfoResponse {
+  code: string;
+  referredCount: number;
+  creditsEarned: number;
+  rewardPerReferral: number;
+  referredBonus: number;
+  maxCreditedReferrals: number;
 }
 
 export interface LoginRequest {

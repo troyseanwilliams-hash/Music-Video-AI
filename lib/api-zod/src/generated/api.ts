@@ -57,11 +57,17 @@ export const registerUserBodyPasswordMin = 8;
 
 export const registerUserBodyNameMax = 100;
 
+export const registerUserBodyReferralCodeMax = 32;
+
 export const RegisterUserBody = zod.object({
   email: zod.string().email().min(registerUserBodyEmailMin),
   password: zod.string().min(registerUserBodyPasswordMin),
   name: zod.string().min(1).max(registerUserBodyNameMax),
-  referralCode: zod.string().max(32).optional(),
+  referralCode: zod
+    .string()
+    .max(registerUserBodyReferralCodeMax)
+    .optional()
+    .describe("Optional referral code captured from a ?ref= share link."),
 });
 
 export const RegisterUserResponse = zod.object({
@@ -820,6 +826,25 @@ export const GetCreditsResponse = zod.object({
     ),
   creditsUsed: zod.number(),
   totalGenerations: zod.number(),
+});
+
+/**
+ * @summary Get current user's referral code, share stats, and reward config
+ */
+export const GetMyReferralsHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const GetMyReferralsResponse = zod.object({
+  code: zod.string(),
+  referredCount: zod.number(),
+  creditsEarned: zod.number(),
+  rewardPerReferral: zod.number(),
+  referredBonus: zod.number(),
+  maxCreditedReferrals: zod.number(),
 });
 
 /**

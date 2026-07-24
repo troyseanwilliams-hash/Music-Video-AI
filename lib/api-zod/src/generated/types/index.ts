@@ -48,6 +48,7 @@ export * from "./listGalleryParams";
 export * from "./listJobsParams";
 export * from "./listVideosParams";
 export * from "./loginRequest";
+export * from "./referralInfoResponse";
 export * from "./registerRequest";
 export * from "./remixJobRequest";
 export * from "./remixJobResponse";

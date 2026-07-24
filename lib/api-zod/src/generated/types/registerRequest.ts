@@ -16,4 +16,9 @@ export interface RegisterRequest {
    * @maxLength 100
    */
   name: string;
+  /**
+   * Optional referral code captured from a ?ref= share link.
+   * @maxLength 32
+   */
+  referralCode?: string;
 }
