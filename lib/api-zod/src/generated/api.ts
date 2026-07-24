@@ -286,6 +286,8 @@ export const ListJobsResponse = zod.object({
           zod.literal("60"),
           zod.literal("90"),
           zod.literal("120"),
+          zod.literal("300"),
+          zod.literal("600"),
           zod.literal("full"),
           zod.literal(null),
         ])
@@ -386,6 +388,8 @@ export const CreateJobBody = zod.object({
       zod.literal("60"),
       zod.literal("90"),
       zod.literal("120"),
+      zod.literal("300"),
+      zod.literal("600"),
       zod.literal("full"),
       zod.literal(null),
     ])
@@ -544,6 +548,8 @@ export const GetJobResponse = zod.object({
       zod.literal("60"),
       zod.literal("90"),
       zod.literal("120"),
+      zod.literal("300"),
+      zod.literal("600"),
       zod.literal("full"),
       zod.literal(null),
     ])
@@ -1135,6 +1141,8 @@ export const GetDashboardStatsResponse = zod.object({
             zod.literal("60"),
             zod.literal("90"),
             zod.literal("120"),
+            zod.literal("300"),
+            zod.literal("600"),
             zod.literal("full"),
             zod.literal(null),
           ])

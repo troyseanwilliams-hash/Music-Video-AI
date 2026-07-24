@@ -10,6 +10,8 @@
 //   10s  → 160 credits   (1 clip × 10s = $1.20 → ×2   = $2.40)
 //   30s  → 360 credits   (3 clips×10s  = $3.60 → ×1.5 = $5.40)
 //   60s  → 720 credits   (6 clips×10s  = $7.20 → ×1.5 = $10.80)
+//   300s → 2400 credits  (explicit "5 min": 20 clips looped, Runway 720p basis)
+//   600s → 2400 credits  (explicit "10 min": also capped at 20 clips)
 //   full → 360–2400      (3–20 clips scaled by song length, capped at 10 min)
 //          e.g. 2min→480, 5min→1200, 10min→2400 credits (720p Runway basis)
 // Resolution scales the charge on top: 720p ×1, 1080p ×1.25, 4K ×2.45 (4K is a
@@ -57,7 +59,9 @@ export function getClipPlan(
   }
   const durSec = parseInt(dur, 10);
   const clipDurationSec: 5 | 10 = durSec <= 5 ? 5 : 10;
-  const numClips = Math.max(1, Math.ceil(durSec / clipDurationSec));
+  // Cap explicit long durations at 20 unique clips (same ceiling as "full"), so
+  // 300s and 600s stay ~20 clips instead of 30/60 — clips are looped to fill.
+  const numClips = Math.min(20, Math.max(1, Math.ceil(durSec / clipDurationSec)));
   return { numClips, clipDurationSec };
 }
 

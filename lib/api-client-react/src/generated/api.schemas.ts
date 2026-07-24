@@ -171,6 +171,8 @@ export const JobRequestedDuration = {
   NUMBER_60: "60",
   NUMBER_90: "90",
   NUMBER_120: "120",
+  NUMBER_300: "300",
+  NUMBER_600: "600",
   full: "full",
 } as const;
 
@@ -291,6 +293,8 @@ export const CreateJobRequestRequestedDuration = {
   NUMBER_60: "60",
   NUMBER_90: "90",
   NUMBER_120: "120",
+  NUMBER_300: "300",
+  NUMBER_600: "600",
   full: "full",
 } as const;
 
