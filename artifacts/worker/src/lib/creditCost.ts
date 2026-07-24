@@ -25,9 +25,12 @@ function usdPerSecondFor(provider?: string | null): number {
 // Dollar value of one credit, set below the cheapest plan's rate (Studio:
 // $79 / 5,000 = $0.0158/credit) so the margin holds on every plan.
 const USD_PER_CREDIT = 0.015;
-// Tiered markup: short (single-clip) videos 2×, longer (multi-clip) 1.5×.
+// Tiered markup: short (single-clip) videos 2×. Longer (multi-clip) videos vary
+// by engine — Runway 1.5×, Kling 1.75× (Kling's lower provider cost leaves room
+// for a fatter margin while staying competitive).
 const SHORT_MARKUP = 2;
 const LONG_MARKUP = 1.5;
+const KLING_LONG_MARKUP = 1.75;
 
 // Profit margin: the user-facing price is always double the underlying cost
 // scale (BASE + seconds), so charge − cost = cost — i.e. the second half of
@@ -70,12 +73,15 @@ function providerCostCredits(
   return usd / USD_PER_CREDIT;
 }
 
-// 2× markup for single-clip (short) videos, 1.5× for multi-clip (longer) ones.
+// 2× markup for single-clip (short) videos; for multi-clip (longer) videos the
+// markup depends on engine: Kling 1.75×, everything else (Runway) 1.5×.
 function markupFor(
   requestedDuration: string | null | undefined,
   songDurationSec?: number | null,
+  provider?: string | null,
 ): number {
-  return getClipPlan(requestedDuration, songDurationSec).numClips <= 1 ? SHORT_MARKUP : LONG_MARKUP;
+  if (getClipPlan(requestedDuration, songDurationSec).numClips <= 1) return SHORT_MARKUP;
+  return (provider ?? "").toLowerCase() === "kling" ? KLING_LONG_MARKUP : LONG_MARKUP;
 }
 
 // Resolution surcharge. 720p is the base rate; higher resolutions cost
@@ -109,7 +115,7 @@ export function calculateCreditCost(
 ): number {
   return Math.ceil(
     providerCostCredits(requestedDuration, songDurationSec, provider) *
-      markupFor(requestedDuration, songDurationSec) *
+      markupFor(requestedDuration, songDurationSec, provider) *
       resolutionMultiplier(resolution),
   );
 }
