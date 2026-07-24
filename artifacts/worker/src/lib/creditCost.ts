@@ -12,7 +12,7 @@
 //   60s  → 720 credits   (6 clips×10s  = $7.20 → ×1.5 = $10.80)
 //   full → 360–2400      (3–20 clips scaled by song length, capped at 10 min)
 //          e.g. 2min→480, 5min→1200, 10min→2400 credits (720p Runway basis)
-// Resolution scales the charge on top: 720p ×1, 1080p ×1.25, 4K ×3.5 (4K is a
+// Resolution scales the charge on top: 720p ×1, 1080p ×1.4, 4K ×4.0 (4K is a
 // premium tier — genuinely ~3× the provider compute).
 
 // Real provider cost basis: Runway Gen-4.5 API = 12 credits/s @ $0.01 = $0.12/s.
@@ -89,8 +89,8 @@ function markupFor(
 // units/s), so the charge scales to protect margin. 4K is a premium tier.
 export function resolutionMultiplier(resolution?: string | null): number {
   const r = (resolution ?? "").toLowerCase();
-  if (r === "4k" || r === "2160p") return 3.5;
-  if (r === "1080p") return 1.25;
+  if (r === "4k" || r === "2160p") return 4.0;
+  if (r === "1080p") return 1.4;
   return 1; // 720p / default
 }
 
