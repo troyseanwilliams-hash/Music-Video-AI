@@ -5,3 +5,4 @@
 - [ffmpeg OOM stitching](ffmpeg-oom-stitching.md) — `-threads` must be an output option to cap x264; N-input xfade graphs OOM, join pairwise; intermediates need matching video_track_timescale.
 - [Editor billing model](editor-billing-model.md) — Editor renders gated by manifest.chargeCredits (trial/subscription model), NOT watermark; keep studio.ts + both jobProcessors + editor.tsx in lockstep.
 - [Stripe dev/prod setup](stripe-dev-prod-setup.md) — two separate Stripe connections; seed each env independently; managed webhook won't show in webhookEndpoints.list, verify via logs.
+- [Pixazo slug validation](pixazo-slug-validation.md) — probe gateway keyless: 401=valid slug, 404=dead; verify secrets slugs before render failures.

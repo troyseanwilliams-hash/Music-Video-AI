@@ -37,7 +37,7 @@ function klingModel(resolution?: string | null): string {
     const m = process.env.PIXAZO_KLING_4K_MODEL?.trim();
     if (m) return m;
   }
-  return process.env.PIXAZO_KLING_MODEL?.trim() || "kling-video-v3-text-to-video";
+  return process.env.PIXAZO_KLING_MODEL?.trim() || "kling-video-v3-turbo-pro-text-to-video";
 }
 
 // Ordered provider chain with automatic fallback. Default order runs Runway
