@@ -37,11 +37,11 @@ function fullClipCount(songDurationSec?: number | null): number {
 }
 
 // Resolution surcharge — mirror artifacts/api-server/src/lib/creditCost.ts.
-// 720p ×1, 1080p ×1.25 (~43% margin), 4K ×2.45 (priced lower to ~30% margin to
-// stay competitive on the premium tier).
+// 720p ×1, 1080p ×1.25 (~43% margin), 4K ×5.0 (O3 4K really costs ~$0.42/s ≈ 6×
+// standard, so ×5.0 clears ~30% margin on multi-clip 4K, ~40% on short 4K).
 export function resolutionMultiplier(resolution?: string | null): number {
   const r = (resolution ?? "").toLowerCase();
-  if (r === "4k" || r === "2160p") return 2.45;
+  if (r === "4k" || r === "2160p") return 5.0;
   if (r === "1080p") return 1.25;
   return 1;
 }
