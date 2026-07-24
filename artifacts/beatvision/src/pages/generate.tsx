@@ -227,6 +227,14 @@ export default function Generate() {
     window.history.replaceState({}, "", window.location.pathname);
   }, []);
 
+  // Handoff from Prompt Studio: /generate?prompt=<text> prefills the prompt field.
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search).get("prompt");
+    if (!p) return;
+    setPrompt(p);
+    window.history.replaceState({}, "", window.location.pathname);
+  }, []);
+
   const handleRefImageSelect = async (file: File) => {
     if (!file) return;
     setRefImageError(null);

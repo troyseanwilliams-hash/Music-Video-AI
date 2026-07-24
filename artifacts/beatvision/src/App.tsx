@@ -23,6 +23,7 @@ import Terms from "@/pages/terms";
 import Dmca from "@/pages/dmca";
 import Support from "@/pages/support";
 import Settings from "@/pages/settings";
+import PromptStudio from "@/pages/prompt-studio";
 import SunoLanding from "@/pages/suno-landing";
 import CanvasLanding from "@/pages/canvas-landing";
 import ForgotPassword from "@/pages/forgot-password";
@@ -46,6 +47,7 @@ function Router() {
           <Route path="/dashboard" component={Dashboard} />
           <Route path="/gallery" component={Gallery} />
           <Route path="/soundtracks" component={Soundtracks} />
+          <Route path="/prompt-studio" component={PromptStudio} />
           <Route path="/s/:token" component={SharedSoundtrack} />
           <Route path="/explore" component={Explore} />
           <Route path="/jobs/:id" component={JobStatus} />

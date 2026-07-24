@@ -146,6 +146,14 @@ export default function Soundtracks() {
 
   // Simulated progress while generating (no server-side events): ease toward 95%
   // over ~28s, then jump to 100% on success. Feels responsive without lying.
+  // Handoff from Prompt Studio: /soundtracks?prompt=<text> prefills the prompt.
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search).get("prompt");
+    if (!p) return;
+    setPrompt(p);
+    window.history.replaceState({}, "", window.location.pathname);
+  }, []);
+
   useEffect(() => {
     if (!gen.isPending) return;
     setProgress(6);
