@@ -28,11 +28,20 @@ function usdPerSecondFor(provider?: AiProvider): number {
 const USD_PER_CREDIT = 0.015;
 const SHORT_MARKUP = 2;
 const LONG_MARKUP = 1.5;
-const MAX_FULL_SECONDS = 300;
+const MAX_FULL_SECONDS = 600;
 
 function fullClipCount(songDurationSec?: number | null): number {
   const secs = songDurationSec && songDurationSec > 0 ? songDurationSec : MAX_FULL_SECONDS;
-  return Math.max(3, Math.min(10, Math.ceil(Math.min(secs, MAX_FULL_SECONDS) / 30)));
+  return Math.max(3, Math.min(20, Math.ceil(Math.min(secs, MAX_FULL_SECONDS) / 30)));
+}
+
+// Resolution surcharge — mirror artifacts/api-server/src/lib/creditCost.ts.
+// 720p ×1, 1080p ×1.25, 4K ×3.5 (4K is a premium tier — ~3× the provider compute).
+export function resolutionMultiplier(resolution?: string | null): number {
+  const r = (resolution ?? "").toLowerCase();
+  if (r === "4k" || r === "2160p") return 3.5;
+  if (r === "1080p") return 1.25;
+  return 1;
 }
 
 function getClipPlan(requestedDuration: string | null | undefined, songDurationSec?: number | null): { numClips: number; clipDurationSec: 5 | 10 } {
@@ -44,16 +53,17 @@ function getClipPlan(requestedDuration: string | null | undefined, songDurationS
   return { numClips: Math.max(1, Math.ceil(durSec / clipDurationSec)), clipDurationSec };
 }
 
-// Priced on real clip cost — resolution tiers carry no surcharge (mirror creditCost.ts).
-// songDurationSec sizes "full" videos (clips scale with length, capped at 5 min).
+// Priced on real clip cost × tiered markup × resolution multiplier (mirror
+// creditCost.ts). songDurationSec sizes "full" videos (clips scale with length,
+// capped at 10 min).
 export function estimateCreditCost(
   requestedDuration: CreateJobRequestRequestedDuration | null | undefined,
   provider?: AiProvider,
-  _resolution?: string | null,
+  resolution?: string | null,
   songDurationSec?: number | null,
 ): number {
   const { numClips, clipDurationSec } = getClipPlan((requestedDuration ?? "full") as string, songDurationSec);
   const costCredits = (numClips * clipDurationSec * usdPerSecondFor(provider)) / USD_PER_CREDIT;
   const markup = numClips <= 1 ? SHORT_MARKUP : LONG_MARKUP;
-  return Math.ceil(costCredits * markup);
+  return Math.ceil(costCredits * markup * resolutionMultiplier(resolution));
 }

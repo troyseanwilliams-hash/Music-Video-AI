@@ -10,8 +10,10 @@
 //   10s  → 160 credits   (1 clip × 10s = $1.20 → ×2   = $2.40)
 //   30s  → 360 credits   (3 clips×10s  = $3.60 → ×1.5 = $5.40)
 //   60s  → 720 credits   (6 clips×10s  = $7.20 → ×1.5 = $10.80)
-//   full → 360–1200      (3–10 clips scaled by song length, capped at 5 min)
-//          e.g. 2min→480, 3min→720, 4min→960, 5min→1200 credits
+//   full → 360–2400      (3–20 clips scaled by song length, capped at 10 min)
+//          e.g. 2min→480, 5min→1200, 10min→2400 credits (720p Runway basis)
+// Resolution scales the charge on top: 720p ×1, 1080p ×1.25, 4K ×3.5 (4K is a
+// premium tier — genuinely ~3× the provider compute).
 
 // Real provider cost basis: Runway Gen-4.5 API = 12 credits/s @ $0.01 = $0.12/s.
 const RUNWAY_USD_PER_SECOND = 0.12;
@@ -34,12 +36,12 @@ const LONG_MARKUP = 1.5;
 // estimators in dashboard.tsx, job-status.tsx, editor.tsx) + editorCost.ts.
 export const PRICE_MULTIPLIER = 2;
 
-// Full videos are capped at 5 minutes and scale unique clips with (capped) song
-// length: ~1 clip per 30s, min 3, max 10.
-const MAX_FULL_SECONDS = 300;
+// Full videos are capped at 10 minutes and scale unique clips with (capped) song
+// length: ~1 clip per 30s, min 3, max 20.
+export const MAX_FULL_SECONDS = 600;
 export function fullClipCount(songDurationSec?: number | null): number {
   const secs = songDurationSec && songDurationSec > 0 ? songDurationSec : MAX_FULL_SECONDS;
-  return Math.max(3, Math.min(10, Math.ceil(Math.min(secs, MAX_FULL_SECONDS) / 30)));
+  return Math.max(3, Math.min(20, Math.ceil(Math.min(secs, MAX_FULL_SECONDS) / 30)));
 }
 
 export function getClipPlan(
@@ -76,26 +78,40 @@ function markupFor(
   return getClipPlan(requestedDuration, songDurationSec).numClips <= 1 ? SHORT_MARKUP : LONG_MARKUP;
 }
 
+// Resolution surcharge. 720p is the base rate; higher resolutions cost
+// materially more provider compute (Kling: 720p ≈ 0.8, 1080p ≈ 1.0, 4K ≈ 3.0
+// units/s), so the charge scales to protect margin. 4K is a premium tier.
+export function resolutionMultiplier(resolution?: string | null): number {
+  const r = (resolution ?? "").toLowerCase();
+  if (r === "4k" || r === "2160p") return 3.5;
+  if (r === "1080p") return 1.25;
+  return 1; // 720p / default
+}
+
 export function calculateBaseCost(
   requestedDuration: string | null | undefined,
-  _resolution?: string | null,
+  resolution?: string | null,
   songDurationSec?: number | null,
 ): number {
-  return Math.ceil(providerCostCredits(requestedDuration, songDurationSec));
+  return Math.ceil(providerCostCredits(requestedDuration, songDurationSec) * resolutionMultiplier(resolution));
 }
 
 // Estimated == actual cost (the same function backs the pre-flight estimate
 // shown to the customer and the deduction from their balance on success).
-// charge = ceil(real provider cost in credits × tiered markup). Resolution
-// tiers are ffmpeg upscales of the same render, so they carry no surcharge.
-// songDurationSec sizes "full" videos (clips scale with length, capped at 5 min).
+// charge = ceil(real provider cost in credits × tiered markup × resolution
+// multiplier). songDurationSec sizes "full" videos (clips scale with length,
+// capped at 10 min).
 export function calculateCreditCost(
   requestedDuration: string | null | undefined,
-  _resolution?: string | null,
+  resolution?: string | null,
   songDurationSec?: number | null,
   provider?: string | null,
 ): number {
-  return Math.ceil(providerCostCredits(requestedDuration, songDurationSec, provider) * markupFor(requestedDuration, songDurationSec));
+  return Math.ceil(
+    providerCostCredits(requestedDuration, songDurationSec, provider) *
+      markupFor(requestedDuration, songDurationSec) *
+      resolutionMultiplier(resolution),
+  );
 }
 
 // Cost to remix (regenerate) a subset of an existing video's clips. Charged

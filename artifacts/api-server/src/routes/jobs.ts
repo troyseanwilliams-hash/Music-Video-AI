@@ -13,9 +13,32 @@ import {
   GetJobParams,
 } from "@workspace/api-zod";
 import { calculateCreditCost, calculateRemixCost } from "../lib/creditCost.js";
+import { getUserTier, canRender4k } from "../lib/tier.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 
 const router = Router();
+
+// Per-user video capabilities (which resolutions/limits the plan unlocks). Used
+// by the Generate page to gate the 4K option to Pro & Studio.
+router.get("/jobs/video-capabilities", async (req, res) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const [userRecord] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.id, req.user.id))
+    .limit(1);
+  const isAdmin = !!(process.env.ADMIN_EMAIL && userRecord?.email?.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase());
+  const tier = await getUserTier(userRecord ?? {});
+  res.json({
+    tier,
+    isAdmin,
+    can4k: isAdmin || canRender4k(tier),
+    maxDurationSeconds: 600,
+  });
+});
 
 router.get("/jobs", async (req, res) => {
   if (!req.isAuthenticated()) {
@@ -110,6 +133,18 @@ router.post("/jobs", async (req, res) => {
       res.status(403).json({
         error: "A subscription is required to create videos.",
         code: "SUBSCRIPTION_REQUIRED",
+      });
+      return;
+    }
+  }
+
+  // 4K is a premium tier — Pro & Studio only (admins always allowed).
+  if (!isAdmin && String(resolution ?? "").toLowerCase() === "4k") {
+    const tier = await getUserTier(userRecord ?? {});
+    if (!canRender4k(tier)) {
+      res.status(403).json({
+        error: "4K rendering is available on the Pro and Studio plans. Upgrade to unlock 4K, or choose 1080p.",
+        code: "TIER_REQUIRED_4K",
       });
       return;
     }

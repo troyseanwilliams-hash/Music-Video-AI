@@ -243,7 +243,7 @@ async function generateClips(
   // the full audio file and each clip gets looped for the entire song duration.
   const totalOutputDuration =
     !requestedDur || requestedDur === "full"
-      ? Math.min(analysis.durationSeconds, 300) // full videos cap at 5 minutes
+      ? Math.min(analysis.durationSeconds, 600) // full videos cap at 10 minutes
       : parseInt(requestedDur, 10);
   const perClipTargetDuration = Math.max(1, totalOutputDuration / sections.length);
 
@@ -276,6 +276,10 @@ async function generateClips(
         durationSeconds: clipDuration,
         aspectRatio: job.aspectRatio ?? "16:9",
         imageUrl: refImageUrl ?? undefined,
+        // Pin the user's chosen engine (so "Kling" actually renders on Kling)
+        // and pass resolution so Kling selects the right model tier / output.
+        provider,
+        resolution: (job as JobRow & { resolution?: string | null }).resolution,
       });
       if (!result) {
         clipBuffer = await createSimulationClip(clipDuration);
@@ -607,6 +611,8 @@ async function processRemixJob(job: JobRow): Promise<void> {
             prompt,
             durationSeconds: duration,
             aspectRatio: job.aspectRatio ?? "16:9",
+            provider: (job as JobRow & { aiProvider?: string | null }).aiProvider ?? undefined,
+            resolution: (job as JobRow & { resolution?: string | null }).resolution,
           });
           buffer = result ? await downloadClip(result.videoUrl) : await createSimulationClip(duration);
         }

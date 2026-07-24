@@ -21,9 +21,9 @@ const execAsync = promisify(exec);
 const MAX_RETRIES = 3;
 const POLL_INTERVAL_MS = 5000;
 // "Full" videos are capped at 5 minutes and scale unique clips with (capped)
-// song length: ~1 clip per 30s, min 3, max 10. Numeric durations derive their
+// song length: ~1 clip per 30s, min 3, max 20. Numeric durations derive their
 // clip count dynamically via Math.ceil(durSec / clipDurationSec).
-const MAX_FULL_SECONDS = 300;
+const MAX_FULL_SECONDS = 600;
 
 async function extractAudioClip(
   audio: { buffer: Buffer; ext: string },
@@ -62,11 +62,11 @@ function buildGenerationPlan(
   const dur = requestedDuration ?? "full";
 
   if (dur === "full") {
-    // Full videos are capped at 5 minutes and scale unique clips with length:
-    // ~1 clip per 30s of (capped) song, min 3, max 10. Clips are looped/arranged
+    // Full videos are capped at 10 minutes and scale unique clips with length:
+    // ~1 clip per 30s of (capped) song, min 3, max 20. Clips are looped/arranged
     // to fill the whole video, so cost tracks variety, not runtime.
     const cappedDuration = Math.min(audioDurationSec, MAX_FULL_SECONDS);
-    const fullClips = Math.max(3, Math.min(10, Math.ceil(cappedDuration / 30)));
+    const fullClips = Math.max(3, Math.min(20, Math.ceil(cappedDuration / 30)));
     const sorted = [...sections].sort((a, b) => b.energy - a.energy);
     const selected: AudioSection[] = [];
     for (let i = 0; i < fullClips; i++) {
@@ -295,6 +295,10 @@ async function generateClips(
         durationSeconds: clipDuration,
         aspectRatio: job.aspectRatio ?? "16:9",
         imageUrl: refImageUrl ?? undefined,
+        // Pin the user's chosen engine (so "Kling" actually renders on Kling)
+        // and pass resolution so Kling selects the right model tier / output.
+        provider,
+        resolution: job.resolution,
       });
       if (!result) {
         clipBuffer = await createSimulationClip(clipDuration);
@@ -633,6 +637,8 @@ async function processRemixJob(job: JobRow): Promise<void> {
             prompt,
             durationSeconds: duration,
             aspectRatio: job.aspectRatio ?? "16:9",
+            provider: (job as JobRow & { aiProvider?: string | null }).aiProvider ?? undefined,
+            resolution: job.resolution,
           });
           buffer = result ? await downloadClip(result.videoUrl) : await createSimulationClip(duration);
         }

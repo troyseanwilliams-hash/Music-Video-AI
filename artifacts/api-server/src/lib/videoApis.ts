@@ -6,6 +6,8 @@ export interface ClipRequest {
   imageUrl?: string;
   /** Preferred engine chosen by the user (e.g. "runway", "kling"); pinned first in the chain. */
   provider?: string;
+  /** Requested output resolution ("720p" | "1080p" | "4k"). Selects the Kling model tier + gateway hint. */
+  resolution?: string | null;
 }
 
 export interface ClipResult {
@@ -25,8 +27,16 @@ function providerAvailable(p: Provider): boolean {
   return false;
 }
 
-// Standard Kling model on Pixazo (~$0.07/s). Override with PIXAZO_KLING_MODEL.
-function klingModel(): string {
+// Kling model slug on Pixazo. 720p/1080p use the standard model (~$0.07/s,
+// override with PIXAZO_KLING_MODEL). 4K is a distinct higher-tier model on the
+// gateway, so set PIXAZO_KLING_4K_MODEL to that slug; if it's unset we fall back
+// to the standard model (still renders, just not native 4K).
+function klingModel(resolution?: string | null): string {
+  const r = (resolution ?? "").toLowerCase();
+  if (r === "4k" || r === "2160p") {
+    const m = process.env.PIXAZO_KLING_4K_MODEL?.trim();
+    if (m) return m;
+  }
   return process.env.PIXAZO_KLING_MODEL?.trim() || "kling-video-v3-text-to-video";
 }
 
@@ -210,13 +220,28 @@ async function generateWithPixazo(req: ClipRequest, modelOverride?: string): Pro
   const model = modelOverride || process.env.PIXAZO_MODEL?.trim() || "kling-video-v3-turbo-pro-text-to-video";
   const duration = req.durationSeconds <= 5 ? "5" : "10";
 
+  // Always pass the aspect ratio so portrait/landscape renders match the request
+  // (previously omitted — the gateway defaulted everything to landscape).
+  const body: Record<string, unknown> = {
+    prompt: req.prompt.slice(0, 2500),
+    duration,
+    aspect_ratio: req.aspectRatio ?? "16:9",
+  };
+  // Resolution hint. Kling standard supports 720p/1080p; 4K is primarily handled
+  // by the dedicated model slug (see klingModel), but we still send the hint so a
+  // gateway that switches output on it produces the right size.
+  const r = (req.resolution ?? "").toLowerCase();
+  if (r === "1080p") body.resolution = "1080p";
+  else if (r === "4k" || r === "2160p") body.resolution = "4k";
+  else if (r === "720p") body.resolution = "720p";
+
   const submit = await fetch(`https://gateway.pixazo.ai/${model}/v1/${model}-request`, {
     method: "POST",
     headers: {
       "Ocp-Apim-Subscription-Key": key,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ prompt: req.prompt.slice(0, 2500), duration }),
+    body: JSON.stringify(body),
     signal: AbortSignal.timeout(30_000),
   });
   if (!submit.ok) throw new Error(`Pixazo ${submit.status}: ${(await submit.text()).slice(0, 200)}`);
@@ -259,8 +284,8 @@ async function callProvider(provider: Provider, req: ClipRequest): Promise<strin
     case "luma":
       return generateWithLuma(req);
     case "kling":
-      // Kling runs through the Pixazo gateway (standard Kling model).
-      return generateWithPixazo(req, klingModel());
+      // Kling runs through the Pixazo gateway; the model tier tracks resolution.
+      return generateWithPixazo(req, klingModel(req.resolution));
     case "pixazo":
       return generateWithPixazo(req);
   }

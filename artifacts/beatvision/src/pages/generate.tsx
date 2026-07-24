@@ -122,7 +122,15 @@ const ASPECT_RATIOS = [
 const RESOLUTIONS = [
   CreateJobRequestResolution["720p"],
   CreateJobRequestResolution["1080p"],
+  CreateJobRequestResolution["4k"],
 ] as const;
+
+// Friendly labels for the resolution picker. 4K is a premium (Pro/Studio) tier.
+const RES_LABELS: Record<string, string> = {
+  "720p": "720p",
+  "1080p": "1080p HD",
+  "4k": "4K Ultra",
+};
 
 const CHARACTERS = [
   { value: "none", label: "None" },
@@ -167,6 +175,29 @@ export default function Generate() {
   // New settings
   const [aspectRatio, setAspectRatio] = useState<CreateJobRequestAspectRatio>(CreateJobRequestAspectRatio["16:9"]);
   const [resolution, setResolution] = useState<CreateJobRequestResolution>(CreateJobRequestResolution["720p"]);
+  // 4K is a Pro/Studio-only tier — fetch what this user can render.
+  const [can4k, setCan4k] = useState(false);
+  useEffect(() => {
+    let active = true;
+    fetch("/api/jobs/video-capabilities", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (active && data) setCan4k(!!data.can4k);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+  // If 4K is selected but the plan doesn't allow it, fall back to 1080p.
+  useEffect(() => {
+    if (!can4k && (resolution as string) === "4k") setResolution(CreateJobRequestResolution["1080p"]);
+  }, [can4k, resolution]);
+  // 4K is only produced by the Kling engine (Runway renders at 720 here), so
+  // force Kling when 4K is chosen — otherwise the 4K surcharge wouldn't deliver 4K.
+  useEffect(() => {
+    if ((resolution as string) === "4k") setAiProvider("kling");
+  }, [resolution]);
   const [character, setCharacter] = useState<CharacterValue>("none");
   const [requestedDuration, setRequestedDuration] = useState<CreateJobRequestRequestedDuration>(CreateJobRequestRequestedDuration.NUMBER_10);
   const [aiProvider, setAiProvider] = useState<AiProvider>("runway");
@@ -757,20 +788,34 @@ export default function Generate() {
                 <DropdownMenuTrigger asChild>
                   <button className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 px-3 py-1.5 text-sm font-medium transition-colors">
                     <MonitorPlay className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span>{resolution}</span>
+                    <span>{RES_LABELS[resolution as string] ?? resolution}</span>
                     <ChevronDown className="h-3 w-3 text-muted-foreground ml-0.5" />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-28">
-                  {RESOLUTIONS.map((r) => (
-                    <DropdownMenuItem
-                      key={r}
-                      onClick={() => setResolution(r)}
-                      className={resolution === r ? "text-primary font-medium" : ""}
-                    >
-                      {r}
-                    </DropdownMenuItem>
-                  ))}
+                <DropdownMenuContent align="start" className="w-44">
+                  {RESOLUTIONS.map((r) => {
+                    const is4k = (r as string) === "4k";
+                    const locked = is4k && !can4k;
+                    return (
+                      <DropdownMenuItem
+                        key={r}
+                        disabled={locked}
+                        onClick={() => {
+                          if (locked) return;
+                          setResolution(r);
+                        }}
+                        className={`flex items-center justify-between gap-2 ${resolution === r ? "text-primary font-medium" : ""}`}
+                      >
+                        <span>{RES_LABELS[r as string] ?? r}</span>
+                        {is4k && (
+                          <span className="text-[10px] text-muted-foreground">{locked ? "Pro/Studio" : "×3.5"}</span>
+                        )}
+                        {(r as string) === "1080p" && (
+                          <span className="text-[10px] text-muted-foreground">×1.25</span>
+                        )}
+                      </DropdownMenuItem>
+                    );
+                  })}
                 </DropdownMenuContent>
               </DropdownMenu>
 
