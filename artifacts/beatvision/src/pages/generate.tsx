@@ -808,10 +808,10 @@ export default function Generate() {
                       >
                         <span>{RES_LABELS[r as string] ?? r}</span>
                         {is4k && (
-                          <span className="text-[10px] text-muted-foreground">{locked ? "Pro/Studio" : "×4"}</span>
+                          <span className="text-[10px] text-muted-foreground">{locked ? "Pro/Studio" : "×3"}</span>
                         )}
                         {(r as string) === "1080p" && (
-                          <span className="text-[10px] text-muted-foreground">×1.4</span>
+                          <span className="text-[10px] text-muted-foreground">×1.25</span>
                         )}
                       </DropdownMenuItem>
                     );
