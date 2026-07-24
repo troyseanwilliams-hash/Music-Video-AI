@@ -4,5 +4,6 @@
 - [Editor upload extension handling](editor-upload-ext.md) — video clips silently dropped from Studio renders when presign map lacks video MIME types; ext extraction must be slash-aware + kind-fallback, fix both jobProcessor copies.
 - [ffmpeg OOM stitching](ffmpeg-oom-stitching.md) — `-threads` must be an output option to cap x264; N-input xfade graphs OOM, join pairwise; intermediates need matching video_track_timescale.
 - [Editor billing model](editor-billing-model.md) — Editor renders gated by manifest.chargeCredits (trial/subscription model), NOT watermark; keep studio.ts + both jobProcessors + editor.tsx in lockstep.
+- [Job watchdog double-charge guard](job-watchdog-double-charge.md) — stale recovery must never re-queue live jobs; keep heartbeat + claimed_at fencing before every paid provider call, in both jobProcessors.
 - [Stripe dev/prod setup](stripe-dev-prod-setup.md) — two separate Stripe connections; seed each env independently; managed webhook won't show in webhookEndpoints.list, verify via logs.
 - [Pixazo slug validation](pixazo-slug-validation.md) — probe gateway keyless: 401=valid slug, 404=dead; verify secrets slugs before render failures.

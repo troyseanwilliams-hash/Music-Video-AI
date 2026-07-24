@@ -59,6 +59,46 @@ async function claimNextJob(): Promise<JobRow | null> {
   return job ?? null;
 }
 
+// Heartbeat: while a job is actively processing, bump updated_at every 60s so
+// the stale-job watchdog never re-queues an in-flight job. Long 4K clips and
+// big stitches can legitimately go >15 min between status updates — without
+// the heartbeat, recovery re-queued a live job and a second worker re-called
+// the provider API, double-charging.
+const HEARTBEAT_INTERVAL_MS = 60_000;
+function startJobHeartbeat(jobId: string): () => void {
+  const t = setInterval(() => {
+    void db
+      .execute(
+        sql`UPDATE jobs SET updated_at = NOW() WHERE id = ${jobId} AND status IN ('analyzing', 'generating', 'stitching')`,
+      )
+      .catch((err) => logger.warn({ err, jobId }, "Job heartbeat failed (non-fatal)"));
+  }, HEARTBEAT_INTERVAL_MS);
+  return () => clearInterval(t);
+}
+
+// Ownership guard: called immediately before each provider API call. Uses
+// claimed_at as a fencing token — the value set when THIS worker claimed the
+// job. If stale recovery re-queued the job (status queued/failed, claimed_at
+// NULL) or another worker re-claimed it (claimed_at changed), abort this run
+// instead of issuing a duplicate — and double-charging — provider call.
+const OWNERSHIP_LOST = "job no longer owned by this worker";
+async function assertJobOwned(job: JobRow): Promise<void> {
+  const [row] = await db
+    .select({ status: jobsTable.status, claimedAt: jobsTable.claimedAt })
+    .from(jobsTable)
+    .where(eq(jobsTable.id, job.id))
+    .limit(1);
+  const s = row?.status;
+  if (!s || s === "queued" || s === "failed") {
+    throw new Error(`${OWNERSHIP_LOST} (status: ${s ?? "missing"})`);
+  }
+  const ours = job.claimedAt ? new Date(job.claimedAt).getTime() : null;
+  const current = row?.claimedAt ? new Date(row.claimedAt).getTime() : null;
+  if (ours !== current) {
+    throw new Error(`${OWNERSHIP_LOST} (claim token changed: re-claimed by another worker)`);
+  }
+}
+
 async function updateJobStatus(
   jobId: string,
   fields: Partial<typeof jobsTable.$inferInsert>,
@@ -271,6 +311,7 @@ async function generateClips(
         { jobId: job.id, section: section.label, provider, prompt: prompt.slice(0, 80) },
         "Generating AI clip",
       );
+      await assertJobOwned(job);
       const result = await generateClip({
         prompt,
         durationSeconds: clipDuration,
@@ -336,6 +377,15 @@ async function persistClips(
 
 async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
   const errMsg = err instanceof Error ? err.message : String(err);
+
+  // Ownership was lost (stale recovery re-queued the job or another worker
+  // claimed it). Another run owns this job now — do NOT touch its status or
+  // schedule a retry, just stop quietly.
+  if (errMsg.includes(OWNERSHIP_LOST)) {
+    logger.warn({ jobId: job.id }, "Aborted run: job ownership lost, leaving job to its new owner");
+    return;
+  }
+
   logger.error({ err, jobId: job.id, retryCount: job.retryCount }, "Job failed");
 
   // Moderation / content-policy failures will never succeed on retry — fail fast.
@@ -607,6 +657,7 @@ async function processRemixJob(job: JobRow): Promise<void> {
           await new Promise((r) => setTimeout(r, 1200));
           buffer = await createSimulationClip(duration);
         } else {
+          await assertJobOwned(job);
           const result = await generateClip({
             prompt,
             durationSeconds: duration,
@@ -945,11 +996,13 @@ export async function startJobProcessor(): Promise<void> {
         const job = await claimNextJob();
         if (job) {
           busy = true;
+          const stopHeartbeat = startJobHeartbeat(job.id);
           processJob(job)
             .catch((err) =>
               logger.error({ err, jobId: job.id }, "Unhandled job error"),
             )
             .finally(() => {
+              stopHeartbeat();
               busy = false;
             });
         }
