@@ -1,5 +1,3 @@
-import { createHmac } from "crypto";
-
 export interface ClipRequest {
   prompt: string;
   durationSeconds: number;
@@ -200,69 +198,6 @@ async function generateWithLuma(req: ClipRequest): Promise<string> {
       throw new Error(`Luma generation failed: ${status.failure_reason}`);
   }
   throw new Error("Luma generation timed out after 10 minutes");
-}
-
-function makeKlingJWT(accessKeyId: string, secretKey: string): string {
-  const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
-  const now = Math.floor(Date.now() / 1000);
-  const payload = Buffer.from(
-    JSON.stringify({ iss: accessKeyId, exp: now + 1800, nbf: now - 5 }),
-  ).toString("base64url");
-  const sig = createHmac("sha256", secretKey)
-    .update(`${header}.${payload}`)
-    .digest("base64url");
-  return `${header}.${payload}.${sig}`;
-}
-
-async function generateWithKling(req: ClipRequest): Promise<string> {
-  const [accessKeyId, secretKey] = (process.env.KLING_API_KEY ?? ":").split(":");
-  if (!accessKeyId || !secretKey) throw new Error("Invalid KLING_API_KEY format (expected accessKeyId:secretKey)");
-
-  const duration = req.durationSeconds <= 5 ? "5" : "10";
-
-  const genRes = await fetch("https://api.klingai.com/v1/videos/text2video", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${makeKlingJWT(accessKeyId, secretKey)}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model_name: "kling-v1",
-      prompt: req.prompt.slice(0, 2500),
-      negative_prompt: "blur, pixelated, low quality, watermark",
-      cfg_scale: 0.5,
-      mode: "std",
-      duration,
-    }),
-    signal: AbortSignal.timeout(30_000),
-  });
-
-  if (!genRes.ok)
-    throw new Error(`Kling ${genRes.status}: ${(await genRes.text()).slice(0, 200)}`);
-  const { data } = (await genRes.json()) as { data: { task_id: string } };
-  const taskId = data.task_id;
-
-  for (let i = 0; i < 120; i++) {
-    await delay(5000);
-    const pollRes = await fetch(
-      `https://api.klingai.com/v1/videos/text2video/${taskId}`,
-      {
-        headers: { Authorization: `Bearer ${makeKlingJWT(accessKeyId, secretKey)}` },
-        signal: AbortSignal.timeout(15_000),
-      },
-    );
-    if (!pollRes.ok) continue;
-    const { data: d } = (await pollRes.json()) as {
-      data: {
-        task_status: string;
-        task_result?: { videos?: { url: string }[] };
-      };
-    };
-    if (d.task_status === "succeed" && d.task_result?.videos?.[0]?.url)
-      return d.task_result.videos[0].url;
-    if (d.task_status === "failed") throw new Error("Kling task failed");
-  }
-  throw new Error("Kling task timed out after 10 minutes");
 }
 
 // Pixazo (pixazo.ai) — a unified gateway that fronts Kling, Runway, Veo, etc.
