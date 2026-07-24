@@ -704,6 +704,7 @@ export default function Generate() {
                     { value: CreateJobRequestRequestedDuration.NUMBER_5, label: "5 seconds", note: null },
                     { value: CreateJobRequestRequestedDuration.NUMBER_10, label: "10 seconds", note: null },
                     { value: CreateJobRequestRequestedDuration.NUMBER_30, label: "30 seconds", note: null },
+                    { value: CreateJobRequestRequestedDuration.NUMBER_45, label: "45 seconds", note: null },
                     { value: CreateJobRequestRequestedDuration.NUMBER_60, label: "60 seconds", note: null },
                     { value: CreateJobRequestRequestedDuration.NUMBER_90, label: "90 seconds", note: "~15 min" },
                     { value: CreateJobRequestRequestedDuration.NUMBER_120, label: "120 seconds", note: "~20 min" },
