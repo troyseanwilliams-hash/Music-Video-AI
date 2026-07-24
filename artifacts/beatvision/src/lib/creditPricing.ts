@@ -37,11 +37,11 @@ function fullClipCount(songDurationSec?: number | null): number {
 }
 
 // Resolution surcharge — mirror artifacts/api-server/src/lib/creditCost.ts.
-// 720p ×1, 1080p ×1.25, 4K ×3.0 (4K priced to ~43% margin — matches the provider
-// compute multiple so 4K margin lines up with the other Kling multi-clip tiers).
+// 720p ×1, 1080p ×1.25 (~43% margin), 4K ×2.45 (priced lower to ~30% margin to
+// stay competitive on the premium tier).
 export function resolutionMultiplier(resolution?: string | null): number {
   const r = (resolution ?? "").toLowerCase();
-  if (r === "4k" || r === "2160p") return 3.0;
+  if (r === "4k" || r === "2160p") return 2.45;
   if (r === "1080p") return 1.25;
   return 1;
 }

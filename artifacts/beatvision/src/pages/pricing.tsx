@@ -245,7 +245,7 @@ export default function Pricing() {
           <strong className="text-foreground">Runway</strong> (premium) or{" "}
           <strong className="text-foreground">Kling</strong> (value — about 40%
           cheaper). Full-length videos scale with song length (up to 10 minutes).
-          Render in 720p, 1080p HD (×1.25), or 4K Ultra (×3, Pro &amp; Studio).
+          Render in 720p, 1080p HD (×1.25), or 4K Ultra (×2.45, Pro &amp; Studio).
           TikTok teaser packs cost 30, Spotify Canvas loops 20. Plan credits
           reset each cycle — top-up credits never expire, and you can earn more
           by referring friends.
