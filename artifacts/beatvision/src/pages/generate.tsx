@@ -1473,8 +1473,10 @@ export default function Generate() {
         : parseInt(requestedDuration as string, 10);
       const isLong = durSec !== null && durSec >= 90;
       if (!isLong) return null;
-      const numClips = Math.min(20, Math.ceil((durSec as number) / 10));
-      const estimatedMin = durSec === 90 ? "~15 minutes" : durSec === 120 ? "~20 minutes" : "~30 minutes";
+      const numClips = (durSec as number) > 120
+        ? Math.min(30, Math.ceil((durSec as number) / 20))
+        : Math.min(20, Math.ceil((durSec as number) / 10));
+      const estimatedMin = durSec === 90 ? "~15 minutes" : durSec === 120 ? "~20 minutes" : durSec === 300 ? "~25 minutes" : "~45 minutes";
       const durLabel = durSec === 300 ? "5-minute" : durSec === 600 ? "10-minute" : `${durSec}-second`;
       const creditCost = estimateCreditCost(requestedDuration, aiProvider, resolution, songDurationSec);
       return (

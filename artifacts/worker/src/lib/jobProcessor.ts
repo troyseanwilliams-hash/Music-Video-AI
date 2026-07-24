@@ -77,9 +77,12 @@ function buildGenerationPlan(
 
   const durSec = parseInt(dur, 10); // 5, 8, 10, 30, 60, 300, 600
   const clipDurationSec: 5 | 10 = durSec <= 5 ? 5 : 10;
-  // Cap explicit long durations at 20 unique clips (matches the credit formula),
-  // so 300s/600s render ~20 clips looped to fill, not 30/60.
-  const numClips = Math.min(20, Math.max(1, Math.ceil(durSec / clipDurationSec)));
+  // Explicit durations over 2 min scale by length (matches the credit formula):
+  // ~1 clip/20s, cap 30 (5 min = 15 clips, 10 min = 30), looped to fill. Shorter
+  // durations keep 1 clip/10s.
+  const numClips = durSec > 120
+    ? Math.min(30, Math.ceil(durSec / 20))
+    : Math.max(1, Math.ceil(durSec / clipDurationSec));
 
   // Select sections, cycling if we need more clips than sections
   const sorted = [...sections].sort((a, b) => b.energy - a.energy);
