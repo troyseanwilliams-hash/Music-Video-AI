@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { jobsTable, videosTable, creditsTable } from "@workspace/db";
 import { eq, count, and, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { touchPresence } from "../lib/presence.js";
 
 const router = Router();
 
@@ -13,6 +14,13 @@ router.get("/dashboard/stats", async (req, res) => {
   }
 
   const userId = req.user.id;
+  // Heartbeat: the navbar polls this every 15s for every logged-in user, so it
+  // doubles as a presence signal for the admin "live now" view.
+  touchPresence(
+    userId,
+    req.user.email ?? null,
+    [req.user.firstName, req.user.lastName].filter(Boolean).join(" ") || null,
+  );
 
   const [allJobs, totalVideosResult, credits, liveVideoRows] = await Promise.all([
     db.select().from(jobsTable).where(eq(jobsTable.userId, userId)),

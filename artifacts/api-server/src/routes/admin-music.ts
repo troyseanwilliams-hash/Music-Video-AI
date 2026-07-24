@@ -6,8 +6,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomUUID } from "crypto";
 import { z } from "zod";
-import { db, creditsTable, usersTable, soundtracksTable } from "@workspace/db";
-import { eq, sql, and, desc, isNull } from "drizzle-orm";
+import { db, creditsTable, usersTable, soundtracksTable, soundtrackLikesTable } from "@workspace/db";
+import { eq, sql, and, desc, isNull, inArray } from "drizzle-orm";
 import { generateSong, getActiveMusicProvider, loopAudioToLength, MAX_SONG_SECONDS, type MusicProvider } from "../lib/musicApis.js";
 import { generateLyrics, lyricsProviderAvailable } from "../lib/lyricsGen.js";
 import { calculateSongCost, freeSoundtracksFor, NEW_USER_FREE_SOUNDTRACKS } from "../lib/creditCost.js";
@@ -147,7 +147,10 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
       }
 
       const tier = await getUserTier(user);
-      const allowance = freeSoundtracksFor(tier);
+      // Active subscribers always get their free allowance; if the Stripe tier
+      // can't be read, fall back to the Starter allowance so free tracks are
+      // never accidentally charged to their credit balance.
+      const allowance = freeSoundtracksFor(tier) || freeSoundtracksFor("starter");
 
       if (used < allowance) {
         isFree = true;
@@ -290,7 +293,7 @@ router.get("/music/soundtracks-status", async (req: Request, res: Response) => {
   if (active) {
     // Subscriber: monthly allowance by tier. Elapsed reset window = fresh month.
     tier = await getUserTier(user ?? {});
-    freeAllowance = freeSoundtracksFor(tier);
+    freeAllowance = freeSoundtracksFor(tier) || freeSoundtracksFor("starter");
     const resetAt = credits?.freeSoundtracksResetAt ? new Date(credits.freeSoundtracksResetAt).getTime() : 0;
     used = !resetAt || resetAt <= Date.now() ? 0 : credits?.freeSoundtracksUsed ?? 0;
   } else {
@@ -365,11 +368,10 @@ router.delete("/music/soundtracks/:id", async (req: Request, res: Response) => {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  const id = String(req.params.id);
   const [row] = await db
     .select()
     .from(soundtracksTable)
-    .where(and(eq(soundtracksTable.id, id), eq(soundtracksTable.userId, req.user.id)))
+    .where(and(eq(soundtracksTable.id, String(req.params.id)), eq(soundtracksTable.userId, req.user.id)))
     .limit(1);
   if (!row) {
     res.status(404).json({ error: "Not found" });
@@ -385,7 +387,6 @@ router.post("/music/soundtracks/:id/rename", async (req: Request, res: Response)
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  const id = String(req.params.id);
   const title = String(req.body?.title ?? "").trim().slice(0, 120);
   if (!title) {
     res.status(400).json({ error: "Title is required" });
@@ -394,7 +395,7 @@ router.post("/music/soundtracks/:id/rename", async (req: Request, res: Response)
   const [row] = await db
     .select()
     .from(soundtracksTable)
-    .where(and(eq(soundtracksTable.id, id), eq(soundtracksTable.userId, req.user.id)))
+    .where(and(eq(soundtracksTable.id, String(req.params.id)), eq(soundtracksTable.userId, req.user.id)))
     .limit(1);
   if (!row) {
     res.status(404).json({ error: "Not found" });
@@ -405,7 +406,7 @@ router.post("/music/soundtracks/:id/rename", async (req: Request, res: Response)
 });
 
 // Public gallery feed for Explore: all public, non-deleted Soundtracks.
-router.get("/music/public", async (_req: Request, res: Response) => {
+router.get("/music/public", async (req: Request, res: Response) => {
   const rows = await db
     .select({
       id: soundtracksTable.id,
@@ -414,13 +415,26 @@ router.get("/music/public", async (_req: Request, res: Response) => {
       objectPath: soundtracksTable.objectPath,
       shareToken: soundtracksTable.shareToken,
       createdAt: soundtracksTable.createdAt,
+      likeCount: soundtracksTable.likeCount,
       creatorName: usersTable.firstName,
     })
     .from(soundtracksTable)
     .leftJoin(usersTable, eq(soundtracksTable.userId, usersTable.id))
     .where(and(eq(soundtracksTable.isPublic, true), isNull(soundtracksTable.deletedAt)))
-    .orderBy(desc(soundtracksTable.createdAt))
+    .orderBy(desc(soundtracksTable.likeCount), desc(soundtracksTable.createdAt))
     .limit(60);
+
+  // Which of these the current user has liked (empty for anonymous viewers).
+  const ids = rows.map((r) => r.id);
+  let likedSet = new Set<string>();
+  if (req.isAuthenticated() && ids.length) {
+    const liked = await db
+      .select({ soundtrackId: soundtrackLikesTable.soundtrackId })
+      .from(soundtrackLikesTable)
+      .where(and(eq(soundtrackLikesTable.userId, req.user.id), inArray(soundtrackLikesTable.soundtrackId, ids)));
+    likedSet = new Set(liked.map((l) => l.soundtrackId));
+  }
+
   const soundtracks = await Promise.all(
     rows.map(async (s) => ({
       id: s.id,
@@ -429,11 +443,61 @@ router.get("/music/public", async (_req: Request, res: Response) => {
       shareToken: s.shareToken,
       creatorName: s.creatorName,
       createdAt: s.createdAt,
+      likeCount: s.likeCount,
+      liked: likedSet.has(s.id),
       objectPath: s.objectPath, // lets a viewer push it into the video generator
       url: await storageService.getObjectEntitySignedUrl(s.objectPath, 3600),
     })),
   );
   res.json({ soundtracks });
+});
+
+// Like a public soundtrack (idempotent).
+router.post("/music/soundtracks/:id/like", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const id = String(req.params.id || "");
+  const [row] = await db.select().from(soundtracksTable).where(eq(soundtracksTable.id, id)).limit(1);
+  if (!row || !row.isPublic || row.deletedAt) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  const likeCount = await db.transaction(async (tx) => {
+    const inserted = await tx
+      .insert(soundtrackLikesTable)
+      .values({ userId: req.user!.id, soundtrackId: id })
+      .onConflictDoNothing()
+      .returning();
+    if (inserted.length > 0) {
+      await tx.update(soundtracksTable).set({ likeCount: sql`${soundtracksTable.likeCount} + 1` }).where(eq(soundtracksTable.id, id));
+    }
+    const [s] = await tx.select({ likeCount: soundtracksTable.likeCount }).from(soundtracksTable).where(eq(soundtracksTable.id, id)).limit(1);
+    return s?.likeCount ?? 0;
+  });
+  res.json({ liked: true, likeCount });
+});
+
+// Unlike a public soundtrack (idempotent).
+router.delete("/music/soundtracks/:id/like", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const id = String(req.params.id || "");
+  const likeCount = await db.transaction(async (tx) => {
+    const deleted = await tx
+      .delete(soundtrackLikesTable)
+      .where(and(eq(soundtrackLikesTable.userId, req.user!.id), eq(soundtrackLikesTable.soundtrackId, id)))
+      .returning();
+    if (deleted.length > 0) {
+      await tx.update(soundtracksTable).set({ likeCount: sql`GREATEST(${soundtracksTable.likeCount} - 1, 0)` }).where(eq(soundtracksTable.id, id));
+    }
+    const [s] = await tx.select({ likeCount: soundtracksTable.likeCount }).from(soundtracksTable).where(eq(soundtracksTable.id, id)).limit(1);
+    return s?.likeCount ?? 0;
+  });
+  res.json({ liked: false, likeCount });
 });
 
 // Toggle a Soundtrack public (mints a share token on first publish) or private.
@@ -442,12 +506,11 @@ router.post("/music/soundtracks/:id/public", async (req: Request, res: Response)
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  const id = String(req.params.id);
   const makePublic = req.body?.isPublic !== false; // default to publishing
   const [row] = await db
     .select()
     .from(soundtracksTable)
-    .where(and(eq(soundtracksTable.id, id), eq(soundtracksTable.userId, req.user.id)))
+    .where(and(eq(soundtracksTable.id, String(req.params.id)), eq(soundtracksTable.userId, req.user.id)))
     .limit(1);
   if (!row) {
     res.status(404).json({ error: "Not found" });
@@ -463,11 +526,10 @@ router.post("/music/soundtracks/:id/public", async (req: Request, res: Response)
 
 // Public resolve by share token (no auth) — powers share links / public gallery.
 router.get("/music/shared/:token", async (req: Request, res: Response) => {
-  const token = String(req.params.token);
   const [row] = await db
     .select()
     .from(soundtracksTable)
-    .where(and(eq(soundtracksTable.shareToken, token), eq(soundtracksTable.isPublic, true), isNull(soundtracksTable.deletedAt)))
+    .where(and(eq(soundtracksTable.shareToken, String(req.params.token)), eq(soundtracksTable.isPublic, true), isNull(soundtracksTable.deletedAt)))
     .limit(1);
   if (!row) {
     res.status(404).json({ error: "Not found" });

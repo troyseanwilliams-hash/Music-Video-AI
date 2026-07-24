@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Music2, Wand2, Zap, Film, Eye, EyeOff } from "lucide-react";
+import { Loader2, Music2, Wand2, Zap, Film, Eye, EyeOff, Headphones } from "lucide-react";
 import { motion } from "framer-motion";
 
 const features = [
@@ -17,6 +17,11 @@ const features = [
     icon: Wand2,
     title: "AI Video Generation",
     description: "Cinematic clips generated to match each section of your track",
+  },
+  {
+    icon: Headphones,
+    title: "AI Soundtracks",
+    description: "Generate royalty-free instrumental music to score your videos",
   },
   {
     icon: Zap,
@@ -84,7 +89,8 @@ export default function Login() {
               <span className="bg-gradient-electric bg-clip-text text-transparent">Cinematic visuals.</span>
             </h2>
             <p className="text-muted-foreground text-lg leading-relaxed max-w-sm">
-              Upload any track and let our AI compose a perfectly beat-synced music video in minutes.
+              Upload any track — or generate a royalty-free soundtrack — and let our AI turn it into a perfectly
+              beat-synced music video in minutes.
             </p>
           </div>
 

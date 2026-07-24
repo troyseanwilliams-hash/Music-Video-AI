@@ -22,6 +22,7 @@ import Admin from "@/pages/admin";
 import Terms from "@/pages/terms";
 import Dmca from "@/pages/dmca";
 import Support from "@/pages/support";
+import Settings from "@/pages/settings";
 import SunoLanding from "@/pages/suno-landing";
 import CanvasLanding from "@/pages/canvas-landing";
 import ForgotPassword from "@/pages/forgot-password";
@@ -53,6 +54,7 @@ function Router() {
           <Route path="/terms" component={Terms} />
           <Route path="/dmca" component={Dmca} />
           <Route path="/support" component={Support} />
+          <Route path="/settings" component={Settings} />
           <Route path="/suno" component={SunoLanding} />
           <Route path="/spotify-canvas" component={CanvasLanding} />
           <Route component={NotFound} />

@@ -104,7 +104,7 @@ export default function Home() {
               </h1>
               
               <p className="text-lg md:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto">
-                Let our AI generate beat-synced music videos from any song — or jump into <span className="text-foreground font-semibold">Remix Lab</span> to arrange your own clips, photos, music, and transitions into a finished video.
+                Let our AI generate beat-synced music videos from any song — or jump into <span className="text-foreground font-semibold">Remix Lab</span> to arrange your own clips, photos, music, and transitions. Need a track? Generate royalty-free <span className="text-foreground font-semibold">Soundtracks</span> in seconds.
               </p>
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -121,25 +121,30 @@ export default function Home() {
                   </Button>
                 </Link>
               </div>
-              <div className="mt-4">
-                <Link href="/gallery" className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-4">
-                  or browse the gallery
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+                <Link href="/soundtracks" className="text-sm text-primary underline underline-offset-4 hover:opacity-80">
+                  create a royalty-free soundtrack
+                </Link>
+                <span className="text-sm text-muted-foreground">·</span>
+                <Link href="/gallery" className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground">
+                  browse the gallery
                 </Link>
               </div>
             </motion.div>
           </div>
         </section>
 
-        {/* Two ways to create */}
+        {/* Ways to create — video + soundtracks */}
         <section className="py-16 border-t border-border/30">
-          <div className="container px-4 md:px-6 mx-auto max-w-5xl">
+          <div className="container px-4 md:px-6 mx-auto max-w-6xl">
             <div className="text-center mb-10">
-              <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-3">Two ways to create</h2>
+              <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-3">Video <span className="text-gradient-electric">+</span> Soundtracks</h2>
               <p className="text-muted-foreground max-w-2xl mx-auto">
-                Let AI build a beat-synced video for you, or take full control on the timeline.
+                Make beat-synced videos — let AI do it or take control on the timeline — and generate the
+                royalty-free music to go with them, all in one place.
               </p>
             </div>
-            <div className="grid md:grid-cols-2 gap-6">
+            <div className="grid md:grid-cols-3 gap-6">
               <div className="group rounded-2xl border border-card-border bg-card p-8 flex flex-col transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-glow">
                 <div className="h-12 w-12 rounded-xl bg-primary/15 flex items-center justify-center mb-5 transition-transform group-hover:scale-110">
                   <Sparkles className="h-6 w-6 text-primary" />
@@ -177,6 +182,33 @@ export default function Home() {
                 <Link href="/editor">
                   <Button variant="outline" className="border-accent/40 hover:bg-accent/10 hover:text-accent">
                     Open Remix Lab
+                  </Button>
+                </Link>
+              </div>
+              <div className="group rounded-2xl border border-card-border bg-card p-8 flex flex-col transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-glow">
+                <div className="h-12 w-12 rounded-xl bg-primary/15 flex items-center justify-center mb-5 transition-transform group-hover:scale-110">
+                  <Music className="h-6 w-6 text-primary" />
+                </div>
+                <h3 className="text-xl font-bold mb-2 flex items-center gap-2">
+                  Soundtracks
+                  <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">Beta</span>
+                </h3>
+                <p className="text-muted-foreground mb-4 flex-1">
+                  No track yet? Generate royalty-free instrumentals in seconds, then drop them straight into a video.
+                </p>
+                <div className="flex flex-wrap gap-2 mb-6">
+                  {["Royalty-free", "Free monthly credits", "Loop to any length"].map((chip) => (
+                    <span
+                      key={chip}
+                      className="text-xs font-medium text-muted-foreground border border-border/60 rounded-full px-2.5 py-1 bg-secondary/40"
+                    >
+                      {chip}
+                    </span>
+                  ))}
+                </div>
+                <Link href="/soundtracks">
+                  <Button variant="outline" className="border-primary/40 hover:bg-primary/10 hover:text-primary">
+                    Create a Soundtrack
                   </Button>
                 </Link>
               </div>

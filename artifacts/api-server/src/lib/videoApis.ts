@@ -6,6 +6,8 @@ export interface ClipRequest {
   aspectRatio?: string;
   /** HTTPS URL of the reference image (GCS signed URL). When absent, text_to_video is used. */
   imageUrl?: string;
+  /** Preferred engine chosen by the user (e.g. "runway", "kling"); pinned first in the chain. */
+  provider?: string;
 }
 
 export interface ClipResult {
@@ -18,9 +20,16 @@ type Provider = "runway" | "luma" | "kling" | "pixazo";
 function providerAvailable(p: Provider): boolean {
   if (p === "runway") return !!process.env.RUNWAY_API_KEY;
   if (p === "luma") return !!process.env.LUMA_API_KEY;
-  if (p === "kling") return !!process.env.KLING_API_KEY;
+  // "kling" now runs through the Pixazo gateway (single key, standard Kling
+  // model) — no separate Kling account needed.
+  if (p === "kling") return !!process.env.PIXAZO_API_KEY;
   if (p === "pixazo") return !!process.env.PIXAZO_API_KEY;
   return false;
+}
+
+// Standard Kling model on Pixazo (~$0.07/s). Override with PIXAZO_KLING_MODEL.
+function klingModel(): string {
+  return process.env.PIXAZO_KLING_MODEL?.trim() || "kling-video-v3-text-to-video";
 }
 
 // Ordered provider chain with automatic fallback. Default order runs Runway
@@ -53,7 +62,7 @@ function getProvider(): Provider | null {
 export function getActiveProvider(hint?: string | null): string {
   const h = hint?.toLowerCase() as Provider | undefined;
   if (h === "runway" && process.env.RUNWAY_API_KEY) return "runway";
-  if (h === "kling" && process.env.KLING_API_KEY) return "kling";
+  if (h === "kling" && process.env.PIXAZO_API_KEY) return "kling";
   if (h === "luma" && process.env.LUMA_API_KEY) return "luma";
   if (h === "pixazo" && process.env.PIXAZO_API_KEY) return "pixazo";
   return getProvider() ?? "simulation";
@@ -263,9 +272,9 @@ async function generateWithKling(req: ClipRequest): Promise<string> {
 // behind one API key (Ocp-Apim-Subscription-Key). Submit to a model endpoint,
 // then poll the universal status endpoint for the result. Pick your exact model
 // slug from the Pixazo dashboard and set it as PIXAZO_MODEL.
-async function generateWithPixazo(req: ClipRequest): Promise<string> {
+async function generateWithPixazo(req: ClipRequest, modelOverride?: string): Promise<string> {
   const key = process.env.PIXAZO_API_KEY!;
-  const model = process.env.PIXAZO_MODEL?.trim() || "kling-video-v3-turbo-pro-text-to-video";
+  const model = modelOverride || process.env.PIXAZO_MODEL?.trim() || "kling-video-v3-turbo-pro-text-to-video";
   const duration = req.durationSeconds <= 5 ? "5" : "10";
 
   const submit = await fetch(`https://gateway.pixazo.ai/${model}/v1/${model}-request`, {
@@ -317,7 +326,8 @@ async function callProvider(provider: Provider, req: ClipRequest): Promise<strin
     case "luma":
       return generateWithLuma(req);
     case "kling":
-      return generateWithKling(req);
+      // Kling runs through the Pixazo gateway (standard Kling model).
+      return generateWithPixazo(req, klingModel());
     case "pixazo":
       return generateWithPixazo(req);
   }
@@ -327,8 +337,14 @@ async function callProvider(provider: Provider, req: ClipRequest): Promise<strin
 // Try providers in order, automatically falling back to the next on failure
 // (e.g. Runway credits exhausted → Pixazo). Returns the first success.
 export async function generateClip(req: ClipRequest): Promise<ClipResult | null> {
-  const chain = getProviderChain();
+  let chain = getProviderChain();
   if (chain.length === 0) return null;
+
+  // Honor a user-chosen engine: pin it first, keeping the rest as fallback.
+  const pinned = req.provider?.toLowerCase() as Provider | undefined;
+  if (pinned && providerAvailable(pinned)) {
+    chain = [pinned, ...chain.filter((p) => p !== pinned)];
+  }
 
   let lastErr: unknown;
   for (let i = 0; i < chain.length; i++) {

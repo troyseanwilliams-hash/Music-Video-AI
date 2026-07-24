@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useGetDashboardStats, getGetDashboardStatsQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus, Film, CheckCircle2, Clock, AlertCircle, Crown, Play, Coins, Trash2, Zap, Mail } from "lucide-react";
+import { Loader2, Plus, Film, CheckCircle2, Clock, AlertCircle, Crown, Play, Coins, Trash2, Zap, Mail, X, Wand2, Music2, Sparkles } from "lucide-react";
 import ReferEarnCard from "@/components/ReferEarnCard";
 import { Switch } from "@/components/ui/switch";
 import { useQuery } from "@tanstack/react-query";
@@ -46,6 +46,14 @@ export default function Dashboard() {
   const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const [watchingJobId, setWatchingJobId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [cancelingId, setCancelingId] = useState<string | null>(null);
+  const [welcomeDismissed, setWelcomeDismissed] = useState(() => {
+    try { return localStorage.getItem("abs_welcome_dismissed") === "1"; } catch { return false; }
+  });
+  const dismissWelcome = () => {
+    try { localStorage.setItem("abs_welcome_dismissed", "1"); } catch { /* ignore */ }
+    setWelcomeDismissed(true);
+  };
   const queryClient = useQueryClient();
 
   // Delete a video straight from the dashboard. Soft-deletes it (removed from
@@ -61,6 +69,21 @@ export default function Dashboard() {
       // silently ignore
     } finally {
       setDeletingId(null);
+    }
+  }
+
+  // Cancel an in-progress job from the Processing list.
+  async function handleCancel(jobId: string) {
+    if (!window.confirm("Cancel this job? It will stop and won't produce a video.")) return;
+    setCancelingId(jobId);
+    try {
+      const r = await fetch(`/api/jobs/${jobId}/cancel`, { method: "POST", credentials: "include" });
+      if (!r.ok) throw new Error("cancel failed");
+      await queryClient.invalidateQueries({ queryKey: getGetDashboardStatsQueryKey() });
+    } catch {
+      // silently ignore
+    } finally {
+      setCancelingId(null);
     }
   }
 
@@ -196,6 +219,36 @@ export default function Dashboard() {
         </div>
       ) : stats ? (
         <div className="space-y-8">
+          {!welcomeDismissed && stats.totalJobs === 0 && (
+            <div className="relative overflow-hidden rounded-2xl border border-primary/30 bg-primary/[0.06] p-6">
+              <button onClick={dismissWelcome} className="absolute right-3 top-3 text-muted-foreground hover:text-foreground" aria-label="Dismiss">
+                <X className="h-4 w-4" />
+              </button>
+              <h2 className="flex items-center gap-2 text-xl font-bold">
+                <Sparkles className="h-5 w-5 text-primary" /> Welcome to AI Beat Sync
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                You've got trial credits and <strong className="text-foreground">3 free Soundtracks</strong> to try. Here's how to start:
+              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <Link href="/generate" className="rounded-xl border border-border bg-background/40 p-4 transition-colors hover:border-primary/50">
+                  <Wand2 className="mb-2 h-5 w-5 text-primary" />
+                  <p className="text-sm font-semibold">Generate a video</p>
+                  <p className="text-xs text-muted-foreground">Turn any song into a beat-synced AI video.</p>
+                </Link>
+                <Link href="/soundtracks" className="rounded-xl border border-border bg-background/40 p-4 transition-colors hover:border-primary/50">
+                  <Music2 className="mb-2 h-5 w-5 text-primary" />
+                  <p className="text-sm font-semibold">Create a Soundtrack</p>
+                  <p className="text-xs text-muted-foreground">Royalty-free instrumentals in seconds.</p>
+                </Link>
+                <Link href="/explore" className="rounded-xl border border-border bg-background/40 p-4 transition-colors hover:border-primary/50">
+                  <Film className="mb-2 h-5 w-5 text-primary" />
+                  <p className="text-sm font-semibold">Explore</p>
+                  <p className="text-xs text-muted-foreground">See what the community is making.</p>
+                </Link>
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <Card className="bg-card/50 border-card-border">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -309,9 +362,21 @@ export default function Dashboard() {
                             <Loader2 className="h-3 w-3 animate-spin text-primary" /> {label}{pct !== null ? ` · ${pct}%` : ""}
                           </p>
                         </div>
-                        <Button size="sm" variant="outline" className="shrink-0" onClick={() => setLocation(`/jobs/${j.id}`)}>
-                          View status
-                        </Button>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <Button size="sm" variant="outline" onClick={() => setLocation(`/jobs/${j.id}`)}>
+                            View status
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-muted-foreground hover:text-destructive"
+                            disabled={cancelingId === j.id}
+                            onClick={() => handleCancel(j.id)}
+                            title="Cancel this job"
+                          >
+                            {cancelingId === j.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+                          </Button>
+                        </div>
                       </div>
                       {pct !== null && (
                         <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-secondary/60">

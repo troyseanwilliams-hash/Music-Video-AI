@@ -265,6 +265,32 @@ router.post("/auth/reset-password", async (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// Update profile (display name). Writes existing users columns — no schema change.
+router.patch("/auth/profile", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const parsed = z
+    .object({
+      firstName: z.string().trim().max(60).optional(),
+      lastName: z.string().trim().max(60).optional(),
+    })
+    .safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid name" });
+    return;
+  }
+  await db
+    .update(usersTable)
+    .set({
+      ...(parsed.data.firstName !== undefined ? { firstName: parsed.data.firstName || null } : {}),
+      ...(parsed.data.lastName !== undefined ? { lastName: parsed.data.lastName || null } : {}),
+    })
+    .where(eq(usersTable.id, req.user.id));
+  res.json({ ok: true });
+});
+
 // Account preferences (currently just the render-finished email opt-out).
 router.patch("/auth/preferences", async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {

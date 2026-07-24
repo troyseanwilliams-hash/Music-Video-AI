@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useListVideos, useDeleteVideo, getListVideosQueryKey, getGetDashboardStatsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Loader2, Trash2, Play, Film, Download, Scissors, Globe, Pencil } from "lucide-react";
+import { Loader2, Trash2, Play, Film, Download, Scissors, Globe, Pencil, X } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -53,6 +53,7 @@ export default function Gallery() {
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [player, setPlayer] = useState<{ url: string; title: string } | null>(null);
 
   async function saveRename(videoId: string) {
     const title = renameValue.trim();
@@ -90,11 +91,12 @@ export default function Gallery() {
     }
   }
 
-  async function handleWatch(jobId: string) {
+  async function handleWatch(jobId: string, title?: string | null) {
     setLoadingAction(prev => ({ ...prev, [jobId]: "watch" }));
     try {
       const url = await getSignedVideoUrl(jobId);
-      window.open(url, "_blank", "noopener,noreferrer");
+      // Play inline in a modal. (window.open after an await gets popup-blocked.)
+      setPlayer({ url, title: title || "Video" });
     } catch {
       // silently fail — signed URL unavailable
     } finally {
@@ -177,8 +179,12 @@ export default function Gallery() {
               key={video.id}
               className="group relative rounded-2xl bg-card border border-card-border overflow-hidden shadow-lg transition-all hover:border-primary/50 hover:shadow-glow flex flex-col"
             >
-              {/* Thumbnail — clicking anywhere on it goes to the job page */}
-              <Link href={`/jobs/${video.jobId}`} className="block relative aspect-video bg-muted overflow-hidden">
+              {/* Thumbnail — clicking anywhere on it plays the video inline */}
+              <button
+                type="button"
+                onClick={() => handleWatch(video.jobId, video.title)}
+                className="block w-full text-left relative aspect-video bg-muted overflow-hidden"
+              >
                 {video.thumbnailObjectPath ? (
                   <VideoThumbnail
                     src={`/api/storage${video.thumbnailObjectPath}`}
@@ -202,7 +208,7 @@ export default function Gallery() {
                     {Math.floor(video.durationSeconds / 60)}:{(video.durationSeconds % 60).toFixed(2).padStart(5, "0")}
                   </div>
                 )}
-              </Link>
+              </button>
 
               <div className="p-4 flex-1 flex flex-col gap-3">
                 {renamingId === video.id ? (
@@ -274,7 +280,7 @@ export default function Gallery() {
                     size="sm"
                     className="flex-1 bg-gradient-electric text-white shadow-glow text-xs h-8"
                     disabled={!!loadingAction[video.jobId]}
-                    onClick={() => handleWatch(video.jobId)}
+                    onClick={() => handleWatch(video.jobId, video.title)}
                   >
                     {loadingAction[video.jobId] === "watch"
                       ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
@@ -359,6 +365,25 @@ export default function Gallery() {
               Generate Video
             </Button>
           </Link>
+        </div>
+      )}
+
+      {/* Inline video player */}
+      {player && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
+          onClick={() => setPlayer(null)}
+        >
+          <div className="relative w-full max-w-3xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-2 flex items-center justify-between text-white">
+              <span className="truncate text-sm font-medium">{player.title}</span>
+              <button onClick={() => setPlayer(null)} aria-label="Close" className="text-white/70 hover:text-white">
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+            <video src={player.url} controls autoPlay className="w-full rounded-xl bg-black" />
+          </div>
         </div>
       )}
     </div>

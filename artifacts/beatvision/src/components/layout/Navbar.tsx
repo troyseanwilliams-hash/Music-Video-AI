@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useGetDashboardStats, getGetDashboardStatsQueryKey } from "@workspace/api-client-react";
 import {
   Video, LayoutDashboard, Wand2, LogOut, Loader2, ShieldCheck,
-  MessageSquare, Menu, X, Film, CreditCard, Compass, Music2,
+  MessageSquare, Menu, X, Film, CreditCard, Compass, Music2, Settings,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -26,8 +26,11 @@ export function Navbar() {
     query: {
       queryKey: getGetDashboardStatsQueryKey(),
       enabled: isAuthenticated,
+      refetchInterval: 15000, // keep the "processing" pill fresh across pages
     }
   });
+
+  const processingCount = ((stats as unknown as { activeJobs?: unknown[] })?.activeJobs?.length) ?? 0;
 
   const navLinks = [
     ...(isAuthenticated ? [
@@ -106,6 +109,17 @@ export function Navbar() {
           </div>
 
           <div className="flex items-center gap-3">
+            {isAuthenticated && processingCount > 0 && (
+              <Link
+                href="/dashboard"
+                className="flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-sm font-medium text-primary transition-opacity hover:opacity-80"
+                title={`${processingCount} video${processingCount === 1 ? "" : "s"} processing`}
+              >
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <span className="hidden sm:inline">{processingCount} processing</span>
+                <span className="sm:hidden">{processingCount}</span>
+              </Link>
+            )}
             <ThemeToggle />
             {isAuthenticated && stats && (
               <div
@@ -164,6 +178,12 @@ export function Navbar() {
                       <Link href="/gallery" className="cursor-pointer flex items-center">
                         <Film className="mr-2 h-4 w-4" />
                         <span>Gallery</span>
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/settings" className="cursor-pointer flex items-center">
+                        <Settings className="mr-2 h-4 w-4" />
+                        <span>Settings</span>
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>

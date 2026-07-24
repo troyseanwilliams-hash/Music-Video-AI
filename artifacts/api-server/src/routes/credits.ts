@@ -3,12 +3,30 @@ import { db } from "@workspace/db";
 import { creditsTable, usersTable, videosTable, jobsTable } from "@workspace/db";
 import { eq, ilike, or, desc, and, inArray, count } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { getActiveUsers } from "../lib/presence.js";
 
 function isAdmin(email: string | null | undefined): boolean {
   return !!(process.env.ADMIN_EMAIL && email && email.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase());
 }
 
 const router = Router();
+
+// Who's live right now (admin only). Active = seen within the window (default
+// 2 min) via the navbar heartbeat. In-memory, so it reflects the current server.
+router.get("/admin/active-users", async (req, res) => {
+  if (!req.isAuthenticated() || !isAdmin(req.user.email)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const windowMs = Math.min(Math.max(Number(req.query.windowSec) || 120, 30), 900) * 1000;
+  const users = getActiveUsers(windowMs).map((u) => ({
+    userId: u.userId,
+    email: u.email,
+    name: u.name,
+    secondsAgo: u.secondsAgo,
+  }));
+  res.json({ count: users.length, windowSec: Math.round(windowMs / 1000), users });
+});
 
 router.get("/credits", async (req, res) => {
   if (!req.isAuthenticated()) {

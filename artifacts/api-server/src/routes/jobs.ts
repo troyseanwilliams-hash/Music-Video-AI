@@ -116,7 +116,10 @@ router.post("/jobs", async (req, res) => {
   }
 
   const songDurationSec = (audioAnalysis as { durationSeconds?: number } | null | undefined)?.durationSeconds;
-  const creditCost = calculateCreditCost(requestedDuration, resolution, songDurationSec);
+  // Kling (via Pixazo) is cheaper than Runway, so the charge scales with the
+  // chosen engine. Only "kling" is offered as an alternative for now.
+  const engine = String(aiProvider ?? "").toLowerCase() === "kling" ? "kling" : "runway";
+  const creditCost = calculateCreditCost(requestedDuration, resolution, songDurationSec, engine);
 
   if (!isAdmin) {
     const credits = await db
@@ -167,7 +170,7 @@ router.post("/jobs", async (req, res) => {
       requestedDuration: requestedDuration ?? "full",
       clipStartTime: clipStartTime ?? null,
       audioAnalysis: audioAnalysis as unknown as Record<string, unknown> ?? null,
-      aiProvider: aiProvider ?? null,
+      aiProvider: engine,
       prompt,
       style: style as
         | "realistic"
@@ -520,6 +523,35 @@ router.delete("/jobs/:id", async (req, res) => {
 
   await db.delete(jobsTable).where(eq(jobsTable.id, jobId));
   req.log.info({ jobId, userId: req.user.id }, "User deleted failed job");
+  res.json({ ok: true });
+});
+
+// Cancel one of the user's in-progress jobs (e.g. a stuck/long-running render).
+router.post("/jobs/:id/cancel", async (req, res) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const jobId = req.params.id;
+  const [job] = await db
+    .select()
+    .from(jobsTable)
+    .where(and(eq(jobsTable.id, jobId), eq(jobsTable.userId, req.user.id)))
+    .limit(1);
+  if (!job) {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
+  const IN_PROGRESS = ["pending_approval", "queued", "analyzing", "generating", "stitching"];
+  if (!IN_PROGRESS.includes(job.status)) {
+    res.status(400).json({ error: "This job isn't running." });
+    return;
+  }
+  await db
+    .update(jobsTable)
+    .set({ status: "failed", errorMessage: "Canceled by you" })
+    .where(eq(jobsTable.id, jobId));
+  req.log.info({ jobId, userId: req.user.id }, "User canceled job");
   res.json({ ok: true });
 });
 

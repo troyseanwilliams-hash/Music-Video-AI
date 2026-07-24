@@ -15,6 +15,11 @@
 
 // Real provider cost basis: Runway Gen-4.5 API = 12 credits/s @ $0.01 = $0.12/s.
 const RUNWAY_USD_PER_SECOND = 0.12;
+// Standard Kling via the Pixazo gateway = ~$0.07/s (the cheaper "value" engine).
+const KLING_USD_PER_SECOND = 0.07;
+function usdPerSecondFor(provider?: string | null): number {
+  return (provider ?? "").toLowerCase() === "kling" ? KLING_USD_PER_SECOND : RUNWAY_USD_PER_SECOND;
+}
 // Dollar value of one credit, set below the cheapest plan's rate (Studio:
 // $79 / 5,000 = $0.0158/credit) so the margin holds on every plan.
 const USD_PER_CREDIT = 0.015;
@@ -56,9 +61,10 @@ export function getClipPlan(
 function providerCostCredits(
   requestedDuration: string | null | undefined,
   songDurationSec?: number | null,
+  provider?: string | null,
 ): number {
   const { numClips, clipDurationSec } = getClipPlan(requestedDuration, songDurationSec);
-  const usd = numClips * clipDurationSec * RUNWAY_USD_PER_SECOND;
+  const usd = numClips * clipDurationSec * usdPerSecondFor(provider);
   return usd / USD_PER_CREDIT;
 }
 
@@ -87,8 +93,9 @@ export function calculateCreditCost(
   requestedDuration: string | null | undefined,
   _resolution?: string | null,
   songDurationSec?: number | null,
+  provider?: string | null,
 ): number {
-  return Math.ceil(providerCostCredits(requestedDuration, songDurationSec) * markupFor(requestedDuration, songDurationSec));
+  return Math.ceil(providerCostCredits(requestedDuration, songDurationSec, provider) * markupFor(requestedDuration, songDurationSec));
 }
 
 // Cost to remix (regenerate) a subset of an existing video's clips. Charged

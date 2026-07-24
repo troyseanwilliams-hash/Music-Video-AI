@@ -1,9 +1,10 @@
 import type { CreateJobRequestRequestedDuration } from "@workspace/api-client-react";
 
-export type AiProvider = "runway" | "luma";
+export type AiProvider = "runway" | "kling" | "luma";
 
 export const PROVIDER_LABELS: Record<AiProvider, string> = {
   runway: "Runway Gen-4",
+  kling: "Kling (via Pixazo)",
   luma: "Luma Dream Machine",
 };
 
@@ -20,6 +21,10 @@ export const LYRIC_OVERLAY_COST = 10 * PRICE_MULTIPLIER;
 // clip cost × tiered markup (2× single-clip / 1.5× multi-clip). Full videos are
 // capped at 5 min and scale 3–10 clips with song length.
 const RUNWAY_USD_PER_SECOND = 0.12;
+const KLING_USD_PER_SECOND = 0.07; // standard Kling via Pixazo
+function usdPerSecondFor(provider?: AiProvider): number {
+  return provider === "kling" ? KLING_USD_PER_SECOND : RUNWAY_USD_PER_SECOND;
+}
 const USD_PER_CREDIT = 0.015;
 const SHORT_MARKUP = 2;
 const LONG_MARKUP = 1.5;
@@ -43,12 +48,12 @@ function getClipPlan(requestedDuration: string | null | undefined, songDurationS
 // songDurationSec sizes "full" videos (clips scale with length, capped at 5 min).
 export function estimateCreditCost(
   requestedDuration: CreateJobRequestRequestedDuration | null | undefined,
-  _provider?: AiProvider,
+  provider?: AiProvider,
   _resolution?: string | null,
   songDurationSec?: number | null,
 ): number {
   const { numClips, clipDurationSec } = getClipPlan((requestedDuration ?? "full") as string, songDurationSec);
-  const costCredits = (numClips * clipDurationSec * RUNWAY_USD_PER_SECOND) / USD_PER_CREDIT;
+  const costCredits = (numClips * clipDurationSec * usdPerSecondFor(provider)) / USD_PER_CREDIT;
   const markup = numClips <= 1 ? SHORT_MARKUP : LONG_MARKUP;
   return Math.ceil(costCredits * markup);
 }

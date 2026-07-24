@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { TutorialTip } from "@/components/TutorialTip";
 import {
   Loader2, Music2, Download, Video, Trash2, Share2, Link2, Lock, Wand2, Sparkles, Pencil, Check, X, Scissors,
 } from "lucide-react";
@@ -268,6 +269,13 @@ export default function Soundtracks() {
         )}
       </div>
 
+      <div className="mb-6">
+        <TutorialTip id="soundtracks" title="How Soundtracks work">
+          Describe a vibe (or tap a preset), pick a length, and generate a royalty-free instrumental. It saves to your
+          library automatically — play it, download it, rename it, or drop it straight into a video.
+        </TutorialTip>
+      </div>
+
       {/* Generator */}
       <Card className="bg-card/50 border-card-border overflow-hidden mb-8">
         <div className="h-1 w-full bg-gradient-electric" />
@@ -275,8 +283,8 @@ export default function Soundtracks() {
           <CardTitle className="text-lg">New Soundtrack</CardTitle>
           <CardDescription>
             Describe the vibe. {status && !status.subscriptionActive && !status.admin
-              ? "New users get 3 free to try — subscribe for a monthly batch."
-              : "Free tracks come out of your monthly allowance; extras cost 5–10 credits."}
+              ? "New users get 3 free to try — no credits used. Subscribe for a batch every month."
+              : "Free Soundtracks use your monthly free allowance and don't touch your credit balance. Only tracks beyond the free allowance cost credits (5–10 each)."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -305,7 +313,11 @@ export default function Soundtracks() {
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-sm font-medium">Length</label>
-                  <span className="text-xs text-muted-foreground">≈ {songCredits(duration)} credits (free while you have free tracks)</span>
+                  <span className="text-xs text-muted-foreground">
+                    {status?.admin || (status?.freeRemaining ?? 0) > 0
+                      ? "Free — no credits used"
+                      : `≈ ${songCredits(duration)} credits`}
+                  </span>
                 </div>
                 <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                   {LENGTH_OPTIONS.map((l) => (

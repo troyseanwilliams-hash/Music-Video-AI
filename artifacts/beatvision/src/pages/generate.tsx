@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SoundtrackPickerDialog } from "@/components/SoundtrackPickerDialog";
+import { TutorialTip } from "@/components/TutorialTip";
 import { Switch } from "@/components/ui/switch";
 import {
   DropdownMenu,
@@ -566,6 +567,11 @@ export default function Generate() {
           </p>
         </div>
 
+        <TutorialTip id="generate" title="Making a video">
+          Add audio (upload, Suno link, or one of your Soundtracks), describe the look, pick your engine — <strong>Runway</strong> (premium)
+          or <strong>Kling</strong> (value) — and a length. We charge credits only when it succeeds.
+        </TutorialTip>
+
         {/* ── Quick start: templates + demo song ── */}
         <div className="rounded-2xl border border-border/60 bg-background/30 p-4 sm:p-5">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -666,7 +672,7 @@ export default function Generate() {
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-64">
-                  {(["runway"] as const).map((p) => (
+                  {(["runway", "kling"] as const).map((p) => (
                     <DropdownMenuItem
                       key={p}
                       onClick={() => setAiProvider(p)}
@@ -674,7 +680,7 @@ export default function Generate() {
                     >
                       <span>
                         {PROVIDER_LABELS[p]}
-                        <span className="text-muted-foreground"> · {p === "runway" ? "high quality" : "high volume"}</span>
+                        <span className="text-muted-foreground"> · {p === "runway" ? "premium quality" : "value price"}</span>
                       </span>
                       <span className="text-xs text-muted-foreground shrink-0">{estimateCreditCost(requestedDuration, p, undefined, songDurationSec)} cr</span>
                     </DropdownMenuItem>

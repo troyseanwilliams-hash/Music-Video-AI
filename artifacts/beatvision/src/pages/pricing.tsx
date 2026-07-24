@@ -241,12 +241,13 @@ export default function Pricing() {
         <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
           Credits are consumed per video generated — from{" "}
           <strong className="text-foreground">80 credits</strong> for a
-          5-second clip. Full-length videos scale with song length (up to 5
-          minutes):{" "}
-          <strong className="text-foreground">360–1,200 credits</strong>. TikTok
-          teaser packs cost 30, Spotify Canvas loops 20. Plan credits reset each
-          cycle — top-up credits never expire, and you can earn more by
-          referring friends.
+          5-second clip on Runway. Pick your engine at generation:{" "}
+          <strong className="text-foreground">Runway</strong> (premium) or{" "}
+          <strong className="text-foreground">Kling</strong> (value — about 40%
+          cheaper). Full-length videos scale with song length (up to 5 minutes).
+          TikTok teaser packs cost 30, Spotify Canvas loops 20. Plan credits
+          reset each cycle — top-up credits never expire, and you can earn more
+          by referring friends.
         </p>
         {isAuthenticated && subscription && (
           <div

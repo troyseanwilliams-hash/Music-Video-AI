@@ -13,6 +13,8 @@ interface PublicSoundtrack {
   createdAt: string;
   objectPath: string;
   url: string;
+  likeCount: number;
+  liked: boolean;
 }
 
 interface GalleryVideo {
@@ -203,6 +205,24 @@ export default function Explore() {
     }
   }
 
+  async function onSoundtrackLike(s: PublicSoundtrack) {
+    if (!isAuthenticated) {
+      setLocation("/login");
+      return;
+    }
+    const liked = !s.liked;
+    setSoundtracks((prev) => prev.map((x) => (x.id === s.id ? { ...x, liked, likeCount: x.likeCount + (liked ? 1 : -1) } : x)));
+    try {
+      const res = await fetch(`/api/music/soundtracks/${s.id}/like`, { method: liked ? "POST" : "DELETE", credentials: "include" });
+      const data = await res.json();
+      if (typeof data.likeCount === "number") {
+        setSoundtracks((prev) => prev.map((x) => (x.id === s.id ? { ...x, likeCount: data.likeCount, liked } : x)));
+      }
+    } catch {
+      setSoundtracks((prev) => prev.map((x) => (x.id === s.id ? { ...x, liked: s.liked, likeCount: s.likeCount } : x)));
+    }
+  }
+
   async function onUnpublish(v: GalleryVideo) {
     setVideos((prev) => prev.filter((x) => x.id !== v.id));
     try {
@@ -221,11 +241,11 @@ export default function Explore() {
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-10">
-      <header className="mb-8 text-center">
-        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Explore community videos</h1>
+      <header className="mb-10 text-center">
+        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Explore the community</h1>
         <p className="text-muted-foreground mx-auto mt-3 max-w-2xl">
-          The best beat-synced AI music videos made by the AI Beat Sync community. Watch, get inspired, and like
-          your favorites.
+          Videos and royalty-free soundtracks made by the AI Beat Sync community. Watch, listen, get inspired, and
+          reuse your favorites.
         </p>
       </header>
 
@@ -253,9 +273,19 @@ export default function Explore() {
                           <p className="text-xs text-muted-foreground">by {s.creatorName || "a creator"}</p>
                         </div>
                       </div>
-                      <a href={s.url} download title="Download" className="shrink-0 text-muted-foreground hover:text-primary">
-                        <Download className="h-4 w-4" />
-                      </a>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <button
+                          onClick={() => onSoundtrackLike(s)}
+                          className={`flex items-center gap-1 text-sm transition-colors ${s.liked ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                          title={isAuthenticated ? (s.liked ? "Unlike" : "Like") : "Sign in to like"}
+                        >
+                          <Heart className={`h-4 w-4 ${s.liked ? "fill-current" : ""}`} />
+                          <span className="tabular-nums text-xs">{s.likeCount}</span>
+                        </button>
+                        <a href={s.url} download title="Download" className="text-muted-foreground hover:text-primary">
+                          <Download className="h-4 w-4" />
+                        </a>
+                      </div>
                     </div>
                     <audio controls preload="none" src={s.url} className="h-9 w-full" />
                     <div className="mt-3 flex items-center gap-2">
@@ -273,6 +303,11 @@ export default function Explore() {
           </div>
         </section>
       )}
+
+      <div className="mb-4 flex items-center gap-2">
+        <Video className="h-5 w-5 text-primary" />
+        <h2 className="text-xl font-semibold">Community videos</h2>
+      </div>
 
       {loading && videos.length === 0 ? (
         <div className="flex items-center justify-center py-24">

@@ -431,6 +431,13 @@ export default function JobStatus() {
           <StatusBadge status={job.status ?? "queued"} autoRetrying={autoRetrying} />
         </div>
 
+        {/* Non-fatal notice: some clips were left out but the video still finished. */}
+        {isComplete && job.errorMessage && (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-300">
+            {job.errorMessage}
+          </div>
+        )}
+
         {/* ── Active: progress card ── */}
         <AnimatePresence>
           {(isActive || autoRetrying) && (

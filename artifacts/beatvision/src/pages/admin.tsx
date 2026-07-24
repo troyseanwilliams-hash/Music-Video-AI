@@ -445,21 +445,6 @@ interface FailedJob extends PendingJob {
   updatedAt: string;
 }
 
-interface ActiveJob {
-  id: string;
-  userId: string;
-  email: string | null;
-  status: string;
-  jobType: string | null;
-  prompt: string | null;
-  style: string | null;
-  errorMessage: string | null;
-  retryCount: number | null;
-  claimedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
 /* ─── Admin song generator (Beta, admin-only) ─── */
 // Descriptive lengths — no exact seconds shown to the user; "Full" lands
 // around a natural 5-minute song.
@@ -765,6 +750,17 @@ export default function AdminPage() {
     staleTime: 30_000,
   });
 
+  const { data: liveData } = useQuery<{ count: number; windowSec: number; users: { userId: string; email: string | null; name: string | null; secondsAgo: number }[] }>({
+    queryKey: ["admin", "active-users"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/active-users", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    enabled: isAdmin && tab === "users",
+    refetchInterval: tab === "users" ? 15_000 : false,
+  });
+
   const approveMutation = useMutation({
     mutationFn: async (jobId: string) => {
       const res = await fetch(`/api/admin/jobs/${jobId}/approve`, {
@@ -805,33 +801,6 @@ export default function AdminPage() {
     },
     onSuccess: () => {
       toast({ title: "Job requeued", description: "Job has been reset and will process shortly." });
-      refetchFailedJobs();
-    },
-    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-  });
-
-  const { data: activeJobsData, isLoading: activeJobsLoading, refetch: refetchActiveJobs } = useQuery<{ jobs: ActiveJob[] }>({
-    queryKey: ["admin", "jobs", "active"],
-    queryFn: async () => {
-      const res = await fetch("/api/admin/jobs/active", { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to load active jobs");
-      return res.json();
-    },
-    enabled: isAdmin && tab === "jobs",
-    refetchInterval: tab === "jobs" ? 15_000 : false,
-  });
-
-  const forceFail = useMutation({
-    mutationFn: async (jobId: string) => {
-      const res = await fetch(`/api/admin/jobs/${jobId}/force-fail`, {
-        method: "POST",
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to force-fail job");
-    },
-    onSuccess: () => {
-      toast({ title: "Job failed", description: "Job has been marked as failed." });
-      refetchActiveJobs();
       refetchFailedJobs();
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
@@ -1006,6 +975,34 @@ export default function AdminPage() {
 
       {/* ── Users tab ── */}
       {tab === "users" && (
+        <>
+        <Card className="bg-card/50 border-card-border mb-4">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+              </span>
+              Live now · {liveData?.count ?? 0}
+            </CardTitle>
+            <CardDescription>Signed-in users active in the last {liveData?.windowSec ?? 120}s (updates every 15s).</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!liveData || liveData.users.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No one's online right now.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {liveData.users.map((u) => (
+                  <div key={u.userId} className="flex items-center gap-2 rounded-full border border-border bg-background/40 px-3 py-1 text-sm">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                    <span className="font-medium">{u.name || u.email || "User"}</span>
+                    <span className="text-xs text-muted-foreground">{u.secondsAgo < 20 ? "now" : `${u.secondsAgo}s ago`}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
         <Card className="bg-card/50 border-card-border">
           <CardHeader className="pb-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1067,6 +1064,7 @@ export default function AdminPage() {
             )}
           </CardContent>
         </Card>
+        </>
       )}
 
       {/* ── Job Approvals tab ── */}
@@ -1154,92 +1152,6 @@ export default function AdminPage() {
               ))}
             </div>
           )}
-
-          {/* ── Active / in-progress jobs ── */}
-          <div className="mt-6 sm:mt-8">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base sm:text-lg font-semibold flex items-center gap-2">
-                <Loader2 className="h-4 w-4 text-amber-400" />
-                In Progress
-                {activeJobsData && activeJobsData.jobs.length > 0 && (
-                  <span className="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full font-medium">
-                    {activeJobsData.jobs.length}
-                  </span>
-                )}
-              </h2>
-              <button
-                onClick={() => refetchActiveJobs()}
-                className="w-9 h-9 flex items-center justify-center rounded-full bg-muted/60 hover:bg-muted transition-colors"
-              >
-                <RefreshCw className="h-4 w-4 text-muted-foreground" />
-              </button>
-            </div>
-
-            {activeJobsLoading ? (
-              <div className="flex items-center justify-center py-10">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              </div>
-            ) : !activeJobsData?.jobs.length ? (
-              <div className="text-center py-10 border border-dashed border-border rounded-2xl bg-card/30">
-                <p className="text-sm text-muted-foreground">No jobs currently in progress.</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {activeJobsData.jobs.map((job) => {
-                  const minutesRunning = job.claimedAt
-                    ? Math.floor((Date.now() - new Date(job.claimedAt).getTime()) / 60000)
-                    : null;
-                  const isStuck = minutesRunning !== null && minutesRunning >= 10;
-                  return (
-                    <div key={job.id} className={`rounded-2xl overflow-hidden border bg-card/50 ${isStuck ? "border-amber-500/40" : "border-border/60"}`}>
-                      <div className="p-4 space-y-2">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xs font-mono text-muted-foreground">{job.id.slice(0, 8)}…</span>
-                          <span className="text-xs text-muted-foreground">·</span>
-                          <span className="text-xs text-muted-foreground truncate">{job.email ?? job.userId}</span>
-                          <div className="ml-auto flex items-center gap-1.5">
-                            <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${
-                              isStuck ? "bg-amber-500/20 text-amber-400" : "bg-blue-500/20 text-blue-400"
-                            }`}>
-                              <span className={`h-1.5 w-1.5 rounded-full ${isStuck ? "bg-amber-400" : "bg-blue-400 animate-pulse"}`} />
-                              {job.status}
-                            </span>
-                          </div>
-                        </div>
-                        <p className="text-sm font-medium leading-snug line-clamp-2">
-                          {job.prompt ?? <span className="italic text-muted-foreground">No prompt</span>}
-                        </p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {job.jobType && <span className="bg-muted text-muted-foreground text-xs px-2 py-0.5 rounded-full capitalize">{job.jobType.replace("_", " ")}</span>}
-                          {job.style && <span className="capitalize bg-muted text-muted-foreground text-xs px-2 py-0.5 rounded-full">{job.style}</span>}
-                          {minutesRunning !== null && (
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${isStuck ? "bg-amber-500/10 text-amber-400" : "bg-muted text-muted-foreground"}`}>
-                              {minutesRunning}m running
-                            </span>
-                          )}
-                          {job.retryCount != null && job.retryCount > 0 && (
-                            <Badge variant="outline" className="text-xs border-amber-500/40 text-amber-400">
-                              retry {job.retryCount}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                      <div className="border-t border-border/50">
-                        <button
-                          className="w-full flex items-center justify-center gap-2 py-3.5 sm:py-2.5 text-sm font-semibold text-red-400 hover:bg-red-500/10 active:bg-red-500/15 transition-colors disabled:opacity-50"
-                          disabled={forceFail.isPending}
-                          onClick={() => forceFail.mutate(job.id)}
-                        >
-                          <X className="h-4 w-4" />
-                          Force Fail
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
 
           {/* ── Failed jobs ── */}
           <div className="mt-6 sm:mt-8">

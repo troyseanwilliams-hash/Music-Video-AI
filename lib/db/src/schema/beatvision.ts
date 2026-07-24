@@ -155,6 +155,7 @@ export const soundtracksTable = pgTable("soundtracks", {
   provider: text("provider"),
   // Public gallery / share-by-link, mirroring videosTable.
   isPublic: boolean("is_public").notNull().default(false),
+  likeCount: integer("like_count").notNull().default(0),
   shareToken: text("share_token").unique(),
   // Soft delete: hidden from the user's library but retained for the admin.
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -166,6 +167,27 @@ export const soundtracksTable = pgTable("soundtracks", {
 export const insertSoundtrackSchema = createInsertSchema(soundtracksTable);
 export type InsertSoundtrack = z.infer<typeof insertSoundtrackSchema>;
 export type Soundtrack = typeof soundtracksTable.$inferSelect;
+
+// Per-user likes on public soundtracks. Composite PK prevents double-counting.
+export const soundtrackLikesTable = pgTable(
+  "soundtrack_likes",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    soundtrackId: text("soundtrack_id")
+      .notNull()
+      .references(() => soundtracksTable.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.soundtrackId] }),
+  }),
+);
+
+export type SoundtrackLike = typeof soundtrackLikesTable.$inferSelect;
 
 export const creditsTable = pgTable("credits", {
   id: text("id").primaryKey(),

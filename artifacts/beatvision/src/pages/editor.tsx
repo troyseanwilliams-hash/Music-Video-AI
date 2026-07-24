@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { SoundtrackPickerDialog } from "@/components/SoundtrackPickerDialog";
+import { TutorialTip } from "@/components/TutorialTip";
 import {
   Select,
   SelectContent,
@@ -713,6 +714,13 @@ export default function Editor() {
           <span className="text-muted-foreground w-14 text-right text-xs tabular-nums">{totalDuration.toFixed(1)}s</span>
         </div>
       )}
+
+      <div className="mb-4">
+        <TutorialTip id="remixlab" title="Remix Lab basics">
+          Add your clips and photos, add music (upload, Suno, or one of your Soundtracks), then arrange them on the
+          timeline. Detect the beat to auto-sync photo cuts, set a transition, and export — free on trial and for subscribers.
+        </TutorialTip>
+      </div>
 
       {/* Add media */}
       <div className="mb-4 flex flex-wrap gap-3">

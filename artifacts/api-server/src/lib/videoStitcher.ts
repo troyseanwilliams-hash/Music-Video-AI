@@ -16,6 +16,7 @@ export interface StitchInput {
 export interface StitchResult {
   videoBuffer: Buffer;
   thumbnailBuffer: Buffer;
+  skippedClips: number; // clips left out because they couldn't be processed
 }
 
 function runFfmpeg(cmd: ffmpeg.FfmpegCommand): Promise<void> {
@@ -111,13 +112,25 @@ export async function stitchVideoClips(input: StitchInput): Promise<StitchResult
   try {
     await writeFile(audioPath, input.audioBuffer);
 
+    // Process each clip independently: if one is corrupt/unreadable, skip it and
+    // keep going rather than failing the whole render.
+    let skippedClips = 0;
     for (let i = 0; i < input.clips.length; i++) {
       const rawPath = join(tmpDir, `raw_${i}.mp4`);
       const trimmed = join(tmpDir, `clip_${i}.mp4`);
-      await writeFile(rawPath, input.clips[i]!.buffer);
-      await trimOrLoopClip(rawPath, trimmed, input.clips[i]!.targetDuration);
-      await unlink(rawPath).catch(() => {});
-      trimmedPaths.push(trimmed);
+      try {
+        await writeFile(rawPath, input.clips[i]!.buffer);
+        await trimOrLoopClip(rawPath, trimmed, input.clips[i]!.targetDuration);
+        trimmedPaths.push(trimmed);
+      } catch (err) {
+        skippedClips++;
+        console.warn(`[stitch] skipping problematic clip ${i}:`, err instanceof Error ? err.message : err);
+      } finally {
+        await unlink(rawPath).catch(() => {});
+      }
+    }
+    if (trimmedPaths.length === 0) {
+      throw new Error("None of the clips could be processed, so no video could be stitched.");
     }
 
     const concatContent = trimmedPaths.map((p) => `file '${p}'`).join("\n");
@@ -199,7 +212,7 @@ export async function stitchVideoClips(input: StitchInput): Promise<StitchResult
       readFile(thumbPath),
     ]);
 
-    return { videoBuffer, thumbnailBuffer };
+    return { videoBuffer, thumbnailBuffer, skippedClips };
   } finally {
     await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
   }
