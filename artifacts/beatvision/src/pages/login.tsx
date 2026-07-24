@@ -94,6 +94,22 @@ export default function Login() {
             </p>
           </div>
 
+          <div className="w-[168px]">
+            <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black shadow-2xl" style={{ aspectRatio: "9 / 16" }}>
+              <video
+                src="/kling-showcase.mp4"
+                poster="/kling-showcase-poster.jpg"
+                className="h-full w-full object-cover"
+                autoPlay
+                muted
+                loop
+                playsInline
+                preload="metadata"
+              />
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">Real AI Short · made with the Kling engine</p>
+          </div>
+
           <div className="grid grid-cols-1 gap-4">
             {features.map((feature, i) => (
               <motion.div

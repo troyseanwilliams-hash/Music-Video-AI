@@ -145,6 +145,7 @@ export default function Home() {
                 >
                   <video
                     src="/kling-showcase.mp4"
+                    poster="/kling-showcase-poster.jpg"
                     className="h-full w-full object-cover"
                     autoPlay
                     muted
