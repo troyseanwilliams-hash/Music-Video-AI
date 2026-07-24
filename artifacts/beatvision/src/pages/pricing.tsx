@@ -306,8 +306,8 @@ export default function Pricing() {
         </div>
       )}
 
-      {/* Digital Drift Pro perk — included AI Beat Sync membership */}
-      <section className="mb-12">
+      {/* Digital Drift Pro perk — hidden for now */}
+      {false && <section className="mb-12">
         <div className="rounded-xl border border-primary/30 bg-primary/5 p-5 md:p-6 flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
           <div>
             <p className="text-sm font-semibold">Have a Digital Drift <span className="text-primary">Pro</span> membership?</p>
@@ -323,7 +323,7 @@ export default function Pricing() {
             {redeemBusy ? "Activating…" : "Activate included membership"}
           </button>
         </div>
-      </section>
+      </section>}
 
       <section className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
         {subscriptions.map((plan) => {
