@@ -948,6 +948,10 @@ const STALE_CHECK_INTERVAL_MS = 5 * 60 * 1000; // check every 5 minutes
 async function recoverStaleJobs(): Promise<void> {
   try {
     const cutoff = new Date(Date.now() - STALE_THRESHOLD_MS);
+    // Re-queue stale jobs that still have retries left. The counter must
+    // actually increment past the cap — the old LEAST(retry_count + 1, MAX - 1)
+    // clamp kept retry_count below MAX_RETRIES forever, so a chronically stuck
+    // job was re-queued (and re-billed at the AI provider) in an endless loop.
     const stale = await db.execute<{ id: string }>(sql`
       UPDATE jobs
       SET
@@ -955,17 +959,40 @@ async function recoverStaleJobs(): Promise<void> {
         claimed_at = NULL,
         progress_percent = 0,
         error_message = 'Auto-recovered: stuck for >15 min without progress',
-        retry_count = LEAST(retry_count + 1, ${MAX_RETRIES - 1}),
+        retry_count = retry_count + 1,
         updated_at = NOW()
       WHERE status IN ('analyzing', 'generating', 'stitching')
         AND updated_at < ${cutoff}
-        AND retry_count < ${MAX_RETRIES}
+        AND retry_count < ${MAX_RETRIES - 1}
       RETURNING id
     `);
     const recovered = stale.rows;
     if (recovered.length > 0) {
       logger.warn({ recovered: recovered.map((r) => r.id) }, "Recovered stale jobs");
       for (const { id } of recovered) await notifyJobUpdate(id);
+    }
+
+    // Stale jobs that have exhausted retries are failed permanently instead of
+    // being re-queued — this is the hard stop that prevents endless provider
+    // charges for a job that can never finish.
+    const exhausted = await db.execute<{ id: string }>(sql`
+      UPDATE jobs
+      SET
+        status    = 'failed',
+        claimed_at = NULL,
+        error_message = 'Failed: stuck repeatedly without progress (max retries reached)',
+        updated_at = NOW()
+      WHERE status IN ('analyzing', 'generating', 'stitching')
+        AND updated_at < ${cutoff}
+        AND retry_count >= ${MAX_RETRIES - 1}
+      RETURNING id
+    `);
+    if (exhausted.rows.length > 0) {
+      logger.error(
+        { failed: exhausted.rows.map((r) => r.id) },
+        "Stale jobs permanently failed after exhausting retries",
+      );
+      for (const { id } of exhausted.rows) await notifyJobUpdate(id);
     }
   } catch (err) {
     logger.error({ err }, "Stale job recovery error (non-fatal)");

@@ -9,4 +9,6 @@ description: Stale-job recovery vs long 4K generations — heartbeat + claimed_a
 
 **Why:** A 4K Kling job (prod job hit this July 2026) legitimately went >15 min without progress updates; watchdog re-queued it while the first run was mid-generation, a second worker claimed it, and the provider API was called twice → double charges.
 
+**Also:** The recovery UPDATE must genuinely increment `retry_count` and permanently fail jobs at the cap. The old `LEAST(retry_count + 1, MAX_RETRIES - 1)` clamp kept the counter below the limit forever, so a chronically stuck job (e.g. 4K ffmpeg stitch hanging >1h on the prod VM) was re-queued and re-billed roughly hourly until the user manually canceled. Recovery now re-queues only while `retry_count < MAX_RETRIES - 1` and hard-fails otherwise. Note: prod DB connections from the VM intermittently fail with "Authentication timed out" — heartbeats/watchdog writes can silently fail there, so never rely on a single write succeeding.
+
 **How to apply:** Any new long-running step (new provider, longer poll loops, heavier stitching) must either update progress periodically or rely on the heartbeat — never remove the heartbeat or the fencing check. New provider call sites need an `assertJobOwned(job)` immediately before the paid call.
