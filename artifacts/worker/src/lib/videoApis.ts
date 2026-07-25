@@ -221,23 +221,32 @@ export const PROVIDER_API_FAILURE = "[PROVIDER_FAILURE]";
 // behind one API key (Ocp-Apim-Subscription-Key). Submit to a model endpoint,
 // then poll the universal status endpoint for the result. Pick your exact model
 // slug from the Pixazo dashboard and set it as PIXAZO_MODEL.
-async function generateWithPixazo(req: ClipRequest, modelOverride?: string): Promise<string> {
+//
+// t2vOverride — text-to-video model slug (e.g. PIXAZO_RUNWAY_MODEL for Runway).
+// i2vOverride — image-to-video model slug used when req.imageUrl is present
+//               (e.g. PIXAZO_RUNWAY_I2V_MODEL). Falls back to Kling i2v defaults
+//               when absent so existing Kling callers are unaffected.
+async function generateWithPixazo(req: ClipRequest, t2vOverride?: string, i2vOverride?: string): Promise<string> {
   const key = process.env.PIXAZO_API_KEY!;
   const duration = req.durationSeconds <= 5 ? "5" : "10";
   const r = (req.resolution ?? "").toLowerCase();
   const is4k = r === "4k" || r === "2160p";
   const hasImage = !!req.imageUrl;
 
-  // Pick the model: when a reference image is supplied, use Kling image-to-video
-  // so the reference is actually used (text-to-video ignores it). 4K uses the
-  // dedicated O3 4K slug. All slugs are env-overridable.
+  // Pick the model slug. When an explicit i2v override is provided and the
+  // request carries a reference image, use it. Otherwise fall back to the Kling
+  // i2v slugs (4K or standard). Text-to-video always uses t2vOverride first.
   let model: string;
   if (hasImage) {
-    model = is4k
-      ? (process.env.PIXAZO_KLING_4K_I2V_MODEL?.trim() || "kling-video-o3-4k-image-to-video")
-      : (process.env.PIXAZO_KLING_I2V_MODEL?.trim() || "kling-video-v3-turbo-pro-image-to-video");
+    if (i2vOverride) {
+      model = i2vOverride;
+    } else {
+      model = is4k
+        ? (process.env.PIXAZO_KLING_4K_I2V_MODEL?.trim() || "kling-video-o3-4k-image-to-video")
+        : (process.env.PIXAZO_KLING_I2V_MODEL?.trim() || "kling-video-v3-turbo-pro-image-to-video");
+    }
   } else {
-    model = modelOverride || process.env.PIXAZO_MODEL?.trim() || "kling-video-v3-turbo-pro-text-to-video";
+    model = t2vOverride || process.env.PIXAZO_MODEL?.trim() || "kling-video-v3-turbo-pro-text-to-video";
   }
 
   const body: Record<string, unknown> = {
@@ -309,8 +318,14 @@ async function callProvider(provider: Provider, req: ClipRequest): Promise<strin
     case "pixazo":
       return generateWithPixazo(req);
     case "pixazo-runway":
-      // Runway via the Pixazo gateway — uses PIXAZO_RUNWAY_MODEL slug.
-      return generateWithPixazo(req, process.env.PIXAZO_RUNWAY_MODEL!.trim());
+      // Runway via the Pixazo gateway.
+      // PIXAZO_RUNWAY_MODEL     — text-to-video slug (required)
+      // PIXAZO_RUNWAY_I2V_MODEL — image-to-video slug (used when a reference image is present)
+      return generateWithPixazo(
+        req,
+        process.env.PIXAZO_RUNWAY_MODEL!.trim(),
+        process.env.PIXAZO_RUNWAY_I2V_MODEL?.trim(),
+      );
   }
   throw new Error(`Unknown video provider: ${provider}`);
 }
