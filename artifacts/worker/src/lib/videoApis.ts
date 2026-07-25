@@ -15,15 +15,18 @@ export interface ClipResult {
   provider: string;
 }
 
-type Provider = "runway" | "luma" | "kling" | "pixazo";
+type Provider = "runway" | "luma" | "kling" | "pixazo" | "pixazo-runway";
 
 function providerAvailable(p: Provider): boolean {
   if (p === "runway") return !!process.env.RUNWAY_API_KEY;
   if (p === "luma") return !!process.env.LUMA_API_KEY;
-  // "kling" now runs through the Pixazo gateway (single key, standard Kling
-  // model) — no separate Kling account needed.
+  // "kling" and "pixazo" run through the Pixazo gateway (single key).
   if (p === "kling") return !!process.env.PIXAZO_API_KEY;
   if (p === "pixazo") return !!process.env.PIXAZO_API_KEY;
+  // "pixazo-runway" runs Runway through the Pixazo gateway. Requires both the
+  // Pixazo key AND a model slug (set PIXAZO_RUNWAY_MODEL to the slug shown in
+  // your Pixazo dashboard, e.g. "runway-gen4-5-text-to-video").
+  if (p === "pixazo-runway") return !!process.env.PIXAZO_API_KEY && !!process.env.PIXAZO_RUNWAY_MODEL?.trim();
   return false;
 }
 
@@ -40,12 +43,10 @@ function klingModel(resolution?: string | null): string {
   return process.env.PIXAZO_KLING_MODEL?.trim() || "kling-video-v3-turbo-pro-text-to-video";
 }
 
-// Ordered provider chain with automatic fallback. Default order runs Runway
-// first (to burn existing Runway credits), then Pixazo, then Kling/Luma —
-// filtered to providers whose keys are set. So with only RUNWAY_API_KEY it uses
-// Runway; add PIXAZO_API_KEY and Pixazo becomes the automatic fallback.
-// Override the whole order with VIDEO_API_CHAIN="pixazo,runway"; VIDEO_API pins
-// the primary.
+// Ordered provider chain with automatic fallback. Default order: Kling via
+// Pixazo first, then Runway via Pixazo (if PIXAZO_RUNWAY_MODEL is set), then
+// direct Runway/Luma. Override the whole order with VIDEO_API_CHAIN env var.
+// VIDEO_API pins the primary provider.
 export function getProviderChain(): Provider[] {
   const chainEnv = process.env.VIDEO_API_CHAIN
     ?.toLowerCase()
@@ -57,7 +58,7 @@ export function getProviderChain(): Provider[] {
   if (chainEnv && chainEnv.length) {
     order = chainEnv;
   } else {
-    order = ["runway", "pixazo", "kling", "luma"];
+    order = ["kling", "pixazo-runway", "runway", "pixazo", "luma"];
     if (primary && order.includes(primary)) order = [primary, ...order.filter((p) => p !== primary)];
   }
   return order.filter(providerAvailable);
@@ -73,6 +74,7 @@ export function getActiveProvider(hint?: string | null): string {
   if (h === "kling" && process.env.PIXAZO_API_KEY) return "kling";
   if (h === "luma" && process.env.LUMA_API_KEY) return "luma";
   if (h === "pixazo" && process.env.PIXAZO_API_KEY) return "pixazo";
+  if (h === "pixazo-runway" && providerAvailable("pixazo-runway")) return "pixazo-runway";
   return getProvider() ?? "simulation";
 }
 
@@ -306,6 +308,9 @@ async function callProvider(provider: Provider, req: ClipRequest): Promise<strin
       return generateWithPixazo(req, klingModel(req.resolution));
     case "pixazo":
       return generateWithPixazo(req);
+    case "pixazo-runway":
+      // Runway via the Pixazo gateway — uses PIXAZO_RUNWAY_MODEL slug.
+      return generateWithPixazo(req, process.env.PIXAZO_RUNWAY_MODEL!.trim());
   }
   throw new Error(`Unknown video provider: ${provider}`);
 }
