@@ -340,7 +340,16 @@ export async function generateClip(req: ClipRequest): Promise<ClipResult | null>
       }
     }
   }
-  throw lastErr instanceof Error ? lastErr : new Error("All video providers failed");
+  // All providers in the chain have been tried and failed. Mark the error as
+  // non-retryable so retryOrFail doesn't re-queue the job (which would call
+  // Kling again). Kling-specific errors already carry the marker; for Runway
+  // or other final-leg failures, we add it here so the permanent-fail path is
+  // always taken regardless of which provider was last.
+  const finalErr = lastErr instanceof Error ? lastErr : new Error("All video providers failed");
+  if (!finalErr.message.includes(PROVIDER_API_FAILURE)) {
+    throw new Error(`${PROVIDER_API_FAILURE} ${finalErr.message}`);
+  }
+  throw finalErr;
 }
 
 export async function downloadClip(url: string): Promise<Buffer> {
