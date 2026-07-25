@@ -12,7 +12,7 @@ import { logger } from "./logger.js";
 import { notifyRenderReady, notifyRenderFailed } from "./renderEmail.js";
 import { ObjectStorageService } from "./objectStorage.js";
 import { analyzeAudioBuffer, type AudioAnalysis, type AudioSection } from "./audioAnalysis.js";
-import { generateClip, downloadClip, getActiveProvider } from "./videoApis.js";
+import { generateClip, downloadClip, getActiveProvider, PROVIDER_API_FAILURE } from "./videoApis.js";
 import { stitchVideoClips, extractVideoThumbnail } from "./videoStitcher.js";
 import { stitchEditorTimeline } from "./editorStitcher.js";
 import { calculateCreditCost } from "./creditCost.js";
@@ -421,6 +421,20 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
         "Your prompt was rejected by the AI provider's content policy. Please edit your prompt and try again.",
     });
     void notifyRenderFailed(job, "The AI provider's content policy rejected the prompt.");
+    return;
+  }
+
+  // AI provider API failures (Kling/Pixazo) are never retried — charges happen
+  // at submission time, so re-queuing only causes additional billing with no
+  // guarantee of a different outcome.
+  if (errMsg.includes(PROVIDER_API_FAILURE)) {
+    const cleanMsg = errMsg.replace(PROVIDER_API_FAILURE, "").trim();
+    logger.warn({ jobId: job.id }, "Permanent failure: AI provider error — not retrying to avoid repeated charges");
+    await updateJobStatus(job.id, {
+      status: "failed",
+      errorMessage: cleanMsg,
+    });
+    void notifyRenderFailed(job, cleanMsg);
     return;
   }
 

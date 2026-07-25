@@ -211,6 +211,11 @@ async function generateWithLuma(req: ClipRequest): Promise<string> {
   throw new Error("Luma generation timed out after 10 minutes");
 }
 
+// Marker included in every Pixazo/Kling error message so retryOrFail knows
+// to permanently fail the job without re-queuing. AI provider charges happen at
+// submission time — retrying after a provider failure just doubles the bill.
+export const PROVIDER_API_FAILURE = "[PROVIDER_FAILURE]";
+
 // Pixazo (pixazo.ai) — a unified gateway that fronts Kling, Runway, Veo, etc.
 // behind one API key (Ocp-Apim-Subscription-Key). Submit to a model endpoint,
 // then poll the universal status endpoint for the result. Pick your exact model
@@ -258,10 +263,10 @@ async function generateWithPixazo(req: ClipRequest, modelOverride?: string): Pro
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(30_000),
   });
-  if (!submit.ok) throw new Error(`Pixazo ${submit.status}: ${(await submit.text()).slice(0, 200)}`);
+  if (!submit.ok) throw new Error(`${PROVIDER_API_FAILURE} Pixazo ${submit.status}: ${(await submit.text()).slice(0, 200)}`);
   const submitData = (await submit.json()) as { request_id?: string; polling_url?: string };
   const requestId = submitData.request_id;
-  if (!requestId) throw new Error("Pixazo: no request_id returned");
+  if (!requestId) throw new Error(`${PROVIDER_API_FAILURE} Pixazo: no request_id returned`);
   const pollUrl = submitData.polling_url ?? `https://gateway.pixazo.ai/v2/requests/status/${requestId}`;
 
   for (let i = 0; i < 120; i++) {
@@ -277,9 +282,9 @@ async function generateWithPixazo(req: ClipRequest, modelOverride?: string): Pro
       output?: { media_url?: string[] };
     };
     if (d.status === "COMPLETED" && d.output?.media_url?.[0]) return d.output.media_url[0];
-    if (d.status === "FAILED" || d.status === "ERROR") throw new Error(`Pixazo ${d.status}: ${d.error ?? "unknown error"}`);
+    if (d.status === "FAILED" || d.status === "ERROR") throw new Error(`${PROVIDER_API_FAILURE} Pixazo ${d.status}: ${d.error ?? "unknown error"}`);
   }
-  throw new Error("Pixazo task timed out after 10 minutes");
+  throw new Error(`${PROVIDER_API_FAILURE} Pixazo task timed out after 10 minutes`);
 }
 
 // After Runway reports out-of-credits, skip it for a while so we don't retry an
