@@ -25,19 +25,45 @@ function runFfmpeg(cmd: ffmpeg.FfmpegCommand): Promise<void> {
   });
 }
 
+// Hard-kill ffmpeg if it exceeds the timeout. Converts an infinite hang (e.g.
+// OOM-kill silently disappearing, 4K encode on a memory-constrained VM) into a
+// thrown error so the job fails visibly instead of blocking the worker forever.
+const FFMPEG_TIMEOUT_MS = 12 * 60 * 1000; // 12 minutes per ffmpeg command
+
+function runFfmpegWithTimeout(cmd: ffmpeg.FfmpegCommand, timeoutMs = FFMPEG_TIMEOUT_MS): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try { cmd.kill("SIGKILL"); } catch { /* ignore */ }
+      reject(new Error(`ffmpeg timed out after ${timeoutMs / 60_000} minutes — the video may be too large or the server ran out of memory`));
+    }, timeoutMs);
+    cmd
+      .on("end", () => { if (!settled) { settled = true; clearTimeout(timer); resolve(); } })
+      .on("error", (err) => { if (!settled) { settled = true; clearTimeout(timer); reject(err); } })
+      .run();
+  });
+}
+
 async function trimOrLoopClip(
   inputPath: string,
   outputPath: string,
   targetSeconds: number,
 ): Promise<void> {
-  await runFfmpeg(
+  await runFfmpegWithTimeout(
     ffmpeg()
       .input(inputPath)
       .inputOptions(["-stream_loop", "-1"])
       .outputOptions([
         "-t", String(targetSeconds),
         "-c:v", "libx264",
-        "-preset", "fast",
+        // Scale down to at most 1080p width before encoding. 4K clips from
+        // Kling/Pixazo (3840×2160) at native resolution take 30–60 min on a
+        // small VM; scaling to 1920×1080 reduces pixel count 4× and makes the
+        // encode feasible. The -2 keeps the height divisible by 2.
+        "-vf", "scale='min(iw,1920)':-2",
+        "-preset", "ultrafast",
         "-crf", "23",
         "-threads", "2",
         "-an",
@@ -136,15 +162,12 @@ export async function stitchVideoClips(input: StitchInput): Promise<StitchResult
     const concatContent = trimmedPaths.map((p) => `file '${p}'`).join("\n");
     await writeFile(concatListPath, concatContent);
 
-    await runFfmpeg(
+    await runFfmpegWithTimeout(
       ffmpeg()
         .input(concatListPath)
         .inputOptions(["-f", "concat", "-safe", "0"])
         .outputOptions([
-          "-c:v", "libx264",
-          "-preset", "fast",
-          "-crf", "23",
-          "-threads", "2",
+          "-c:v", "copy",
           "-an",
           "-movflags", "+faststart",
         ])
@@ -182,7 +205,7 @@ export async function stitchVideoClips(input: StitchInput): Promise<StitchResult
       : outputOptions;
 
     try {
-      await runFfmpeg(
+      await runFfmpegWithTimeout(
         ffmpeg()
           .input(stitchedPath)
           .input(audioPath)
@@ -195,7 +218,7 @@ export async function stitchVideoClips(input: StitchInput): Promise<StitchResult
       const fallbackOptions = [...outputOptions];
       const lyricsFilter = buildLyricsFilter(input.lyricsText!, input.totalDuration);
       if (lyricsFilter) fallbackOptions.push("-vf", lyricsFilter);
-      await runFfmpeg(
+      await runFfmpegWithTimeout(
         ffmpeg()
           .input(stitchedPath)
           .input(audioPath)
