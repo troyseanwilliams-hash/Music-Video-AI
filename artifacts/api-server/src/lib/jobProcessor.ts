@@ -517,20 +517,51 @@ async function processEditorJob(job: JobRow): Promise<void> {
 
     await updateJobStatus(job.id, { status: "stitching", progressPercent: 20 });
 
+    // Pull each segment's bytes from object storage. A file that can't be
+    // downloaded (deleted, corrupt path, storage error) is removed from the
+    // timeline instead of failing the whole render — the user is told exactly
+    // which files were dropped and the render continues with the good ones.
     const segments = [];
-    for (const s of manifest.segments) {
-      const file = await storageService.getObjectEntityFile(s.objectPath);
-      const [buf] = await file.download();
-      const ext = extFromObjectPath(s.objectPath, s.kind === "photo" ? "jpg" : "mp4");
-      segments.push({ buffer: buf, kind: s.kind, durationSec: s.durationSec, ext });
+    const segmentNames: string[] = []; // parallel to `segments`, for reporting
+    const removedFiles: string[] = []; // user-facing names of dropped files
+    const fileLabel = (objectPath: string, position: number) => {
+      const base = objectPath.split("/").pop() || objectPath;
+      return `file ${position} (${base})`;
+    };
+    for (let i = 0; i < manifest.segments.length; i++) {
+      const s = manifest.segments[i]!;
+      try {
+        const file = await storageService.getObjectEntityFile(s.objectPath);
+        const [buf] = await file.download();
+        const ext = extFromObjectPath(s.objectPath, s.kind === "photo" ? "jpg" : "mp4");
+        segments.push({ buffer: buf, kind: s.kind, durationSec: s.durationSec, ext });
+        segmentNames.push(fileLabel(s.objectPath, i + 1));
+      } catch (err) {
+        logger.warn(
+          { err, jobId: job.id, objectPath: s.objectPath },
+          "Segment file unavailable — removing it from the timeline",
+        );
+        removedFiles.push(fileLabel(s.objectPath, i + 1));
+      }
+    }
+    if (segments.length === 0) {
+      throw new Error("None of the timeline files could be read — nothing to render");
     }
 
     let music;
     if (manifest.music?.objectPath) {
-      const file = await storageService.getObjectEntityFile(manifest.music.objectPath);
-      const [buf] = await file.download();
-      const ext = extFromObjectPath(manifest.music.objectPath, "mp3");
-      music = { buffer: buf, ext, mode: manifest.music.mode, volume: manifest.music.volume };
+      try {
+        const file = await storageService.getObjectEntityFile(manifest.music.objectPath);
+        const [buf] = await file.download();
+        const ext = extFromObjectPath(manifest.music.objectPath, "mp3");
+        music = { buffer: buf, ext, mode: manifest.music.mode, volume: manifest.music.volume };
+      } catch (err) {
+        logger.warn(
+          { err, jobId: job.id },
+          "Music file unavailable — rendering without the music track",
+        );
+        removedFiles.push("music track");
+      }
     }
 
     // Landscape (16:9) dimensions by size; portrait (9:16) swaps W/H for mobile.
@@ -581,6 +612,17 @@ async function processEditorJob(job: JobRow): Promise<void> {
         "Transitions disabled for long timeline — used hard-cut concat",
       );
     }
+    // Files the stitcher itself had to drop (corrupt/unreadable during
+    // processing) — map its indexes back to user-facing file names.
+    for (const s of result.skipped) {
+      removedFiles.push(segmentNames[s.index] ?? `file ${s.index + 1}`);
+    }
+    if (removedFiles.length) {
+      logger.warn(
+        { jobId: job.id, removedFiles },
+        "Some files were removed from the render; continuing with the rest",
+      );
+    }
 
     await updateJobStatus(job.id, { progressPercent: 88 });
 
@@ -620,7 +662,17 @@ async function processEditorJob(job: JobRow): Promise<void> {
       logger.info({ jobId: job.id, userId: job.userId, creditCost }, "Editor credits deducted on success");
     }
 
-    await updateJobStatus(job.id, { status: "ready", progressPercent: 100, videoId });
+    // Surface removed files to the user on the finished job (the job page
+    // shows this note alongside the completed video).
+    const removedNotice = removedFiles.length
+      ? `Note: ${removedFiles.length === 1 ? "1 file" : `${removedFiles.length} files`} couldn't be processed and ${removedFiles.length === 1 ? "was" : "were"} removed from your video: ${removedFiles.join(", ")}. The rest of your files rendered normally.`
+      : null;
+    await updateJobStatus(job.id, {
+      status: "ready",
+      progressPercent: 100,
+      videoId,
+      errorMessage: removedNotice,
+    });
     void notifyRenderReady(job);
     logger.info({ jobId: job.id, videoId }, "Editor render completed");
   } catch (err) {
