@@ -70,16 +70,40 @@ const XFADE: Record<string, string> = {
   crossfade: "fade",
 };
 
+// Hard cap on any single ffmpeg invocation. A healthy step (normalizing one
+// clip, one xfade join, music mix, watermark) finishes in well under this.
+// Without it, a hung ffmpeg stalls the job forever with zero progress until
+// the stale-job watchdog force-recovers it — a silent 60+ minute hang loop
+// observed in production. Killing the process turns the hang into a real
+// error that flows into the normal skip/retry/fail handling.
+const FFMPEG_STEP_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+
 function run(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     // -threads 2: caps ffmpeg worker threads to limit peak RAM (prevents OOM in production VMs).
     const p = spawn("ffmpeg", ["-threads", "2", ...args]);
     let stderr = "";
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      p.kill("SIGKILL");
+    }, FFMPEG_STEP_TIMEOUT_MS);
     p.stderr.on("data", (d) => {
       stderr = (stderr + d.toString()).slice(-8000);
     });
-    p.on("error", reject);
+    p.on("error", (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
     p.on("close", (code) => {
+      clearTimeout(timer);
+      if (timedOut) {
+        return reject(
+          new Error(
+            `ffmpeg step timed out after ${FFMPEG_STEP_TIMEOUT_MS / 60000} minutes and was killed (file may be corrupt or too large to process)`,
+          ),
+        );
+      }
       if (code === 0) return resolve();
       const reason =
         code === null
@@ -90,6 +114,10 @@ function run(args: string[]): Promise<void> {
   });
 }
 
+// ffprobe should answer in seconds; kill it after a minute so a probe against
+// a corrupt file can never hang the render.
+const FFPROBE_TIMEOUT_MS = 60 * 1000;
+
 function probeDuration(file: string): Promise<number> {
   return new Promise((resolve) => {
     const p = spawn("ffprobe", [
@@ -98,10 +126,17 @@ function probeDuration(file: string): Promise<number> {
       "-of", "csv=p=0",
       file,
     ]);
+    const timer = setTimeout(() => p.kill("SIGKILL"), FFPROBE_TIMEOUT_MS);
     let s = "";
     p.stdout.on("data", (d) => (s += d.toString()));
-    p.on("error", () => resolve(0));
-    p.on("close", () => resolve(parseFloat(s.trim()) || 0));
+    p.on("error", () => {
+      clearTimeout(timer);
+      resolve(0);
+    });
+    p.on("close", () => {
+      clearTimeout(timer);
+      resolve(parseFloat(s.trim()) || 0);
+    });
   });
 }
 
@@ -114,10 +149,17 @@ function hasAudio(file: string): Promise<boolean> {
       "-of", "csv=p=0",
       file,
     ]);
+    const timer = setTimeout(() => p.kill("SIGKILL"), FFPROBE_TIMEOUT_MS);
     let s = "";
     p.stdout.on("data", (d) => (s += d.toString()));
-    p.on("error", () => resolve(false));
-    p.on("close", () => resolve(s.trim().length > 0));
+    p.on("error", () => {
+      clearTimeout(timer);
+      resolve(false);
+    });
+    p.on("close", () => {
+      clearTimeout(timer);
+      resolve(s.trim().length > 0);
+    });
   });
 }
 
