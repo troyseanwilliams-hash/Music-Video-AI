@@ -65,15 +65,38 @@ async function claimNextJob(): Promise<JobRow | null> {
 // the heartbeat, recovery re-queued a live job and a second worker re-called
 // the provider API, double-charging.
 const HEARTBEAT_INTERVAL_MS = 60_000;
+// Heavy ffmpeg renders can starve the DB pool, making individual heartbeat
+// writes fail with transient auth/TLS timeouts. Retry each beat a few times
+// before giving up so a flaky connection doesn't let the job go stale.
+const HEARTBEAT_RETRIES = 3;
+const HEARTBEAT_RETRY_DELAY_MS = 5_000;
 function startJobHeartbeat(jobId: string): () => void {
-  const t = setInterval(() => {
-    void db
-      .execute(
-        sql`UPDATE jobs SET updated_at = NOW() WHERE id = ${jobId} AND status IN ('analyzing', 'generating', 'stitching')`,
-      )
-      .catch((err) => logger.warn({ err, jobId }, "Job heartbeat failed (non-fatal)"));
-  }, HEARTBEAT_INTERVAL_MS);
-  return () => clearInterval(t);
+  let stopped = false;
+  const beat = async () => {
+    for (let attempt = 1; attempt <= HEARTBEAT_RETRIES; attempt++) {
+      try {
+        await db.execute(
+          sql`UPDATE jobs SET updated_at = NOW() WHERE id = ${jobId} AND status IN ('analyzing', 'generating', 'stitching')`,
+        );
+        return;
+      } catch (err) {
+        if (stopped) return;
+        if (attempt === HEARTBEAT_RETRIES) {
+          logger.warn(
+            { err, jobId, attempts: attempt },
+            "Job heartbeat failed after retries (non-fatal)",
+          );
+        } else {
+          await new Promise((r) => setTimeout(r, HEARTBEAT_RETRY_DELAY_MS));
+        }
+      }
+    }
+  };
+  const t = setInterval(() => void beat(), HEARTBEAT_INTERVAL_MS);
+  return () => {
+    stopped = true;
+    clearInterval(t);
+  };
 }
 
 // Ownership guard: called immediately before each provider API call. Uses
@@ -967,11 +990,32 @@ async function processJob(job: JobRow): Promise<void> {
 // exceed the 10-minute polling timeout, unhandled crashes mid-generation, and
 // any other scenario where the process dies without marking the job failed.
 const STALE_THRESHOLD_MS = 15 * 60 * 1000; // 15 minutes
+// Editor renders run long ffmpeg pipelines that can legitimately go far
+// longer between status updates (and can starve heartbeat writes), so they
+// get a much more generous stale threshold.
+const EDITOR_STALE_THRESHOLD_MS = 60 * 60 * 1000; // 60 minutes
 const STALE_CHECK_INTERVAL_MS = 5 * 60 * 1000; // check every 5 minutes
+
+// Jobs actively being processed by THIS process. The local watchdog must
+// never re-queue a job it is itself running — heartbeat failures caused by
+// transient DB issues would otherwise kill a live render.
+const inFlightJobIds = new Set<string>();
 
 async function recoverStaleJobs(): Promise<void> {
   try {
     const cutoff = new Date(Date.now() - STALE_THRESHOLD_MS);
+    const editorCutoff = new Date(Date.now() - EDITOR_STALE_THRESHOLD_MS);
+    const inFlight = [...inFlightJobIds];
+    const notInFlight = inFlight.length
+      ? sql`AND id NOT IN (${sql.join(
+          inFlight.map((id) => sql`${id}`),
+          sql`, `,
+        )})`
+      : sql``;
+    const staleWindow = sql`(
+        (job_type <> 'editor_render' AND updated_at < ${cutoff})
+        OR (job_type = 'editor_render' AND updated_at < ${editorCutoff})
+      )`;
     // Re-queue stale jobs that still have retries left. The counter must
     // actually increment past the cap — the old LEAST(retry_count + 1, MAX - 1)
     // clamp kept retry_count below MAX_RETRIES forever, so a chronically stuck
@@ -986,8 +1030,9 @@ async function recoverStaleJobs(): Promise<void> {
         retry_count = retry_count + 1,
         updated_at = NOW()
       WHERE status IN ('analyzing', 'generating', 'stitching')
-        AND updated_at < ${cutoff}
+        AND ${staleWindow}
         AND retry_count < ${MAX_RETRIES - 1}
+        ${notInFlight}
       RETURNING id
     `);
     const recovered = stale.rows;
@@ -1007,8 +1052,9 @@ async function recoverStaleJobs(): Promise<void> {
         error_message = 'Failed: stuck repeatedly without progress (max retries reached)',
         updated_at = NOW()
       WHERE status IN ('analyzing', 'generating', 'stitching')
-        AND updated_at < ${cutoff}
+        AND ${staleWindow}
         AND retry_count >= ${MAX_RETRIES - 1}
+        ${notInFlight}
       RETURNING id
     `);
     if (exhausted.rows.length > 0) {
@@ -1047,6 +1093,7 @@ export async function startJobProcessor(): Promise<void> {
         const job = await claimNextJob();
         if (job) {
           busy = true;
+          inFlightJobIds.add(job.id);
           const stopHeartbeat = startJobHeartbeat(job.id);
           processJob(job)
             .catch((err) =>
@@ -1054,6 +1101,7 @@ export async function startJobProcessor(): Promise<void> {
             )
             .finally(() => {
               stopHeartbeat();
+              inFlightJobIds.delete(job.id);
               busy = false;
             });
         }

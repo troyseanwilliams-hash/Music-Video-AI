@@ -139,15 +139,38 @@ async function claimNextJob(): Promise<JobRow | null> {
 // the heartbeat, recovery re-queued a live job and a second worker re-called
 // the provider API, double-charging.
 const HEARTBEAT_INTERVAL_MS = 60_000;
+// Heavy ffmpeg renders can starve the DB pool, making individual heartbeat
+// writes fail with transient auth/TLS timeouts. Retry each beat a few times
+// before giving up so a flaky connection doesn't let the job go stale.
+const HEARTBEAT_RETRIES = 3;
+const HEARTBEAT_RETRY_DELAY_MS = 5_000;
 function startJobHeartbeat(jobId: string): () => void {
-  const t = setInterval(() => {
-    void db
-      .execute(
-        sql`UPDATE jobs SET updated_at = NOW() WHERE id = ${jobId} AND status IN ('analyzing', 'generating', 'stitching')`,
-      )
-      .catch((err) => logger.warn({ err, jobId }, "Job heartbeat failed (non-fatal)"));
-  }, HEARTBEAT_INTERVAL_MS);
-  return () => clearInterval(t);
+  let stopped = false;
+  const beat = async () => {
+    for (let attempt = 1; attempt <= HEARTBEAT_RETRIES; attempt++) {
+      try {
+        await db.execute(
+          sql`UPDATE jobs SET updated_at = NOW() WHERE id = ${jobId} AND status IN ('analyzing', 'generating', 'stitching')`,
+        );
+        return;
+      } catch (err) {
+        if (stopped) return;
+        if (attempt === HEARTBEAT_RETRIES) {
+          logger.warn(
+            { err, jobId, attempts: attempt },
+            "Job heartbeat failed after retries (non-fatal)",
+          );
+        } else {
+          await new Promise((r) => setTimeout(r, HEARTBEAT_RETRY_DELAY_MS));
+        }
+      }
+    }
+  };
+  const t = setInterval(() => void beat(), HEARTBEAT_INTERVAL_MS);
+  return () => {
+    stopped = true;
+    clearInterval(t);
+  };
 }
 
 // Ownership guard: called immediately before each provider API call. Uses
