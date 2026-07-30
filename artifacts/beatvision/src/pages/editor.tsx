@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -122,6 +123,83 @@ function probeVideo(url: string): Promise<{ duration: number; thumb: string | nu
     v.onerror = () => finish(3, null);
     v.src = url;
   });
+}
+
+// Visual drag-to-trim bar: a thumbnail strip with two handles. Dragging the left
+// handle sets the front trim, the right handle the back trim; the kept region is
+// outlined and the trimmed ends dimmed. Enforces a 0.3s minimum kept length.
+function TrimBar({
+  durationSec, trimStart, trimEnd, thumb, onChange,
+}: {
+  durationSec: number;
+  trimStart: number;
+  trimEnd: number;
+  thumb: string | null;
+  onChange: (front: number, back: number) => void;
+}) {
+  const barRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef<null | "start" | "end">(null);
+  const pct = (sec: number) => `${Math.max(0, Math.min(100, (sec / durationSec) * 100))}%`;
+  const keepRight = durationSec - trimEnd; // seconds position of the back handle
+
+  const down = (which: "start" | "end") => (e: ReactPointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragging.current = which;
+    barRef.current?.setPointerCapture(e.pointerId);
+  };
+  const move = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!dragging.current || !barRef.current) return;
+    const rect = barRef.current.getBoundingClientRect();
+    let sec = ((e.clientX - rect.left) / rect.width) * durationSec;
+    sec = Math.max(0, Math.min(durationSec, sec));
+    if (dragging.current === "start") {
+      onChange(Math.max(0, Math.min(sec, durationSec - 0.3 - trimEnd)), trimEnd);
+    } else {
+      onChange(trimStart, Math.max(0, Math.min(durationSec - sec, durationSec - 0.3 - trimStart)));
+    }
+  };
+  const up = (e: ReactPointerEvent<HTMLDivElement>) => {
+    dragging.current = null;
+    barRef.current?.releasePointerCapture?.(e.pointerId);
+  };
+
+  return (
+    <div className="select-none">
+      <div
+        ref={barRef}
+        onPointerMove={move}
+        onPointerUp={up}
+        className="relative h-14 w-full overflow-hidden rounded-md border border-border bg-black/40 touch-none"
+        style={thumb ? { backgroundImage: `url(${thumb})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}
+      >
+        {/* dimmed trimmed ends */}
+        <div className="absolute inset-y-0 left-0 bg-black/60" style={{ width: pct(trimStart) }} />
+        <div className="absolute inset-y-0 right-0 bg-black/60" style={{ width: pct(trimEnd) }} />
+        {/* kept-region outline */}
+        <div className="pointer-events-none absolute inset-y-0 border-2 border-primary" style={{ left: pct(trimStart), right: pct(trimEnd) }} />
+        {/* handles */}
+        <div
+          onPointerDown={down("start")}
+          className="absolute inset-y-0 z-10 -ml-2 flex w-4 cursor-ew-resize items-center justify-center rounded bg-primary/90"
+          style={{ left: pct(trimStart) }}
+        >
+          <span className="h-5 w-0.5 rounded bg-white/90" />
+        </div>
+        <div
+          onPointerDown={down("end")}
+          className="absolute inset-y-0 z-10 -ml-2 flex w-4 cursor-ew-resize items-center justify-center rounded bg-primary/90"
+          style={{ left: pct(keepRight) }}
+        >
+          <span className="h-5 w-0.5 rounded bg-white/90" />
+        </div>
+      </div>
+      <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
+        <span>0s</span>
+        <span>{durationSec.toFixed(1)}s</span>
+      </div>
+    </div>
+  );
 }
 
 export default function Editor() {
@@ -840,6 +918,16 @@ export default function Editor() {
                   <Scissors className="h-3.5 w-3.5 text-primary" /> Trim clip {previewIndex + 1}
                 </span>
                 <span className="text-xs text-muted-foreground">{kept.toFixed(1)}s of {sel.durationSec.toFixed(1)}s</span>
+              </div>
+              <div className="mb-3">
+                <TrimBar
+                  durationSec={sel.durationSec}
+                  trimStart={ts}
+                  trimEnd={te}
+                  thumb={sel.thumb}
+                  onChange={setTrim}
+                />
+                <p className="mt-1 text-[10px] text-muted-foreground">Drag the handles to resize the clip.</p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <label className="text-xs text-muted-foreground">
