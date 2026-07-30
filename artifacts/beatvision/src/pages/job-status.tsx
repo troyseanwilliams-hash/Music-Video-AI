@@ -16,6 +16,7 @@ import {
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from "recharts";
 import { motion, AnimatePresence } from "framer-motion";
 import SocialExportsPanel from "@/components/SocialExportsPanel";
+import LipSyncPanel from "@/components/LipSyncPanel";
 
 const TERMINAL_STATUSES = new Set(["ready", "failed"]);
 
@@ -269,7 +270,7 @@ export default function JobStatus() {
   const [match, params] = useRoute("/jobs/:id");
   const id = params?.id;
   const [, setLocation] = useLocation();
-  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const queryClient = useQueryClient();
 
   const sseRef = useRef<EventSource | null>(null);
@@ -717,6 +718,11 @@ export default function JobStatus() {
         {/* ── Social exports (TikTok/Shorts teasers + Spotify Canvas) ── */}
         {isComplete && job.videoId && (
           <SocialExportsPanel videoId={job.videoId} />
+        )}
+
+        {/* ── Lip Sync (admin-only preview) ── */}
+        {isComplete && job.videoId && user?.isAdmin && (
+          <LipSyncPanel videoId={job.videoId} />
         )}
 
         {/* ── Audio analysis ── */}

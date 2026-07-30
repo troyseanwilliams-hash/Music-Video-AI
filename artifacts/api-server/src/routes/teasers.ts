@@ -19,7 +19,12 @@ import {
 import { TEASER_PACK_COST, CANVAS_EXPORT_COST, LYRIC_OVERLAY_COST, RELEASE_KIT_COST } from "../lib/creditCost.js";
 import { burnLyricsOnVideo } from "../lib/lyricOverlay.js";
 import { extractVideoThumbnail } from "../lib/videoStitcher.js";
+import { generateLipsync } from "../lib/lipsync.js";
 import { z } from "zod";
+
+function isAdminEmail(email?: string | null): boolean {
+  return !!(process.env.ADMIN_EMAIL && email && email.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase());
+}
 
 const router: IRouter = Router();
 const storageService = new ObjectStorageService();
@@ -415,6 +420,76 @@ router.post("/videos/:id/release-kit", async (req: Request<{ id: string }>, res:
     await refund();
     req.log.error({ err, videoId: video.id }, "Release Kit failed (refunded)");
     res.status(500).json({ error: "Release Kit failed — credits refunded. Please try again." });
+  }
+});
+
+// Lip sync (ADMIN-ONLY preview): turn an uploaded face image into a talking /
+// singing avatar synced to this video's song. Reuses the video's original job
+// audio. Saved as a NEW video in the library. Pricing is deferred until we've
+// confirmed the real Pixazo per-second cost.
+const LipsyncBody = z.object({ imageObjectPath: z.string().min(1) });
+
+router.post("/videos/:id/lipsync", async (req: Request<{ id: string }>, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  if (!isAdminEmail(req.user.email)) {
+    res.status(403).json({ error: "Lip sync is in limited preview." });
+    return;
+  }
+  const parsed = LipsyncBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "A face image is required." });
+    return;
+  }
+
+  const video = await loadOwnedVideo(req.user.id, req.params.id);
+  if (!video) {
+    res.status(404).json({ error: "Video not found" });
+    return;
+  }
+
+  try {
+    // Audio to sync to = the original job's song.
+    const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, video.jobId)).limit(1);
+    let audioUrl: string | null = null;
+    if (job?.audioObjectPath) audioUrl = await storageService.getObjectEntitySignedUrl(job.audioObjectPath, 3600);
+    else if (job?.audioSourceUrl) audioUrl = job.audioSourceUrl;
+    if (!audioUrl) throw new Error("This video has no source audio to sync to.");
+
+    const imageUrl = await storageService.getObjectEntitySignedUrl(parsed.data.imageObjectPath, 3600);
+    const mediaUrl = await generateLipsync({ imageUrl, audioUrl });
+
+    const resp = await fetch(mediaUrl, { signal: AbortSignal.timeout(120_000) });
+    if (!resp.ok) throw new Error(`Could not fetch lip sync result: ${resp.status}`);
+    const outBuffer = Buffer.from(await resp.arrayBuffer());
+    const durationSeconds = video.durationSeconds ?? 30;
+    const thumbBuffer = await extractVideoThumbnail(outBuffer, Math.max(1, durationSeconds * 0.3));
+
+    const newVideoId = randomUUID();
+    const [vPath, tPath] = await Promise.all([
+      storageService.uploadVideoBuffer(outBuffer, newVideoId),
+      storageService.uploadThumbnailBuffer(thumbBuffer, newVideoId),
+    ]);
+    await db.insert(videosTable).values({
+      id: newVideoId,
+      userId: req.user.id,
+      jobId: video.jobId,
+      videoObjectPath: vPath,
+      thumbnailObjectPath: tPath,
+      title: `${video.title ?? "Video"} — lip sync`,
+      durationSeconds: video.durationSeconds,
+      style: video.style,
+      prompt: video.prompt,
+      shareToken: randomUUID().replace(/-/g, "").slice(0, 16),
+    });
+
+    const url = await storageService.getObjectEntitySignedUrl(vPath, 3600);
+    res.json({ videoId: newVideoId, url });
+  } catch (err) {
+    req.log.error({ err, videoId: video.id }, "Lip sync failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Lip sync failed" });
   }
 });
 
