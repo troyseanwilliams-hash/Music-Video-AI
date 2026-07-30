@@ -193,3 +193,8 @@ export const CANVAS_EXPORT_COST = 10 * PRICE_MULTIPLIER;
 // Flat cost to burn karaoke lyrics onto an existing finished video (pure
 // ffmpeg re-encode). Mirror in artifacts/beatvision/src/lib/creditPricing.ts.
 export const LYRIC_OVERLAY_COST = 10 * PRICE_MULTIPLIER;
+
+// Bundled "Release Kit": teaser pack + Canvas loop generated together, ~20% off
+// vs buying them separately (the full video + thumbnail are already free). Lyrics
+// burn, when included, is charged separately at LYRIC_OVERLAY_COST.
+export const RELEASE_KIT_COST = TEASER_PACK_COST + CANVAS_EXPORT_COST - 10;

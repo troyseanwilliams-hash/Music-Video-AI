@@ -16,7 +16,7 @@ import {
   TEASER_COUNT,
   TEASER_DURATION_SEC,
 } from "../lib/teaserGenerator.js";
-import { TEASER_PACK_COST, CANVAS_EXPORT_COST, LYRIC_OVERLAY_COST } from "../lib/creditCost.js";
+import { TEASER_PACK_COST, CANVAS_EXPORT_COST, LYRIC_OVERLAY_COST, RELEASE_KIT_COST } from "../lib/creditCost.js";
 import { burnLyricsOnVideo } from "../lib/lyricOverlay.js";
 import { extractVideoThumbnail } from "../lib/videoStitcher.js";
 import { z } from "zod";
@@ -283,6 +283,138 @@ router.post("/videos/:id/lyrics", async (req: Request<{ id: string }>, res: Resp
       .where(eq(creditsTable.userId, req.user.id));
     req.log.error({ err, videoId: video.id }, "Lyric overlay failed (refunded)");
     res.status(500).json({ error: "Lyric burn failed — credits refunded. Please try again." });
+  }
+});
+
+// One-click "Release Kit": generate the missing social cuts (3 teasers + Canvas)
+// in a single call at a bundled discount, optionally burn a karaoke-lyrics
+// version, and return download URLs for the whole drop (full video, thumbnail,
+// shorts, Canvas, lyric video). Already-generated parts are reused (not recharged).
+const ReleaseKitBody = z.object({ lyricsText: z.string().max(5000).optional() });
+
+router.post("/videos/:id/release-kit", async (req: Request<{ id: string }>, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const parsed = ReleaseKitBody.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid input" });
+    return;
+  }
+  const lyricsText = parsed.data.lyricsText?.trim() || null;
+
+  const video = await loadOwnedVideo(req.user.id, req.params.id);
+  if (!video) {
+    res.status(404).json({ error: "Video not found" });
+    return;
+  }
+
+  const existing = (video.teasers as TeaserMetaRow[] | null) ?? [];
+  const needTeasers = existing.filter((t) => (t.kind ?? "teaser") === "teaser").length === 0;
+  const needCanvas = existing.filter((t) => t.kind === "canvas").length === 0;
+
+  // Bundle price when both social parts are new; fair single-part price otherwise.
+  let socialCost = 0;
+  if (needTeasers && needCanvas) socialCost = RELEASE_KIT_COST;
+  else if (needTeasers) socialCost = TEASER_PACK_COST;
+  else if (needCanvas) socialCost = CANVAS_EXPORT_COST;
+  const lyricsCost = lyricsText ? LYRIC_OVERLAY_COST : 0;
+  const totalCost = socialCost + lyricsCost;
+
+  if (totalCost > 0) {
+    const charge = await chargeCredits(req.user.id, totalCost);
+    if (!charge.ok) {
+      res.status(402).json({
+        error: `The Release Kit costs ${totalCost} credits but you only have ${charge.remaining}.`,
+        code: "INSUFFICIENT_CREDITS",
+        creditsRequired: totalCost,
+        creditsRemaining: charge.remaining,
+      });
+      return;
+    }
+  }
+
+  const refund = async () => {
+    if (totalCost <= 0) return;
+    await db
+      .update(creditsTable)
+      .set({
+        topupCredits: sql`topup_credits + ${totalCost}`,
+        creditsRemaining: sql`credits_remaining + ${totalCost}`,
+        creditsUsed: sql`GREATEST(credits_used - ${totalCost}, 0)`,
+        updatedAt: new Date(),
+      })
+      .where(eq(creditsTable.userId, req.user.id));
+  };
+
+  try {
+    const videoInfo = {
+      id: video.id,
+      jobId: video.jobId,
+      videoObjectPath: video.videoObjectPath,
+      durationSeconds: video.durationSeconds,
+    };
+    let all = [...existing];
+
+    if (needTeasers) {
+      const metas = await generateCuts({ video: videoInfo, count: TEASER_COUNT, durationSec: TEASER_DURATION_SEC, startIndex: all.length, kind: "teaser" });
+      all = [...all, ...metas];
+    }
+    if (needCanvas) {
+      const metas = await generateCuts({ video: videoInfo, count: 1, durationSec: CANVAS_DURATION_SEC, startIndex: all.length, kind: "canvas" });
+      all = [...all, ...metas];
+    }
+    if (needTeasers || needCanvas) {
+      await db.update(videosTable).set({ teasers: all }).where(eq(videosTable.id, video.id));
+    }
+
+    // Optional karaoke-lyrics version → saved as a NEW video (original untouched).
+    let lyricVideo: { videoId: string; url: string } | null = null;
+    if (lyricsText) {
+      const file = await storageService.getObjectEntityFile(video.videoObjectPath);
+      const [srcBuffer] = await file.download();
+      const durationSeconds = video.durationSeconds ?? 30;
+      const outBuffer = await burnLyricsOnVideo(srcBuffer, lyricsText, durationSeconds);
+      const thumbBuffer = await extractVideoThumbnail(outBuffer, Math.max(1, durationSeconds * 0.3));
+      const newVideoId = randomUUID();
+      const [vPath, tPath] = await Promise.all([
+        storageService.uploadVideoBuffer(outBuffer, newVideoId),
+        storageService.uploadThumbnailBuffer(thumbBuffer, newVideoId),
+      ]);
+      await db.insert(videosTable).values({
+        id: newVideoId,
+        userId: req.user.id,
+        jobId: video.jobId,
+        videoObjectPath: vPath,
+        thumbnailObjectPath: tPath,
+        title: `${video.title ?? "Video"} — lyrics`,
+        durationSeconds: video.durationSeconds,
+        style: video.style,
+        prompt: video.prompt,
+        shareToken: randomUUID().replace(/-/g, "").slice(0, 16),
+      });
+      lyricVideo = { videoId: newVideoId, url: await storageService.getObjectEntitySignedUrl(vPath, 3600) };
+    }
+
+    const [videoUrl, thumbnailUrl] = await Promise.all([
+      storageService.getObjectEntitySignedUrl(video.videoObjectPath, 3600),
+      video.thumbnailObjectPath
+        ? storageService.getObjectEntitySignedUrl(video.thumbnailObjectPath, 3600)
+        : Promise.resolve(null),
+    ]);
+
+    res.json({
+      teasers: await withSignedUrls(all),
+      videoUrl,
+      thumbnailUrl,
+      lyricVideo,
+      charged: totalCost,
+    });
+  } catch (err) {
+    await refund();
+    req.log.error({ err, videoId: video.id }, "Release Kit failed (refunded)");
+    res.status(500).json({ error: "Release Kit failed — credits refunded. Please try again." });
   }
 });
 
