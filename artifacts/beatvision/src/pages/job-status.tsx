@@ -146,15 +146,25 @@ function isAutoRetrying(msg: string | null | undefined): boolean {
   return /retry \d+\/\d+ in \d+m/.test(msg ?? "");
 }
 
-function useElapsed(active: boolean): string {
-  const [secs, setSecs] = useState(0);
+// Wall-clock elapsed since the job was created (ISO timestamp), ticking every
+// second while active. Counting from job.createdAt (not page load) means the
+// timer shows the true time the job has been running and survives refreshes.
+function useElapsed(startIso: string | null | undefined, active: boolean): string {
+  const getSecs = () => (startIso ? Math.max(0, Math.floor((Date.now() - new Date(startIso).getTime()) / 1000)) : 0);
+  const [secs, setSecs] = useState(getSecs);
   useEffect(() => {
-    if (!active) { setSecs(0); return; }
-    const id = setInterval(() => setSecs((s) => s + 1), 1000);
+    setSecs(getSecs());
+    if (!active || !startIso) return;
+    const id = setInterval(() => setSecs(getSecs()), 1000);
     return () => clearInterval(id);
-  }, [active]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, startIso]);
   const m = Math.floor(secs / 60);
   const s = secs % 60;
+  if (m >= 60) {
+    const h = Math.floor(m / 60);
+    return `${h}h ${String(m % 60).padStart(2, "0")}m`;
+  }
   return m > 0 ? `${m}m ${String(s).padStart(2, "0")}s` : `${s}s`;
 }
 
@@ -315,7 +325,10 @@ export default function JobStatus() {
     } catch {}
   };
 
-  const elapsed = useElapsed(!!(job && !TERMINAL_STATUSES.has(job.status ?? "")));
+  const elapsed = useElapsed(
+    (job as { createdAt?: string | null } | undefined)?.createdAt,
+    !!(job && !TERMINAL_STATUSES.has(job.status ?? "")),
+  );
 
   const durVal = (job as { requestedDuration?: string | null } | undefined)?.requestedDuration;
   const jobIsActive = !!(job && !TERMINAL_STATUSES.has(job.status ?? ""));
