@@ -1174,13 +1174,13 @@ export default function Generate() {
           )}
           </div>
 
-          {/* ── Reference Image (optional) ── */}
+          {/* ── Character Lock (optional reference image) ── */}
           <div className="rounded-xl border border-border/60 bg-background/30 overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3">
               <div className="flex items-center gap-2 min-w-0">
                 <ImageIcon className="h-4 w-4 text-primary shrink-0" />
-                <span className="text-sm font-medium">Reference Image</span>
-                <span className="text-xs text-muted-foreground hidden sm:inline">— optional, sets the starting frame</span>
+                <span className="text-sm font-medium">Character Lock</span>
+                <span className="text-xs text-muted-foreground hidden sm:inline">— optional · same character in every shot</span>
               </div>
               {refImageObjectPath && (
                 <button
@@ -1227,11 +1227,11 @@ export default function Generate() {
                   {isUploadingRefImage ? (
                     <p className="text-sm font-medium text-muted-foreground">Uploading…</p>
                   ) : refImageObjectPath ? (
-                    <p className="text-sm font-medium text-green-500">Image ready</p>
+                    <p className="text-sm font-medium text-green-500">Character locked ✓</p>
                   ) : (
                     <p className="text-sm font-medium text-destructive">Upload failed — try again</p>
                   )}
-                  <p className="text-xs text-muted-foreground mt-0.5">Starting frame for each video clip</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">This character anchors every shot in the video</p>
                   <button
                     onClick={() => refImageInputRef.current?.click()}
                     className="text-xs text-primary hover:underline mt-1"
@@ -1247,8 +1247,11 @@ export default function Generate() {
                   disabled={isUploadingRefImage}
                   className="w-full flex items-center justify-center gap-2 rounded-lg border border-dashed border-border/60 hover:border-primary/50 hover:bg-primary/5 px-4 py-3 text-sm text-muted-foreground transition-colors"
                 >
-                  <Upload className="h-4 w-4" /> Upload image (JPG, PNG, WebP)
+                  <Upload className="h-4 w-4" /> Upload a character (JPG, PNG, WebP)
                 </button>
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  Upload a face or character and it anchors every generated shot, so the same character appears consistently across the whole video.
+                </p>
                 {refImageError && (
                   <p className="text-xs text-destructive mt-1.5 flex items-center gap-1">
                     <XCircle className="h-3 w-3" />{refImageError}
@@ -1420,7 +1423,7 @@ export default function Generate() {
             )}
             {refImageObjectPath && (
               <span className="rounded-full border border-primary/30 bg-primary/10 text-primary px-2.5 py-1">
-                Reference image set
+                🔒 Character locked
               </span>
             )}
           </div>
@@ -1600,6 +1603,12 @@ export default function Generate() {
                   <span className="text-muted-foreground">Style</span>
                   <span className="font-medium capitalize">{STYLES.find((s) => s.id === selectedStyle)?.label ?? selectedStyle}</span>
                 </div>
+                {refImageObjectPath && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Character</span>
+                    <span className="font-medium text-primary">🔒 Locked across all shots</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Duration</span>
                   <span className="font-medium">
