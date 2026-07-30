@@ -13,10 +13,39 @@ interface StripeConnectionItem {
 
 let loggedCredentialSource = false;
 
+// Human-readable description of each Stripe credential source, so it's obvious in
+// the logs which account / mode is actually in use.
+const CREDENTIAL_SOURCE_LABELS: Record<string, string> = {
+  "sandbox-secrets": "SANDBOX keys (STRIPE_SANDBOX_* env) — test mode",
+  secrets: "LIVE keys (STRIPE_SECRET_KEY / STRIPE_PUBLISHABLE_KEY env)",
+  connector: "Replit connector (development environment)",
+  "connector (production)": "Replit connector (production environment)",
+};
+
 function logCredentialSource(source: string): void {
   if (loggedCredentialSource) return;
   loggedCredentialSource = true;
-  logger.info({ source }, "Stripe credential source resolved");
+  const label = CREDENTIAL_SOURCE_LABELS[source] ?? source;
+  logger.info({ source, mode: label }, `Stripe credentials resolved from: ${label}`);
+}
+
+let loggedSandboxHalfConfig = false;
+
+// Loudly warn when exactly ONE of the two sandbox keys is set. In that state the
+// sandbox override is skipped and Stripe silently falls back to the connector
+// (often a different / live account) — the classic "sandbox integration broke"
+// symptom. This is logging only; the resolution logic below is unchanged.
+function warnSandboxHalfConfigured(hasSecret: boolean, hasPublishable: boolean): void {
+  if (loggedSandboxHalfConfig) return;
+  loggedSandboxHalfConfig = true;
+  const present = hasSecret ? "STRIPE_SANDBOX_SECRET_KEY" : "STRIPE_SANDBOX_PUBLISHABLE_KEY";
+  const missing = hasSecret ? "STRIPE_SANDBOX_PUBLISHABLE_KEY" : "STRIPE_SANDBOX_SECRET_KEY";
+  logger.warn(
+    { present, missing },
+    `⚠️  Stripe SANDBOX is HALF-CONFIGURED: ${present} is set but ${missing} is MISSING. ` +
+      `Sandbox mode needs BOTH keys — falling back to the Replit connector, which may bind a different (live) account. ` +
+      `Set ${missing} (or clear ${present}) to fix the sandbox integration.`,
+  );
 }
 
 async function getCredentials(): Promise<{
@@ -36,6 +65,11 @@ async function getCredentials(): Promise<{
         publishableKey: sandboxPublishable,
         secretKey: sandboxSecret,
       };
+    }
+    // Exactly one sandbox key set → half-configured. Warn loudly; without both
+    // keys we silently fall through to the connector below (the usual break).
+    if (!!sandboxSecret !== !!sandboxPublishable) {
+      warnSandboxHalfConfigured(!!sandboxSecret, !!sandboxPublishable);
     }
   }
 
