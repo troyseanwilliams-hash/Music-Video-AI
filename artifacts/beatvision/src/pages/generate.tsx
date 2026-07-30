@@ -207,6 +207,10 @@ export default function Generate() {
   const [copyrightAcknowledged, setCopyrightAcknowledged] = useState(false);
   const [durationWarningOpen, setDurationWarningOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // Storyboard preview shown in the confirm dialog (no charge, no render).
+  type PlannedShot = { index: number; label: string; startTime: number; energy: number; prompt: string };
+  const [shotPlan, setShotPlan] = useState<{ shots: PlannedShot[]; numClips: number; approximate: boolean } | null>(null);
+  const [shotPlanLoading, setShotPlanLoading] = useState(false);
 
   // Reference image
   const refImageInputRef = useRef<HTMLInputElement>(null);
@@ -326,6 +330,32 @@ export default function Generate() {
   const analyzeAudio = useAnalyzeAudio();
   // Analyzed song length — sizes/prices "full" videos (clips scale with length).
   const songDurationSec = (analyzeAudio.data as { durationSeconds?: number } | undefined)?.durationSeconds;
+
+  // Fetch the storyboard preview whenever the confirm dialog opens (free, no render).
+  useEffect(() => {
+    if (!confirmOpen) return;
+    let active = true;
+    setShotPlan(null);
+    setShotPlanLoading(true);
+    fetch("/api/jobs/preview-shots", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt,
+        style: selectedStyle,
+        character,
+        requestedDuration,
+        audioAnalysis: analyzeAudio.isSuccess ? analyzeAudio.data : null,
+      }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (active) setShotPlan(data); })
+      .catch(() => {})
+      .finally(() => { if (active) setShotPlanLoading(false); });
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [confirmOpen]);
   // Track which objectPath the current analysis result belongs to.
   // This prevents stale results from a previous upload being submitted with a new job.
   const [analysisForPath, setAnalysisForPath] = useState<string | null>(null);
@@ -1552,7 +1582,7 @@ export default function Generate() {
 
     {/* ── Confirm Generation Dialog ── */}
     <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <div className="flex items-center gap-3 mb-1">
             <div className="h-10 w-10 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
@@ -1582,6 +1612,40 @@ export default function Generate() {
                   <span className="text-muted-foreground">Credit cost</span>
                   <span className="font-medium">{estimateCreditCost(requestedDuration, aiProvider, resolution, songDurationSec)} credits</span>
                 </div>
+              </div>
+
+              {/* Storyboard preview — the shots we'll generate, before you spend credits */}
+              <div className="rounded-lg border border-border bg-muted/20 p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium flex items-center gap-1.5 text-foreground">
+                    <Clapperboard className="h-4 w-4 text-primary" />
+                    Shot plan{shotPlan ? ` · ${shotPlan.numClips} shots` : ""}
+                  </span>
+                  {shotPlan?.approximate && (
+                    <span className="text-[10px] text-muted-foreground">approximate — analyze audio for exact</span>
+                  )}
+                </div>
+                {shotPlanLoading && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Planning shots…
+                  </div>
+                )}
+                {shotPlan && shotPlan.shots.length > 0 && (
+                  <div className="max-h-44 overflow-y-auto space-y-2 pr-1">
+                    {shotPlan.shots.map((s) => (
+                      <div key={s.index} className="text-xs">
+                        <div className="flex items-center gap-2 font-medium text-foreground">
+                          <span className="inline-flex h-4 min-w-[1rem] px-1 items-center justify-center rounded bg-primary/15 text-primary text-[10px]">
+                            {s.index + 1}
+                          </span>
+                          <span className="capitalize">{s.label}</span>
+                          <span className="text-muted-foreground font-normal">· {Math.round(s.energy * 100)}% energy</span>
+                        </div>
+                        <p className="text-muted-foreground mt-0.5 leading-snug">{s.prompt}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </DialogDescription>

@@ -14,9 +14,34 @@ import {
 } from "@workspace/api-zod";
 import { calculateCreditCost, calculateRemixCost } from "../lib/creditCost.js";
 import { getUserTier, canRender4k } from "../lib/tier.js";
+import { planShots } from "../lib/shotPlan.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 
 const router = Router();
+
+// Storyboard preview: returns the planned shots (label, timing, energy, prompt)
+// for a would-be job so users can approve before spending credits. No render,
+// no charge — pure planning that mirrors the worker's generation plan.
+router.post("/jobs/preview-shots", async (req, res) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  try {
+    const { prompt, style, character, requestedDuration, audioAnalysis } = (req.body ?? {}) as Record<string, unknown>;
+    const plan = planShots({
+      prompt: prompt as string | null,
+      style: style as string | null,
+      character: character as string | null,
+      requestedDuration: requestedDuration as string | null,
+      analysis: (audioAnalysis ?? null) as never,
+    });
+    res.json(plan);
+  } catch (err) {
+    req.log.error({ err }, "Shot preview failed");
+    res.status(500).json({ error: "Could not build a preview." });
+  }
+});
 
 // Per-user video capabilities (which resolutions/limits the plan unlocks). Used
 // by the Generate page to gate the 4K option to Pro & Studio.
