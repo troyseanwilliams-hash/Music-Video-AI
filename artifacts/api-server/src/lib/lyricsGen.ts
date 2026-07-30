@@ -13,16 +13,33 @@ export interface LyricsRequest {
   mood?: string; // e.g. "calm", "energetic"
 }
 
-const SYSTEM_PROMPT = `You are a professional songwriter. Write original song lyrics only — never reproduce existing copyrighted songs.
-Structure the song with section tags on their own lines: [Intro], [Verse], [Pre-Chorus], [Chorus], [Verse], [Bridge], [Chorus], [Outro].
-Aim for a full-length song (roughly 5 minutes when sung): 2-3 verses, a repeated chorus, a bridge.
-Return ONLY the lyrics with section tags — no titles, commentary, or explanations.`;
+const SYSTEM_PROMPT = `You are an acclaimed songwriter with a vivid, distinctive voice. Write ORIGINAL song lyrics only — never reproduce or closely imitate existing copyrighted songs.
+
+Craft rules:
+- Open in a fresh, specific way — a concrete image, a small moment, a line of dialogue, an unexpected angle. NEVER open with clichés like "Thinking about…", "Woke up…", "Here I am…", "In the/this …", or by restating the theme.
+- Use concrete, sensory detail and a consistent point of view. Show, don't tell. No greeting-card platitudes or filler lines.
+- Give it real shape with section tags on their own lines: [Intro], [Verse], [Pre-Chorus], [Chorus], [Verse], [Bridge], [Chorus], [Outro]. Verses that build, a bridge that turns, and a repeated, singable chorus.
+- Aim for a full-length song (~5 minutes sung): 2–3 verses.
+
+Return ONLY the lyrics with section tags — no title, commentary, or explanation.`;
+
+// Rotate the opening approach so no two generations start the same way.
+const OPENING_ANGLES = [
+  "Open mid-scene, dropping the listener into a specific moment already in motion.",
+  "Open on one striking, concrete image tied to the theme — no preamble.",
+  "Open with a line of overheard or remembered dialogue.",
+  "Open on a small telling detail (an object, a place, a gesture) rather than the big idea.",
+  "Open with a question the rest of the song answers.",
+  "Open at the end of the story and work backward.",
+  "Open with motion — someone leaving, arriving, reaching for something.",
+];
 
 function buildUserPrompt(req: LyricsRequest): string {
   const parts = [`Write original song lyrics about: ${req.theme}.`];
   if (req.genre) parts.push(`Genre: ${req.genre}.`);
   if (req.mood) parts.push(`Mood: ${req.mood}.`);
-  parts.push("Make the chorus catchy and repeatable.");
+  parts.push("Make the chorus catchy and repeatable, and vary the opening from the obvious.");
+  parts.push(OPENING_ANGLES[Math.floor(Math.random() * OPENING_ANGLES.length)]!);
   return parts.join(" ");
 }
 
@@ -39,6 +56,7 @@ async function viaAnthropic(req: LyricsRequest): Promise<string> {
     body: JSON.stringify({
       model: process.env.LYRICS_ANTHROPIC_MODEL ?? "claude-sonnet-5",
       max_tokens: 1500,
+      temperature: 1,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: buildUserPrompt(req) }],
     }),
@@ -60,6 +78,7 @@ async function viaOpenAI(req: LyricsRequest): Promise<string> {
     body: JSON.stringify({
       model: process.env.LYRICS_OPENAI_MODEL ?? "gpt-4o-mini",
       max_tokens: 1500,
+      temperature: 1.05,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: buildUserPrompt(req) },
@@ -75,45 +94,38 @@ async function viaOpenAI(req: LyricsRequest): Promise<string> {
 
 // ── Template fallback (no key) ───────────────────────────────────────────────
 
+// Deterministic-quality fallback used only when no LLM key is configured. Picks
+// randomly from several openings/verses/bridges so it isn't identical every time
+// (the LLM path is far better — set ANTHROPIC_API_KEY for real variety).
 function templateLyrics(req: LyricsRequest): string {
   const t = req.theme.trim() || "the open road";
   const cap = t.charAt(0).toUpperCase() + t.slice(1);
-  return `[Intro]
+  const pick = <T>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)]!;
 
-[Verse]
-Thinking about ${t} tonight
-Everything is gonna be alright
-Hold the feeling, let it grow
-${cap} is all I need to know
+  const verse1 = pick([
+    `Streetlights blur outside the glass\n${cap} on my mind and it won't pass\nCounting all the reasons to stay\nBut something keeps pulling me away`,
+    `Left the door a little open\nWords I meant but left unspoken\n${cap} humming in the dark\nA quiet fire, a stubborn spark`,
+    `Rain came down and forgot to stop\nI watched it pool and overflow the top\n${cap} written in the fog\nA restless heart, a barking dog`,
+    `A half-drawn map, a rolled-up sleeve\nMore in these hands than I believe\n${cap} is calling out my name\nAnd nothing here will feel the same`,
+  ]);
+  const prechorus = pick([
+    `And when the lights go low\nThere's only one way left to go`,
+    `So hold your breath and count to three\nThis is who we're meant to be`,
+    `The night leans in, the city sighs\nI'm seeing it with open eyes`,
+  ]);
+  const chorus = `${cap}, carry me away\n${cap}, I'm here to stay\nEvery heartbeat, every mile\n${cap} makes it all worthwhile`;
+  const verse2 = pick([
+    `Miles behind and miles to come\nBeating steady like a drum\nNothing's gonna hold me back\n${cap} keeps me on the track`,
+    `Photographs and dust and time\nA borrowed tune, a broken rhyme\n${cap} steady as the tide\nI'll keep it burning deep inside`,
+    `We traded silence for the road\nDropped the weight and left the load\n${cap} rising with the sun\nThe best of it has just begun`,
+  ]);
+  const bridge = pick([
+    `Close my eyes and breathe it in\nThis is where the dreams begin`,
+    `Tear the map, forget the plan\nI'll find the ending where I can`,
+    `If it breaks, then let it break\nSome things are worth the ache`,
+  ]);
 
-[Pre-Chorus]
-And when the lights go down
-I hear the sound
-
-[Chorus]
-${cap}, carry me away
-${cap}, I'm here to stay
-Every heartbeat, every mile
-${cap} makes it all worthwhile
-
-[Verse]
-Miles behind and miles to come
-Beating steady like a drum
-Nothing's gonna hold me back
-${cap} keeps me on the track
-
-[Bridge]
-Close my eyes and breathe it in
-This is where the dreams begin
-
-[Chorus]
-${cap}, carry me away
-${cap}, I'm here to stay
-Every heartbeat, every mile
-${cap} makes it all worthwhile
-
-[Outro]
-${cap}... carry me away`;
+  return `[Intro]\n\n[Verse]\n${verse1}\n\n[Pre-Chorus]\n${prechorus}\n\n[Chorus]\n${chorus}\n\n[Verse]\n${verse2}\n\n[Bridge]\n${bridge}\n\n[Chorus]\n${chorus}\n\n[Outro]\n${cap}... carry me away`;
 }
 
 // ── Public entry ─────────────────────────────────────────────────────────────

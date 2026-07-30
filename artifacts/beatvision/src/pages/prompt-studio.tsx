@@ -48,6 +48,47 @@ function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) 
   );
 }
 
+// Clickable starter suggestions to help users write good descriptions.
+const AUDIO_SAMPLES = [
+  "dreamy lo-fi beat for a rainy night study session, mellow and nostalgic",
+  "epic cinematic orchestral build for a movie trailer",
+  "warm deep house groove, late-night rooftop, 122 BPM",
+  "gritty boom-bap hip-hop with dusty vinyl and upright bass",
+  "ethereal ambient pads for meditation, slow and weightless",
+  "retro 80s synthwave, neon and chrome, driving arpeggios",
+];
+const VIDEO_SAMPLES = [
+  "a lone astronaut discovering a glowing forest on an alien planet at dusk",
+  "neon-soaked cyberpunk street in the rain, reflections everywhere",
+  "a surfer riding a giant wave in golden-hour slow motion",
+  "close-up of a dancer spinning through drifting autumn leaves",
+  "an old lighthouse in a storm, waves crashing, dramatic and cinematic",
+];
+const LYRIC_SAMPLES = [
+  "chasing a dream across a city that never sleeps",
+  "letting go of someone you still love",
+  "a road trip with no destination and nothing to lose",
+  "finding your voice after years of silence",
+  "the last summer before everything changed",
+];
+
+function Chips({ items, onPick }: { items: string[]; onPick: (v: string) => void }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {items.map((s) => (
+        <button
+          key={s}
+          type="button"
+          onClick={() => onPick(s)}
+          className="rounded-full border border-border/60 bg-secondary/40 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
+        >
+          {s.length > 46 ? s.slice(0, 44) + "…" : s}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function PromptStudio() {
   const { user, isAuthenticated, isLoading } = useAuth();
   const [, setLocation] = useLocation();
@@ -142,6 +183,7 @@ export default function PromptStudio() {
         {/* Audio */}
         <TabsContent value="audio" className="space-y-4 pt-4">
           <label className="text-sm font-medium">Describe the vibe</label>
+          <Chips items={AUDIO_SAMPLES} onPick={setAudioDesc} />
           <Textarea
             value={audioDesc}
             onChange={(e) => setAudioDesc(e.target.value)}
@@ -174,6 +216,7 @@ export default function PromptStudio() {
         {/* Video */}
         <TabsContent value="video" className="space-y-4 pt-4">
           <label className="text-sm font-medium">Describe the scene</label>
+          <Chips items={VIDEO_SAMPLES} onPick={setVideoDesc} />
           <Textarea
             value={videoDesc}
             onChange={(e) => setVideoDesc(e.target.value)}
@@ -206,6 +249,7 @@ export default function PromptStudio() {
         {/* Lyrics */}
         <TabsContent value="lyrics" className="space-y-4 pt-4">
           <label className="text-sm font-medium">What's the song about?</label>
+          <Chips items={LYRIC_SAMPLES} onPick={setTheme} />
           <Textarea
             value={theme}
             onChange={(e) => setTheme(e.target.value)}

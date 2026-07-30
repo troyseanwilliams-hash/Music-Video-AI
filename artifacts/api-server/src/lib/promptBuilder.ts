@@ -21,7 +21,7 @@ export function promptProviderAvailable(): "anthropic" | "openai" | "template" {
 }
 
 // Returns the model's text, or null if no key is set / the call fails.
-async function callLLM(system: string, user: string, maxTokens = 700): Promise<{ text: string; source: string } | null> {
+async function callLLM(system: string, user: string, maxTokens = 700, temperature = 0.9): Promise<{ text: string; source: string } | null> {
   try {
     if (process.env.ANTHROPIC_API_KEY) {
       const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -34,6 +34,7 @@ async function callLLM(system: string, user: string, maxTokens = 700): Promise<{
         body: JSON.stringify({
           model: anthropicModel(),
           max_tokens: maxTokens,
+          temperature,
           system,
           messages: [{ role: "user", content: user }],
         }),
@@ -53,6 +54,7 @@ async function callLLM(system: string, user: string, maxTokens = 700): Promise<{
         body: JSON.stringify({
           model: openaiModel(),
           max_tokens: maxTokens,
+          temperature,
           messages: [
             { role: "system", content: system },
             { role: "user", content: user },
@@ -95,12 +97,20 @@ export interface AudioPromptResult {
   source: string;
 }
 
-const AUDIO_SYSTEM = `You are a music-direction assistant for an instrumental AI music generator (Stable Audio style).
-Given a short description, produce a vivid, specific INSTRUMENTAL music prompt (no lyrics, no vocals) plus structured style metadata.
-The prompt should name instruments, texture, energy, and atmosphere in one flowing sentence (max ~60 words).
+const AUDIO_SYSTEM = `You are a seasoned music producer writing prompts for an instrumental AI music generator (Stable Audio style).
+Given a short description, craft a rich, specific INSTRUMENTAL music prompt (no lyrics, no vocals) plus structured style metadata.
+
+Write the prompt as one flowing sentence (~40–70 words) that layers:
+- genre and sub-genre (be specific — "boom-bap lo-fi", "cinematic post-rock", "deep house", not just "hip hop"),
+- 2–4 named lead + supporting instruments (e.g. Rhodes, upright bass, brushed drums, analog pads, plucked koto),
+- groove / rhythm feel and dynamics (swung, four-on-the-floor, half-time, building),
+- production texture and space (tape saturation, vinyl crackle, wide reverb, sidechain, lo-fi hiss),
+- mood and setting the music evokes.
+Vary your instrument and adjective choices — don't reuse the same stock words every time. Never mention vocals.
+
 Return ONLY valid JSON, no prose, in exactly this shape:
 {"prompt":"...","genre":"...","mood":"...","bpm":90,"tags":["tag1","tag2","tag3","tag4"]}
-bpm is an integer 60-160. tags are 3-6 short lowercase descriptors.`;
+bpm is an integer 60–160 that fits the genre. tags are 3–6 short lowercase descriptors (genre, mood, key instruments, texture).`;
 
 function templateAudio(description: string): AudioPromptResult {
   const d = description.trim() || "calm ambient background";
@@ -115,7 +125,7 @@ function templateAudio(description: string): AudioPromptResult {
 }
 
 export async function generateAudioPrompt(description: string): Promise<AudioPromptResult> {
-  const out = await callLLM(AUDIO_SYSTEM, `Description: ${description}`, 500);
+  const out = await callLLM(AUDIO_SYSTEM, `Description: ${description}`, 500, 1.0);
   if (out) {
     const parsed = extractJson<Partial<AudioPromptResult>>(out.text);
     if (parsed?.prompt) {
