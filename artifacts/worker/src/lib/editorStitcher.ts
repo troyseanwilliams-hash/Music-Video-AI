@@ -17,6 +17,8 @@ export interface EditorSegmentInput {
   kind: "video" | "photo";
   durationSec: number; // for photos: how long to show; for videos: ignored (full clip)
   ext?: string; // source extension hint (e.g. "mp4", "jpg")
+  trimStart?: number; // seconds to cut off the front of a video clip
+  trimEnd?: number; // seconds to cut off the back of a video clip
 }
 
 export interface EditorMusicInput {
@@ -214,7 +216,18 @@ export async function stitchEditorTimeline(
           ]);
         } else {
           const audio = await hasAudio(raw);
-          const args = ["-y", "-i", raw];
+          // Optional front/back trim: -ss seeks past the front, -t caps the kept
+          // duration (origDur − trimStart − trimEnd). Both re-encode below.
+          const trimStart = Math.max(0, seg.trimStart || 0);
+          const trimEnd = Math.max(0, seg.trimEnd || 0);
+          let keepDur: number | null = null;
+          if (trimStart > 0 || trimEnd > 0) {
+            const origDur = await probeDuration(raw);
+            keepDur = Math.max(0.3, origDur - trimStart - trimEnd);
+          }
+          const args = ["-y"];
+          if (trimStart > 0) args.push("-ss", String(trimStart));
+          args.push("-i", raw);
           if (!audio) {
             args.push("-f", "lavfi", "-i", `anullsrc=channel_layout=stereo:sample_rate=${SAR}`);
           }
@@ -226,8 +239,9 @@ export async function stitchEditorTimeline(
             "-pix_fmt", "yuv420p", "-r", String(FPS),
             "-c:a", "aac", "-ar", String(SAR), "-ac", "2",
             "-shortest", "-video_track_timescale", "30000",
-            out,
           );
+          if (keepDur != null) args.push("-t", String(keepDur));
+          args.push(out);
           await run(args);
         }
         parts.push(out);

@@ -524,7 +524,7 @@ function extFromObjectPath(objectPath: string, fallback: string): string {
 
 // Studio (editor) render manifest stored on the job row.
 interface EditorManifest {
-  segments: { objectPath: string; kind: "video" | "photo"; durationSec: number }[];
+  segments: { objectPath: string; kind: "video" | "photo"; durationSec: number; trimStart?: number; trimEnd?: number }[];
   music?: { objectPath: string; mode: "mix" | "replace"; volume: number };
   transition?: { type: string; durationSec: number };
   resolution?: string; // "720p" | "1080p"
@@ -563,7 +563,7 @@ async function processEditorJob(job: JobRow): Promise<void> {
         const file = await storageService.getObjectEntityFile(s.objectPath);
         const [buf] = await file.download();
         const ext = extFromObjectPath(s.objectPath, s.kind === "photo" ? "jpg" : "mp4");
-        segments.push({ buffer: buf, kind: s.kind, durationSec: s.durationSec, ext });
+        segments.push({ buffer: buf, kind: s.kind, durationSec: s.durationSec, ext, trimStart: s.trimStart, trimEnd: s.trimEnd });
         segmentNames.push(fileLabel(s.objectPath, i + 1));
       } catch (err) {
         logger.warn(

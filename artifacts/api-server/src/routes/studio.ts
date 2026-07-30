@@ -12,6 +12,9 @@ const SegmentSchema = z.object({
   objectPath: z.string().min(1),
   kind: z.enum(["video", "photo"]),
   durationSec: z.number().positive().max(600),
+  // Trim seconds off the front / back of a video clip (ignored for photos).
+  trimStart: z.number().min(0).max(600).optional(),
+  trimEnd: z.number().min(0).max(600).optional(),
 });
 
 const RenderSchema = z.object({

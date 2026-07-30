@@ -27,6 +27,7 @@ import {
   Mic2,
   Info,
   Link2,
+  Scissors,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -42,6 +43,8 @@ interface Segment {
   durationSec: number;
   thumb: string | null;
   uploading: boolean;
+  trimStart?: number; // seconds trimmed off the front (video only)
+  trimEnd?: number; // seconds trimmed off the back (video only)
 }
 
 interface MusicTrack {
@@ -569,6 +572,10 @@ export default function Editor() {
           // Clamp to the server's accepted range (0.5–600s) so a long clip
           // never triggers a validation error on the render request.
           durationSec: Math.min(600, Math.max(0.5, s.durationSec || 3)),
+          // Front/back trim (video only; omit when zero).
+          ...(s.kind === "video" && (s.trimStart || s.trimEnd)
+            ? { trimStart: s.trimStart || 0, trimEnd: s.trimEnd || 0 }
+            : {}),
         })),
         music: music?.objectPath ? { objectPath: music.objectPath, mode: music.mode, volume: music.volume } : undefined,
         transition: transition === "none" ? undefined : { type: transition, durationSec: transitionDuration },
@@ -805,15 +812,67 @@ export default function Editor() {
                   />
                 ) : (
                   <span className="absolute bottom-1 right-1 rounded bg-black/60 px-1 text-[10px] text-white">
-                    {(seg.durationSec || 0).toFixed(1)}s
+                    {Math.max(0, (seg.durationSec || 0) - (seg.trimStart || 0) - (seg.trimEnd || 0)).toFixed(1)}s
+                    {(seg.trimStart || seg.trimEnd) ? " ✂" : ""}
                   </span>
                 )}
               </div>
             ))}
           </div>
         )}
+
+        {/* Trim panel for the selected video clip */}
+        {(() => {
+          const sel = segments[previewIndex];
+          if (!sel || sel.kind !== "video" || !sel.durationSec) return null;
+          const ts = sel.trimStart || 0;
+          const te = sel.trimEnd || 0;
+          const kept = Math.max(0.3, sel.durationSec - ts - te);
+          const setTrim = (front: number, back: number) => {
+            const f = Math.max(0, Math.min(front, sel.durationSec - 0.3 - back));
+            const b = Math.max(0, Math.min(back, sel.durationSec - 0.3 - f));
+            patchSegment(sel.id, { trimStart: f, trimEnd: b });
+          };
+          return (
+            <div className="mt-3 rounded-lg border border-border/60 bg-background/40 p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-xs font-medium">
+                  <Scissors className="h-3.5 w-3.5 text-primary" /> Trim clip {previewIndex + 1}
+                </span>
+                <span className="text-xs text-muted-foreground">{kept.toFixed(1)}s of {sel.durationSec.toFixed(1)}s</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="text-xs text-muted-foreground">
+                  Trim front (s)
+                  <input
+                    type="number" min={0} step={0.1} value={ts}
+                    onChange={(e) => setTrim(Number(e.target.value) || 0, te)}
+                    className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-sm text-foreground"
+                  />
+                </label>
+                <label className="text-xs text-muted-foreground">
+                  Trim back (s)
+                  <input
+                    type="number" min={0} step={0.1} value={te}
+                    onChange={(e) => setTrim(ts, Number(e.target.value) || 0)}
+                    className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-sm text-foreground"
+                  />
+                </label>
+              </div>
+              {(ts > 0 || te > 0) && (
+                <button
+                  onClick={() => patchSegment(sel.id, { trimStart: 0, trimEnd: 0 })}
+                  className="mt-2 text-xs text-primary hover:underline"
+                >
+                  Reset trim
+                </button>
+              )}
+            </div>
+          );
+        })()}
+
         <p className="text-muted-foreground mt-3 text-xs">
-          Drag blocks to reorder · click to preview · set a photo's seconds in its box
+          Drag blocks to reorder · click to preview · trim the front/back of the selected clip · set a photo's seconds in its box
         </p>
       </Card>
 
