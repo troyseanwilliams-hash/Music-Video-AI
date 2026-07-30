@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { LYRICS_BUILD_COST } from "@/lib/creditPricing";
 import {
   Sparkles, Music2, Film, FileText, Copy, Check, Loader2, ArrowRight, Wand2,
 } from "lucide-react";
@@ -261,7 +262,7 @@ export default function PromptStudio() {
             <Input value={mood} onChange={(e) => setMood(e.target.value)} placeholder="Mood (optional)" className="max-w-[180px]" />
           </div>
           <Button onClick={buildLyrics} disabled={lyricsBusy || theme.trim().length < 2} className="bg-gradient-electric text-white border-0">
-            {lyricsBusy ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Writing…</> : <><Wand2 className="mr-2 h-4 w-4" /> Write lyrics</>}
+            {lyricsBusy ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Writing…</> : <><Wand2 className="mr-2 h-4 w-4" /> Write lyrics · {LYRICS_BUILD_COST} cr</>}
           </Button>
 
           {lyricsRes && (
