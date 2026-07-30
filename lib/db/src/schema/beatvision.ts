@@ -71,6 +71,8 @@ export const jobsTable = pgTable("jobs", {
   requestedDuration: text("requested_duration").default("full"),
   clipStartTime: real("clip_start_time"),
   aiProvider: text("ai_provider"),
+  // Burn an "AI Beat Sync" watermark on the finished video (Starter tier exports).
+  watermark: boolean("watermark").notNull().default(false),
   retryCount: integer("retry_count").notNull().default(0),
   claimedAt: timestamp("claimed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })

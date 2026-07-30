@@ -1,0 +1,149 @@
+import { useEffect } from "react";
+import { Link } from "wouter";
+import { Button } from "@/components/ui/button";
+import { ArrowRight, Sparkles, Wand2, Mic2, Music2, Film, Upload, Disc3 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { motion } from "framer-motion";
+import { AuroraBackground } from "@/components/AuroraBackground";
+
+interface Step { icon: LucideIcon; title: string; body: string }
+interface UseCaseConfig {
+  docTitle: string;
+  metaDescription: string;
+  badge: string;
+  h1a: string; h1accent: string; h1b: string;
+  subhead: string;
+  ctaLabel: string; ctaHref: string;
+  steps: Step[];
+  seo: string;
+}
+
+// SEO landing pages targeting high-intent search queries. Each funnels straight
+// into the relevant generator. Public — no auth required to view.
+function UseCaseLanding({ cfg }: { cfg: UseCaseConfig }) {
+  useEffect(() => {
+    const prevTitle = document.title;
+    document.title = cfg.docTitle;
+    const meta = document.querySelector('meta[name="description"]');
+    const prev = meta?.getAttribute("content") ?? null;
+    meta?.setAttribute("content", cfg.metaDescription);
+    return () => {
+      document.title = prevTitle;
+      if (prev && meta) meta.setAttribute("content", prev);
+    };
+  }, [cfg]);
+
+  return (
+    <div className="relative overflow-hidden">
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[700px] bg-primary/8 rounded-full blur-[160px] pointer-events-none" />
+      <AuroraBackground className="opacity-60" />
+
+      <section className="container mx-auto px-6 pt-20 pb-14 max-w-3xl text-center relative z-10">
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
+          <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-primary mb-6">
+            <Sparkles className="h-3.5 w-3.5" />
+            {cfg.badge}
+          </div>
+          <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">
+            {cfg.h1a} <span className="bg-gradient-electric bg-clip-text text-transparent">{cfg.h1accent}</span> {cfg.h1b}
+          </h1>
+          <p className="text-muted-foreground text-lg mb-8">{cfg.subhead}</p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link href={cfg.ctaHref}>
+              <Button size="lg" className="h-12 px-6 bg-gradient-electric text-white shadow-glow">
+                {cfg.ctaLabel}
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+            <Link href="/pricing">
+              <Button size="lg" variant="outline" className="h-12 px-6">See pricing</Button>
+            </Link>
+          </div>
+        </motion.div>
+      </section>
+
+      <section className="container mx-auto px-6 pb-16 max-w-4xl relative z-10">
+        <div className="grid gap-4 sm:grid-cols-3">
+          {cfg.steps.map((s, i) => (
+            <motion.div
+              key={s.title}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.1 * i }}
+              className="rounded-xl border border-border/60 bg-background/40 p-5"
+            >
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/15 border border-primary/20 mb-3">
+                <s.icon className="h-4 w-4 text-primary" />
+              </div>
+              <h3 className="font-semibold mb-1">{s.title}</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">{s.body}</p>
+            </motion.div>
+          ))}
+        </div>
+
+        <p className="text-sm text-muted-foreground leading-relaxed mt-10 max-w-2xl mx-auto text-center">{cfg.seo}</p>
+
+        <div className="text-center mt-8">
+          <Link href={cfg.ctaHref}>
+            <Button size="lg" className="h-12 px-6 bg-gradient-electric text-white shadow-glow">
+              {cfg.ctaLabel} <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          </Link>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+// ── Configs ──────────────────────────────────────────────────────────────────
+
+export function AiMusicVideoLanding() {
+  return <UseCaseLanding cfg={{
+    docTitle: "AI Music Video Generator — Turn a Song Into a Video | AI Beat Sync",
+    metaDescription: "Turn any song into a cinematic, beat-synced AI music video in minutes. Upload a track or generate one, pick a style, and download a video ready for YouTube, TikTok, and Reels.",
+    badge: "One song in. A cinematic video out.",
+    h1a: "Turn any song into an", h1accent: "AI music video", h1b: "",
+    subhead: "Upload a track — or generate a royalty-free one — and our AI builds a beat-synced cinematic video, cut to your song's energy. No editing skills required.",
+    ctaLabel: "Make my video", ctaHref: "/generate",
+    steps: [
+      { icon: Upload, title: "Add your song", body: "Upload any track, paste a link, or generate a royalty-free instrumental right here." },
+      { icon: Wand2, title: "Pick a style", body: "Cinematic, anime, neon, and more — the AI generates shots timed to each section of your song." },
+      { icon: Film, title: "Download & share", body: "Export up to 4K, plus one-click shorts and a Spotify Canvas loop for every platform." },
+    ],
+    seo: "AI Beat Sync is an AI music video generator that turns your audio into cinematic, beat-synchronized visuals. Unlike raw AI video tools, it analyzes your song's structure and cuts each shot to the beat — then packages the whole release: the full video, vertical TikTok/Shorts cuts, a Spotify Canvas loop, and a thumbnail. Start free.",
+  }} />;
+}
+
+export function LyricVideoLanding() {
+  return <UseCaseLanding cfg={{
+    docTitle: "AI Lyric Video Maker — Add Animated Lyrics to Your Song | AI Beat Sync",
+    metaDescription: "Make a lyric video from your song with AI. Generate a beat-synced music video and burn in karaoke-style animated lyrics — synced to the beat and ready to post.",
+    badge: "Your words, on screen, on beat.",
+    h1a: "Make an", h1accent: "AI lyric video", h1b: "for your song",
+    subhead: "Generate a cinematic music video, then burn in karaoke-style lyrics that land on the beat. Paste plain lyrics or timestamped .lrc for exact sync.",
+    ctaLabel: "Make my lyric video", ctaHref: "/generate",
+    steps: [
+      { icon: Wand2, title: "Generate the video", body: "AI creates a beat-synced cinematic video from your track." },
+      { icon: Mic2, title: "Add your lyrics", body: "Paste lyrics (or .lrc timestamps) and we burn animated captions synced to the music." },
+      { icon: Film, title: "Export & post", body: "Download the lyric video plus vertical cuts for TikTok, Reels, and Shorts." },
+    ],
+    seo: "AI Beat Sync doubles as an AI lyric video maker: generate a music video, then overlay karaoke-style animated lyrics that follow the beat. Supports plain text, LRC line timestamps, and word-level enhanced LRC for precise, sing-along sync — no video editor required.",
+  }} />;
+}
+
+export function InstrumentalLanding() {
+  return <UseCaseLanding cfg={{
+    docTitle: "Free AI Instrumental Generator — Royalty-Free Beats | AI Beat Sync",
+    metaDescription: "Generate royalty-free instrumental music with AI. Describe a vibe and get an original beat you can use in videos, streams, and content — free tracks included.",
+    badge: "Original beats. Royalty-free. Yours.",
+    h1a: "Free", h1accent: "AI instrumental", h1b: "generator",
+    subhead: "Describe the vibe — lofi, cinematic, trap, ambient — and get an original royalty-free instrumental in seconds. Score a video with it, loop it, or download it.",
+    ctaLabel: "Generate a beat", ctaHref: "/soundtracks",
+    steps: [
+      { icon: Music2, title: "Describe the vibe", body: "Type a mood or genre and the AI composes an original instrumental." },
+      { icon: Disc3, title: "Loop or reuse", body: "Loop it to any length, save it to your library, or drop it into a video." },
+      { icon: Film, title: "Turn it into a video", body: "One click sends your beat into the video generator for a full music video." },
+    ],
+    seo: "AI Beat Sync's soundtrack generator creates original, royalty-free instrumental music from a text description — free tracks included on every plan. Use the beats in your videos, streams, and social content, then turn any track into a cinematic AI music video in the same place.",
+  }} />;
+}

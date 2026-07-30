@@ -414,15 +414,25 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
     return;
   }
 
+  // Expensive jobs (4K or long) regenerate every clip on retry, so a 3× retry of
+  // a 4K / multi-minute render burns real provider money for no guaranteed gain.
+  // Cap those at a single attempt even for transient errors.
+  const j = job as JobRow & { resolution?: string | null; requestedDuration?: string | null };
+  const durStr = String(j.requestedDuration ?? "full");
+  const isExpensive =
+    (j.resolution ?? "").toLowerCase() === "4k" ||
+    durStr === "full" || durStr === "300" || durStr === "600" || parseInt(durStr, 10) > 120;
+  const maxRetries = isExpensive ? 1 : MAX_RETRIES;
+
   const nextRetry = (job.retryCount ?? 0) + 1;
 
-  if (nextRetry < MAX_RETRIES) {
+  if (nextRetry < maxRetries) {
     const delayMs = Math.pow(2, nextRetry) * 60_000;
-    logger.info({ jobId: job.id, nextRetry, delayMs }, "Scheduling retry");
+    logger.info({ jobId: job.id, nextRetry, delayMs, maxRetries }, "Scheduling retry");
 
     await updateJobStatus(job.id, {
       status: "failed",
-      errorMessage: `${errMsg} — retry ${nextRetry}/${MAX_RETRIES} in ${delayMs / 60_000}m`,
+      errorMessage: `${errMsg} — retry ${nextRetry}/${maxRetries} in ${delayMs / 60_000}m`,
     });
 
     setTimeout(async () => {
@@ -442,7 +452,7 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
   } else {
     await updateJobStatus(job.id, {
       status: "failed",
-      errorMessage: `${errMsg} (max ${MAX_RETRIES} retries reached)`,
+      errorMessage: `${errMsg} (max ${maxRetries} ${maxRetries === 1 ? "attempt" : "retries"} reached)`,
     });
     void notifyRenderFailed(job, errMsg);
   }

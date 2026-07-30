@@ -25,6 +25,37 @@ function runFfmpeg(cmd: ffmpeg.FfmpegCommand): Promise<void> {
   });
 }
 
+// Burns a small semi-transparent "AI Beat Sync" watermark (bottom-right) onto a
+// finished video. Used for Starter-tier exports so shared videos market the site
+// (Pro/Studio render clean). Returns the watermarked buffer; on any failure it
+// returns the original so a watermark hiccup never fails a render.
+export async function applyWatermark(videoBuffer: Buffer): Promise<Buffer> {
+  const tmpDir = join(tmpdir(), `bv_wm_${randomUUID()}`);
+  const inPath = join(tmpDir, "in.mp4");
+  const outPath = join(tmpDir, "out.mp4");
+  try {
+    await mkdir(tmpDir, { recursive: true });
+    await writeFile(inPath, videoBuffer);
+    const draw =
+      "drawtext=text='AI Beat Sync':fontcolor=white@0.85:fontsize=h/22:" +
+      "box=1:boxcolor=black@0.35:boxborderw=8:x=w-text_w-24:y=h-text_h-24";
+    await runFfmpeg(
+      ffmpeg(inPath)
+        .videoFilters(draw)
+        .outputOptions([
+          "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+          "-c:a", "copy", "-movflags", "+faststart",
+        ])
+        .output(outPath),
+    );
+    return await readFile(outPath);
+  } catch {
+    return videoBuffer;
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 // Hard-kill ffmpeg if it exceeds the timeout. Converts an infinite hang (e.g.
 // OOM-kill silently disappearing, 4K encode on a memory-constrained VM) into a
 // thrown error so the job fails visibly instead of blocking the worker forever.

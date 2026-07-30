@@ -26,6 +26,7 @@ import Settings from "@/pages/settings";
 import PromptStudio from "@/pages/prompt-studio";
 import SunoLanding from "@/pages/suno-landing";
 import CanvasLanding from "@/pages/canvas-landing";
+import { AiMusicVideoLanding, LyricVideoLanding, InstrumentalLanding } from "@/pages/use-case-landing";
 import ForgotPassword from "@/pages/forgot-password";
 import ResetPassword from "@/pages/reset-password";
 
@@ -59,6 +60,9 @@ function Router() {
           <Route path="/settings" component={Settings} />
           <Route path="/suno" component={SunoLanding} />
           <Route path="/spotify-canvas" component={CanvasLanding} />
+          <Route path="/ai-music-video-generator" component={AiMusicVideoLanding} />
+          <Route path="/ai-lyric-video" component={LyricVideoLanding} />
+          <Route path="/instrumental-generator" component={InstrumentalLanding} />
           <Route component={NotFound} />
         </Switch>
       </main>

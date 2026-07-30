@@ -163,17 +163,22 @@ router.post("/jobs", async (req, res) => {
     }
   }
 
+  // Resolve the subscription tier once (non-admins): gates 4K and decides the
+  // Starter-tier watermark. getUserTier is try/caught (falls open on Stripe error).
+  const tier = isAdmin ? null : await getUserTier(userRecord ?? {});
+
   // 4K is a premium tier — Pro & Studio only (admins always allowed).
-  if (!isAdmin && String(resolution ?? "").toLowerCase() === "4k") {
-    const tier = await getUserTier(userRecord ?? {});
-    if (!canRender4k(tier)) {
-      res.status(403).json({
-        error: "4K rendering is available on the Pro and Studio plans. Upgrade to unlock 4K, or choose 1080p.",
-        code: "TIER_REQUIRED_4K",
-      });
-      return;
-    }
+  if (!isAdmin && String(resolution ?? "").toLowerCase() === "4k" && !canRender4k(tier)) {
+    res.status(403).json({
+      error: "4K rendering is available on the Pro and Studio plans. Upgrade to unlock 4K, or choose 1080p.",
+      code: "TIER_REQUIRED_4K",
+    });
+    return;
   }
+
+  // Starter-tier videos carry a small "AI Beat Sync" watermark; Pro/Studio and
+  // admin render clean. Free viral loop + an upgrade incentive.
+  const watermark = !isAdmin && (tier ?? "").toLowerCase() === "starter";
 
   const songDurationSec = (audioAnalysis as { durationSeconds?: number } | null | undefined)?.durationSeconds;
   // Kling (via Pixazo) is cheaper than Runway, so the charge scales with the
@@ -231,6 +236,7 @@ router.post("/jobs", async (req, res) => {
       clipStartTime: clipStartTime ?? null,
       audioAnalysis: audioAnalysis as unknown as Record<string, unknown> ?? null,
       aiProvider: engine,
+      watermark,
       prompt,
       style: style as
         | "realistic"
