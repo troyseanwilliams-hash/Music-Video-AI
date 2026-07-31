@@ -26,6 +26,8 @@ export interface EditorMusicInput {
   ext: string;
   mode: "mix" | "replace";
   volume: number; // 0..1
+  loop?: boolean; // repeat the track to fill the video (default true)
+  fade?: boolean; // fade the music in at the start and out at the end
 }
 
 export interface EditorStitchInput {
@@ -335,18 +337,33 @@ export async function stitchEditorTimeline(
       const musicPath = join(dir, `music.${input.music.ext || "mp3"}`);
       await writeFile(musicPath, input.music.buffer);
       const vol = Math.max(0, Math.min(2, input.music.volume || 0.6));
+      const loop = input.music.loop !== false; // default: loop to fill the video
       const withMusic = join(dir, "music.mp4");
-      // -stream_loop -1 on the music input makes it repeat indefinitely; -t
+
+      // Optional fade in/out on the music (scaled down for very short videos so
+      // the two fades never overlap).
+      let fadeChain = "";
+      if (input.music.fade && videoDuration > 0) {
+        const fin = Math.min(1.5, videoDuration * 0.2);
+        const fout = Math.min(2, videoDuration * 0.25);
+        fadeChain = `,afade=t=in:st=0:d=${fin.toFixed(2)},afade=t=out:st=${Math.max(0, videoDuration - fout).toFixed(2)}:d=${fout.toFixed(2)}`;
+      }
+      const musicFilter = `volume=${vol}${fadeChain}`;
+
+      // -stream_loop -1 (when looping) makes the music repeat; without it the
+      // track plays once and the video continues silent after it ends. -t
       // <videoDuration> trims the whole output to the video length.
-      const args = ["-y", "-i", current, "-stream_loop", "-1", "-i", musicPath];
+      const args = ["-y", "-i", current];
+      if (loop) args.push("-stream_loop", "-1");
+      args.push("-i", musicPath);
       if (input.music.mode === "replace") {
-        args.push("-filter_complex", `[1:a]volume=${vol}[a]`, "-map", "0:v:0", "-map", "[a]");
+        args.push("-filter_complex", `[1:a]${musicFilter}[a]`, "-map", "0:v:0", "-map", "[a]");
       } else {
-        // duration=longest keeps the (looped) music going; the -t cap below
-        // ends the file at the video's end.
+        // duration=longest keeps the music going (looped or not); the -t cap
+        // below ends the file at the video's end.
         args.push(
           "-filter_complex",
-          `[1:a]volume=${vol}[m];[0:a][m]amix=inputs=2:duration=longest:dropout_transition=0[a]`,
+          `[1:a]${musicFilter}[m];[0:a][m]amix=inputs=2:duration=longest:dropout_transition=0[a]`,
           "-map", "0:v:0", "-map", "[a]",
         );
       }

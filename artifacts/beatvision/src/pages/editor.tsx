@@ -55,6 +55,8 @@ interface MusicTrack {
   mode: "mix" | "replace";
   volume: number;
   uploading: boolean;
+  loop?: boolean; // repeat the track to fill the video (undefined = true)
+  fade?: boolean; // fade in at the start, out at the end (undefined = false)
 }
 
 const TRANSITIONS = [
@@ -655,7 +657,9 @@ export default function Editor() {
             ? { trimStart: s.trimStart || 0, trimEnd: s.trimEnd || 0 }
             : {}),
         })),
-        music: music?.objectPath ? { objectPath: music.objectPath, mode: music.mode, volume: music.volume } : undefined,
+        music: music?.objectPath
+          ? { objectPath: music.objectPath, mode: music.mode, volume: music.volume, loop: music.loop !== false, fade: !!music.fade }
+          : undefined,
         transition: transition === "none" ? undefined : { type: transition, durationSec: transitionDuration },
         resolution,
         orientation,
@@ -1058,17 +1062,20 @@ export default function Editor() {
             <>
               <div className="mb-3 truncate text-sm">{music.name}</div>
               <div className="grid grid-cols-2 gap-3">
-                <Select value={music.mode} onValueChange={(v) => setMusic((m) => (m ? { ...m, mode: v as "mix" | "replace" } : m))}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="mix">Mix with clip audio</SelectItem>
-                    <SelectItem value="replace">Replace clip audio</SelectItem>
-                  </SelectContent>
-                </Select>
                 <div>
-                  <div className="text-muted-foreground mb-1 text-xs">Volume</div>
+                  <div className="text-muted-foreground mb-1 text-xs">Audio</div>
+                  <Select value={music.mode} onValueChange={(v) => setMusic((m) => (m ? { ...m, mode: v as "mix" | "replace" } : m))}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="mix">Mix with clip audio</SelectItem>
+                      <SelectItem value="replace">Replace clip audio</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <div className="text-muted-foreground mb-1 text-xs">Volume · {Math.round(music.volume * 100)}%</div>
                   <Slider
                     min={0}
                     max={1}
@@ -1082,6 +1089,28 @@ export default function Editor() {
                   />
                 </div>
               </div>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMusic((m) => (m ? { ...m, loop: m.loop === false } : m))}
+                  className={`rounded-full border px-3 py-1 text-xs transition-colors ${music.loop === false ? "border-border/60 text-muted-foreground hover:text-foreground" : "border-primary/40 bg-primary/10 text-primary"}`}
+                >
+                  {music.loop === false ? "Play once" : "Loop to fill ✓"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMusic((m) => (m ? { ...m, fade: !m.fade } : m))}
+                  className={`rounded-full border px-3 py-1 text-xs transition-colors ${music.fade ? "border-primary/40 bg-primary/10 text-primary" : "border-border/60 text-muted-foreground hover:text-foreground"}`}
+                >
+                  Fade in/out {music.fade ? "✓" : ""}
+                </button>
+              </div>
+              <p className="mt-1.5 text-[11px] text-muted-foreground">
+                {music.loop === false
+                  ? "Plays once — the video is silent after the track ends."
+                  : "Repeats to fill the whole video."}
+              </p>
               {analyzingBeats && (
                 <div className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Loader2 className="h-3 w-3 animate-spin" /> Detecting beat…

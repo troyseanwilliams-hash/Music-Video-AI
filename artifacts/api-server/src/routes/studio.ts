@@ -25,6 +25,8 @@ const RenderSchema = z.object({
       objectPath: z.string().min(1),
       mode: z.enum(["mix", "replace"]).default("mix"),
       volume: z.number().min(0).max(1).default(0.6),
+      loop: z.boolean().optional(),
+      fade: z.boolean().optional(),
     })
     .optional(),
   transition: z
