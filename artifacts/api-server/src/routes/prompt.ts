@@ -136,10 +136,15 @@ router.post("/prompt/lyrics", async (req: Request, res: Response) => {
     res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
     return;
   }
+  const user = req.user;
+  if (!user) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
   // Charge only when a real LLM will run (the no-key template fallback is free).
   const willUseLLM = lyricsProviderAvailable() !== "template";
   if (willUseLLM) {
-    const charge = await chargeCredits(req.user.id, LYRICS_BUILD_COST);
+    const charge = await chargeCredits(user.id, LYRICS_BUILD_COST);
     if (!charge.ok) {
       res.status(402).json({
         error: `Writing lyrics costs ${LYRICS_BUILD_COST} credits but you only have ${charge.remaining}.`,
@@ -154,7 +159,7 @@ router.post("/prompt/lyrics", async (req: Request, res: Response) => {
     const result = await generateLyrics(parsed.data);
     res.json({ ...result, charged: willUseLLM ? LYRICS_BUILD_COST : 0 });
   } catch (err) {
-    if (willUseLLM) await refundCredits(req.user.id, LYRICS_BUILD_COST);
+    if (willUseLLM) await refundCredits(user.id, LYRICS_BUILD_COST);
     logger.error({ err }, "Lyrics build failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Lyrics build failed" });
   }

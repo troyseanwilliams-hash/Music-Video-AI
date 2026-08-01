@@ -557,7 +557,7 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
   // so a retry only regenerates the clips that actually failed. That means even
   // 4K / long jobs can safely retry transient errors without re-paying for the
   // whole render, so all jobs share the same retry budget.
-  const maxRetries = MAX_RETRIES;
+  const maxRetries: number = MAX_RETRIES;
 
   const nextRetry = (job.retryCount ?? 0) + 1;
 
