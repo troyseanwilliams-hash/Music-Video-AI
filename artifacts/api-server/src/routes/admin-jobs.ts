@@ -1,7 +1,9 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { jobsTable, usersTable } from "@workspace/db";
-import { eq, desc, inArray } from "drizzle-orm";
+import { eq, desc, inArray, sql } from "drizzle-orm";
+import { ObjectStorageService } from "../lib/objectStorage.js";
+import { downloadClip } from "../lib/videoApis.js";
 
 function isAdmin(email: string | null | undefined): boolean {
   return !!(
@@ -292,6 +294,71 @@ router.post("/admin/test-email", async (req, res) => {
 
   req.log.info({ results }, "Admin email test");
   res.json({ ok: results.every((r) => r.ok), results });
+});
+
+// Manually attach provider-rendered clips to a job by URL. Used to rescue
+// clips that finished on the provider (visible in its dashboard) but were
+// never downloaded because polling stopped — the job's next run reuses them
+// via manifest.partialClips instead of paying to regenerate.
+// Body: { clips: [{ index: number, url: string }] }
+router.post("/admin/jobs/:id/attach-clips", async (req, res) => {
+  if (!req.isAuthenticated() || !isAdmin(req.user.email)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const jobId = req.params.id;
+  const clipsInput = Array.isArray(req.body?.clips) ? req.body.clips : null;
+  if (!clipsInput || clipsInput.length === 0) {
+    res.status(400).json({ error: "Body must be { clips: [{ index, url }] }" });
+    return;
+  }
+
+  const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, jobId)).limit(1);
+  if (!job) {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
+
+  const storage = new ObjectStorageService();
+  const results: { index: number; ok: boolean; error?: string }[] = [];
+  const attached: Record<string, string> = {};
+
+  for (const c of clipsInput) {
+    const index = Number(c?.index);
+    const url = typeof c?.url === "string" ? c.url.trim() : "";
+    if (!Number.isInteger(index) || index < 0 || !/^https:\/\//.test(url)) {
+      results.push({ index: Number.isFinite(index) ? index : -1, ok: false, error: "index must be a non-negative integer and url must be https" });
+      continue;
+    }
+    try {
+      const buf = await downloadClip(url);
+      if (buf.length < 10_000) throw new Error(`Downloaded file is suspiciously small (${buf.length} bytes) — is the link a video?`);
+      const path = await storage.uploadClipBuffer(buf, `job-${jobId}`, index);
+      attached[index] = path;
+      results.push({ index, ok: true });
+    } catch (err) {
+      results.push({ index, ok: false, error: String(err instanceof Error ? err.message : err).slice(0, 300) });
+    }
+  }
+
+  if (Object.keys(attached).length > 0) {
+    // Merge into manifest.partialClips atomically (jsonb concat) so we don't
+    // clobber clips the job processor saved while we were downloading.
+    await db.execute(sql`
+      UPDATE jobs
+      SET manifest = jsonb_set(
+            COALESCE(manifest, '{}'::jsonb),
+            '{partialClips}',
+            COALESCE(manifest->'partialClips', '{}'::jsonb) || ${JSON.stringify(attached)}::jsonb
+          ),
+          updated_at = NOW()
+      WHERE id = ${jobId}
+    `);
+  }
+
+  req.log.info({ jobId, results }, "Admin attached clips to job");
+  res.json({ ok: results.every((r) => r.ok), attached: Object.keys(attached).length, results });
 });
 
 export default router;

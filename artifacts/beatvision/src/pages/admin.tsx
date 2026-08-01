@@ -806,6 +806,50 @@ export default function AdminPage() {
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
+  // ── Attach provider-rendered clips to a job by URL (rescue stranded clips) ──
+  const [attachJobId, setAttachJobId] = useState("");
+  const [attachLines, setAttachLines] = useState("");
+  const attachMutation = useMutation({
+    mutationFn: async () => {
+      const jobId = attachJobId.trim();
+      if (!jobId) throw new Error("Enter the job ID");
+      // Each line: "<index> <url>" — also accepts "index: url" or "index,url".
+      const clips = attachLines
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .map((line) => {
+          const m = line.match(/^(\d+)\s*[:, ]\s*(https:\/\/\S+)$/);
+          if (!m) throw new Error(`Can't read line: "${line.slice(0, 60)}" — use "index url" (e.g. "9 https://…")`);
+          return { index: parseInt(m[1]!, 10), url: m[2]! };
+        });
+      if (!clips.length) throw new Error("Add at least one line: index followed by the clip link");
+      const res = await fetch(`/api/admin/jobs/${jobId}/attach-clips`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clips }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error ?? `Failed (${res.status})`);
+      return data as { ok: boolean; attached: number; results: { index: number; ok: boolean; error?: string }[] };
+    },
+    onSuccess: (data) => {
+      const failed = data.results.filter((r) => !r.ok);
+      if (failed.length) {
+        toast({
+          title: `Attached ${data.attached}, ${failed.length} failed`,
+          description: failed.map((f) => `#${f.index}: ${f.error}`).join(" · ").slice(0, 300),
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: `Attached ${data.attached} clip${data.attached === 1 ? "" : "s"}`, description: "The job will reuse them on its next run — no re-render cost." });
+        setAttachLines("");
+      }
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
   const {
     data: deletedVideosData,
     isLoading: deletedLoading,
@@ -1235,6 +1279,43 @@ export default function AdminPage() {
                 ))}
               </div>
             )}
+          </div>
+
+          {/* ── Attach stranded clips ── */}
+          <div className="mt-6 sm:mt-8">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Attach Rendered Clips</CardTitle>
+                <CardDescription>
+                  Rescue clips that finished on the provider (visible in its dashboard) but never made it into a job.
+                  Paste one line per clip: the clip number, a space, then the link — e.g. <span className="font-mono">9 https://…</span>.
+                  The job reuses them on its next run instead of paying to re-render.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <input
+                  value={attachJobId}
+                  onChange={(e) => setAttachJobId(e.target.value)}
+                  placeholder="Job ID (e.g. 03fbda07-6178-4451-a5a1-00ce12da9159)"
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm font-mono placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
+                <textarea
+                  value={attachLines}
+                  onChange={(e) => setAttachLines(e.target.value)}
+                  placeholder={"9 https://provider.example/clip9.mp4\n10 https://provider.example/clip10.mp4"}
+                  rows={5}
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm font-mono placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40 resize-y"
+                />
+                <button
+                  onClick={() => attachMutation.mutate()}
+                  disabled={attachMutation.isPending || !attachJobId.trim() || !attachLines.trim()}
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 rounded-xl bg-primary text-primary-foreground px-5 py-3 sm:py-2.5 text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+                >
+                  {attachMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  {attachMutation.isPending ? "Downloading & attaching…" : "Attach Clips"}
+                </button>
+              </CardContent>
+            </Card>
           </div>
         </div>
       )}

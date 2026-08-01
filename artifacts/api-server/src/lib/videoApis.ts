@@ -8,6 +8,13 @@ export interface ClipRequest {
   provider?: string;
   /** Requested output resolution ("720p" | "1080p" | "4k"). Selects the Kling model tier + gateway hint. */
   resolution?: string | null;
+  /**
+   * Called as soon as the provider accepts the render request, BEFORE polling
+   * begins. Lets the caller persist the request id / poll URL so a clip that
+   * finishes after the server stops polling (crash, freeze, deploy) can be
+   * recovered later instead of being paid for twice.
+   */
+  onSubmit?: (info: { provider: string; requestId: string; pollUrl: string }) => void | Promise<void>;
 }
 
 export interface ClipResult {
@@ -283,6 +290,15 @@ async function generateWithPixazo(req: ClipRequest, t2vOverride?: string, i2vOve
   if (!requestId) throw new Error(`${PROVIDER_API_FAILURE} Pixazo: no request_id returned`);
   const pollUrl = submitData.polling_url ?? `https://gateway.pixazo.ai/v2/requests/status/${requestId}`;
 
+  // Persist the request id/poll URL before polling starts, so a clip that
+  // completes after we stop polling is recoverable (never block the render on
+  // a persistence hiccup, though).
+  try {
+    await req.onSubmit?.({ provider: "pixazo", requestId, pollUrl });
+  } catch {
+    /* non-fatal */
+  }
+
   for (let i = 0; i < 120; i++) {
     await delay(5000);
     const pollRes = await fetch(pollUrl, {
@@ -381,6 +397,29 @@ export async function generateClip(req: ClipRequest): Promise<ClipResult | null>
   }
   if (creditTag) throw new Error(`${finalErr.message}${creditTag}`);
   throw finalErr;
+}
+
+// Check a previously-submitted Pixazo request by its poll URL. Returns the
+// finished media URL when COMPLETED, null when FAILED/expired/unreachable, and
+// "pending" while the render is still in flight. Used to recover clips that
+// finished after the server stopped polling (no new provider spend).
+export async function checkPixazoRequest(pollUrl: string): Promise<{ state: "completed"; mediaUrl: string } | { state: "pending" } | { state: "gone" }> {
+  const key = process.env.PIXAZO_API_KEY;
+  if (!key) return { state: "gone" };
+  try {
+    const res = await fetch(pollUrl, {
+      headers: { "Ocp-Apim-Subscription-Key": key },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (res.status === 404 || res.status === 410) return { state: "gone" };
+    if (!res.ok) return { state: "pending" };
+    const d = (await res.json()) as { status?: string; output?: { media_url?: string[] } };
+    if (d.status === "COMPLETED" && d.output?.media_url?.[0]) return { state: "completed", mediaUrl: d.output.media_url[0] };
+    if (d.status === "FAILED" || d.status === "ERROR") return { state: "gone" };
+    return { state: "pending" };
+  } catch {
+    return { state: "pending" };
+  }
 }
 
 export async function downloadClip(url: string): Promise<Buffer> {

@@ -13,7 +13,7 @@ import { logger } from "./logger.js";
 import { notifyRenderReady, notifyRenderFailed } from "./renderEmail.js";
 import { ObjectStorageService } from "./objectStorage.js";
 import { analyzeAudioBuffer, type AudioAnalysis, type AudioSection } from "./audioAnalysis.js";
-import { generateClip, downloadClip, getActiveProvider, PROVIDER_API_FAILURE, PROVIDER_OUT_OF_CREDITS } from "./videoApis.js";
+import { generateClip, downloadClip, checkPixazoRequest, getActiveProvider, PROVIDER_API_FAILURE, PROVIDER_OUT_OF_CREDITS } from "./videoApis.js";
 import { stitchVideoClips, extractVideoThumbnail } from "./videoStitcher.js";
 import { stitchEditorTimeline } from "./editorStitcher.js";
 
@@ -33,6 +33,7 @@ type AiJobMeta = {
   reservedCredits?: number;
   refunded?: boolean;
   partialClips?: Record<string, string>; // clip index -> object storage path
+  pendingRequests?: Record<string, string>; // clip index -> provider poll URL (submitted, not yet downloaded)
   retryAfter?: number; // epoch ms — queued job must not be claimed before this
 };
 
@@ -57,10 +58,57 @@ async function writeAiMeta(jobId: string, meta: AiJobMeta): Promise<void> {
     .where(eq(jobsTable.id, jobId));
 }
 
+// Atomic jsonb merge: records the clip under manifest.partialClips and drops
+// its pendingRequests entry in one UPDATE, so concurrent manifest writers
+// (admin attach-clips, retry scheduling) never lose keys to a stale
+// read-modify-write.
 async function persistPartialClip(jobId: string, index: number, objectPath: string): Promise<void> {
-  const meta = await readAiMeta(jobId);
-  const partialClips = { ...(meta.partialClips ?? {}), [index]: objectPath };
-  await writeAiMeta(jobId, { ...meta, partialClips });
+  await db.execute(sql`
+    UPDATE jobs
+    SET manifest = jsonb_set(
+          jsonb_set(
+            COALESCE(manifest, '{}'::jsonb),
+            '{partialClips}',
+            COALESCE(manifest->'partialClips', '{}'::jsonb) || ${JSON.stringify({ [index]: objectPath })}::jsonb
+          ),
+          '{pendingRequests}',
+          COALESCE(manifest->'pendingRequests', '{}'::jsonb) - ${String(index)}
+        ),
+        updated_at = NOW()
+    WHERE id = ${jobId}
+  `);
+}
+
+// Record the provider request for a clip the moment it is accepted, so a clip
+// that finishes after we stop polling (crash/freeze/deploy) can be fetched on
+// the next attempt instead of being regenerated (and paid for) again.
+// Atomic jsonb merge — see persistPartialClip.
+async function persistPendingRequest(jobId: string, index: number, pollUrl: string): Promise<void> {
+  await db.execute(sql`
+    UPDATE jobs
+    SET manifest = jsonb_set(
+          COALESCE(manifest, '{}'::jsonb),
+          '{pendingRequests}',
+          COALESCE(manifest->'pendingRequests', '{}'::jsonb) || ${JSON.stringify({ [index]: pollUrl })}::jsonb
+        ),
+        updated_at = NOW()
+    WHERE id = ${jobId}
+  `);
+}
+
+// Durably drop a pendingRequests entry that turned out to be dead (expired,
+// failed, or unusable) so future attempts don't re-check it.
+async function clearPendingRequest(jobId: string, index: number): Promise<void> {
+  await db.execute(sql`
+    UPDATE jobs
+    SET manifest = jsonb_set(
+          COALESCE(manifest, '{}'::jsonb),
+          '{pendingRequests}',
+          COALESCE(manifest->'pendingRequests', '{}'::jsonb) - ${String(index)}
+        ),
+        updated_at = NOW()
+    WHERE id = ${jobId}
+  `);
 }
 
 async function refundReservation(jobId: string, userId: string, reason: string): Promise<void> {
@@ -86,8 +134,8 @@ async function cleanupPartialClips(jobId: string): Promise<void> {
   if (paths.length) {
     await Promise.all(paths.map((p) => storageService.deleteObject(p).catch(() => {})));
   }
-  if (meta.partialClips && Object.keys(meta.partialClips).length) {
-    await writeAiMeta(jobId, { ...meta, partialClips: {} });
+  if ((meta.partialClips && Object.keys(meta.partialClips).length) || (meta.pendingRequests && Object.keys(meta.pendingRequests).length)) {
+    await writeAiMeta(jobId, { ...meta, partialClips: {}, pendingRequests: {} });
   }
 }
 
@@ -400,6 +448,9 @@ async function generateClips(
   // manifest. Reuse them instead of paying to regenerate — a retry only re-runs
   // the clips that actually failed.
   const persisted: Record<string, string> = { ...(aiMetaOf(job).partialClips ?? {}) };
+  // Requests that were submitted (and paid for) on a previous attempt but whose
+  // results were never downloaded — check the provider before regenerating.
+  const pending: Record<string, string> = { ...(aiMetaOf(job).pendingRequests ?? {}) };
   const reuseCount = Object.keys(persisted).length;
 
   logger.info(
@@ -437,7 +488,38 @@ async function generateClips(
       }
     }
 
-    // 2) Simulation fallback (no real provider configured).
+    // 2) A request submitted on a previous attempt may have finished on the
+    //    provider after we stopped polling. Fetch it for free before paying to
+    //    regenerate.
+    if (pending[i]) {
+      const check = await checkPixazoRequest(pending[i]!);
+      if (check.state === "completed") {
+        try {
+          const buf = await downloadClip(check.mediaUrl);
+          clips[i] = { buffer: buf, targetDuration, prompt };
+          try {
+            const path = await storageService.uploadClipBuffer(buf, `job-${job.id}`, i);
+            persisted[i] = path;
+            await persistPartialClip(job.id, i, path); // also clears the pending entry
+          } catch (e) {
+            logger.warn({ jobId: job.id, clip: i, err: e }, "Could not persist recovered clip (non-fatal)");
+          }
+          logger.info({ jobId: job.id, clip: i }, "Recovered stranded clip from provider (no new spend)");
+          delete pending[i];
+          continue;
+        } catch (e) {
+          logger.warn({ jobId: job.id, clip: i, err: e }, "Stranded clip download failed — regenerating");
+        }
+      } else if (check.state === "gone") {
+        logger.info({ jobId: job.id, clip: i }, "Pending provider request expired/failed — regenerating");
+      } else {
+        logger.info({ jobId: job.id, clip: i }, "Pending provider request still in flight — regenerating anyway");
+      }
+      delete pending[i];
+      await clearPendingRequest(job.id, i).catch(() => {});
+    }
+
+    // 3) Simulation fallback (no real provider configured).
     if (provider === "simulation") {
       logger.info({ jobId: job.id, section: section.label, clipDuration }, "Simulation: creating placeholder clip");
       await new Promise((r) => setTimeout(r, 1500));
@@ -445,7 +527,7 @@ async function generateClips(
       continue;
     }
 
-    // 3) Generate the clip, retrying THIS clip a couple of times before failing
+    // 4) Generate the clip, retrying THIS clip a couple of times before failing
     //    the whole job — so one flaky clip doesn't waste the ones already made.
     logger.info(
       { jobId: job.id, section: section.label, provider, prompt: prompt.slice(0, 80) },
@@ -465,6 +547,9 @@ async function generateClips(
           // and pass resolution so Kling selects the right model tier / output.
           provider,
           resolution: (job as JobRow & { resolution?: string | null }).resolution,
+          // Persist the provider request id before polling starts so this clip
+          // is recoverable if the server dies mid-poll.
+          onSubmit: (info) => persistPendingRequest(job.id, i, info.pollUrl),
         });
         clipBuffer = result ? await downloadClip(result.videoUrl) : await createSimulationClip(clipDuration);
         if (result) {
@@ -502,7 +587,7 @@ async function generateClips(
     }
     if (!clipBuffer) throw clipErr ?? new Error(`Clip ${i} failed to render`);
 
-    // 4) Persist the successful clip so a future job retry can reuse it.
+    // 5) Persist the successful clip so a future job retry can reuse it.
     try {
       const path = await storageService.uploadClipBuffer(clipBuffer, `job-${job.id}`, i);
       persisted[i] = path;
