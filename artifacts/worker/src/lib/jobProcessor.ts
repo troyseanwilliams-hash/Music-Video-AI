@@ -105,6 +105,7 @@ type AiJobMeta = {
   reservedCredits?: number;
   refunded?: boolean;
   partialClips?: Record<string, string>; // clip index -> object storage path
+  retryAfter?: number; // epoch ms — queued job must not be claimed before this
 };
 
 function aiMetaOf(job: JobRow): AiJobMeta {
@@ -182,6 +183,11 @@ async function claimNextJob(): Promise<JobRow | null> {
     WHERE id = (
       SELECT id FROM jobs
       WHERE status = 'queued' AND retry_count < ${MAX_RETRIES}
+        AND (
+          manifest->>'retryAfter' IS NULL
+          OR NOT (manifest->>'retryAfter') ~ '^[0-9]+$'
+          OR (manifest->>'retryAfter')::bigint <= ${Date.now()}
+        )
       ORDER BY created_at ASC
       LIMIT 1
       FOR UPDATE SKIP LOCKED
@@ -589,32 +595,95 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
   const nextRetry = (job.retryCount ?? 0) + 1;
 
   if (nextRetry < maxRetries) {
+    // Each retry re-incurs real provider spend, so it must be paid for again.
+    // The charge and the durable retry schedule are committed in ONE atomic
+    // statement (data-modifying CTE): either the credits are deducted AND the
+    // job is re-queued with manifest.retryAfter, or neither happens — a crash
+    // can never orphan a charge. The poll loop skips queued jobs whose
+    // retryAfter is still in the future, so the schedule survives restarts.
+    const retryCost = aiMetaOf(job).reservedCredits ?? 0;
     const delayMs = Math.pow(2, nextRetry) * 60_000;
-    logger.info({ jobId: job.id, nextRetry, delayMs, maxRetries }, "Scheduling retry");
+    const retryAfter = Date.now() + delayMs;
+    const noteMsg = `${errMsg} — retry ${nextRetry}/${maxRetries} in ${delayMs / 60_000}m`;
 
-    await updateJobStatus(job.id, {
-      status: "failed",
-      errorMessage: `${errMsg} — retry ${nextRetry}/${maxRetries} in ${delayMs / 60_000}m`,
-    });
+    // `target` fences the charge on still OWNING the job: if the watchdog (or
+    // anything else) already re-queued/failed this row, its status is no longer
+    // a processing state, target is empty, and neither the charge nor the
+    // requeue fires — a stale runner can never double-charge or clobber state.
+    const requeued = await db.execute<{ id: string }>(sql`
+      WITH target AS (
+        SELECT id FROM jobs
+        WHERE id = ${job.id} AND status IN ('analyzing', 'generating', 'stitching')
+        FOR UPDATE SKIP LOCKED
+      ),
+      charged AS (
+        UPDATE credits SET
+          subscription_credits = GREATEST(subscription_credits - ${retryCost}, 0),
+          topup_credits = GREATEST(topup_credits - GREATEST(${retryCost} - subscription_credits, 0), 0),
+          credits_remaining = credits_remaining - ${retryCost},
+          credits_used = credits_used + ${retryCost},
+          updated_at = NOW()
+        WHERE ${retryCost} > 0 AND user_id = ${job.userId} AND credits_remaining >= ${retryCost}
+          AND EXISTS (SELECT 1 FROM target)
+        RETURNING user_id
+      )
+      UPDATE jobs SET
+        status = 'queued',
+        progress_percent = 0,
+        error_message = ${noteMsg},
+        retry_count = ${nextRetry},
+        claimed_at = NULL,
+        manifest = COALESCE(manifest, '{}'::jsonb) || jsonb_build_object('retryAfter', ${retryAfter}::bigint),
+        updated_at = NOW()
+      WHERE id IN (SELECT id FROM target)
+        AND (${retryCost} <= 0 OR EXISTS (SELECT 1 FROM charged))
+      RETURNING id
+    `);
 
-    setTimeout(async () => {
-      await db
-        .update(jobsTable)
-        .set({
-          status: "queued",
-          progressPercent: 0,
-          errorMessage: null,
-          retryCount: nextRetry,
-          claimedAt: null,
-          updatedAt: new Date(),
-        })
-        .where(eq(jobsTable.id, job.id));
-      await notifyJobUpdate(job.id);
-    }, delayMs);
+    if (requeued.rows.length === 0) {
+      // Either we lost ownership (watchdog already re-queued/failed the job) or
+      // the owner can't pay. Fail permanently ONLY when the job is still ours
+      // and the balance genuinely can't cover another attempt.
+      const failed = await db.execute<{ id: string }>(sql`
+        UPDATE jobs SET
+          status = 'failed',
+          claimed_at = NULL,
+          error_message = ${`${errMsg} (not enough credits to retry — each attempt costs ${retryCost} credits)`},
+          updated_at = NOW()
+        WHERE id = ${job.id} AND status IN ('analyzing', 'generating', 'stitching')
+          AND ${retryCost} > 0
+          AND NOT EXISTS (
+            SELECT 1 FROM credits
+            WHERE user_id = ${job.userId} AND credits_remaining >= ${retryCost}
+          )
+        RETURNING id
+      `);
+      if (failed.rows.length > 0) {
+        logger.warn(
+          { jobId: job.id, userId: job.userId, retryCost },
+          "Insufficient credits for retry — failing job permanently",
+        );
+        await cleanupPartialClips(job.id).catch(() => {});
+        await notifyJobUpdate(job.id);
+        void notifyRenderFailed(job, errMsg);
+      } else {
+        logger.info(
+          { jobId: job.id },
+          "Retry not scheduled — job no longer owned by this runner (skipping)",
+        );
+      }
+      return;
+    }
+
+    logger.info(
+      { jobId: job.id, nextRetry, delayMs, maxRetries, retryCost },
+      "Retry scheduled (attempt charged)",
+    );
+    await notifyJobUpdate(job.id);
   } else {
-    // Out of retries — this job is permanently failed, so refund the up-front
-    // reservation and drop any salvage copies.
-    await refundReservation(job.id, job.userId, "max-retries");
+    // Out of retries — permanently failed. No refund: every attempt (including
+    // the up-front reservation) incurred real provider spend, so the credits
+    // stay deducted. Drop any salvage copies.
     await cleanupPartialClips(job.id).catch(() => {});
     await updateJobStatus(job.id, {
       status: "failed",

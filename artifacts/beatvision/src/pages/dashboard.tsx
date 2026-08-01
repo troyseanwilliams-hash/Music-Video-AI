@@ -20,7 +20,7 @@ function daysUntil(dateStr: string | null | undefined): number {
 // Mirrors server-side calculateCreditCost — must stay in sync with creditCost.ts.
 // Charge = real clip cost × tiered markup (2× single-clip / 1.5× multi-clip).
 // Full videos scale 3–10 clips with song length, capped at 5 min.
-const RUNWAY_USD_PER_SECOND = 0.12;
+const RUNWAY_USD_PER_SECOND = 0.14; // Freeway: $1.40 per 10s clip
 const USD_PER_CREDIT = 0.015;
 const MAX_FULL_SECONDS = 300;
 

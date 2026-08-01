@@ -1029,7 +1029,7 @@ function estimateRemixCost(
   const r = Math.max(0, Math.min(regen, total));
   if (r === 0) return 0;
   // Each regenerated clip is its own Runway generation: per-clip cost × markup.
-  const RUNWAY_USD_PER_SECOND = 0.12, USD_PER_CREDIT = 0.015;
+  const RUNWAY_USD_PER_SECOND = 0.14, USD_PER_CREDIT = 0.015; // Freeway: $1.40 per 10s clip
   const clipSec = requestedDuration && parseInt(requestedDuration, 10) <= 5 ? 5 : 10;
   const perClip = (clipSec * RUNWAY_USD_PER_SECOND) / USD_PER_CREDIT; // pre-markup
   const markup = total <= 1 ? 2 : 1.5;

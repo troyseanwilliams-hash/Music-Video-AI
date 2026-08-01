@@ -24,7 +24,7 @@ export const LYRICS_BUILD_COST = 2;
 // Mirror of artifacts/api-server/src/lib/creditCost.ts. Charge = real provider
 // clip cost × tiered markup (2× single-clip / 1.5× multi-clip). Full videos are
 // capped at 5 min and scale 3–10 clips with song length.
-const RUNWAY_USD_PER_SECOND = 0.12;
+const RUNWAY_USD_PER_SECOND = 0.14; // Freeway: $1.40 per 10s clip
 const KLING_USD_PER_SECOND = 0.07; // standard Kling via Pixazo
 function usdPerSecondFor(provider?: AiProvider): number {
   return provider === "kling" ? KLING_USD_PER_SECOND : RUNWAY_USD_PER_SECOND;

@@ -1,8 +1,8 @@
 // Credit cost for an AI generation. Priced above the *real* provider cost so
 // every duration is profitable. Cost tracks how many provider clips a job
 // actually generates (see getClipPlan) × the provider per-second rate. Runway
-// Gen-4.5 ($0.12/s) is the (most expensive) basis, so cheaper providers only
-// widen the margin. Markup is tiered: single-clip (short) videos at 2× (100%
+// The Freeway rate ($1.40 per 10s clip = $0.14/s) is the (most expensive)
+// basis, so cheaper providers only widen the margin. Markup is tiered: single-clip (short) videos at 2× (100%
 // margin), multi-clip (longer) videos at 1.5× (50% margin) to stay competitive.
 //
 // Scale (Runway basis, ~$0.015/credit):
@@ -17,8 +17,8 @@
 // Resolution scales the charge on top: 720p ×1, 1080p ×1.25, 4K ×5.0 (4K is a
 // premium tier — genuinely ~3× the provider compute).
 
-// Real provider cost basis: Runway Gen-4.5 API = 12 credits/s @ $0.01 = $0.12/s.
-const RUNWAY_USD_PER_SECOND = 0.12;
+// Real provider cost basis: Freeway = $1.40 per 10-second clip = $0.14/s.
+const RUNWAY_USD_PER_SECOND = 0.14; // Freeway: $1.40 per 10s clip
 // Standard Kling via the Pixazo gateway = ~$0.07/s (the cheaper "value" engine).
 const KLING_USD_PER_SECOND = 0.07;
 function usdPerSecondFor(provider?: string | null): number {
