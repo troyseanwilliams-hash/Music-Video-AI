@@ -499,7 +499,7 @@ async function generateClips(
             );
             return {
               clips: clips.filter(Boolean),
-              shortfallNotice: `The AI provider ran out of tokens mid-generation — this video was finished with ${done} of ${sections.length} planned unique clips.`,
+              shortfallNotice: "Out of tokens",
             };
           }
           throw e; // nothing rendered yet → normal provider-failure path
