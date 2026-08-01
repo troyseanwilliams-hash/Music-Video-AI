@@ -4,7 +4,7 @@ import { Client } from "pg";
 import { db } from "@workspace/db";
 import { jobsTable, creditsTable, usersTable, videosTable } from "@workspace/db";
 import type { VideoClipMeta } from "@workspace/db";
-import { eq, and, desc, count, isNull } from "drizzle-orm";
+import { eq, and, desc, count, isNull, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import {
@@ -18,6 +18,50 @@ import { planShots } from "../lib/shotPlan.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 
 const router = Router();
+
+// Shape of the billing/salvage state we stash in an AI job's manifest jsonb.
+type AiJobMeta = {
+  reservedCredits?: number;
+  refunded?: boolean;
+  partialClips?: Record<string, string>;
+};
+
+// Refund a job's up-front credit reservation exactly once. Idempotent via the
+// manifest.refunded flag, so cancel/delete/worker-fail can all call it safely.
+// Also best-effort deletes any persisted partial clips. Returns credits refunded.
+async function refundJobReservation(job: {
+  id: string;
+  userId: string;
+  manifest: unknown;
+}): Promise<number> {
+  const meta: AiJobMeta =
+    job.manifest && typeof job.manifest === "object" ? (job.manifest as AiJobMeta) : {};
+  const reserved = meta.reservedCredits ?? 0;
+  if (reserved <= 0 || meta.refunded) return 0;
+
+  await db
+    .update(creditsTable)
+    .set({
+      subscriptionCredits: sql`subscription_credits + ${reserved}`,
+      creditsRemaining: sql`credits_remaining + ${reserved}`,
+      creditsUsed: sql`GREATEST(credits_used - ${reserved}, 0)`,
+      updatedAt: new Date(),
+    })
+    .where(eq(creditsTable.userId, job.userId));
+
+  await db
+    .update(jobsTable)
+    .set({ manifest: { ...meta, refunded: true, partialClips: {} } as unknown as Record<string, unknown> })
+    .where(eq(jobsTable.id, job.id));
+
+  // Best-effort: drop the salvage copies of any clips this job rendered.
+  const paths = Object.values(meta.partialClips ?? {});
+  if (paths.length) {
+    const storage = new ObjectStorageService();
+    await Promise.all(paths.map((p) => storage.deleteObject(p).catch(() => {})));
+  }
+  return reserved;
+}
 
 // Storyboard preview: returns the planned shots (label, timing, energy, prompt)
 // for a would-be job so users can approve before spending credits. No render,
@@ -186,32 +230,48 @@ router.post("/jobs", async (req, res) => {
   const engine = String(aiProvider ?? "").toLowerCase() === "kling" ? "kling" : "runway";
   const creditCost = calculateCreditCost(requestedDuration, resolution, songDurationSec, engine);
 
-  if (!isAdmin) {
-    const credits = await db
-      .select()
-      .from(creditsTable)
-      .where(eq(creditsTable.userId, req.user.id))
-      .limit(1);
-
-    let userCredits = credits[0];
-    if (!userCredits) {
-      const [newCredits] = await db
-        .insert(creditsTable)
-        .values({ id: randomUUID(), userId: req.user.id })
-        .returning();
-      userCredits = newCredits;
-    }
-
-    if (userCredits.creditsRemaining < creditCost) {
-      res.status(402).json({
-        error: `Insufficient credits — this job costs ${creditCost} credits but you only have ${userCredits.creditsRemaining} remaining.`,
-        code: "INSUFFICIENT_CREDITS",
-        creditsRequired: creditCost,
-        creditsRemaining: userCredits.creditsRemaining,
-      });
-      return;
-    }
+  // Ensure a credits row exists for everyone — admins are metered too (their
+  // balance floors at 0 but creditsUsed still tracks the spend).
+  const credits = await db
+    .select()
+    .from(creditsTable)
+    .where(eq(creditsTable.userId, req.user.id))
+    .limit(1);
+  let userCredits = credits[0];
+  if (!userCredits) {
+    const [newCredits] = await db
+      .insert(creditsTable)
+      .values({ id: randomUUID(), userId: req.user.id })
+      .returning();
+    userCredits = newCredits;
   }
+
+  // Non-admins must have the credits before we spend a cent at the provider.
+  if (!isAdmin && userCredits.creditsRemaining < creditCost) {
+    res.status(402).json({
+      error: `Insufficient credits — this job costs ${creditCost} credits but you only have ${userCredits.creditsRemaining} remaining.`,
+      code: "INSUFFICIENT_CREDITS",
+      creditsRequired: creditCost,
+      creditsRemaining: userCredits.creditsRemaining,
+    });
+    return;
+  }
+
+  // Reserve (charge) the credits UP FRONT so every paid provider clip is backed
+  // by credits. The worker refunds this automatically if the job permanently
+  // fails or is canceled. This replaces the old "deduct only on success" model,
+  // which let failed/partial multi-clip jobs incur real provider spend while
+  // charging the user nothing.
+  await db
+    .update(creditsTable)
+    .set({
+      subscriptionCredits: sql`GREATEST(subscription_credits - ${creditCost}, 0)`,
+      topupCredits: sql`GREATEST(topup_credits - GREATEST(${creditCost} - subscription_credits, 0), 0)`,
+      creditsRemaining: sql`GREATEST(credits_remaining - ${creditCost}, 0)`,
+      creditsUsed: sql`credits_used + ${creditCost}`,
+      updatedAt: new Date(),
+    })
+    .where(eq(creditsTable.userId, req.user.id));
 
   const jobId = randomUUID();
   const [job] = await db
@@ -237,6 +297,9 @@ router.post("/jobs", async (req, res) => {
       audioAnalysis: audioAnalysis as unknown as Record<string, unknown> ?? null,
       aiProvider: engine,
       watermark,
+      // AI jobs stash billing + clip-salvage state in the (otherwise unused)
+      // manifest jsonb: reservedCredits is refunded by the worker on failure.
+      manifest: { reservedCredits: creditCost } as unknown as Record<string, unknown>,
       prompt,
       style: style as
         | "realistic"
@@ -254,7 +317,7 @@ router.post("/jobs", async (req, res) => {
 
   req.log.info(
     { userId: req.user.id, requestedDuration, creditCost, isAdmin },
-    "Job queued — credits will be deducted on success",
+    "Job queued — credits reserved up front (refunded automatically on failure)",
   );
 
   res.status(201).json(job);
@@ -587,8 +650,11 @@ router.delete("/jobs/:id", async (req, res) => {
     return;
   }
 
+  // Make sure a failed job's reservation is refunded before we drop the row
+  // (idempotent — a no-op if the worker already refunded it).
+  const refunded = await refundJobReservation(job);
   await db.delete(jobsTable).where(eq(jobsTable.id, jobId));
-  req.log.info({ jobId, userId: req.user.id }, "User deleted failed job");
+  req.log.info({ jobId, userId: req.user.id, refunded }, "User deleted failed job");
   res.json({ ok: true });
 });
 
@@ -617,8 +683,10 @@ router.post("/jobs/:id/cancel", async (req, res) => {
     .update(jobsTable)
     .set({ status: "failed", errorMessage: "Canceled by you" })
     .where(eq(jobsTable.id, jobId));
-  req.log.info({ jobId, userId: req.user.id }, "User canceled job");
-  res.json({ ok: true });
+  // Refund the up-front reservation for the canceled job.
+  const refunded = await refundJobReservation(job);
+  req.log.info({ jobId, userId: req.user.id, refunded }, "User canceled job");
+  res.json({ ok: true, refunded });
 });
 
 const RemixBody = z.object({

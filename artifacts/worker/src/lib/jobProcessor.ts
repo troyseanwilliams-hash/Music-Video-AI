@@ -15,7 +15,6 @@ import { analyzeAudioBuffer, type AudioAnalysis, type AudioSection } from "./aud
 import { generateClip, downloadClip, getActiveProvider, PROVIDER_API_FAILURE } from "./videoApis.js";
 import { stitchVideoClips, extractVideoThumbnail, applyWatermark } from "./videoStitcher.js";
 import { stitchEditorTimeline } from "./editorStitcher.js";
-import { calculateCreditCost } from "./creditCost.js";
 
 const execAsync = promisify(exec);
 const MAX_RETRIES = 3;
@@ -96,6 +95,76 @@ function buildGenerationPlan(
 
 const storageService = new ObjectStorageService();
 type JobRow = typeof jobsTable.$inferSelect;
+
+// ---- AI-video billing + clip-salvage state ---------------------------------
+// AI jobs stash billing/salvage state in the (otherwise unused for AI jobs)
+// manifest jsonb: credits are RESERVED up front at job creation and refunded
+// here on permanent failure; successfully rendered clips are persisted so a
+// job retry only regenerates the ones that failed (no re-paying for the rest).
+type AiJobMeta = {
+  reservedCredits?: number;
+  refunded?: boolean;
+  partialClips?: Record<string, string>; // clip index -> object storage path
+};
+
+function aiMetaOf(job: JobRow): AiJobMeta {
+  const m = (job as JobRow & { manifest?: unknown }).manifest;
+  return m && typeof m === "object" ? (m as AiJobMeta) : {};
+}
+
+async function readAiMeta(jobId: string): Promise<AiJobMeta> {
+  const [row] = await db
+    .select({ manifest: jobsTable.manifest })
+    .from(jobsTable)
+    .where(eq(jobsTable.id, jobId))
+    .limit(1);
+  return row?.manifest && typeof row.manifest === "object" ? (row.manifest as AiJobMeta) : {};
+}
+
+async function writeAiMeta(jobId: string, meta: AiJobMeta): Promise<void> {
+  await db
+    .update(jobsTable)
+    .set({ manifest: meta as unknown as Record<string, unknown>, updatedAt: new Date() })
+    .where(eq(jobsTable.id, jobId));
+}
+
+// Record a freshly-rendered clip so a later job retry can reuse it (merges into
+// existing state, preserving reservedCredits/refunded).
+async function persistPartialClip(jobId: string, index: number, objectPath: string): Promise<void> {
+  const meta = await readAiMeta(jobId);
+  const partialClips = { ...(meta.partialClips ?? {}), [index]: objectPath };
+  await writeAiMeta(jobId, { ...meta, partialClips });
+}
+
+// Refund the up-front reservation exactly once (idempotent via manifest.refunded).
+async function refundReservation(jobId: string, userId: string, reason: string): Promise<void> {
+  const meta = await readAiMeta(jobId);
+  const reserved = meta.reservedCredits ?? 0;
+  if (reserved <= 0 || meta.refunded) return;
+  await db
+    .update(creditsTable)
+    .set({
+      subscriptionCredits: sql`subscription_credits + ${reserved}`,
+      creditsRemaining: sql`credits_remaining + ${reserved}`,
+      creditsUsed: sql`GREATEST(credits_used - ${reserved}, 0)`,
+      updatedAt: new Date(),
+    })
+    .where(eq(creditsTable.userId, userId));
+  await writeAiMeta(jobId, { ...meta, refunded: true });
+  logger.info({ jobId, userId, reserved, reason }, "Refunded reserved credits");
+}
+
+// Best-effort delete of a job's persisted salvage clips + clear the pointers.
+async function cleanupPartialClips(jobId: string): Promise<void> {
+  const meta = await readAiMeta(jobId);
+  const paths = Object.values(meta.partialClips ?? {});
+  if (paths.length) {
+    await Promise.all(paths.map((p) => storageService.deleteObject(p).catch(() => {})));
+  }
+  if (meta.partialClips && Object.keys(meta.partialClips).length) {
+    await writeAiMeta(jobId, { ...meta, partialClips: {} });
+  }
+}
 
 async function notifyJobUpdate(jobId: string): Promise<void> {
   try {
@@ -319,19 +388,30 @@ async function generateClips(
 ): Promise<{ buffer: Buffer; targetDuration: number; prompt: string }[]> {
   const provider = getActiveProvider((job as JobRow & { aiProvider?: string | null }).aiProvider ?? undefined);
   const { sections, clipDurationSec } = plan;
-  const clips: { buffer: Buffer; targetDuration: number; prompt: string }[] = [];
+  const clips: { buffer: Buffer; targetDuration: number; prompt: string }[] = new Array(sections.length);
   const refImageUrl = await loadReferenceImageUrl(job);
 
+  // Salvage: any clips rendered on a previous attempt are persisted in the job
+  // manifest. Reuse them instead of paying to regenerate — a retry only re-runs
+  // the clips that actually failed.
+  const persisted: Record<string, string> = { ...(aiMetaOf(job).partialClips ?? {}) };
+  const reuseCount = Object.keys(persisted).length;
+
   logger.info(
-    { jobId: job.id, provider, sectionCount: sections.length, clipDurationSec, targetOutputDuration: plan.targetOutputDuration },
-    "Generating clips per plan",
+    { jobId: job.id, provider, sectionCount: sections.length, clipDurationSec, targetOutputDuration: plan.targetOutputDuration, reuseCount },
+    reuseCount ? "Generating clips per plan (resuming — reusing rendered clips)" : "Generating clips per plan",
   );
+
+  // 4K clips are expensive, so don't burn a second full-price attempt on them;
+  // everything else gets one in-clip retry before the whole job is failed.
+  const is4k = (job.resolution ?? "").toLowerCase() === "4k";
+  const clipAttempts = is4k ? 1 : 2;
 
   // Distribute the total output duration evenly across clips.
   // Do NOT use section.endTime - section.startTime: when the audio-clip
   // extraction fails or MP3 headers report the wrong total length, section
   // timestamps reflect the full audio file instead of the requested window,
-  // causing each Runway clip to be looped for the entire song duration.
+  // causing each clip to be looped for the entire song duration.
   const perClipTargetDuration = plan.targetOutputDuration / sections.length;
 
   for (let i = 0; i < sections.length; i++) {
@@ -344,43 +424,78 @@ async function generateClips(
     // Build the prompt regardless of provider so it can be persisted as clip
     // metadata (and reused as the basis for a future remix of this clip).
     const prompt = buildSectionPrompt(job, analysis, section);
-    let clipBuffer: Buffer;
 
-    if (provider === "simulation") {
-      logger.info(
-        { jobId: job.id, section: section.label, clipDuration },
-        "Simulation: creating placeholder clip",
-      );
-      await new Promise((r) => setTimeout(r, 1500));
-      clipBuffer = await createSimulationClip(clipDuration);
-    } else {
-      logger.info(
-        { jobId: job.id, section: section.label, provider, prompt: prompt.slice(0, 80) },
-        "Generating AI clip",
-      );
-      await assertJobOwned(job);
-      const result = await generateClip({
-        prompt,
-        durationSeconds: clipDuration,
-        aspectRatio: job.aspectRatio ?? "16:9",
-        imageUrl: refImageUrl ?? undefined,
-        // Pin the user's chosen engine (so "Kling" actually renders on Kling)
-        // and pass resolution so Kling selects the right model tier / output.
-        provider,
-        resolution: job.resolution,
-      });
-      if (!result) {
-        clipBuffer = await createSimulationClip(clipDuration);
-      } else {
-        clipBuffer = await downloadClip(result.videoUrl);
-        logger.info(
-          { jobId: job.id, section: section.label, provider: result.provider },
-          "AI clip downloaded",
-        );
+    // 1) Reuse a previously-rendered clip if we have one (salvage on retry).
+    if (persisted[i]) {
+      try {
+        const url = await storageService.getObjectEntitySignedUrl(persisted[i]!, 3600);
+        const buf = await downloadClip(url);
+        clips[i] = { buffer: buf, targetDuration, prompt };
+        logger.info({ jobId: job.id, clip: i }, "Reused previously-rendered clip (salvage)");
+        continue;
+      } catch (e) {
+        logger.warn({ jobId: job.id, clip: i, err: e }, "Persisted clip unreadable — regenerating");
+        delete persisted[i];
       }
     }
 
-    clips.push({ buffer: clipBuffer, targetDuration, prompt });
+    // 2) Simulation fallback (no real provider configured).
+    if (provider === "simulation") {
+      logger.info({ jobId: job.id, section: section.label, clipDuration }, "Simulation: creating placeholder clip");
+      await new Promise((r) => setTimeout(r, 1500));
+      clips[i] = { buffer: await createSimulationClip(clipDuration), targetDuration, prompt };
+      continue;
+    }
+
+    // 3) Generate the clip, retrying THIS clip a couple of times before failing
+    //    the whole job — so one flaky clip doesn't waste the ones already made.
+    logger.info(
+      { jobId: job.id, section: section.label, provider, prompt: prompt.slice(0, 80) },
+      "Generating AI clip",
+    );
+    let clipBuffer: Buffer | null = null;
+    let clipErr: unknown;
+    for (let attempt = 1; attempt <= clipAttempts; attempt++) {
+      await assertJobOwned(job);
+      try {
+        const result = await generateClip({
+          prompt,
+          durationSeconds: clipDuration,
+          aspectRatio: job.aspectRatio ?? "16:9",
+          imageUrl: refImageUrl ?? undefined,
+          // Pin the user's chosen engine (so "Kling" actually renders on Kling)
+          // and pass resolution so Kling selects the right model tier / output.
+          provider,
+          resolution: job.resolution,
+        });
+        clipBuffer = result ? await downloadClip(result.videoUrl) : await createSimulationClip(clipDuration);
+        if (result) {
+          logger.info({ jobId: job.id, section: section.label, provider: result.provider }, "AI clip downloaded");
+        }
+        break;
+      } catch (e) {
+        clipErr = e;
+        // Content-policy / provider API errors won't fix on retry — fail fast.
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes(PROVIDER_API_FAILURE) || /moderation|content policy|safety system/i.test(msg)) throw e;
+        if (attempt < clipAttempts) {
+          logger.warn({ jobId: job.id, clip: i, attempt }, "Clip attempt failed — retrying this clip");
+          await new Promise((r) => setTimeout(r, 3000));
+        }
+      }
+    }
+    if (!clipBuffer) throw clipErr ?? new Error(`Clip ${i} failed to render`);
+
+    // 4) Persist the successful clip so a future job retry can reuse it.
+    try {
+      const path = await storageService.uploadClipBuffer(clipBuffer, `job-${job.id}`, i);
+      persisted[i] = path;
+      await persistPartialClip(job.id, i, path);
+    } catch (e) {
+      logger.warn({ jobId: job.id, clip: i, err: e }, "Could not persist salvage copy of clip (non-fatal)");
+    }
+
+    clips[i] = { buffer: clipBuffer, targetDuration, prompt };
   }
 
   return clips;
@@ -438,6 +553,8 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
   // Moderation / content-policy failures will never succeed on retry — fail fast.
   if (/moderation|content policy|safety system/i.test(errMsg)) {
     logger.warn({ jobId: job.id }, "Permanent failure: content moderation rejection, skipping retries");
+    await refundReservation(job.id, job.userId, "moderation");
+    await cleanupPartialClips(job.id).catch(() => {});
     await updateJobStatus(job.id, {
       status: "failed",
       errorMessage:
@@ -453,6 +570,8 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
   if (errMsg.includes(PROVIDER_API_FAILURE)) {
     const cleanMsg = errMsg.replace(PROVIDER_API_FAILURE, "").trim();
     logger.warn({ jobId: job.id }, "Permanent failure: AI provider error — not retrying to avoid repeated charges");
+    await refundReservation(job.id, job.userId, "provider-api-failure");
+    await cleanupPartialClips(job.id).catch(() => {});
     await updateJobStatus(job.id, {
       status: "failed",
       errorMessage: cleanMsg,
@@ -461,15 +580,11 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
     return;
   }
 
-  // Expensive jobs (4K or long) regenerate every clip on retry, so a 3× retry of
-  // a 4K / multi-minute render burns real provider money for no guaranteed gain.
-  // Cap those at a single attempt even for transient errors.
-  const j = job as JobRow & { resolution?: string | null; requestedDuration?: string | null };
-  const durStr = String(j.requestedDuration ?? "full");
-  const isExpensive =
-    (j.resolution ?? "").toLowerCase() === "4k" ||
-    durStr === "full" || durStr === "300" || durStr === "600" || parseInt(durStr, 10) > 120;
-  const maxRetries = isExpensive ? 1 : MAX_RETRIES;
+  // Retries are now cheap: successfully-rendered clips are persisted and reused,
+  // so a retry only regenerates the clips that actually failed. That means even
+  // 4K / long jobs can safely retry transient errors without re-paying for the
+  // whole render, so all jobs share the same retry budget.
+  const maxRetries = MAX_RETRIES;
 
   const nextRetry = (job.retryCount ?? 0) + 1;
 
@@ -497,6 +612,10 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
       await notifyJobUpdate(job.id);
     }, delayMs);
   } else {
+    // Out of retries — this job is permanently failed, so refund the up-front
+    // reservation and drop any salvage copies.
+    await refundReservation(job.id, job.userId, "max-retries");
+    await cleanupPartialClips(job.id).catch(() => {});
     await updateJobStatus(job.id, {
       status: "failed",
       errorMessage: `${errMsg} (max ${maxRetries} ${maxRetries === 1 ? "attempt" : "retries"} reached)`,
@@ -1070,21 +1189,23 @@ async function processJob(job: JobRow): Promise<void> {
       shareToken: randomUUID().replace(/-/g, "").slice(0, 16),
     });
 
-    // Deduct credits on success. Subscription bucket is drawn first so one-time
-    // top-ups survive monthly plan resets. Song duration sizes "full" videos.
-    const creditCost = calculateCreditCost(job.requestedDuration, job.resolution, analysis.durationSeconds, (job as JobRow & { aiProvider?: string | null }).aiProvider ?? undefined);
+    // Credits were RESERVED (charged) up front when the job was created, so we
+    // do NOT deduct again here — the old deduct-on-success path both risked a
+    // double charge and, worse, leaked real provider spend on failed/partial
+    // jobs that never reached this point. Just record the successful generation
+    // and drop the salvage copies now that the final video is stored.
     await db
       .update(creditsTable)
       .set({
-        subscriptionCredits: sql`GREATEST(subscription_credits - ${creditCost}, 0)`,
-        topupCredits: sql`GREATEST(topup_credits - GREATEST(${creditCost} - subscription_credits, 0), 0)`,
-        creditsRemaining: sql`GREATEST(credits_remaining - ${creditCost}, 0)`,
-        creditsUsed: sql`credits_used + ${creditCost}`,
         totalGenerations: sql`total_generations + 1`,
         updatedAt: new Date(),
       })
       .where(eq(creditsTable.userId, job.userId));
-    logger.info({ jobId: job.id, userId: job.userId, creditCost }, "Credits deducted on success");
+    await cleanupPartialClips(job.id).catch(() => {});
+    logger.info(
+      { jobId: job.id, userId: job.userId, reserved: aiMetaOf(job).reservedCredits ?? 0 },
+      "Generation complete — credits were reserved up front",
+    );
 
     await updateJobStatus(job.id, { status: "ready", progressPercent: 100, videoId });
     void notifyRenderReady(job);
