@@ -13,7 +13,7 @@ import { logger } from "./logger.js";
 import { notifyRenderReady, notifyRenderFailed } from "./renderEmail.js";
 import { ObjectStorageService } from "./objectStorage.js";
 import { analyzeAudioBuffer, type AudioAnalysis, type AudioSection } from "./audioAnalysis.js";
-import { generateClip, downloadClip, getActiveProvider, PROVIDER_API_FAILURE } from "./videoApis.js";
+import { generateClip, downloadClip, getActiveProvider, PROVIDER_API_FAILURE, PROVIDER_OUT_OF_CREDITS } from "./videoApis.js";
 import { stitchVideoClips, extractVideoThumbnail } from "./videoStitcher.js";
 import { stitchEditorTimeline } from "./editorStitcher.js";
 
@@ -349,7 +349,10 @@ async function generateClips(
   job: JobRow,
   analysis: AudioAnalysis,
   onProgress: (pct: number) => Promise<void>,
-): Promise<{ buffer: Buffer; targetDuration: number; prompt: string }[]> {
+): Promise<{
+  clips: { buffer: Buffer; targetDuration: number; prompt: string }[];
+  shortfallNotice?: string;
+}> {
   const provider = getActiveProvider((job as JobRow & { aiProvider?: string | null }).aiProvider ?? undefined);
   const requestedDur = (job as JobRow & { requestedDuration?: string | null }).requestedDuration;
 
@@ -456,6 +459,25 @@ async function generateClips(
       } catch (e) {
         clipErr = e;
         const msg = e instanceof Error ? e.message : String(e);
+        // Provider ran out of tokens (Pixazo 402 / quota / balance): if we
+        // already have rendered clips, stop generating and salvage them —
+        // the video is finished with fewer unique clips (looped to fill the
+        // runtime) instead of throwing the whole job away.
+        if (msg.includes(PROVIDER_OUT_OF_CREDITS)) {
+          const done = clips.filter(Boolean).length;
+          if (done > 0) {
+            logger.warn(
+              { jobId: job.id, clip: i, done, planned: sections.length },
+              "Provider out of tokens — stopping generation and salvaging rendered clips",
+            );
+            const salvaged = clips.filter(Boolean);
+            return {
+              clips: salvaged,
+              shortfallNotice: `The AI provider ran out of tokens mid-generation — this video was finished with ${done} of ${sections.length} planned unique clips.`,
+            };
+          }
+          throw e; // nothing rendered yet → normal provider-failure path
+        }
         if (msg.includes(PROVIDER_API_FAILURE) || /moderation|content policy|safety system/i.test(msg)) throw e;
         if (attempt < clipAttempts) {
           logger.warn({ jobId: job.id, clip: i, attempt }, "Clip attempt failed — retrying this clip");
@@ -477,7 +499,7 @@ async function generateClips(
     clips[i] = { buffer: clipBuffer, targetDuration, prompt };
   }
 
-  return clips;
+  return { clips };
 }
 
 // Upload each generated clip to object storage and assemble the clip metadata
@@ -1129,7 +1151,7 @@ async function processJob(job: JobRow): Promise<void> {
     });
 
     // === GENERATING ===
-    const clips = await generateClips(job, analysis, (pct) =>
+    const { clips, shortfallNotice } = await generateClips(job, analysis, (pct) =>
       updateJobStatus(job.id, { progressPercent: pct }),
     );
 
@@ -1216,7 +1238,14 @@ async function processJob(job: JobRow): Promise<void> {
       "Generation complete — credits were reserved up front",
     );
 
-    await updateJobStatus(job.id, { status: "ready", progressPercent: 100, videoId });
+    await updateJobStatus(job.id, {
+      status: "ready",
+      progressPercent: 100,
+      videoId,
+      // Surface a partial-generation notice (provider ran out of tokens) on
+      // the finished job so the user knows why fewer unique clips appear.
+      ...(shortfallNotice ? { errorMessage: shortfallNotice } : {}),
+    });
     void notifyRenderReady(job);
     logger.info({ jobId: job.id, videoId, provider: getActiveProvider() }, "Job completed");
   } catch (err) {

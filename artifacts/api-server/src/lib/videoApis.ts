@@ -217,6 +217,9 @@ async function generateWithLuma(req: ClipRequest): Promise<string> {
 // to permanently fail the job without re-queuing. AI provider charges happen at
 // submission time — retrying after a provider failure just doubles the bill.
 export const PROVIDER_API_FAILURE = "[PROVIDER_FAILURE]";
+// Marker appended when the failure was the provider running out of tokens /
+// credits (Pixazo 402, quota exceeded, insufficient balance, …).
+export const PROVIDER_OUT_OF_CREDITS = "[PROVIDER_OUT_OF_CREDITS]";
 
 // Pixazo (pixazo.ai) — a unified gateway that fronts Kling, Runway, Veo, etc.
 // behind one API key (Ocp-Apim-Subscription-Key). Submit to a model endpoint,
@@ -366,9 +369,17 @@ export async function generateClip(req: ClipRequest): Promise<ClipResult | null>
   // or other final-leg failures, we add it here so the permanent-fail path is
   // always taken regardless of which provider was last.
   const finalErr = lastErr instanceof Error ? lastErr : new Error("All video providers failed");
+  // Tag token/credit exhaustion (e.g. Pixazo 402 / "insufficient balance") so
+  // the job processor can stop generating and salvage the clips already made
+  // instead of failing the whole job.
+  const creditTag =
+    isCreditError(lastErr) && !finalErr.message.includes(PROVIDER_OUT_OF_CREDITS)
+      ? ` ${PROVIDER_OUT_OF_CREDITS}`
+      : "";
   if (!finalErr.message.includes(PROVIDER_API_FAILURE)) {
-    throw new Error(`${PROVIDER_API_FAILURE} ${finalErr.message}`);
+    throw new Error(`${PROVIDER_API_FAILURE}${creditTag} ${finalErr.message}`);
   }
+  if (creditTag) throw new Error(`${finalErr.message}${creditTag}`);
   throw finalErr;
 }
 
