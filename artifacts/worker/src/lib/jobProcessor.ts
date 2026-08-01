@@ -181,16 +181,31 @@ async function claimNextJob(): Promise<JobRow | null> {
     UPDATE jobs
     SET status = 'analyzing', claimed_at = NOW(), updated_at = NOW()
     WHERE id = (
-      SELECT id FROM jobs
-      WHERE status = 'queued' AND retry_count < ${MAX_RETRIES}
+      SELECT j.id FROM jobs j
+      WHERE j.status = 'queued' AND j.retry_count < ${MAX_RETRIES}
         AND (
-          manifest->>'retryAfter' IS NULL
-          OR NOT (manifest->>'retryAfter') ~ '^[0-9]+$'
-          OR (manifest->>'retryAfter')::bigint <= ${Date.now()}
+          j.manifest->>'retryAfter' IS NULL
+          OR NOT (j.manifest->>'retryAfter') ~ '^[0-9]+$'
+          OR (j.manifest->>'retryAfter')::bigint <= ${Date.now()}
         )
-      ORDER BY created_at ASC
+        -- One job per user at a time: don't start another of this user's jobs
+        -- while one is still actively processing (fresh heartbeat within 20
+        -- min — stale/stuck rows don't block, the watchdog handles those).
+        -- This lets the furthest-along render finish and charge its credits
+        -- before the user's next job starts spending.
+        AND NOT EXISTS (
+          SELECT 1 FROM jobs o
+          WHERE o.user_id = j.user_id AND o.id <> j.id
+            AND o.status IN ('analyzing', 'generating', 'stitching')
+            AND o.updated_at > NOW() - INTERVAL '20 minutes'
+        )
+      -- Priority: the job with the most already-rendered (paid-for) clips goes
+      -- first — closest to a finished video — then oldest first.
+      ORDER BY
+        (SELECT count(*) FROM jsonb_object_keys(COALESCE(j.manifest->'partialClips', '{}'::jsonb))) DESC,
+        j.created_at ASC
       LIMIT 1
-      FOR UPDATE SKIP LOCKED
+      FOR UPDATE OF j SKIP LOCKED
     )
     RETURNING id
   `);
