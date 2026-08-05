@@ -720,6 +720,8 @@ type RecoverableJob = {
   id: string;
   email: string | null;
   prompt: string | null;
+  requestedDuration: string | null;
+  resolution: string | null;
   reservedCredits: number;
   refunded: boolean;
   partialClips: number;
@@ -744,7 +746,8 @@ type RecoverReport = {
 function RecoverStrandedPanel() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [onlyWithSalvage, setOnlyWithSalvage] = useState(true);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [showAll, setShowAll] = useState(false);
 
   const { data, isLoading, refetch, isFetching } = useQuery<RecoverReport>({
     queryKey: ["admin", "jobs", "recoverable"],
@@ -762,7 +765,9 @@ function RecoverStrandedPanel() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ onlyWithSalvage }),
+        // Recover exactly the jobs the admin picked. onlyWithSalvage:false so an
+        // explicitly-selected non-salvageable job isn't filtered out.
+        body: JSON.stringify({ ids: [...selected], onlyWithSalvage: false }),
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Recovery failed");
@@ -775,6 +780,7 @@ function RecoverStrandedPanel() {
           ? `${d.recharged} previously-refunded job(s) were re-charged (user receives the video).`
           : "Finished renders will be reclaimed with no new provider spend.",
       });
+      setSelected(new Set());
       queryClient.invalidateQueries({ queryKey: ["admin", "jobs", "recoverable"] });
       queryClient.invalidateQueries({ queryKey: ["admin", "jobs", "failed"] });
       queryClient.invalidateQueries({ queryKey: ["admin", "jobs", "active"] });
@@ -783,8 +789,24 @@ function RecoverStrandedPanel() {
   });
 
   const s = data?.summary;
-  const target = onlyWithSalvage ? s?.salvageable ?? 0 : s?.totalFailed ?? 0;
-  const salvageList = (data?.jobs ?? []).filter((j) => j.salvageable);
+  const allJobs = data?.jobs ?? [];
+  const visible = showAll ? allJobs : allJobs.filter((j) => j.salvageable);
+  const visibleIds = visible.map((j) => j.id);
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const toggleAll = () =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) visibleIds.forEach((id) => next.delete(id));
+      else visibleIds.forEach((id) => next.add(id));
+      return next;
+    });
 
   return (
     <div className="mt-6 sm:mt-8">
@@ -823,43 +845,79 @@ function RecoverStrandedPanel() {
               (the user receives the finished video).
             </p>
           )}
-          <label className="flex items-center gap-2 text-sm text-muted-foreground">
-            <input
-              type="checkbox"
-              checked={onlyWithSalvage}
-              onChange={(e) => setOnlyWithSalvage(e.target.checked)}
-              className="accent-primary"
-            />
-            Only jobs with salvageable clips (recommended — avoids full-price regeneration)
-          </label>
-          <button
-            disabled={recover.isPending || target === 0}
-            onClick={() => recover.mutate()}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary text-primary-foreground font-semibold hover:opacity-90 disabled:opacity-50 transition-colors"
-          >
-            {recover.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-            {target === 0 ? "Nothing to recover" : `Recover ${target} job${target === 1 ? "" : "s"}`}
-          </button>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={showAll}
+                onChange={(e) => setShowAll(e.target.checked)}
+                className="accent-primary"
+              />
+              Show all failed jobs (not just salvageable)
+            </label>
+            {visible.length > 0 && (
+              <button onClick={toggleAll} className="text-xs font-medium text-primary hover:underline">
+                {allVisibleSelected ? "Clear selection" : "Select all shown"}
+              </button>
+            )}
+          </div>
 
-          {salvageList.length > 0 && (
-            <div className="space-y-2 pt-1">
-              {salvageList.slice(0, 20).map((j) => (
-                <div key={j.id} className="flex items-center gap-2 flex-wrap text-xs bg-muted/30 rounded-lg px-3 py-2">
-                  <span className="font-mono text-muted-foreground">{j.id.slice(0, 8)}…</span>
-                  <span className="text-muted-foreground truncate max-w-[160px]">{j.email ?? "—"}</span>
-                  <span className="ml-auto flex gap-1.5">
+          {visible.length > 0 ? (
+            <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+              {visible.slice(0, 100).map((j) => (
+                <label
+                  key={j.id}
+                  className={`flex items-start gap-2.5 text-xs rounded-lg px-3 py-2 cursor-pointer transition-colors ${
+                    selected.has(j.id) ? "bg-primary/10 ring-1 ring-primary/40" : "bg-muted/30 hover:bg-muted/50"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.has(j.id)}
+                    onChange={() => toggle(j.id)}
+                    className="accent-primary mt-0.5"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono text-muted-foreground">{j.id.slice(0, 8)}…</span>
+                      <span className="text-muted-foreground truncate max-w-[160px]">{j.email ?? "—"}</span>
+                      {(j.requestedDuration || j.resolution) && (
+                        <span className="text-muted-foreground/70">
+                          {[j.requestedDuration, j.resolution].filter(Boolean).join(" · ")}
+                        </span>
+                      )}
+                    </div>
+                    {j.prompt && <p className="text-muted-foreground/80 truncate mt-0.5">{j.prompt}</p>}
+                  </div>
+                  <span className="flex flex-wrap gap-1.5 justify-end shrink-0">
                     {j.partialClips > 0 && <Badge variant="outline" className="text-xs">{j.partialClips} made</Badge>}
                     {j.pendingRequests > 0 && (
                       <Badge variant="outline" className="text-xs border-primary/40 text-primary">{j.pendingRequests} reclaimable</Badge>
+                    )}
+                    {!j.salvageable && (
+                      <Badge variant="outline" className="text-xs border-muted-foreground/40 text-muted-foreground">full regen</Badge>
                     )}
                     {j.refunded && (
                       <Badge variant="outline" className="text-xs border-amber-500/40 text-amber-500">refunded</Badge>
                     )}
                   </span>
-                </div>
+                </label>
               ))}
             </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              No {showAll ? "failed" : "salvageable"} jobs.
+            </p>
           )}
+
+          <button
+            disabled={recover.isPending || selected.size === 0}
+            onClick={() => recover.mutate()}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary text-primary-foreground font-semibold hover:opacity-90 disabled:opacity-50 transition-colors"
+          >
+            {recover.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+            {selected.size === 0 ? "Select jobs to recover" : `Recover ${selected.size} selected`}
+          </button>
         </div>
       )}
     </div>
