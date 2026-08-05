@@ -372,6 +372,53 @@ router.post("/admin/jobs/:id/attach-clips", async (req, res) => {
   res.json({ ok: results.every((r) => r.ok), attached: Object.keys(attached).length, results });
 });
 
+// Stop a stuck/failing job and finish the video from the clips already saved
+// (manifest.partialClips / reclaimable pendingRequests) with ZERO new provider
+// spend. Sets manifest.finalizeWithPartial and re-queues; generateClips honors
+// the flag by skipping any clip that can't be reused for free.
+router.post("/admin/jobs/:id/finalize-partial", async (req, res) => {
+  if (!req.isAuthenticated() || !isAdmin(req.user.email)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const jobId = req.params.id;
+  const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, jobId)).limit(1);
+  if (!job) {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
+  if (job.status === "ready") {
+    res.status(400).json({ error: "Job already finished" });
+    return;
+  }
+
+  const manifest = (job.manifest ?? {}) as { partialClips?: Record<string, string>; pendingRequests?: Record<string, string> };
+  const saved = Object.keys(manifest.partialClips ?? {}).length;
+  const pending = Object.keys(manifest.pendingRequests ?? {}).length;
+  if (saved === 0 && pending === 0) {
+    res.status(400).json({ error: "No saved clips to finalize with — attach clips first" });
+    return;
+  }
+
+  // Atomic: set the flag without clobbering concurrently-written manifest keys,
+  // and re-queue with retryCount 0 (matches the retry endpoint) so claiming it
+  // is NOT treated as a paid retry.
+  await db.execute(sql`
+    UPDATE jobs
+    SET manifest = jsonb_set(COALESCE(manifest, '{}'::jsonb), '{finalizeWithPartial}', 'true'::jsonb),
+        status = 'queued',
+        error_message = NULL,
+        retry_count = 0,
+        claimed_at = NULL,
+        updated_at = NOW()
+    WHERE id = ${jobId}
+  `);
+
+  req.log.info({ jobId, saved, pending }, "Admin requested finalize-with-partial — job re-queued");
+  res.json({ ok: true, savedClips: saved, pendingRequests: pending });
+});
+
 // ---- Bulk recovery of stranded renders -------------------------------------
 // Videos that failed because clips finished on Pixazo AFTER the server stopped
 // polling (crash/freeze/deploy) leave recoverable state in the job manifest:

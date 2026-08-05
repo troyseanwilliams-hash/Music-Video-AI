@@ -7,4 +7,5 @@
 - [Job watchdog double-charge guard](job-watchdog-double-charge.md) — stale recovery must never re-queue live jobs; keep heartbeat + claimed_at fencing before every paid provider call, in both jobProcessors.
 - [Stripe dev/prod setup](stripe-dev-prod-setup.md) — two separate Stripe connections; seed each env independently; managed webhook won't show in webhookEndpoints.list, verify via logs.
 - [Manifest jsonb writes](manifest-jsonb-writes.md) — salvage keys (partialClips/pendingRequests) need atomic jsonb_set writes, never full-row overwrites; pendingRequests enables free stranded-clip recovery.
+- [Finalize-partial jobs](finalize-partial-jobs.md) — finalizeWithPartial runs must be free everywhere (retry + watchdog cost 0), flag is one-shot, re-spread runtime across salvaged clips.
 - [Pixazo slug validation](pixazo-slug-validation.md) — probe gateway keyless: 401=valid slug, 404=dead; verify secrets slugs before render failures.

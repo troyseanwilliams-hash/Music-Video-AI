@@ -1067,6 +1067,28 @@ export default function AdminPage() {
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
+  const finalizeMutation = useMutation({
+    mutationFn: async () => {
+      const jobId = attachJobId.trim();
+      if (!jobId) throw new Error("Enter the job ID");
+      const res = await fetch(`/api/admin/jobs/${jobId}/finalize-partial`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error ?? `Failed (${res.status})`);
+      return data as { ok: boolean; savedClips: number; pendingRequests: number };
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Finalizing with saved clips",
+        description: `Stopping generation and stitching the ${data.savedClips} saved clip${data.savedClips === 1 ? "" : "s"} into a finished video — no new provider spend.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["admin", "jobs"] });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
   const {
     data: deletedVideosData,
     isLoading: deletedLoading,
@@ -1534,6 +1556,20 @@ export default function AdminPage() {
                   {attachMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                   {attachMutation.isPending ? "Downloading & attaching…" : "Attach Clips"}
                 </button>
+                <div className="pt-2 border-t border-border">
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Or stop a stuck job and finish the video right now from the clips it already has (no new provider spend).
+                    Uses the Job ID above — the clip links box can stay empty.
+                  </p>
+                  <button
+                    onClick={() => finalizeMutation.mutate()}
+                    disabled={finalizeMutation.isPending || !attachJobId.trim()}
+                    className="w-full sm:w-auto flex items-center justify-center gap-2 rounded-xl border border-border bg-background px-5 py-3 sm:py-2.5 text-sm font-semibold hover:bg-muted transition-colors disabled:opacity-50"
+                  >
+                    {finalizeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Scissors className="h-4 w-4" />}
+                    {finalizeMutation.isPending ? "Requesting…" : "Finalize with Saved Clips"}
+                  </button>
+                </div>
               </CardContent>
             </Card>
           </div>

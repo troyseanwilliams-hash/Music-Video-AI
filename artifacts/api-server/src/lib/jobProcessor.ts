@@ -35,6 +35,7 @@ type AiJobMeta = {
   partialClips?: Record<string, string>; // clip index -> object storage path
   pendingRequests?: Record<string, string>; // clip index -> provider poll URL (submitted, not yet downloaded)
   retryAfter?: number; // epoch ms — queued job must not be claimed before this
+  finalizeWithPartial?: boolean; // admin: stitch whatever clips exist, never call the provider
 };
 
 function aiMetaOf(job: JobRow): AiJobMeta {
@@ -134,8 +135,15 @@ async function cleanupPartialClips(jobId: string): Promise<void> {
   if (paths.length) {
     await Promise.all(paths.map((p) => storageService.deleteObject(p).catch(() => {})));
   }
-  if ((meta.partialClips && Object.keys(meta.partialClips).length) || (meta.pendingRequests && Object.keys(meta.pendingRequests).length)) {
-    await writeAiMeta(jobId, { ...meta, partialClips: {}, pendingRequests: {} });
+  if (
+    (meta.partialClips && Object.keys(meta.partialClips).length) ||
+    (meta.pendingRequests && Object.keys(meta.pendingRequests).length) ||
+    meta.finalizeWithPartial
+  ) {
+    // Also drop the one-shot finalize flag so a later requeue/retry of this job
+    // runs normally instead of silently staying in finalize-only mode.
+    const { finalizeWithPartial: _drop, ...rest } = meta;
+    await writeAiMeta(jobId, { ...rest, partialClips: {}, pendingRequests: {} });
   }
 }
 
@@ -452,6 +460,9 @@ async function generateClips(
   // results were never downloaded — check the provider before regenerating.
   const pending: Record<string, string> = { ...(aiMetaOf(job).pendingRequests ?? {}) };
   const reuseCount = Object.keys(persisted).length;
+  // Admin "finalize with saved clips": reuse stored clips and reclaim any
+  // completed pending requests (both free), but NEVER pay for new generation.
+  const finalizeOnly = aiMetaOf(job).finalizeWithPartial === true;
 
   logger.info(
     { jobId: job.id, provider, sectionCount: sections.length, maxClips, reuseCount },
@@ -519,7 +530,14 @@ async function generateClips(
       await clearPendingRequest(job.id, i).catch(() => {});
     }
 
-    // 3) Simulation fallback (no real provider configured).
+    // 3) Finalize-only mode: never generate new clips — skip anything that
+    //    couldn't be reused/reclaimed for free.
+    if (finalizeOnly) {
+      logger.info({ jobId: job.id, clip: i }, "Finalize-only: skipping missing clip (no new spend)");
+      continue;
+    }
+
+    // 3b) Simulation fallback (no real provider configured).
     if (provider === "simulation") {
       logger.info({ jobId: job.id, section: section.label, clipDuration }, "Simulation: creating placeholder clip");
       await new Promise((r) => setTimeout(r, 1500));
@@ -597,6 +615,28 @@ async function generateClips(
     }
 
     clips[i] = { buffer: clipBuffer, targetDuration, prompt };
+  }
+
+  if (finalizeOnly) {
+    const salvaged = clips.filter(Boolean);
+    if (salvaged.length === 0) {
+      throw new Error(`${PROVIDER_API_FAILURE}: Finalize requested but no rendered clips are available for this job`);
+    }
+    if (salvaged.length < sections.length) {
+      logger.warn(
+        { jobId: job.id, salvaged: salvaged.length, planned: sections.length },
+        "Finalize-only: stitching with fewer unique clips than planned",
+      );
+      // Re-spread the requested runtime across the clips we actually have so
+      // the stitched video still fills the full duration (clips loop/stretch)
+      // instead of ending early.
+      const perClip = Math.max(1, totalOutputDuration / salvaged.length);
+      return {
+        clips: salvaged.map((c) => ({ ...c, targetDuration: perClip })),
+        shortfallNotice: "Finalized with available clips",
+      };
+    }
+    return { clips: salvaged };
   }
 
   return { clips };
@@ -696,7 +736,9 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
     // job is re-queued with manifest.retryAfter, or neither happens — a crash
     // can never orphan a charge. The poll loop skips queued jobs whose
     // retryAfter is still in the future, so the schedule survives restarts.
-    const retryCost = aiMetaOf(job).reservedCredits ?? 0;
+    // Finalize-only runs make no provider calls, so a retry of one must be
+    // free — never charge credits for them.
+    const retryCost = aiMetaOf(job).finalizeWithPartial === true ? 0 : (aiMetaOf(job).reservedCredits ?? 0);
     const delayMs = Math.pow(2, nextRetry) * 60_000;
     const retryAfter = Date.now() + delayMs;
     const noteMsg = `${errMsg} — retry ${nextRetry}/${maxRetries} in ${delayMs / 60_000}m`;
@@ -1407,7 +1449,9 @@ async function recoverStaleJobs(): Promise<void> {
     for (const row of staleCandidates.rows) {
       const meta =
         row.manifest && typeof row.manifest === "object" ? (row.manifest as AiJobMeta) : {};
-      const retryCost = meta.reservedCredits ?? 0;
+      // Finalize-only runs never call the provider — watchdog recovery of one
+      // must be free.
+      const retryCost = meta.finalizeWithPartial === true ? 0 : (meta.reservedCredits ?? 0);
       // Charge + re-queue in ONE atomic statement: the target row is locked
       // (FOR UPDATE SKIP LOCKED guards against racing recoveries), the charge
       // only fires when the job is still stale, and the re-queue only fires
