@@ -38,12 +38,10 @@ async function refundCredits(userId: string, cost: number): Promise<void> {
 }
 
 // Prompt Builder — helper endpoints that turn a plain description into a polished
-// prompt for the audio/video engines. Text-only LLM calls (cheap), so no credit
-// deduction. TEMPORARY: gated to admin only while the feature is being evaluated.
-// To open it to all signed-in users later, drop the isAdmin() check in guard().
-function isAdmin(email: string | null | undefined): boolean {
-  return !!(process.env.ADMIN_EMAIL && email && email.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase());
-}
+// prompt for the audio/video engines. Open to all signed-in users: the audio/
+// video prompt builders are lightweight text helpers and stay free (rate-limited)
+// as a top-of-funnel hook; writing full lyrics is a real deliverable and costs
+// credits (LYRICS_BUILD_COST), so trial/free credits have something to spend on.
 
 // ── Light in-memory per-user rate limit (max N requests / window) ─────────────
 const RL_WINDOW_MS = 60_000;
@@ -66,11 +64,6 @@ function guard(req: Request, res: Response): boolean {
     res.status(401).json({ error: "Unauthorized" });
     return false;
   }
-  // TEMPORARY admin gate while evaluating the Prompt Builder.
-  if (!isAdmin(req.user.email)) {
-    res.status(403).json({ error: "Prompt Studio is in limited preview." });
-    return false;
-  }
   if (rateLimited(req.user.id)) {
     res.status(429).json({ error: "Slow down a moment — too many prompt requests. Try again shortly." });
     return false;
@@ -84,7 +77,12 @@ router.get("/prompt/status", (req: Request, res: Response) => {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  res.json({ enabled: isAdmin(req.user.email), provider: promptProviderAvailable(), lyricsProvider: lyricsProviderAvailable() });
+  res.json({
+    enabled: true,
+    provider: promptProviderAvailable(),
+    lyricsProvider: lyricsProviderAvailable(),
+    lyricsCost: LYRICS_BUILD_COST,
+  });
 });
 
 const AudioBody = z.object({ description: z.string().min(2).max(600) });

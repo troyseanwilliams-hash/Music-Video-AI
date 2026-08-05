@@ -91,7 +91,7 @@ function Chips({ items, onPick }: { items: string[]; onPick: (v: string) => void
 }
 
 export default function PromptStudio() {
-  const { user, isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
@@ -151,17 +151,6 @@ export default function PromptStudio() {
       </div>
     );
   }
-  // Admin-only preview for now.
-  if (!user?.isAdmin) {
-    return (
-      <div className="container mx-auto px-4 py-20 max-w-md text-center">
-        <Sparkles className="mx-auto h-10 w-10 text-primary mb-4" />
-        <h1 className="text-2xl font-bold mb-2">Prompt Studio</h1>
-        <p className="text-muted-foreground">This feature is in limited preview and isn't available on your account yet. Check back soon.</p>
-      </div>
-    );
-  }
-
   return (
     <div className="container mx-auto px-4 py-8 sm:py-12 max-w-3xl">
       <div className="mb-8 text-center">
@@ -170,7 +159,8 @@ export default function PromptStudio() {
         </div>
         <h1 className="text-3xl font-bold tracking-tight">Prompt Studio</h1>
         <p className="text-muted-foreground mt-2">
-          Describe what you want in plain words — we'll turn it into a ready-to-use prompt. Free for members.
+          Describe what you want in plain words — we'll turn it into a ready-to-use prompt. Soundtrack &amp; video
+          prompt builders are free; writing full lyrics costs 2 credits.
         </p>
       </div>
 

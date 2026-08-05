@@ -37,8 +37,7 @@ export function Navbar() {
       { href: "/editor", label: "Remix Lab", icon: Video },
       { href: "/generate", label: "Generate", icon: Wand2 },
       { href: "/soundtracks", label: "Soundtracks", icon: Music2 },
-      // Prompt Studio is in admin-only preview for now.
-      ...(user?.isAdmin ? [{ href: "/prompt-studio", label: "Prompt Studio", icon: Sparkles }] : []),
+      { href: "/prompt-studio", label: "Prompt Studio", icon: Sparkles },
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "/gallery", label: "Gallery", icon: Film },
     ] : []),
@@ -170,14 +169,12 @@ export function Navbar() {
                         <span>Generate Video</span>
                       </Link>
                     </DropdownMenuItem>
-                    {user?.isAdmin && (
-                      <DropdownMenuItem asChild>
-                        <Link href="/prompt-studio" className="cursor-pointer flex items-center">
-                          <Sparkles className="mr-2 h-4 w-4" />
-                          <span>Prompt Studio</span>
-                        </Link>
-                      </DropdownMenuItem>
-                    )}
+                    <DropdownMenuItem asChild>
+                      <Link href="/prompt-studio" className="cursor-pointer flex items-center">
+                        <Sparkles className="mr-2 h-4 w-4" />
+                        <span>Prompt Studio</span>
+                      </Link>
+                    </DropdownMenuItem>
                     <DropdownMenuItem asChild>
                       <Link href="/dashboard" className="cursor-pointer flex items-center">
                         <LayoutDashboard className="mr-2 h-4 w-4" />
