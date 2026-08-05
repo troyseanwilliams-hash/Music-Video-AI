@@ -707,6 +707,165 @@ interface DeletedVideo {
   deletedAt: string | null;
 }
 
+function RecoverStat({ label, value, highlight }: { label: string; value: number; highlight?: boolean }) {
+  return (
+    <div className={`rounded-xl px-3 py-2.5 ${highlight ? "bg-primary/10" : "bg-muted/40"}`}>
+      <div className={`text-lg font-bold ${highlight ? "text-primary" : ""}`}>{value}</div>
+      <div className="text-[11px] text-muted-foreground leading-tight">{label}</div>
+    </div>
+  );
+}
+
+type RecoverableJob = {
+  id: string;
+  email: string | null;
+  prompt: string | null;
+  reservedCredits: number;
+  refunded: boolean;
+  partialClips: number;
+  pendingRequests: number;
+  salvageable: boolean;
+  updatedAt: string;
+};
+type RecoverReport = {
+  jobs: RecoverableJob[];
+  summary: {
+    totalFailed: number;
+    salvageable: number;
+    reclaimableRequests: number;
+    alreadyRenderedClips: number;
+    refundedThatWouldRecharge: number;
+  };
+};
+
+// Bulk-recover videos whose clips finished on Pixazo after the server stopped
+// polling. Dry-run report first, then a single click re-queues the recoverable
+// jobs (worker reclaims finished renders for free, regenerates only the rest).
+function RecoverStrandedPanel() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [onlyWithSalvage, setOnlyWithSalvage] = useState(true);
+
+  const { data, isLoading, refetch, isFetching } = useQuery<RecoverReport>({
+    queryKey: ["admin", "jobs", "recoverable"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/jobs/recoverable", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to scan");
+      return res.json();
+    },
+    staleTime: 30_000,
+  });
+
+  const recover = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/admin/jobs/recover", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ onlyWithSalvage }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Recovery failed");
+      return d as { requeued: number; recharged: number; scanned: number };
+    },
+    onSuccess: (d) => {
+      toast({
+        title: `Re-queued ${d.requeued} job${d.requeued === 1 ? "" : "s"}`,
+        description: d.recharged
+          ? `${d.recharged} previously-refunded job(s) were re-charged (user receives the video).`
+          : "Finished renders will be reclaimed with no new provider spend.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["admin", "jobs", "recoverable"] });
+      queryClient.invalidateQueries({ queryKey: ["admin", "jobs", "failed"] });
+      queryClient.invalidateQueries({ queryKey: ["admin", "jobs", "active"] });
+    },
+    onError: (err: Error) => toast({ title: "Recovery failed", description: err.message, variant: "destructive" }),
+  });
+
+  const s = data?.summary;
+  const target = onlyWithSalvage ? s?.salvageable ?? 0 : s?.totalFailed ?? 0;
+  const salvageList = (data?.jobs ?? []).filter((j) => j.salvageable);
+
+  return (
+    <div className="mt-6 sm:mt-8">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-base sm:text-lg font-semibold flex items-center gap-2">
+          <RotateCcw className="h-4 w-4 text-primary" />
+          Recover Stranded Renders
+        </h2>
+        <button
+          onClick={() => refetch()}
+          className="w-9 h-9 flex items-center justify-center rounded-full bg-muted/60 hover:bg-muted transition-colors"
+        >
+          <RefreshCw className={`h-4 w-4 text-muted-foreground ${isFetching ? "animate-spin" : ""}`} />
+        </button>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-border bg-card/50 p-4 space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Videos that failed after their clips finished on Pixazo can be re-queued — the worker reclaims
+            finished renders for free and regenerates only what's missing.
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <RecoverStat label="Failed jobs" value={s?.totalFailed ?? 0} />
+            <RecoverStat label="Salvageable" value={s?.salvageable ?? 0} highlight />
+            <RecoverStat label="Reclaimable renders" value={s?.reclaimableRequests ?? 0} />
+            <RecoverStat label="Clips already made" value={s?.alreadyRenderedClips ?? 0} />
+          </div>
+          {!!s?.refundedThatWouldRecharge && (
+            <p className="text-xs text-amber-500/90 bg-amber-500/10 rounded-lg px-3 py-2">
+              {s.refundedThatWouldRecharge} of these were refunded on failure and will be re-charged if recovered
+              (the user receives the finished video).
+            </p>
+          )}
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={onlyWithSalvage}
+              onChange={(e) => setOnlyWithSalvage(e.target.checked)}
+              className="accent-primary"
+            />
+            Only jobs with salvageable clips (recommended — avoids full-price regeneration)
+          </label>
+          <button
+            disabled={recover.isPending || target === 0}
+            onClick={() => recover.mutate()}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary text-primary-foreground font-semibold hover:opacity-90 disabled:opacity-50 transition-colors"
+          >
+            {recover.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+            {target === 0 ? "Nothing to recover" : `Recover ${target} job${target === 1 ? "" : "s"}`}
+          </button>
+
+          {salvageList.length > 0 && (
+            <div className="space-y-2 pt-1">
+              {salvageList.slice(0, 20).map((j) => (
+                <div key={j.id} className="flex items-center gap-2 flex-wrap text-xs bg-muted/30 rounded-lg px-3 py-2">
+                  <span className="font-mono text-muted-foreground">{j.id.slice(0, 8)}…</span>
+                  <span className="text-muted-foreground truncate max-w-[160px]">{j.email ?? "—"}</span>
+                  <span className="ml-auto flex gap-1.5">
+                    {j.partialClips > 0 && <Badge variant="outline" className="text-xs">{j.partialClips} made</Badge>}
+                    {j.pendingRequests > 0 && (
+                      <Badge variant="outline" className="text-xs border-primary/40 text-primary">{j.pendingRequests} reclaimable</Badge>
+                    )}
+                    {j.refunded && (
+                      <Badge variant="outline" className="text-xs border-amber-500/40 text-amber-500">refunded</Badge>
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const [, setLocation] = useLocation();
   const { user, isLoading: isAuthLoading } = useAuth();
@@ -1204,6 +1363,9 @@ export default function AdminPage() {
               ))}
             </div>
           )}
+
+          {/* ── Recover stranded renders ── */}
+          <RecoverStrandedPanel />
 
           {/* ── Failed jobs ── */}
           <div className="mt-6 sm:mt-8">

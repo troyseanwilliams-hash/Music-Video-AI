@@ -1,9 +1,20 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, usersTable } from "@workspace/db";
-import { eq, desc, inArray, sql } from "drizzle-orm";
+import { jobsTable, usersTable, creditsTable } from "@workspace/db";
+import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { downloadClip } from "../lib/videoApis.js";
+
+// Billing/salvage state AI jobs stash in the manifest jsonb.
+type AiJobMeta = {
+  reservedCredits?: number;
+  refunded?: boolean;
+  partialClips?: Record<string, string>;
+  pendingRequests?: Record<string, string>;
+};
+function metaOf(manifest: unknown): AiJobMeta {
+  return manifest && typeof manifest === "object" ? (manifest as AiJobMeta) : {};
+}
 
 function isAdmin(email: string | null | undefined): boolean {
   return !!(
@@ -359,6 +370,149 @@ router.post("/admin/jobs/:id/attach-clips", async (req, res) => {
 
   req.log.info({ jobId, results }, "Admin attached clips to job");
   res.json({ ok: results.every((r) => r.ok), attached: Object.keys(attached).length, results });
+});
+
+// ---- Bulk recovery of stranded renders -------------------------------------
+// Videos that failed because clips finished on Pixazo AFTER the server stopped
+// polling (crash/freeze/deploy) leave recoverable state in the job manifest:
+//   partialClips     — clips already rendered + stored (reused for free)
+//   pendingRequests  — clips submitted to Pixazo, reclaimable for free by URL
+// Re-queuing such a job makes the worker reclaim/reuse those and regenerate only
+// what's genuinely missing, then stitch + deliver — no double provider spend.
+
+// GET /admin/jobs/recoverable — dry run: list failed AI jobs and what each can
+// recover, with a summary. No side effects.
+router.get("/admin/jobs/recoverable", async (req, res) => {
+  if (!req.isAuthenticated() || !isAdmin(req.user.email)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const rows = await db
+    .select({
+      id: jobsTable.id,
+      email: usersTable.email,
+      prompt: jobsTable.prompt,
+      requestedDuration: jobsTable.requestedDuration,
+      resolution: jobsTable.resolution,
+      errorMessage: jobsTable.errorMessage,
+      retryCount: jobsTable.retryCount,
+      createdAt: jobsTable.createdAt,
+      updatedAt: jobsTable.updatedAt,
+      manifest: jobsTable.manifest,
+    })
+    .from(jobsTable)
+    .leftJoin(usersTable, eq(jobsTable.userId, usersTable.id))
+    .where(and(eq(jobsTable.status, "failed"), eq(jobsTable.jobType, "ai")))
+    .orderBy(desc(jobsTable.updatedAt))
+    .limit(300);
+
+  const jobs = rows.map((r) => {
+    const m = metaOf(r.manifest);
+    const partialClips = Object.keys(m.partialClips ?? {}).length;
+    const pendingRequests = Object.keys(m.pendingRequests ?? {}).length;
+    return {
+      id: r.id,
+      email: r.email,
+      prompt: r.prompt ? r.prompt.slice(0, 80) : null,
+      requestedDuration: r.requestedDuration,
+      resolution: r.resolution,
+      errorMessage: r.errorMessage ? r.errorMessage.slice(0, 160) : null,
+      retryCount: r.retryCount,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+      reservedCredits: m.reservedCredits ?? 0,
+      refunded: !!m.refunded,
+      partialClips,
+      pendingRequests,
+      // "salvageable" = has clips to reuse or requests to reclaim for free.
+      salvageable: partialClips > 0 || pendingRequests > 0,
+    };
+  });
+
+  const summary = {
+    totalFailed: jobs.length,
+    salvageable: jobs.filter((j) => j.salvageable).length,
+    reclaimableRequests: jobs.reduce((a, j) => a + j.pendingRequests, 0),
+    alreadyRenderedClips: jobs.reduce((a, j) => a + j.partialClips, 0),
+    refundedThatWouldRecharge: jobs.filter((j) => j.salvageable && j.refunded && j.reservedCredits > 0).length,
+  };
+
+  res.json({ jobs, summary });
+});
+
+// POST /admin/jobs/recover — re-queue failed AI jobs so the worker reclaims
+// finished renders and delivers the video. Body (all optional):
+//   ids            — restrict to these job ids (default: all failed AI jobs)
+//   onlyWithSalvage — default true; only re-queue jobs that have partialClips
+//                     or pendingRequests (avoids full-price regeneration).
+// Jobs whose reservation was already refunded are re-reserved (re-charged) so a
+// successful recovery bills consistently with a normal render.
+router.post("/admin/jobs/recover", async (req, res) => {
+  if (!req.isAuthenticated() || !isAdmin(req.user.email)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const ids = Array.isArray(req.body?.ids)
+    ? req.body.ids.filter((x: unknown): x is string => typeof x === "string")
+    : null;
+  const onlyWithSalvage = req.body?.onlyWithSalvage !== false;
+
+  const rows = await db
+    .select({ id: jobsTable.id, userId: jobsTable.userId, manifest: jobsTable.manifest })
+    .from(jobsTable)
+    .where(
+      ids && ids.length
+        ? and(eq(jobsTable.status, "failed"), eq(jobsTable.jobType, "ai"), inArray(jobsTable.id, ids))
+        : and(eq(jobsTable.status, "failed"), eq(jobsTable.jobType, "ai")),
+    )
+    .limit(500);
+
+  const candidates = rows.filter((r) => {
+    if (!onlyWithSalvage) return true;
+    const m = metaOf(r.manifest);
+    return Object.keys(m.partialClips ?? {}).length > 0 || Object.keys(m.pendingRequests ?? {}).length > 0;
+  });
+
+  let recharged = 0;
+  for (const r of candidates) {
+    const m = metaOf(r.manifest);
+    // If we refunded this job on failure, re-reserve the credits now — the user
+    // is about to receive the finished video, so charge as a normal render.
+    if (m.refunded && (m.reservedCredits ?? 0) > 0) {
+      const reserved = m.reservedCredits!;
+      await db
+        .update(creditsTable)
+        .set({
+          subscriptionCredits: sql`GREATEST(subscription_credits - ${reserved}, 0)`,
+          topupCredits: sql`GREATEST(topup_credits - GREATEST(${reserved} - subscription_credits, 0), 0)`,
+          creditsRemaining: sql`GREATEST(credits_remaining - ${reserved}, 0)`,
+          creditsUsed: sql`credits_used + ${reserved}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(creditsTable.userId, r.userId));
+      await db.execute(sql`
+        UPDATE jobs SET manifest = jsonb_set(COALESCE(manifest, '{}'::jsonb), '{refunded}', 'false'::jsonb)
+        WHERE id = ${r.id}
+      `);
+      recharged++;
+    }
+  }
+
+  const requeuedIds = candidates.map((r) => r.id);
+  if (requeuedIds.length) {
+    await db
+      .update(jobsTable)
+      .set({ status: "queued", errorMessage: null, retryCount: 0, claimedAt: null, updatedAt: new Date() })
+      .where(inArray(jobsTable.id, requeuedIds));
+  }
+
+  req.log.info(
+    { requeued: requeuedIds.length, recharged, onlyWithSalvage, scoped: !!(ids && ids.length), scanned: rows.length },
+    "Admin bulk-recovered failed jobs",
+  );
+  res.json({ ok: true, requeued: requeuedIds.length, recharged, scanned: rows.length, requeuedIds });
 });
 
 export default router;
