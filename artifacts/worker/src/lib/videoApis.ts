@@ -22,18 +22,17 @@ export interface ClipResult {
   provider: string;
 }
 
-type Provider = "runway" | "luma" | "kling" | "pixazo" | "pixazo-runway";
+type Provider = "runway" | "luma" | "kling" | "pixazo";
 
 function providerAvailable(p: Provider): boolean {
-  if (p === "runway") return !!process.env.RUNWAY_API_KEY;
   if (p === "luma") return !!process.env.LUMA_API_KEY;
   // "kling" and "pixazo" run through the Pixazo gateway (single key).
   if (p === "kling") return !!process.env.PIXAZO_API_KEY;
   if (p === "pixazo") return !!process.env.PIXAZO_API_KEY;
-  // "pixazo-runway" runs Runway through the Pixazo gateway. Requires both the
-  // Pixazo key AND a model slug (set PIXAZO_RUNWAY_MODEL to the slug shown in
-  // your Pixazo dashboard, e.g. "runway-gen4-5-text-to-video").
-  if (p === "pixazo-runway") return !!process.env.PIXAZO_API_KEY && !!process.env.PIXAZO_RUNWAY_MODEL?.trim();
+  // "runway" now runs through the Pixazo gateway too (no direct Runway API).
+  // Requires the Pixazo key AND a Runway model slug (set PIXAZO_RUNWAY_MODEL to
+  // the slug shown in your Pixazo dashboard, e.g. "runway-gen4-5-text-to-video").
+  if (p === "runway") return !!process.env.PIXAZO_API_KEY && !!process.env.PIXAZO_RUNWAY_MODEL?.trim();
   return false;
 }
 
@@ -65,7 +64,7 @@ export function getProviderChain(): Provider[] {
   if (chainEnv && chainEnv.length) {
     order = chainEnv;
   } else {
-    order = ["kling", "pixazo-runway", "runway", "pixazo", "luma"];
+    order = ["kling", "runway", "pixazo", "luma"];
     if (primary && order.includes(primary)) order = [primary, ...order.filter((p) => p !== primary)];
   }
   return order.filter(providerAvailable);
@@ -77,110 +76,15 @@ function getProvider(): Provider | null {
 
 export function getActiveProvider(hint?: string | null): string {
   const h = hint?.toLowerCase() as Provider | undefined;
-  if (h === "runway" && process.env.RUNWAY_API_KEY) return "runway";
+  if (h === "runway" && providerAvailable("runway")) return "runway";
   if (h === "kling" && process.env.PIXAZO_API_KEY) return "kling";
   if (h === "luma" && process.env.LUMA_API_KEY) return "luma";
   if (h === "pixazo" && process.env.PIXAZO_API_KEY) return "pixazo";
-  if (h === "pixazo-runway" && providerAvailable("pixazo-runway")) return "pixazo-runway";
   return getProvider() ?? "simulation";
 }
 
 function delay(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
-}
-
-const RUNWAY_BASE = "https://api.dev.runwayml.com/v1";
-const RUNWAY_VERSION = "2024-11-06";
-const RUNWAY_MODEL = "gen4.5";
-
-// image_to_video supports all ratios; text_to_video only supports landscape/portrait
-const IMAGE_TO_VIDEO_RATIOS: Record<string, string> = {
-  "16:9": "1280:720",
-  "9:16": "720:1280",
-  "4:3": "1104:832",
-  "1:1": "960:960",
-  "21:9": "1584:672",
-};
-
-// text_to_video gen4.5 only accepts these two ratios — map others to nearest
-const TEXT_TO_VIDEO_RATIOS: Record<string, "1280:720" | "720:1280"> = {
-  "16:9": "1280:720",
-  "9:16": "720:1280",
-  "4:3": "1280:720",
-  "1:1": "1280:720",
-  "21:9": "1280:720",
-};
-
-async function generateWithRunway(req: ClipRequest): Promise<string> {
-  const apiKey = process.env.RUNWAY_API_KEY!;
-  const duration = Math.min(Math.max(Math.ceil(req.durationSeconds), 2), 10);
-  const aspectRatio = req.aspectRatio ?? "16:9";
-  const headers = {
-    Authorization: `Bearer ${apiKey}`,
-    "Content-Type": "application/json",
-    "X-Runway-Version": RUNWAY_VERSION,
-  };
-
-  let endpoint: string;
-  let body: Record<string, unknown>;
-
-  if (req.imageUrl) {
-    endpoint = `${RUNWAY_BASE}/image_to_video`;
-    body = {
-      model: RUNWAY_MODEL,
-      promptImage: req.imageUrl,
-      promptText: req.prompt.slice(0, 1000),
-      duration,
-      ratio: IMAGE_TO_VIDEO_RATIOS[aspectRatio] ?? "1280:720",
-    };
-  } else {
-    endpoint = `${RUNWAY_BASE}/text_to_video`;
-    body = {
-      model: RUNWAY_MODEL,
-      promptText: req.prompt.slice(0, 1000),
-      duration,
-      ratio: TEXT_TO_VIDEO_RATIOS[aspectRatio] ?? "1280:720",
-    };
-  }
-
-  const genRes = await fetch(endpoint, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(30_000),
-  });
-
-  if (!genRes.ok)
-    throw new Error(`Runway ${genRes.status}: ${(await genRes.text()).slice(0, 300)}`);
-  const { id: taskId } = (await genRes.json()) as { id: string };
-
-  for (let i = 0; i < 120; i++) {
-    await delay(5000);
-    const pollRes = await fetch(`${RUNWAY_BASE}/tasks/${taskId}`, {
-      headers: { Authorization: `Bearer ${apiKey}`, "X-Runway-Version": RUNWAY_VERSION },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!pollRes.ok) continue;
-    const task = (await pollRes.json()) as {
-      status: string;
-      output?: string[];
-      failure?: string | { message?: string; [key: string]: unknown };
-    };
-    if (task.status === "SUCCEEDED" && task.output?.[0]) return task.output[0];
-    if (task.status === "FAILED") {
-      const fail = task.failure;
-      const failMsg =
-        typeof fail === "string"
-          ? fail
-          : fail?.message
-            ? fail.message
-            : fail
-              ? JSON.stringify(fail).slice(0, 300)
-              : "no details provided";
-      throw new Error(`Runway task failed: ${failMsg}`);
-    }
-  }
-  throw new Error("Runway task timed out after 10 minutes");
 }
 
 async function generateWithLuma(req: ClipRequest): Promise<string> {
@@ -316,10 +220,6 @@ async function generateWithPixazo(req: ClipRequest, t2vOverride?: string, i2vOve
   throw new Error(`${PROVIDER_API_FAILURE} Pixazo task timed out after 10 minutes`);
 }
 
-// After Runway reports out-of-credits, skip it for a while so we don't retry an
-// exhausted account on every clip (cleared on the next successful Runway call).
-let runwaySkipUntil = 0;
-
 function isCreditError(err: unknown): boolean {
   const m = String(err instanceof Error ? err.message : err).toLowerCase();
   return ["402", "credit", "quota", "insufficient", "exceeded", "payment", "balance"].some((s) => m.includes(s));
@@ -328,7 +228,13 @@ function isCreditError(err: unknown): boolean {
 async function callProvider(provider: Provider, req: ClipRequest): Promise<string> {
   switch (provider) {
     case "runway":
-      return generateWithRunway(req);
+      // Runway now runs through the Pixazo gateway (no direct Runway API).
+      // PIXAZO_RUNWAY_MODEL / PIXAZO_RUNWAY_I2V_MODEL choose the slugs.
+      return generateWithPixazo(
+        req,
+        process.env.PIXAZO_RUNWAY_MODEL!.trim(),
+        process.env.PIXAZO_RUNWAY_I2V_MODEL?.trim(),
+      );
     case "luma":
       return generateWithLuma(req);
     case "kling":
@@ -336,15 +242,6 @@ async function callProvider(provider: Provider, req: ClipRequest): Promise<strin
       return generateWithPixazo(req, klingModel(req.resolution));
     case "pixazo":
       return generateWithPixazo(req);
-    case "pixazo-runway":
-      // Runway via the Pixazo gateway.
-      // PIXAZO_RUNWAY_MODEL     — text-to-video slug (required)
-      // PIXAZO_RUNWAY_I2V_MODEL — image-to-video slug (used when a reference image is present)
-      return generateWithPixazo(
-        req,
-        process.env.PIXAZO_RUNWAY_MODEL!.trim(),
-        process.env.PIXAZO_RUNWAY_I2V_MODEL?.trim(),
-      );
   }
   throw new Error(`Unknown video provider: ${provider}`);
 }
@@ -364,18 +261,11 @@ export async function generateClip(req: ClipRequest): Promise<ClipResult | null>
   let lastErr: unknown;
   for (let i = 0; i < chain.length; i++) {
     const provider = chain[i]!;
-    const isLast = i === chain.length - 1;
-    // Skip a recently-exhausted Runway when there's another provider to try.
-    if (provider === "runway" && runwaySkipUntil > Date.now() && !isLast) continue;
     try {
       const videoUrl = await callProvider(provider, req);
-      if (provider === "runway") runwaySkipUntil = 0;
       return { videoUrl, provider };
     } catch (err) {
       lastErr = err;
-      if (provider === "runway" && isCreditError(err)) {
-        runwaySkipUntil = Date.now() + 6 * 60 * 60 * 1000; // 6h — fall back to the next provider
-      }
     }
   }
   // All providers in the chain have been tried and failed. Mark the error as
