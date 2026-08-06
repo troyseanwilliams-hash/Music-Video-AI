@@ -34,10 +34,10 @@ export function Navbar() {
 
   const navLinks = [
     ...(isAuthenticated ? [
-      { href: "/editor", label: "Remix Lab", icon: Video },
       { href: "/generate", label: "Generate", icon: Wand2 },
-      { href: "/soundtracks", label: "Soundtracks", icon: Music2 },
+      { href: "/editor", label: "Remix Lab", icon: Video },
       { href: "/prompt-studio", label: "Prompt Studio", icon: Sparkles },
+      { href: "/soundtracks", label: "Soundtracks", icon: Music2 },
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "/gallery", label: "Gallery", icon: Film },
     ] : []),

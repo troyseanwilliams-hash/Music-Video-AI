@@ -122,11 +122,18 @@ router.post("/prompt/video", async (req: Request, res: Response) => {
   }
 });
 
-const LyricsBody = z.object({
-  theme: z.string().min(2).max(300),
-  genre: z.string().max(60).optional(),
-  mood: z.string().max(60).optional(),
-});
+const LyricsBody = z
+  .object({
+    theme: z.string().max(300).optional(),
+    genre: z.string().max(60).optional(),
+    mood: z.string().max(60).optional(),
+    // When set, polish/enhance THIS draft instead of writing from scratch.
+    lyrics: z.string().max(5000).optional(),
+  })
+  .refine(
+    (d) => (d.theme?.trim().length ?? 0) >= 2 || (d.lyrics?.trim().length ?? 0) >= 2,
+    { message: "Provide a theme, or draft lyrics to enhance." },
+  );
 router.post("/prompt/lyrics", async (req: Request, res: Response) => {
   if (!guard(req, res)) return;
   const parsed = LyricsBody.safeParse(req.body);
@@ -154,8 +161,13 @@ router.post("/prompt/lyrics", async (req: Request, res: Response) => {
     }
   }
   try {
-    const result = await generateLyrics(parsed.data);
-    res.json({ ...result, charged: willUseLLM ? LYRICS_BUILD_COST : 0 });
+    const result = await generateLyrics({
+      theme: parsed.data.theme ?? "",
+      genre: parsed.data.genre,
+      mood: parsed.data.mood,
+      existingLyrics: parsed.data.lyrics,
+    });
+    res.json({ ...result, charged: willUseLLM ? LYRICS_BUILD_COST : 0, enhanced: !!parsed.data.lyrics?.trim() });
   } catch (err) {
     if (willUseLLM) await refundCredits(user.id, LYRICS_BUILD_COST);
     logger.error({ err }, "Lyrics build failed");

@@ -158,9 +158,20 @@ const SONG_MIN_CREDITS = 5;
 const SONG_MAX_CREDITS = 10;
 const SONG_MIN_SECONDS = 5;
 const SONG_MAX_SECONDS = 120;
-export function calculateSongCost(durationSeconds: number | null | undefined): number {
+// Music generation is priced at a 1.5× markup on the real provider cost.
+const MUSIC_GEN_MARKUP = 1.5;
+// Full VOCAL songs run on MiniMax Music, a flat ~$0.15/generation model (≈7×
+// the instrumental Stable Audio cost). Charged as a flat credit price (never
+// part of the free monthly allowance). Derived: ceil($0.15 × 1.5 / $/credit) = 15.
+const VOCAL_SONG_USD = 0.15;
+export const SONG_VOCAL_CREDITS = Math.ceil((VOCAL_SONG_USD * MUSIC_GEN_MARKUP) / USD_PER_CREDIT);
+export function calculateSongCost(
+  durationSeconds: number | null | undefined,
+  withVocals = false,
+): number {
+  if (withVocals) return SONG_VOCAL_CREDITS;
   const secs = Math.min(Math.max(durationSeconds || 30, SONG_MIN_SECONDS), SONG_MAX_SECONDS);
-  const scaled = Math.ceil((secs * SONG_USD_PER_SECOND * PRICE_MULTIPLIER) / USD_PER_CREDIT);
+  const scaled = Math.ceil((secs * SONG_USD_PER_SECOND * MUSIC_GEN_MARKUP) / USD_PER_CREDIT);
   return Math.min(SONG_MAX_CREDITS, Math.max(SONG_MIN_CREDITS, scaled));
 }
 

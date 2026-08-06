@@ -10,7 +10,7 @@ import { db, creditsTable, usersTable, soundtracksTable, soundtrackLikesTable } 
 import { eq, sql, and, desc, isNull, inArray } from "drizzle-orm";
 import { generateSong, getActiveMusicProvider, loopAudioToLength, MAX_SONG_SECONDS, type MusicProvider } from "../lib/musicApis.js";
 import { generateLyrics, lyricsProviderAvailable } from "../lib/lyricsGen.js";
-import { calculateSongCost, freeSoundtracksFor, NEW_USER_FREE_SOUNDTRACKS } from "../lib/creditCost.js";
+import { calculateSongCost, freeSoundtracksFor, NEW_USER_FREE_SOUNDTRACKS, SONG_VOCAL_CREDITS } from "../lib/creditCost.js";
 import { notifyFeatureRequest } from "../lib/notifications.js";
 import { getUncachableStripeClient } from "../lib/stripeClient.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
@@ -96,10 +96,17 @@ router.post("/admin/music/lyrics", async (req: Request, res: Response) => {
 const GenerateBody = z.object({
   prompt: z.string().min(3).max(600),
   lyrics: z.string().max(5000).optional(),
-  durationSeconds: z.number().int().min(5).max(MAX_SONG_SECONDS).default(30),
+  // Vocal (MiniMax) songs can run longer than the instrumental cap; instrumental
+  // is still clamped to MAX_SONG_SECONDS internally by the generator + looper.
+  durationSeconds: z.number().int().min(5).max(240).default(30),
   // Loop the generated clip (via ffmpeg, free) to this length to match a video.
   loopToSeconds: z.number().int().min(1).max(MAX_SONG_SECONDS).optional(),
   provider: z.enum(["simulation", "acestep", "musicgen", "pixazo"]).optional(),
+  // Generate a full VOCAL song (MiniMax) instead of an instrumental. Priced
+  // higher and never covered by the free allowance.
+  withVocals: z.boolean().optional(),
+  // Let the model write the lyrics from the prompt (no lyrics box needed).
+  lyricsOptimizer: z.boolean().optional(),
 });
 
 router.post("/admin/music/generate", async (req: Request, res: Response) => {
@@ -119,7 +126,8 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
     return;
   }
 
-  const cost = calculateSongCost(parsed.data.durationSeconds);
+  const wantsVocals = parsed.data.withVocals === true;
+  const cost = calculateSongCost(parsed.data.durationSeconds, wantsVocals);
 
   // Freemium metering. Admins are unlimited. Subscribers get a monthly free
   // "Soundtracks" allowance by tier (a bonus that upsells higher plans); beyond
@@ -135,7 +143,20 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
     }
     const active = (user?.subscriptionStatus ?? "none") === "active";
 
-    if (active) {
+    if (wantsVocals) {
+      // Vocal songs run on the pricier MiniMax model — always credit-charged,
+      // never part of the free monthly Soundtracks allowance.
+      if ((credits?.creditsRemaining ?? 0) < cost) {
+        res.status(402).json({
+          error: `A vocal song costs ${cost} credits but you have ${credits?.creditsRemaining ?? 0}.`,
+          code: "INSUFFICIENT_CREDITS",
+          creditsRequired: cost,
+          creditsRemaining: credits?.creditsRemaining ?? 0,
+        });
+        return;
+      }
+      // isFree stays false → credits are deducted on success below.
+    } else if (active) {
       // Subscriber: monthly free allowance by tier (lazy monthly reset).
       let used = credits?.freeSoundtracksUsed ?? 0;
       const resetAt = credits?.freeSoundtracksResetAt ? new Date(credits.freeSoundtracksResetAt).getTime() : 0;
@@ -191,6 +212,8 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
       lyrics: parsed.data.lyrics,
       durationSeconds: parsed.data.durationSeconds,
       provider: parsed.data.provider as MusicProvider | undefined,
+      withVocals: wantsVocals,
+      lyricsOptimizer: parsed.data.lyricsOptimizer,
     });
 
     // Optionally loop the (short, cheap) clip to a longer length — free ffmpeg,
@@ -241,6 +264,8 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
         userId: req.user.id,
         title,
         prompt: parsed.data.prompt,
+        lyrics: wantsVocals ? parsed.data.lyrics ?? null : null,
+        hasVocals: song.hasVocals,
         objectPath,
         ext,
         durationSeconds: parsed.data.durationSeconds,
@@ -313,6 +338,10 @@ router.get("/music/soundtracks-status", async (req: Request, res: Response) => {
     freeResetAt: active ? credits?.freeSoundtracksResetAt ?? null : null,
     creditsRemaining: credits?.creditsRemaining ?? 0,
     subscriptionActive: active,
+    // Vocal (with-lyrics) song generation: flat credit cost + whether the
+    // vocal model (MiniMax via Pixazo) is configured.
+    vocalCost: SONG_VOCAL_CREDITS,
+    vocalsEnabled: !!process.env.PIXAZO_API_KEY,
   });
 });
 

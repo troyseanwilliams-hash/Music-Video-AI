@@ -148,6 +148,10 @@ export const soundtracksTable = pgTable("soundtracks", {
     .references(() => usersTable.id, { onDelete: "cascade" }),
   title: text("title"),
   prompt: text("prompt"),
+  // Lyrics used for a vocal song (null for instrumentals). hasVocals marks a
+  // full MiniMax vocal track vs an instrumental.
+  lyrics: text("lyrics"),
+  hasVocals: boolean("has_vocals").notNull().default(false),
   // Object-storage path to the audio file (feed straight into the video generator).
   objectPath: text("object_path").notNull(),
   ext: text("ext").notNull().default("mp3"),
@@ -201,9 +205,11 @@ export const creditsTable = pgTable("credits", {
   // kept up to date by every grant/consume site so existing callers keep
   // working. New code should prefer the bucketed columns when it needs to
   // distinguish source.
-  // New users start their 7-day trial with 330 credits (one 10-second clip).
-  creditsRemaining: integer("credits_remaining").notNull().default(330),
-  subscriptionCredits: integer("subscription_credits").notNull().default(330),
+  // New users start their trial with 0 credits — the trial gives access to the
+  // free features (Prompt Studio builders, free Soundtracks, Remix exports), and
+  // credits ("points") are granted only when they subscribe.
+  creditsRemaining: integer("credits_remaining").notNull().default(0),
+  subscriptionCredits: integer("subscription_credits").notNull().default(0),
   topupCredits: integer("topup_credits").notNull().default(0),
   creditsUsed: integer("credits_used").notNull().default(0),
   totalGenerations: integer("total_generations").notNull().default(0),

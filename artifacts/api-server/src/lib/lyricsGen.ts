@@ -11,6 +11,8 @@ export interface LyricsRequest {
   theme: string; // what the song is about
   genre?: string; // e.g. "lofi", "industrial rock"
   mood?: string; // e.g. "calm", "energetic"
+  // When set, polish/improve THESE draft lyrics instead of writing from scratch.
+  existingLyrics?: string;
 }
 
 const SYSTEM_PROMPT = `You are an acclaimed songwriter with a vivid, distinctive voice. Write ORIGINAL song lyrics only — never reproduce or closely imitate existing copyrighted songs.
@@ -35,6 +37,17 @@ const OPENING_ANGLES = [
 ];
 
 function buildUserPrompt(req: LyricsRequest): string {
+  // Enhance mode: polish the user's draft rather than writing fresh lyrics.
+  if (req.existingLyrics && req.existingLyrics.trim()) {
+    const parts = [
+      "Polish and improve these draft song lyrics. Keep their core meaning, theme, and voice; sharpen the imagery, tighten weak or clichéd lines, improve the flow and rhyme, and make the chorus catchy and repeatable. Add [Verse] / [Chorus] / [Bridge] structure tags where they help. Return ONLY the improved lyrics — no commentary.",
+    ];
+    if (req.genre) parts.push(`Genre: ${req.genre}.`);
+    if (req.mood) parts.push(`Mood: ${req.mood}.`);
+    if (req.theme && req.theme.trim()) parts.push(`Emphasize this theme: ${req.theme}.`);
+    parts.push(`\n\nDraft lyrics:\n${req.existingLyrics.trim()}`);
+    return parts.join(" ");
+  }
   const parts = [`Write original song lyrics about: ${req.theme}.`];
   if (req.genre) parts.push(`Genre: ${req.genre}.`);
   if (req.mood) parts.push(`Mood: ${req.mood}.`);

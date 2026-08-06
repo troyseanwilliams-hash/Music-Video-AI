@@ -36,6 +36,8 @@ interface StatusResp {
   freeRemaining: number;
   creditsRemaining: number;
   subscriptionActive: boolean;
+  vocalCost?: number;
+  vocalsEnabled?: boolean;
 }
 
 const LENGTH_OPTIONS = [
@@ -45,6 +47,14 @@ const LENGTH_OPTIONS = [
   { key: "medium", label: "~1 min", seconds: 60 },
   { key: "long", label: "~1.5 min", seconds: 90 },
   { key: "full", label: "Max (2 min)", seconds: 120 },
+];
+// Vocal (full-song) lengths run longer than instrumental loops.
+const VOCAL_LENGTH_OPTIONS = [
+  { key: "v60", label: "~1 min", seconds: 60 },
+  { key: "v90", label: "~1.5 min", seconds: 90 },
+  { key: "v120", label: "~2 min", seconds: 120 },
+  { key: "v180", label: "~3 min", seconds: 180 },
+  { key: "v240", label: "~4 min", seconds: 240 },
 ];
 const LOOP_OPTIONS = [
   { key: "off", label: "No loop", seconds: 0 },
@@ -88,13 +98,54 @@ export default function Soundtracks() {
   const [prompt, setPrompt] = useState("");
   const [lengthKey, setLengthKey] = useState("loop10");
   const [loopKey, setLoopKey] = useState("off");
+  const [withVocals, setWithVocals] = useState(false);
+  const [lyrics, setLyrics] = useState("");
+  const [vocalLengthKey, setVocalLengthKey] = useState("v120");
+  const [lyricsBusy, setLyricsBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [libSearch, setLibSearch] = useState("");
   const [libSort, setLibSort] = useState<"new" | "old" | "name">("new");
-  const duration = LENGTH_OPTIONS.find((l) => l.key === lengthKey)?.seconds ?? 10;
-  const loopToSeconds = LOOP_OPTIONS.find((l) => l.key === loopKey)?.seconds ?? 0;
+  const duration = withVocals
+    ? VOCAL_LENGTH_OPTIONS.find((l) => l.key === vocalLengthKey)?.seconds ?? 120
+    : LENGTH_OPTIONS.find((l) => l.key === lengthKey)?.seconds ?? 10;
+  const loopToSeconds = withVocals ? 0 : LOOP_OPTIONS.find((l) => l.key === loopKey)?.seconds ?? 0;
+
+  // Write or enhance lyrics via the Prompt Studio lyrics engine (2 credits when
+  // an LLM is configured). "enhance" polishes the current draft; "write" drafts
+  // fresh lyrics from the vibe prompt.
+  const writeLyrics = async (mode: "write" | "enhance") => {
+    setLyricsBusy(true);
+    try {
+      const body =
+        mode === "enhance"
+          ? { lyrics: lyrics.trim() }
+          : { theme: prompt.trim() || "an original, heartfelt song" };
+      const res = await fetch("/api/prompt/lyrics", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Couldn't generate lyrics");
+      setLyrics((data.lyrics ?? "").trim());
+      toast({
+        title: mode === "enhance" ? "Lyrics enhanced" : "Lyrics written",
+        description: data.charged ? `${data.charged} credits used.` : undefined,
+      });
+      queryClient.invalidateQueries({ queryKey: ["soundtracks", "status"] });
+    } catch (e) {
+      toast({
+        title: "Couldn't generate lyrics",
+        description: e instanceof Error ? e.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLyricsBusy(false);
+    }
+  };
 
   const { data: status } = useQuery<StatusResp>({
     queryKey: ["soundtracks", "status"],
@@ -122,7 +173,19 @@ export default function Soundtracks() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, durationSeconds: duration, ...(loopToSeconds > duration ? { loopToSeconds } : {}) }),
+        body: JSON.stringify({
+          prompt,
+          durationSeconds: duration,
+          ...(withVocals
+            ? {
+                withVocals: true,
+                // Typed lyrics win; otherwise let the model write them from the vibe.
+                ...(lyrics.trim() ? { lyrics: lyrics.trim() } : { lyricsOptimizer: true }),
+              }
+            : loopToSeconds > duration
+              ? { loopToSeconds }
+              : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Generation failed");
@@ -301,11 +364,27 @@ export default function Soundtracks() {
             </div>
           ) : (
             <>
+              {/* Instrumental vs. full vocal song */}
+              <div className="grid grid-cols-2 gap-2 rounded-xl border border-border bg-background/40 p-1">
+                <button type="button" onClick={() => setWithVocals(false)}
+                  className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${!withVocals ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"}`}>
+                  Instrumental
+                </button>
+                <button type="button" onClick={() => setWithVocals(true)}
+                  disabled={status?.vocalsEnabled === false}
+                  title={status?.vocalsEnabled === false ? "Vocal songs aren't available yet" : undefined}
+                  className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors disabled:opacity-40 ${withVocals ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"}`}>
+                  With vocals
+                </button>
+              </div>
+
               <Textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 rows={3}
-                placeholder="e.g. warm lofi hip hop, mellow Rhodes, vinyl crackle, 72 BPM"
+                placeholder={withVocals
+                  ? "Describe the song's style & vibe — e.g. anthemic pop-rock, female vocal, hopeful, 120 BPM"
+                  : "e.g. warm lofi hip hop, mellow Rhodes, vinyl crackle, 72 BPM"}
                 className="resize-none"
               />
               <div className="flex flex-wrap gap-1.5">
@@ -317,36 +396,72 @@ export default function Soundtracks() {
                 ))}
               </div>
 
+              {withVocals && (
+                <div className="rounded-xl border border-border bg-background/30 p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <label className="text-sm font-medium">Lyrics</label>
+                    <div className="flex items-center gap-3">
+                      <button type="button" onClick={() => writeLyrics("write")} disabled={lyricsBusy}
+                        className="text-xs font-medium text-primary hover:underline disabled:opacity-50 inline-flex items-center gap-1">
+                        {lyricsBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />} Write for me
+                      </button>
+                      <button type="button" onClick={() => writeLyrics("enhance")} disabled={lyricsBusy || lyrics.trim().length < 2}
+                        className="text-xs font-medium text-primary hover:underline disabled:opacity-40 inline-flex items-center gap-1">
+                        <Wand2 className="h-3 w-3" /> Enhance
+                      </button>
+                    </div>
+                  </div>
+                  <Textarea
+                    value={lyrics}
+                    onChange={(e) => setLyrics(e.target.value)}
+                    rows={5}
+                    placeholder={"Type or paste lyrics. Use [Verse] / [Chorus] / [Bridge] tags to shape the song.\nLeave blank and we'll write them from your vibe."}
+                    className="resize-none text-sm"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Write for me &amp; Enhance use the lyrics engine (2 credits each). Leave blank and the song model writes lyrics from your prompt — no extra charge.
+                  </p>
+                </div>
+              )}
+
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-sm font-medium">Length</label>
                   <span className="text-xs text-muted-foreground">
-                    {status?.admin || (status?.freeRemaining ?? 0) > 0
-                      ? "Free — no credits used"
-                      : `≈ ${songCredits(duration)} credits`}
+                    {withVocals
+                      ? `${status?.vocalCost ?? 15} credits`
+                      : status?.admin || (status?.freeRemaining ?? 0) > 0
+                        ? "Free — no credits used"
+                        : `≈ ${songCredits(duration)} credits`}
                   </span>
                 </div>
                 <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                  {LENGTH_OPTIONS.map((l) => (
-                    <button key={l.key} type="button" onClick={() => setLengthKey(l.key)}
-                      className={`rounded-lg border px-2 py-2 text-xs font-medium transition-colors ${lengthKey === l.key ? "border-primary bg-primary/10 text-primary" : "border-border bg-background/40 text-muted-foreground hover:border-primary/50"}`}>
-                      {l.label}
-                    </button>
-                  ))}
+                  {(withVocals ? VOCAL_LENGTH_OPTIONS : LENGTH_OPTIONS).map((l) => {
+                    const activeKey = withVocals ? vocalLengthKey : lengthKey;
+                    return (
+                      <button key={l.key} type="button"
+                        onClick={() => (withVocals ? setVocalLengthKey(l.key) : setLengthKey(l.key))}
+                        className={`rounded-lg border px-2 py-2 text-xs font-medium transition-colors ${activeKey === l.key ? "border-primary bg-primary/10 text-primary" : "border-border bg-background/40 text-muted-foreground hover:border-primary/50"}`}>
+                        {l.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              <div>
-                <label className="text-sm font-medium">Loop to fill (optional)</label>
-                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mt-1.5">
-                  {LOOP_OPTIONS.map((l) => (
-                    <button key={l.key} type="button" onClick={() => setLoopKey(l.key)}
-                      className={`rounded-lg border px-2 py-2 text-xs font-medium transition-colors ${loopKey === l.key ? "border-primary bg-primary/10 text-primary" : "border-border bg-background/40 text-muted-foreground hover:border-primary/50"}`}>
-                      {l.label}
-                    </button>
-                  ))}
+              {!withVocals && (
+                <div>
+                  <label className="text-sm font-medium">Loop to fill (optional)</label>
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mt-1.5">
+                    {LOOP_OPTIONS.map((l) => (
+                      <button key={l.key} type="button" onClick={() => setLoopKey(l.key)}
+                        className={`rounded-lg border px-2 py-2 text-xs font-medium transition-colors ${loopKey === l.key ? "border-primary bg-primary/10 text-primary" : "border-border bg-background/40 text-muted-foreground hover:border-primary/50"}`}>
+                        {l.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {gen.isPending || progress > 0 ? (
                 <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/[0.04] p-3">
@@ -367,10 +482,10 @@ export default function Soundtracks() {
               ) : (
                 <Button
                   onClick={() => gen.mutate()}
-                  disabled={prompt.trim().length < 3}
+                  disabled={prompt.trim().length < 3 || lyricsBusy}
                   className="bg-gradient-electric text-white border-0"
                 >
-                  <Wand2 className="h-4 w-4 mr-2" /> Generate Soundtrack
+                  <Wand2 className="h-4 w-4 mr-2" /> {withVocals ? "Generate Song" : "Generate Soundtrack"}
                 </Button>
               )}
             </>

@@ -14,9 +14,14 @@ export type MusicProvider = "simulation" | "acestep" | "musicgen" | "pixazo";
 
 export interface SongRequest {
   prompt: string; // style/genre description
-  lyrics?: string; // used by vocal models (acestep); ignored by musicgen
+  lyrics?: string; // used by vocal models (acestep / MiniMax); ignored by instrumental models
   durationSeconds: number; // target length
   provider?: MusicProvider; // explicit override
+  // Generate a full song WITH vocals (routes to MiniMax Music on Pixazo) instead
+  // of an instrumental. Requires lyrics OR lyricsOptimizer.
+  withVocals?: boolean;
+  // Let the vocal model write the lyrics from the prompt (MiniMax lyrics_optimizer).
+  lyricsOptimizer?: boolean;
 }
 
 export interface SongResult {
@@ -158,22 +163,37 @@ async function simulateSong(durationSeconds: number): Promise<SongResult> {
 // PIXAZO_MUSIC_MODEL / PIXAZO_MUSIC_OP.
 async function generateWithPixazoMusic(req: SongRequest): Promise<string> {
   const key = getEnv("PIXAZO_API_KEY")!;
-  // Single model for every Soundtrack: Stable Audio 3 Small — a cheap
-  // (~$0.0217/file) text-to-audio model, NOT the flat-priced ($0.15/gen)
-  // MiniMax. The op is "<model>-request", so the full call is
-  // /stable-audio-3-small-music-text-to-audio/v1/<model>-request. Override via env.
-  const DEFAULT_MUSIC_MODEL = "stable-audio-3-small-music-text-to-audio";
-  const model = getEnv("PIXAZO_MUSIC_MODEL") || DEFAULT_MUSIC_MODEL;
-  const op = getEnv("PIXAZO_MUSIC_OP") || `${model}-request`;
   const duration = Math.min(Math.max(req.durationSeconds || 10, 3), MAX_SONG_SECONDS);
-  const wantsVocals = !!(req.lyrics && req.lyrics.trim() && req.lyrics.trim() !== "[inst]");
+  // Vocals need either explicit lyrics or the "write it for me" optimizer.
+  const wantsVocals = !!(
+    req.withVocals &&
+    ((req.lyrics && req.lyrics.trim() && req.lyrics.trim() !== "[inst]") || req.lyricsOptimizer)
+  );
+
+  // Per-request model select:
+  //   • VOCALS       → MiniMax Music (full songs w/ lyrics), op "generate",
+  //     ~$0.15/gen. Override slug via PIXAZO_SONG_MODEL.
+  //   • INSTRUMENTAL → Stable Audio 3 Small (cheap ~$0.0217/file), op
+  //     "<model>-request". Override slug via PIXAZO_MUSIC_MODEL.
+  const VOCAL_MODEL = getEnv("PIXAZO_SONG_MODEL") || "minimax-music-generation-2-6";
+  const INSTRUMENTAL_MODEL = getEnv("PIXAZO_MUSIC_MODEL") || "stable-audio-3-small-music-text-to-audio";
+  const model = wantsVocals ? VOCAL_MODEL : INSTRUMENTAL_MODEL;
+  const isMinimax = /minimax/i.test(model);
+  // MiniMax's endpoint op is "generate", not "<model>-request".
+  const op = isMinimax
+    ? getEnv("PIXAZO_SONG_OP") || "generate"
+    : getEnv("PIXAZO_MUSIC_OP") || `${model}-request`;
 
   // Request body differs by model family: MiniMax (full songs) uses
-  // is_instrumental/lyrics and ignores duration; MusicGen/Stable Audio are
-  // instrumental per-second models that honor a short duration.
-  const isMinimax = /minimax/i.test(model);
+  // is_instrumental/lyrics/lyrics_optimizer and ignores duration; MusicGen/Stable
+  // Audio are instrumental per-second models that honor a short duration.
   const body = isMinimax
-    ? { prompt: req.prompt, is_instrumental: !wantsVocals, ...(wantsVocals ? { lyrics: req.lyrics } : {}) }
+    ? {
+        prompt: req.prompt,
+        is_instrumental: !wantsVocals,
+        ...(wantsVocals && req.lyrics && req.lyrics.trim() ? { lyrics: req.lyrics } : {}),
+        ...(wantsVocals && req.lyricsOptimizer ? { lyrics_optimizer: true } : {}),
+      }
     : { prompt: req.prompt, duration };
 
   const submit = await fetch(`https://gateway.pixazo.ai/${model}/v1/${op}`, {
@@ -252,7 +272,10 @@ export async function generateSong(req: SongRequest): Promise<SongResult> {
   if (provider === "pixazo") {
     const url = await generateWithPixazoMusic(req);
     const { buffer, ext } = await downloadAudio(url);
-    const hasVocals = !!(req.lyrics && req.lyrics.trim() && req.lyrics.trim() !== "[inst]");
+    const hasVocals = !!(
+      req.withVocals &&
+      ((req.lyrics && req.lyrics.trim() && req.lyrics.trim() !== "[inst]") || req.lyricsOptimizer)
+    );
     return { audioBuffer: buffer, ext, provider: "pixazo", hasVocals };
   }
 
