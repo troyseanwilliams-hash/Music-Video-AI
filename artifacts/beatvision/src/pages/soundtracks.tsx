@@ -264,7 +264,6 @@ export default function Soundtracks() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Music2 className="h-6 w-6 text-primary" /> Soundtracks
-            <Badge variant="outline" className="text-[10px] align-middle">Beta</Badge>
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
             Generate royalty-free instrumentals, then drop them into a video, download, or share.
@@ -298,7 +297,7 @@ export default function Soundtracks() {
         <CardContent className="space-y-4">
           {status && !status.enabled ? (
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-300 px-3 py-2 text-sm">
-              <b>Coming soon.</b> Soundtracks is in Beta and not open yet — check back shortly.
+              <b>Coming soon.</b> Soundtracks isn't open on your account yet — check back shortly.
             </div>
           ) : (
             <>

@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Play, Sparkles, Zap, Music, MonitorPlay, ExternalLink, ScanLine, ImagePlus, Volume2, VolumeX, Scissors } from "lucide-react";
+import { Play, Sparkles, Zap, Music, MonitorPlay, ExternalLink, ScanLine, ImagePlus, Volume2, VolumeX, Scissors, Lock, Clapperboard, Share2, Wand2, Maximize } from "lucide-react";
 import { motion } from "framer-motion";
 import { AuroraBackground } from "@/components/AuroraBackground";
 
@@ -95,16 +95,18 @@ export default function Home() {
             >
               <div className="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-sm font-medium text-primary mb-6 backdrop-blur-sm">
                 <Sparkles className="mr-2 h-4 w-4" />
-                Next-Gen Audio-Reactive AI
+                The all-in-one AI music-video studio
               </div>
-              
+
               <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-6 leading-tight">
-                Turn your music into <br />
-                <span className="text-gradient-electric">cinematic visuals</span>
+                From a track to a <br />
+                <span className="text-gradient-electric">ready-to-post video</span>
               </h1>
-              
+
               <p className="text-lg md:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto">
-                Let our AI generate beat-synced music videos from any song — or jump into <span className="text-foreground font-semibold">Remix Lab</span> to arrange your own clips, photos, music, and transitions. Need a track? Generate royalty-free <span className="text-foreground font-semibold">Soundtracks</span> in seconds.
+                Most tools stop at a single clip. AI Beat Sync takes you the whole way — beat-synced AI visuals,
+                consistent characters, a royalty-free soundtrack, and one-click social cuts. Bring a song or
+                <span className="text-foreground font-semibold"> generate one</span>, then let AI direct it or take control in <span className="text-foreground font-semibold">Remix Lab</span>.
               </p>
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -131,6 +133,38 @@ export default function Home() {
                 </Link>
               </div>
             </motion.div>
+          </div>
+        </section>
+
+        {/* The big picture — end-to-end differentiation */}
+        <section className="py-16 border-t border-border/30">
+          <div className="container px-4 md:px-6 mx-auto max-w-5xl text-center">
+            <div className="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-sm font-medium text-primary mb-5 backdrop-blur-sm">
+              <Sparkles className="mr-2 h-3.5 w-3.5" /> One studio, the whole pipeline
+            </div>
+            <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-4">
+              Most tools do one step. <span className="text-gradient-electric">We do the whole song.</span>
+            </h2>
+            <p className="text-muted-foreground text-lg max-w-2xl mx-auto mb-10">
+              A text-to-video app gives you a clip. A music app gives you a track. AI Beat Sync connects the
+              whole chain — so you go from a song to a finished, on-brand music video without switching apps.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 text-left">
+              {[
+                { icon: Music, title: "1 · Bring or make music", body: "Upload a song, paste a Suno link, or generate a royalty-free Soundtrack in seconds." },
+                { icon: Sparkles, title: "2 · AI beat-synced video", body: "The engine reads your track's beat, energy, and mood and renders cinematic, on-beat visuals." },
+                { icon: Scissors, title: "3 · Make it yours", body: "Fine-tune on the Remix Lab timeline — trim clips, sync music, add transitions, preview live." },
+                { icon: Share2, title: "4 · Export everywhere", body: "One-click Release Kit gives you TikTok, Reels, Shorts, and Spotify Canvas cuts, ready to post." },
+              ].map((s) => (
+                <div key={s.title} className="rounded-2xl border border-card-border bg-card p-6">
+                  <div className="h-10 w-10 rounded-lg bg-primary/15 flex items-center justify-center mb-4">
+                    <s.icon className="h-5 w-5 text-primary" />
+                  </div>
+                  <h3 className="font-bold mb-1.5">{s.title}</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{s.body}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
 
@@ -234,10 +268,7 @@ export default function Home() {
                 <div className="h-12 w-12 rounded-xl bg-primary/15 flex items-center justify-center mb-5 transition-transform group-hover:scale-110">
                   <Music className="h-6 w-6 text-primary" />
                 </div>
-                <h3 className="text-xl font-bold mb-2 flex items-center gap-2">
-                  Soundtracks
-                  <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">Beta</span>
-                </h3>
+                <h3 className="text-xl font-bold mb-2">Soundtracks</h3>
                 <p className="text-muted-foreground mb-4 flex-1">
                   No track yet? Generate royalty-free instrumentals in seconds, then drop them straight into a video.
                 </p>
@@ -257,6 +288,53 @@ export default function Home() {
                   </Button>
                 </Link>
               </div>
+            </div>
+          </div>
+        </section>
+
+        {/* What's new — the differentiators */}
+        <section className="py-16 border-t border-border/30 bg-black/30">
+          <div className="container px-4 md:px-6 mx-auto max-w-6xl">
+            <div className="text-center mb-10">
+              <div className="inline-flex items-center rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-sm font-medium text-accent mb-4">
+                <Sparkles className="mr-2 h-3.5 w-3.5" /> New &amp; exclusive
+              </div>
+              <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-3">
+                The details one-trick tools can't match
+              </h2>
+              <p className="text-muted-foreground max-w-2xl mx-auto">
+                What turns a random AI clip into a polished, on-brand music video you're proud to post.
+              </p>
+            </div>
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {[
+                { icon: Lock, title: "Character Lock", body: "Lock a face or look from a reference image so the same character carries across every clip — no shape-shifting between shots.", tag: "New" },
+                { icon: Clapperboard, title: "Storyboard Preview", body: "See the planned shots — timing, energy, and prompt for each — before you spend a single credit. Approve, then render.", tag: "New" },
+                { icon: Share2, title: "Release Kit", body: "One click turns your finished video into a full set of social exports — vertical, square, and Spotify Canvas — sized for every platform.", tag: "New" },
+                { icon: Wand2, title: "Prompt Studio", body: "Describe a vibe in plain words and get a polished video or soundtrack prompt — or full, original lyrics — in seconds.", tag: "Beta" },
+                { icon: Maximize, title: "Up to 4K & 10 minutes", body: "Go beyond quick clips: render crisp 4K and full-length videos up to ten minutes for premium releases.", tag: "New" },
+                { icon: Music, title: "Royalty-free Soundtracks", body: "No track? Generate original instrumentals you fully own and drop them straight into a video.", tag: null as string | null },
+              ].map((f) => (
+                <div key={f.title} className="rounded-2xl border border-card-border bg-card p-6 transition-colors hover:border-primary/40">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="h-11 w-11 rounded-xl bg-primary/15 flex items-center justify-center">
+                      <f.icon className="h-5 w-5 text-primary" />
+                    </div>
+                    {f.tag && (
+                      <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-semibold text-accent">{f.tag}</span>
+                    )}
+                  </div>
+                  <h3 className="text-lg font-bold mb-1.5">{f.title}</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{f.body}</p>
+                </div>
+              ))}
+            </div>
+            <div className="text-center mt-10">
+              <Link href="/generate">
+                <Button size="lg" className="bg-gradient-electric text-white shadow-glow border-0 hover:opacity-90">
+                  <Play className="mr-2 h-4 w-4" /> Start your video
+                </Button>
+              </Link>
             </div>
           </div>
         </section>

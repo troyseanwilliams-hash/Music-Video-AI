@@ -254,7 +254,6 @@ export default function Explore() {
           <div className="mb-4 flex items-center gap-2">
             <Music2 className="h-5 w-5 text-primary" />
             <h2 className="text-xl font-semibold">Community soundtracks</h2>
-            <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">Beta</span>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {soundtracks.map((s) => {

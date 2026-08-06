@@ -402,8 +402,7 @@ export default function Pricing() {
                     <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                     <span>
                       <strong>{soundtracksPerMonth} free AI Soundtracks</strong>/month{" "}
-                      <span className="ml-1 rounded-full bg-primary/20 text-primary text-[10px] font-semibold px-1.5 py-0.5 align-middle">Beta</span>
-                      {" "}— royalty-free instrumentals for your videos{" "}
+                      — royalty-free instrumentals for your videos{" "}
                       <span className="text-muted-foreground">(3 free to try on signup; extra tracks from 5 credits)</span>
                     </span>
                   </li>

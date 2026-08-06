@@ -157,7 +157,10 @@ export default function PromptStudio() {
         <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-electric shadow-glow mb-3">
           <Sparkles className="h-6 w-6 text-white" />
         </div>
-        <h1 className="text-3xl font-bold tracking-tight">Prompt Studio</h1>
+        <h1 className="text-3xl font-bold tracking-tight inline-flex items-center gap-2">
+          Prompt Studio
+          <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary align-middle">Beta</span>
+        </h1>
         <p className="text-muted-foreground mt-2">
           Describe what you want in plain words — we'll turn it into a ready-to-use prompt. Soundtrack &amp; video
           prompt builders are free; writing full lyrics costs 2 credits.
