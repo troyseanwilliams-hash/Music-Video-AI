@@ -57,6 +57,14 @@ const VOCAL_LENGTH_OPTIONS = [
   { key: "v240", label: "~4 min", seconds: 240 },
   { key: "v300", label: "~5 min", seconds: 300 },
 ];
+// Vocal styles fold into the song prompt (MiniMax reads voice from the prompt).
+const VOCAL_STYLES = [
+  { key: "auto", label: "Auto", desc: "" },
+  { key: "female", label: "Female", desc: "female lead vocal" },
+  { key: "male", label: "Male", desc: "male lead vocal" },
+  { key: "duet", label: "Duet", desc: "male and female duet vocals" },
+  { key: "group", label: "Group", desc: "group / choir vocals" },
+];
 const LOOP_OPTIONS = [
   { key: "off", label: "No loop", seconds: 0 },
   { key: "15", label: "15s", seconds: 15 },
@@ -102,6 +110,7 @@ export default function Soundtracks() {
   const [withVocals, setWithVocals] = useState(false);
   const [lyrics, setLyrics] = useState("");
   const [vocalLengthKey, setVocalLengthKey] = useState("v120");
+  const [vocalStyle, setVocalStyle] = useState("auto");
   const [lyricsBusy, setLyricsBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -170,12 +179,16 @@ export default function Soundtracks() {
 
   const gen = useMutation({
     mutationFn: async () => {
+      // Fold the chosen vocal style (male/female/duet/…) into the prompt — the
+      // song model reads the voice from the prompt text.
+      const styleDesc = VOCAL_STYLES.find((s) => s.key === vocalStyle)?.desc;
+      const effectivePrompt = withVocals && styleDesc ? `${prompt.trim()}, ${styleDesc}` : prompt;
       const res = await fetch("/api/admin/music/generate", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          prompt,
+          prompt: effectivePrompt,
           durationSeconds: duration,
           ...(withVocals
             ? {
@@ -210,11 +223,17 @@ export default function Soundtracks() {
 
   // Simulated progress while generating (no server-side events): ease toward 95%
   // over ~28s, then jump to 100% on success. Feels responsive without lying.
-  // Handoff from Prompt Studio: /soundtracks?prompt=<text> prefills the prompt.
+  // Handoff from Prompt Studio: /soundtracks?prompt=&lyrics=&vocals=1 prefills the
+  // vibe, drops in the lyrics, and flips on the vocals toggle.
   useEffect(() => {
-    const p = new URLSearchParams(window.location.search).get("prompt");
-    if (!p) return;
-    setPrompt(p);
+    const q = new URLSearchParams(window.location.search);
+    const p = q.get("prompt");
+    const l = q.get("lyrics");
+    const v = q.get("vocals");
+    if (!p && !l && !v) return;
+    if (p) setPrompt(p);
+    if (l) setLyrics(l);
+    if (v === "1" || l) setWithVocals(true);
     window.history.replaceState({}, "", window.location.pathname);
   }, []);
 
@@ -398,7 +417,22 @@ export default function Soundtracks() {
               </div>
 
               {withVocals && (
-                <div className="rounded-xl border border-border bg-background/30 p-3 space-y-2">
+                <div className="rounded-xl border border-border bg-background/30 p-3 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-semibold">Vocal song</span>
+                    <span className="text-xs font-semibold text-primary">{status?.vocalCost ?? 15} credits</span>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground">Voice</label>
+                    <div className="grid grid-cols-5 gap-1.5 mt-1">
+                      {VOCAL_STYLES.map((v) => (
+                        <button key={v.key} type="button" onClick={() => setVocalStyle(v.key)}
+                          className={`rounded-lg border px-1 py-1.5 text-xs font-medium transition-colors ${vocalStyle === v.key ? "border-primary bg-primary/10 text-primary" : "border-border bg-background/40 text-muted-foreground hover:border-primary/50"}`}>
+                          {v.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <label className="text-sm font-medium">Lyrics</label>
                     <div className="flex items-center gap-3">
@@ -420,7 +454,7 @@ export default function Soundtracks() {
                     className="resize-none text-sm"
                   />
                   <p className="text-[11px] text-muted-foreground">
-                    Write for me &amp; Enhance use the lyrics engine (2 credits each). Leave blank and the song model writes lyrics from your prompt — no extra charge.
+                    Optional: Write for me &amp; Enhance use the lyrics engine (2 credits each) — separate from the {status?.vocalCost ?? 15}-credit song. Leave blank and the song model writes lyrics from your prompt at no extra charge.
                   </p>
                 </div>
               )}
@@ -486,7 +520,7 @@ export default function Soundtracks() {
                   disabled={prompt.trim().length < 3 || lyricsBusy}
                   className="bg-gradient-electric text-white border-0"
                 >
-                  <Wand2 className="h-4 w-4 mr-2" /> {withVocals ? "Generate Song" : "Generate Soundtrack"}
+                  <Wand2 className="h-4 w-4 mr-2" /> {withVocals ? `Generate Song · ${status?.vocalCost ?? 15} credits` : "Generate Soundtrack"}
                 </Button>
               )}
             </>

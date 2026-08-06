@@ -261,7 +261,20 @@ export default function PromptStudio() {
           {lyricsRes && (
             <div className="rounded-xl border border-border/60 bg-secondary/30 p-4 space-y-3">
               <pre className="text-sm leading-relaxed whitespace-pre-wrap font-sans">{lyricsRes.lyrics}</pre>
-              <CopyButton text={lyricsRes.lyrics} label="Copy lyrics" />
+              <div className="flex flex-wrap items-center gap-2">
+                <CopyButton text={lyricsRes.lyrics} label="Copy lyrics" />
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    setLocation(
+                      `/soundtracks?vocals=1&lyrics=${encodeURIComponent(lyricsRes.lyrics)}` +
+                        (theme.trim() ? `&prompt=${encodeURIComponent(theme.trim())}` : ""),
+                    )
+                  }
+                >
+                  Export to Soundtracks <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                </Button>
+              </div>
             </div>
           )}
         </TabsContent>
