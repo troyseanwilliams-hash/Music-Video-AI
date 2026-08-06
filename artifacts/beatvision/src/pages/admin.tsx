@@ -11,7 +11,7 @@ import {
   Loader2, Search, ShieldCheck, Coins, Check, X,
   MessageSquare, Users, ChevronDown, ChevronUp,
   CircleDot, Clock, CheckCircle2, XCircle, RotateCcw, AlertTriangle, RefreshCw,
-  Film, Ban, Trash2, Play, Music2, Sparkles, Scissors,
+  Film, Ban, Trash2, Play, Music2, Sparkles, Scissors, Download,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -1303,14 +1303,23 @@ export default function AdminPage() {
                   {users ? `${users.length} user${users.length !== 1 ? "s" : ""}${debouncedSearch ? " matching" : ""}` : "Loading…"}
                 </CardDescription>
               </div>
-              <div className="relative w-full sm:w-72">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                <Input
-                  className="pl-9"
-                  placeholder="Search by email or name…"
-                  value={search}
-                  onChange={handleSearchChange}
-                />
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <a
+                  href="/api/admin/users/export.csv"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background/40 px-3 py-2 text-sm font-medium text-muted-foreground hover:text-primary hover:border-primary/50 transition-colors whitespace-nowrap"
+                  title="Download all users as a Resend-ready CSV"
+                >
+                  <Download className="h-4 w-4" /> Export CSV
+                </a>
+                <div className="relative flex-1 sm:w-72">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                  <Input
+                    className="pl-9"
+                    placeholder="Search by email or name…"
+                    value={search}
+                    onChange={handleSearchChange}
+                  />
+                </div>
               </div>
             </div>
           </CardHeader>

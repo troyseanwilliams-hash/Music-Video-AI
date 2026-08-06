@@ -204,6 +204,57 @@ router.post("/admin/credits/set", async (req, res) => {
   res.json({ ok: true, userId: targetUserId, creditsRemaining: amount });
 });
 
+// ── Admin: export the full user list as a Resend-ready CSV. Open
+// /api/admin/users/export.csv in the browser (while signed in as admin) to
+// download. Columns: email, first_name, last_name, status, created_at.
+// Excludes disabled accounts and rows without an email.
+router.get("/admin/users/export.csv", async (req, res) => {
+  if (!req.isAuthenticated() || !isAdmin(req.user.email)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const rows = await db
+    .select({
+      email: usersTable.email,
+      firstName: usersTable.firstName,
+      lastName: usersTable.lastName,
+      subscriptionStatus: usersTable.subscriptionStatus,
+      isDisabled: usersTable.isDisabled,
+      createdAt: usersTable.createdAt,
+    })
+    .from(usersTable)
+    .orderBy(desc(usersTable.createdAt));
+
+  // RFC-4180 CSV escaping.
+  const esc = (v: unknown): string => {
+    const s = v == null ? "" : String(v);
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+
+  const header = "email,first_name,last_name,status,created_at";
+  const lines = rows
+    .filter((u) => u.email && !u.isDisabled)
+    .map((u) =>
+      [
+        u.email,
+        u.firstName ?? "",
+        u.lastName ?? "",
+        u.subscriptionStatus ?? "",
+        u.createdAt instanceof Date ? u.createdAt.toISOString() : (u.createdAt ?? ""),
+      ]
+        .map(esc)
+        .join(","),
+    );
+  const csv = [header, ...lines].join("\r\n");
+
+  const today = new Date().toISOString().slice(0, 10);
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="aibeatsync-users-${today}.csv"`);
+  req.log.info({ count: lines.length }, "Admin exported users CSV");
+  res.send(csv);
+});
+
 // ── Admin: list a user's videos for moderation (playable via /api/storage path).
 router.get("/admin/users/:id/videos", async (req, res) => {
   if (!req.isAuthenticated() || !isAdmin(req.user.email)) {
