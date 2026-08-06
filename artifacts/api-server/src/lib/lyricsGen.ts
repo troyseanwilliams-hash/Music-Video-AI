@@ -54,7 +54,7 @@ async function viaAnthropic(req: LyricsRequest): Promise<string> {
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      model: process.env.LYRICS_ANTHROPIC_MODEL ?? "claude-sonnet-5",
+      model: process.env.LYRICS_ANTHROPIC_MODEL ?? "claude-haiku-4-5-20251001",
       max_tokens: 1500,
       temperature: 1,
       system: SYSTEM_PROMPT,

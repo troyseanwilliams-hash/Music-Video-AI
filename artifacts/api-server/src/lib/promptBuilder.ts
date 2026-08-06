@@ -8,7 +8,7 @@ import { logger } from "./logger.js";
 // ── Shared LLM call ──────────────────────────────────────────────────────────
 
 function anthropicModel(): string {
-  return process.env.PROMPT_ANTHROPIC_MODEL ?? process.env.LYRICS_ANTHROPIC_MODEL ?? "claude-sonnet-5";
+  return process.env.PROMPT_ANTHROPIC_MODEL ?? process.env.LYRICS_ANTHROPIC_MODEL ?? "claude-haiku-4-5-20251001";
 }
 function openaiModel(): string {
   return process.env.PROMPT_OPENAI_MODEL ?? process.env.LYRICS_OPENAI_MODEL ?? "gpt-4o-mini";
