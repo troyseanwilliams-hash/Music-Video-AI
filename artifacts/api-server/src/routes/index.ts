@@ -17,6 +17,7 @@ import studioRouter from "./studio.js";
 import referralsRouter from "./referrals.js";
 import teasersRouter from "./teasers.js";
 import promptRouter from "./prompt.js";
+import promoRouter from "./promo.js";
 
 const router: IRouter = Router();
 

@@ -353,3 +353,15 @@ export const referralsTable = pgTable("referrals", {
 });
 
 export type Referral = typeof referralsTable.$inferSelect;
+
+// One row per (user, promo code) redemption — enforces "once per user" for
+// promos like COMEBACK7. A unique index on (user_id, code) is added in the
+// migration.
+export const promoRedemptionsTable = pgTable("promo_redemptions", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => usersTable.id, { onDelete: "cascade" }),
+  code: text("code").notNull(),
+  redeemedAt: timestamp("redeemed_at", { withTimezone: true }).notNull().defaultNow(),
+});

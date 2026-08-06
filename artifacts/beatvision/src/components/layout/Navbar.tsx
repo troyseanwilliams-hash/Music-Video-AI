@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useGetDashboardStats, getGetDashboardStatsQueryKey } from "@workspace/api-client-react";
 import {
   Video, LayoutDashboard, Wand2, LogOut, Loader2, ShieldCheck,
-  MessageSquare, Menu, X, Film, CreditCard, Compass, Music2, Settings, Sparkles,
+  MessageSquare, Menu, X, Film, CreditCard, Compass, Music2, Settings, Sparkles, Gift,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -185,6 +185,12 @@ export function Navbar() {
                       <Link href="/gallery" className="cursor-pointer flex items-center">
                         <Film className="mr-2 h-4 w-4" />
                         <span>Gallery</span>
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/redeem" className="cursor-pointer flex items-center">
+                        <Gift className="mr-2 h-4 w-4" />
+                        <span>Redeem code</span>
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>

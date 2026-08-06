@@ -29,6 +29,7 @@ import CanvasLanding from "@/pages/canvas-landing";
 import { AiMusicVideoLanding, LyricVideoLanding, InstrumentalLanding } from "@/pages/use-case-landing";
 import ForgotPassword from "@/pages/forgot-password";
 import ResetPassword from "@/pages/reset-password";
+import Redeem from "@/pages/redeem";
 
 const queryClient = new QueryClient();
 
@@ -53,6 +54,7 @@ function Router() {
           <Route path="/explore" component={Explore} />
           <Route path="/jobs/:id" component={JobStatus} />
           <Route path="/pricing" component={Pricing} />
+          <Route path="/redeem" component={Redeem} />
           <Route path="/admin" component={Admin} />
           <Route path="/terms" component={Terms} />
           <Route path="/dmca" component={Dmca} />
