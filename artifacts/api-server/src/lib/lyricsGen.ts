@@ -13,6 +13,22 @@ export interface LyricsRequest {
   mood?: string; // e.g. "calm", "energetic"
   // When set, polish/improve THESE draft lyrics instead of writing from scratch.
   existingLyrics?: string;
+  // Target song length in seconds — scales how much lyric/structure to write so
+  // the words fit the chosen song duration.
+  targetSeconds?: number;
+}
+
+// Map a target duration to a concrete song structure so the amount of lyrics
+// fits the chosen length (the vocal model derives length largely from lyrics).
+function lengthGuidance(seconds?: number): string {
+  if (!seconds || seconds <= 0) return "";
+  if (seconds <= 45) return "very short (~30-45s): one verse and one chorus";
+  if (seconds <= 75) return "short (~1 min): one verse and a repeated chorus";
+  if (seconds <= 105) return "~1.5 min: verse, chorus, verse, chorus";
+  if (seconds <= 150) return "~2 min: verse, pre-chorus, chorus, verse, chorus";
+  if (seconds <= 210) return "~3 min: 2-3 verses, a repeated chorus, and a short bridge";
+  if (seconds <= 270) return "~4 min: intro, 3 verses, a pre-chorus, repeated choruses, and a bridge";
+  return "~5 min: a full arrangement — intro, 3-4 verses, a pre-chorus, repeated choruses, a bridge, and an outro";
 }
 
 const SYSTEM_PROMPT = `You are an acclaimed songwriter with a vivid, distinctive voice. Write ORIGINAL song lyrics only — never reproduce or closely imitate existing copyrighted songs.
@@ -37,6 +53,8 @@ const OPENING_ANGLES = [
 ];
 
 function buildUserPrompt(req: LyricsRequest): string {
+  const len = lengthGuidance(req.targetSeconds);
+
   // Enhance mode: polish the user's draft rather than writing fresh lyrics.
   if (req.existingLyrics && req.existingLyrics.trim()) {
     const parts = [
@@ -45,12 +63,14 @@ function buildUserPrompt(req: LyricsRequest): string {
     if (req.genre) parts.push(`Genre: ${req.genre}.`);
     if (req.mood) parts.push(`Mood: ${req.mood}.`);
     if (req.theme && req.theme.trim()) parts.push(`Emphasize this theme: ${req.theme}.`);
+    if (len) parts.push(`Adjust the length to fit a ${len} song — add or trim sections as needed.`);
     parts.push(`\n\nDraft lyrics:\n${req.existingLyrics.trim()}`);
     return parts.join(" ");
   }
   const parts = [`Write original song lyrics about: ${req.theme}.`];
   if (req.genre) parts.push(`Genre: ${req.genre}.`);
   if (req.mood) parts.push(`Mood: ${req.mood}.`);
+  if (len) parts.push(`Length: aim for a ${len} song, using [Verse]/[Chorus]/[Bridge] structure tags to shape it.`);
   parts.push("Make the chorus catchy and repeatable, and vary the opening from the obvious.");
   parts.push(OPENING_ANGLES[Math.floor(Math.random() * OPENING_ANGLES.length)]!);
   return parts.join(" ");

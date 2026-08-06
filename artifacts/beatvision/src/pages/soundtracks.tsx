@@ -55,6 +55,7 @@ const VOCAL_LENGTH_OPTIONS = [
   { key: "v120", label: "~2 min", seconds: 120 },
   { key: "v180", label: "~3 min", seconds: 180 },
   { key: "v240", label: "~4 min", seconds: 240 },
+  { key: "v300", label: "~5 min", seconds: 300 },
 ];
 const LOOP_OPTIONS = [
   { key: "off", label: "No loop", seconds: 0 },
@@ -120,8 +121,8 @@ export default function Soundtracks() {
     try {
       const body =
         mode === "enhance"
-          ? { lyrics: lyrics.trim() }
-          : { theme: prompt.trim() || "an original, heartfelt song" };
+          ? { lyrics: lyrics.trim(), targetSeconds: duration }
+          : { theme: prompt.trim() || "an original, heartfelt song", targetSeconds: duration };
       const res = await fetch("/api/prompt/lyrics", {
         method: "POST",
         credentials: "include",

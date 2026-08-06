@@ -96,9 +96,9 @@ router.post("/admin/music/lyrics", async (req: Request, res: Response) => {
 const GenerateBody = z.object({
   prompt: z.string().min(3).max(600),
   lyrics: z.string().max(5000).optional(),
-  // Vocal (MiniMax) songs can run longer than the instrumental cap; instrumental
-  // is still clamped to MAX_SONG_SECONDS internally by the generator + looper.
-  durationSeconds: z.number().int().min(5).max(240).default(30),
+  // Vocal (MiniMax) songs can run up to 5 min; instrumental is still clamped to
+  // MAX_SONG_SECONDS internally by the generator + looper.
+  durationSeconds: z.number().int().min(5).max(300).default(30),
   // Loop the generated clip (via ffmpeg, free) to this length to match a video.
   loopToSeconds: z.number().int().min(1).max(MAX_SONG_SECONDS).optional(),
   provider: z.enum(["simulation", "acestep", "musicgen", "pixazo"]).optional(),
