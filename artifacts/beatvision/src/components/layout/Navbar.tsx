@@ -163,30 +163,16 @@ export function Navbar() {
                       </div>
                     </div>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem asChild>
-                      <Link href="/generate" className="cursor-pointer flex items-center">
-                        <Wand2 className="mr-2 h-4 w-4" />
-                        <span>Generate Video</span>
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link href="/prompt-studio" className="cursor-pointer flex items-center">
-                        <Sparkles className="mr-2 h-4 w-4" />
-                        <span>Prompt Studio</span>
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link href="/dashboard" className="cursor-pointer flex items-center">
-                        <LayoutDashboard className="mr-2 h-4 w-4" />
-                        <span>Dashboard</span>
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link href="/gallery" className="cursor-pointer flex items-center">
-                        <Film className="mr-2 h-4 w-4" />
-                        <span>Gallery</span>
-                      </Link>
-                    </DropdownMenuItem>
+                    {/* Mirror the main menu exactly (same navLinks, same order). */}
+                    {navLinks.map((l) => (
+                      <DropdownMenuItem key={l.href} asChild>
+                        <Link href={l.href} className="cursor-pointer flex items-center">
+                          <l.icon className="mr-2 h-4 w-4" />
+                          <span>{l.label}</span>
+                        </Link>
+                      </DropdownMenuItem>
+                    ))}
+                    <DropdownMenuSeparator />
                     <DropdownMenuItem asChild>
                       <Link href="/redeem" className="cursor-pointer flex items-center">
                         <Gift className="mr-2 h-4 w-4" />
