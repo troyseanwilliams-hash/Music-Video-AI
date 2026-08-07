@@ -228,7 +228,7 @@ export default function Dashboard() {
                 <Sparkles className="h-5 w-5 text-primary" /> Welcome to AI Beat Sync
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                You've got trial credits and <strong className="text-foreground">3 free Soundtracks</strong> to try. Here's how to start:
+                Your 7-day trial includes full Studio access and <strong className="text-foreground">3 free Soundtracks</strong> to try. Here's how to start:
               </p>
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
                 <Link href="/generate" className="rounded-xl border border-border bg-background/40 p-4 transition-colors hover:border-primary/50">

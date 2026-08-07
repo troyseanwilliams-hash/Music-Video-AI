@@ -2,7 +2,7 @@ import bcrypt from "bcrypt";
 import crypto from "crypto";
 import { Router, type IRouter, type Request, type Response } from "express";
 import { RegisterUserBody, LoginUserBody, GetCurrentAuthUserResponse } from "@workspace/api-zod";
-import { db, usersTable } from "@workspace/db";
+import { db, usersTable, creditsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
 function isAdminEmail(email: string | null | undefined): boolean {
@@ -127,6 +127,17 @@ router.post("/auth/register", async (req: Request, res: Response) => {
     .returning();
 
   req.log.info({ userId: user.id, email: user.email }, "User registered");
+
+  // Eagerly create the credits row so dashboard/stats always reads a real row
+  // (0 balance) instead of falling back to a stale hardcoded default.
+  try {
+    await db
+      .insert(creditsTable)
+      .values({ id: crypto.randomUUID(), userId: user.id })
+      .onConflictDoNothing();
+  } catch {
+    // FK race on the very unlikely path where user insert failed silently — ignore.
+  }
 
   // Best-effort admin notification of the new signup (never blocks signup).
   notifyNewUser({ id: user.id, email: user.email, name: [user.firstName, user.lastName].filter(Boolean).join(" ") || null });
