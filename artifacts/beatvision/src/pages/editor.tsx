@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { useLocation } from "wouter";
+import SignupTeaser from "@/components/SignupTeaser";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -330,9 +331,8 @@ export default function Editor() {
       .catch(() => {});
   }, [isAuthenticated, fullAccess]);
 
-  useEffect(() => {
-    if (!isAuthLoading && !isAuthenticated) setLocation("/login");
-  }, [isAuthLoading, isAuthenticated, setLocation]);
+  // Logged-out visitors get a teaser (below) instead of a redirect, so they can
+  // see what Remix Lab does and sign up.
 
   // Handoff from Gallery / job page: pre-load a finished video as the first clip.
   useEffect(() => {
@@ -691,6 +691,8 @@ export default function Editor() {
       setSubmitting(false);
     }
   }
+
+  if (!isAuthenticated) return isAuthLoading ? null : <SignupTeaser variant="remix" />;
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-8">

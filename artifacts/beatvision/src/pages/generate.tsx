@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { AudioWaveformSelector } from "@/components/AudioWaveformSelector";
+import SignupTeaser from "@/components/SignupTeaser";
 import { useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -450,7 +451,7 @@ export default function Generate() {
     );
   }
 
-  if (!isAuthenticated) return null;
+  if (!isAuthenticated) return <SignupTeaser variant="generate" />;
 
   const isAdmin = user?.isAdmin ?? false;
   const subStatus = user?.subscriptionStatus ?? "none";
