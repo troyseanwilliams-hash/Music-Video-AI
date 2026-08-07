@@ -222,6 +222,7 @@ router.get("/admin/users/export.csv", async (req, res) => {
       subscriptionStatus: usersTable.subscriptionStatus,
       isDisabled: usersTable.isDisabled,
       createdAt: usersTable.createdAt,
+      signupIp: usersTable.signupIp,
     })
     .from(usersTable)
     .orderBy(desc(usersTable.createdAt));
@@ -232,7 +233,7 @@ router.get("/admin/users/export.csv", async (req, res) => {
     return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
 
-  const header = "email,first_name,last_name,status,created_at";
+  const header = "email,first_name,last_name,status,created_at,signup_ip";
   const lines = rows
     .filter((u) => u.email && !u.isDisabled)
     .map((u) =>
@@ -242,6 +243,7 @@ router.get("/admin/users/export.csv", async (req, res) => {
         u.lastName ?? "",
         u.subscriptionStatus ?? "",
         u.createdAt instanceof Date ? u.createdAt.toISOString() : (u.createdAt ?? ""),
+        u.signupIp ?? "",
       ]
         .map(esc)
         .join(","),

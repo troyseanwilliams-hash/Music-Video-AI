@@ -84,6 +84,27 @@ router.post("/auth/register", async (req: Request, res: Response) => {
     return;
   }
 
+  // Anti-abuse: cap free-trial accounts per client IP. req.ip is the real client
+  // (trust proxy is enabled). Tune/disable with MAX_ACCOUNTS_PER_IP (0 = off).
+  const signupIp = (req.ip || "").toString().trim();
+  const maxAccountsPerIp = parseInt(process.env.MAX_ACCOUNTS_PER_IP ?? "3", 10);
+  if (signupIp && maxAccountsPerIp > 0) {
+    const priorFromIp = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(eq(usersTable.signupIp, signupIp))
+      .limit(maxAccountsPerIp);
+    if (priorFromIp.length >= maxAccountsPerIp) {
+      req.log.warn({ signupIp, email: normalizedEmail }, "Registration blocked: too many accounts from this IP");
+      res.status(429).json({
+        error:
+          "We've reached the limit of free accounts from your network. If you need another account, please contact support.",
+        code: "TOO_MANY_ACCOUNTS",
+      });
+      return;
+    }
+  }
+
   const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
   const nameParts = name.trim().split(/\s+/);
   const firstName = nameParts[0] ?? name.trim();
@@ -101,6 +122,7 @@ router.post("/auth/register", async (req: Request, res: Response) => {
       subscriptionStatus: "trial",
       trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       lastLoginAt: new Date(),
+      signupIp: signupIp || null,
     })
     .returning();
 

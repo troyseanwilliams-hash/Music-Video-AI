@@ -9,6 +9,10 @@ import { WebhookHandlers } from "./lib/webhookHandlers.js";
 
 const app: Express = express();
 
+// Behind Replit's load balancer, so trust the proxy chain to derive the real
+// client IP from X-Forwarded-For (used for signup abuse limits + logging).
+app.set("trust proxy", true);
+
 app.use(
   pinoHttp({
     logger,

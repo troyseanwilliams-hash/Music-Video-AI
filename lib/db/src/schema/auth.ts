@@ -22,6 +22,9 @@ export const usersTable = pgTable("users", {
   subscriptionStatus: varchar("subscription_status").notNull().default("none"),
   trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  // Client IP captured at registration — used to limit multiple free-trial
+  // accounts from the same network.
+  signupIp: varchar("signup_ip"),
   isDisabled: boolean("is_disabled").notNull().default(false),
   // Timestamp of the user's most recent copyright/ownership attestation.
   copyrightAcceptedAt: timestamp("copyright_accepted_at", { withTimezone: true }),
