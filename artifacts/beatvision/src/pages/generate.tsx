@@ -768,7 +768,7 @@ export default function Generate() {
                         {PROVIDER_LABELS[p]}
                         <span className="text-muted-foreground"> · {p === "runway" ? "premium quality" : "value price"}</span>
                       </span>
-                      <span className="text-xs text-muted-foreground shrink-0">{estimateCreditCost(requestedDuration, p, undefined, songDurationSec)} cr</span>
+                      <span className="text-xs text-muted-foreground shrink-0">{estimateCreditCost(requestedDuration, p, resolution, songDurationSec)} cr</span>
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
