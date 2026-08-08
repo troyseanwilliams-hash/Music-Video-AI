@@ -1,13 +1,26 @@
 // Pixazo lip sync: turn a reference face image + an audio track into a talking /
 // singing avatar video. Mirrors the Kling gateway submit → poll pattern used in
-// videoApis.ts. Set PIXAZO_LIPSYNC_MODEL to the exact model slug from your Pixazo
-// dashboard (an OmniHuman-style image-to-video lipsync model); the default is a
-// best-guess slug that you should override once you confirm it.
+// videoApis.ts. Defaults to ByteDance OmniHuman v1.5 on Pixazo — works out of the
+// box; override the slug/op/resolution with the PIXAZO_LIPSYNC_* envs if needed.
+//   PIXAZO_LIPSYNC_MODEL      — model path segment (default bytedance-omnihuman-v1-5-290)
+//   PIXAZO_LIPSYNC_OP         — request op (OmniHuman drops the trailing -290)
+//   PIXAZO_LIPSYNC_RESOLUTION — output resolution hint (default 720p)
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+const DEFAULT_LIPSYNC_MODEL = "bytedance-omnihuman-v1-5-290";
+
 function lipsyncModel(): string {
-  return process.env.PIXAZO_LIPSYNC_MODEL?.trim() || "omnihuman";
+  return process.env.PIXAZO_LIPSYNC_MODEL?.trim() || DEFAULT_LIPSYNC_MODEL;
+}
+
+// The request op usually mirrors the model, but Pixazo's OmniHuman endpoint uses
+// "bytedance-omnihuman-v1-5-request" (without the "-290" count suffix).
+function lipsyncOp(model: string): string {
+  const override = process.env.PIXAZO_LIPSYNC_OP?.trim();
+  if (override) return override;
+  if (model === DEFAULT_LIPSYNC_MODEL) return "bytedance-omnihuman-v1-5-request";
+  return `${model}-request`;
 }
 
 export function lipsyncAvailable(): boolean {
@@ -19,11 +32,13 @@ export async function generateLipsync(params: { imageUrl: string; audioUrl: stri
   const key = process.env.PIXAZO_API_KEY;
   if (!key) throw new Error("Lip sync requires PIXAZO_API_KEY");
   const model = lipsyncModel();
+  const op = lipsyncOp(model);
+  const resolution = process.env.PIXAZO_LIPSYNC_RESOLUTION?.trim() || "720p";
 
-  const submit = await fetch(`https://gateway.pixazo.ai/${model}/v1/${model}-request`, {
+  const submit = await fetch(`https://gateway.pixazo.ai/${model}/v1/${op}`, {
     method: "POST",
     headers: { "Ocp-Apim-Subscription-Key": key, "Content-Type": "application/json" },
-    body: JSON.stringify({ image_url: params.imageUrl, audio_url: params.audioUrl }),
+    body: JSON.stringify({ image_url: params.imageUrl, audio_url: params.audioUrl, resolution }),
     signal: AbortSignal.timeout(30_000),
   });
   if (!submit.ok) {
