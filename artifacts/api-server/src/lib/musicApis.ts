@@ -255,6 +255,37 @@ export async function loopAudioToLength(
   }
 }
 
+// Trim audio to the first `seconds` (pure ffmpeg, no AI). Used to cap the audio
+// fed to the per-second Lip Sync model so cost stays bounded.
+export async function trimAudioToLength(
+  buffer: Buffer,
+  ext: string,
+  seconds: number,
+): Promise<{ buffer: Buffer; ext: string }> {
+  const { exec } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const { readFile, writeFile, unlink } = await import("node:fs/promises");
+  const { randomUUID } = await import("node:crypto");
+  const execAsync = promisify(exec);
+  const id = randomUUID();
+  const inPath = join(tmpdir(), `bv_trimin_${id}.${ext || "mp3"}`);
+  const outPath = join(tmpdir(), `bv_trimout_${id}.mp3`);
+  const secs = Math.min(Math.max(Math.round(seconds), 1), 60);
+  try {
+    await writeFile(inPath, buffer);
+    await execAsync(
+      `ffmpeg -y -t ${secs} -i "${inPath}" -c:a libmp3lame -b:a 192k "${outPath}"`,
+      { timeout: 60_000 },
+    );
+    return { buffer: await readFile(outPath), ext: "mp3" };
+  } finally {
+    await unlink(inPath).catch(() => {});
+    await unlink(outPath).catch(() => {});
+  }
+}
+
 // ── Public entry ─────────────────────────────────────────────────────────────
 
 // Capped at 2 minutes (120s) to match the max video length and the Pixazo

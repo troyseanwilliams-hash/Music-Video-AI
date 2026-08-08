@@ -720,8 +720,8 @@ export default function JobStatus() {
           <SocialExportsPanel videoId={job.videoId} />
         )}
 
-        {/* ── Lip Sync (admin-only preview) ── */}
-        {isComplete && job.videoId && user?.isAdmin && (
+        {/* ── Lip Sync ── */}
+        {isComplete && job.videoId && (
           <LipSyncPanel videoId={job.videoId} />
         )}
 

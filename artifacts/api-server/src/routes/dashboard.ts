@@ -67,17 +67,14 @@ router.get("/dashboard/stats", async (req, res) => {
       createdAt: j.createdAt,
     }));
 
-  let creditsRemaining = 0;
-  let subscriptionCredits = 0;
+  let creditsRemaining = 10;
+  let subscriptionCredits = 10;
   let topupCredits = 0;
   if (credits[0]) {
     creditsRemaining = credits[0].creditsRemaining;
     subscriptionCredits = credits[0].subscriptionCredits;
     topupCredits = credits[0].topupCredits;
   } else {
-    // No credits row yet (brand-new user who hasn't hit a feature that creates
-    // one). Create it eagerly so subsequent reads are consistent, and leave all
-    // balances at their schema defaults (0 — trial gives free features, not points).
     try {
       await db
         .insert(creditsTable)

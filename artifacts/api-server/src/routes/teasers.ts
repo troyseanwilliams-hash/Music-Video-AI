@@ -16,10 +16,19 @@ import {
   TEASER_COUNT,
   TEASER_DURATION_SEC,
 } from "../lib/teaserGenerator.js";
-import { TEASER_PACK_COST, CANVAS_EXPORT_COST, LYRIC_OVERLAY_COST, RELEASE_KIT_COST } from "../lib/creditCost.js";
+import {
+  TEASER_PACK_COST,
+  CANVAS_EXPORT_COST,
+  LYRIC_OVERLAY_COST,
+  RELEASE_KIT_COST,
+  calculateLipsyncCost,
+  LIPSYNC_MIN_SECONDS,
+  LIPSYNC_MAX_SECONDS,
+} from "../lib/creditCost.js";
 import { burnLyricsOnVideo } from "../lib/lyricOverlay.js";
 import { extractVideoThumbnail } from "../lib/videoStitcher.js";
 import { generateLipsync } from "../lib/lipsync.js";
+import { trimAudioToLength } from "../lib/musicApis.js";
 import { z } from "zod";
 
 function isAdminEmail(email?: string | null): boolean {
@@ -423,19 +432,18 @@ router.post("/videos/:id/release-kit", async (req: Request<{ id: string }>, res:
   }
 });
 
-// Lip sync (ADMIN-ONLY preview): turn an uploaded face image into a talking /
-// singing avatar synced to this video's song. Reuses the video's original job
-// audio. Saved as a NEW video in the library. Pricing is deferred until we've
-// confirmed the real Pixazo per-second cost.
-const LipsyncBody = z.object({ imageObjectPath: z.string().min(1) });
+// Lip sync: turn an uploaded face image into a singing avatar synced to a short
+// clip (up to 30s) of this video's song, via the Pixazo OmniHuman model (billed
+// per second). Saved as a NEW video. Credits are reserved up front and refunded
+// if it fails; admins are free.
+const LipsyncBody = z.object({
+  imageObjectPath: z.string().min(1),
+  lipsyncSeconds: z.number().int().min(LIPSYNC_MIN_SECONDS).max(LIPSYNC_MAX_SECONDS).default(15),
+});
 
 router.post("/videos/:id/lipsync", async (req: Request<{ id: string }>, res: Response) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
-  if (!isAdminEmail(req.user.email)) {
-    res.status(403).json({ error: "Lip sync is in limited preview." });
     return;
   }
   const parsed = LipsyncBody.safeParse(req.body);
@@ -450,22 +458,61 @@ router.post("/videos/:id/lipsync", async (req: Request<{ id: string }>, res: Res
     return;
   }
 
+  const admin = isAdminEmail(req.user.email);
+  const lipsyncSeconds = parsed.data.lipsyncSeconds;
+  const cost = calculateLipsyncCost(lipsyncSeconds);
+
+  // Reserve credits up front (non-admins). Refunded below if anything fails.
+  let charged = false;
+  if (!admin) {
+    let [credits] = await db.select().from(creditsTable).where(eq(creditsTable.userId, req.user.id)).limit(1);
+    if (!credits) {
+      [credits] = await db.insert(creditsTable).values({ id: randomUUID(), userId: req.user.id }).returning();
+    }
+    if ((credits?.creditsRemaining ?? 0) < cost) {
+      res.status(402).json({
+        error: `Lip sync costs ${cost} credits but you have ${credits?.creditsRemaining ?? 0}.`,
+        code: "INSUFFICIENT_CREDITS",
+        creditsRequired: cost,
+        creditsRemaining: credits?.creditsRemaining ?? 0,
+      });
+      return;
+    }
+    await db
+      .update(creditsTable)
+      .set({
+        subscriptionCredits: sql`GREATEST(subscription_credits - ${cost}, 0)`,
+        topupCredits: sql`GREATEST(topup_credits - GREATEST(${cost} - subscription_credits, 0), 0)`,
+        creditsRemaining: sql`GREATEST(credits_remaining - ${cost}, 0)`,
+        creditsUsed: sql`credits_used + ${cost}`,
+        updatedAt: new Date(),
+      })
+      .where(eq(creditsTable.userId, req.user.id));
+    charged = true;
+  }
+
   try {
-    // Audio to sync to = the original job's song.
+    // Audio to sync to = the original job's song, trimmed to the chosen short
+    // clip so the per-second lip sync cost stays bounded.
     const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, video.jobId)).limit(1);
     let audioUrl: string | null = null;
     if (job?.audioObjectPath) audioUrl = await storageService.getObjectEntitySignedUrl(job.audioObjectPath, 3600);
     else if (job?.audioSourceUrl) audioUrl = job.audioSourceUrl;
     if (!audioUrl) throw new Error("This video has no source audio to sync to.");
 
+    const audioResp = await fetch(audioUrl, { signal: AbortSignal.timeout(60_000) });
+    if (!audioResp.ok) throw new Error("Could not read the source audio.");
+    const trimmed = await trimAudioToLength(Buffer.from(await audioResp.arrayBuffer()), "mp3", lipsyncSeconds);
+    const trimmedPath = await storageService.uploadAudioBuffer(trimmed.buffer, randomUUID(), trimmed.ext);
+    const trimmedAudioUrl = await storageService.getObjectEntitySignedUrl(trimmedPath, 3600);
+
     const imageUrl = await storageService.getObjectEntitySignedUrl(parsed.data.imageObjectPath, 3600);
-    const mediaUrl = await generateLipsync({ imageUrl, audioUrl });
+    const mediaUrl = await generateLipsync({ imageUrl, audioUrl: trimmedAudioUrl });
 
     const resp = await fetch(mediaUrl, { signal: AbortSignal.timeout(120_000) });
     if (!resp.ok) throw new Error(`Could not fetch lip sync result: ${resp.status}`);
     const outBuffer = Buffer.from(await resp.arrayBuffer());
-    const durationSeconds = video.durationSeconds ?? 30;
-    const thumbBuffer = await extractVideoThumbnail(outBuffer, Math.max(1, durationSeconds * 0.3));
+    const thumbBuffer = await extractVideoThumbnail(outBuffer, Math.max(1, lipsyncSeconds * 0.3));
 
     const newVideoId = randomUUID();
     const [vPath, tPath] = await Promise.all([
@@ -479,15 +526,27 @@ router.post("/videos/:id/lipsync", async (req: Request<{ id: string }>, res: Res
       videoObjectPath: vPath,
       thumbnailObjectPath: tPath,
       title: `${video.title ?? "Video"} — lip sync`,
-      durationSeconds: video.durationSeconds,
+      durationSeconds: lipsyncSeconds,
       style: video.style,
       prompt: video.prompt,
       shareToken: randomUUID().replace(/-/g, "").slice(0, 16),
     });
 
     const url = await storageService.getObjectEntitySignedUrl(vPath, 3600);
-    res.json({ videoId: newVideoId, url });
+    res.json({ videoId: newVideoId, url, creditsCharged: admin ? 0 : cost });
   } catch (err) {
+    // Refund the reservation on failure.
+    if (charged) {
+      await db
+        .update(creditsTable)
+        .set({
+          subscriptionCredits: sql`subscription_credits + ${cost}`,
+          creditsRemaining: sql`credits_remaining + ${cost}`,
+          creditsUsed: sql`GREATEST(credits_used - ${cost}, 0)`,
+          updatedAt: new Date(),
+        })
+        .where(eq(creditsTable.userId, req.user.id));
+    }
     req.log.error({ err, videoId: video.id }, "Lip sync failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Lip sync failed" });
   }

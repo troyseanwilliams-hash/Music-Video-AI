@@ -175,6 +175,17 @@ export function calculateSongCost(
   return Math.min(SONG_MAX_CREDITS, Math.max(SONG_MIN_CREDITS, scaled));
 }
 
+// Lip Sync (OmniHuman) is a video model billed per second of output (~$0.16/s).
+// Capped to a short clip and priced at the same 1.5× markup:
+//   ceil(seconds × $0.16 × 1.5 / $0.015) = 16 credits/second (15s = 240, 30s = 480).
+const LIPSYNC_USD_PER_SECOND = 0.16;
+export const LIPSYNC_MIN_SECONDS = 5;
+export const LIPSYNC_MAX_SECONDS = 30;
+export function calculateLipsyncCost(seconds: number | null | undefined): number {
+  const s = Math.min(Math.max(Math.round(seconds || 15), LIPSYNC_MIN_SECONDS), LIPSYNC_MAX_SECONDS);
+  return Math.ceil((s * LIPSYNC_USD_PER_SECOND * MUSIC_GEN_MARKUP) / USD_PER_CREDIT);
+}
+
 // Cost to remix (regenerate) a subset of an existing video's clips. Charged
 // proportionally to the number of clips regenerated — never the full job. We
 // divide the original job's full cost across its clips and bill only for the
