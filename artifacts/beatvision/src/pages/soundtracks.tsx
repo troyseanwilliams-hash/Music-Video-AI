@@ -482,7 +482,7 @@ export default function Soundtracks() {
                     {withVocals
                       ? `${status?.vocalCost ?? 15} credits`
                       : status?.admin || (status?.freeRemaining ?? 0) > 0
-                        ? "0 cr — no credits used"
+                        ? "0 credits"
                         : `≈ ${songCredits(duration)} credits`}
                   </span>
                 </div>
@@ -541,7 +541,7 @@ export default function Soundtracks() {
                 >
                   <Wand2 className="h-4 w-4 mr-2" /> {withVocals
                     ? `Generate Song · ${status?.vocalCost ?? 15} credits`
-                    : `Generate Soundtrack · ${status?.admin || (status?.freeRemaining ?? 0) > 0 ? "0 cr" : `${songCredits(duration)} credits`}`}
+                    : `Generate Soundtrack · ${status?.admin || (status?.freeRemaining ?? 0) > 0 ? "0 credits" : `${songCredits(duration)} credits`}`}
                 </Button>
               )}
             </>
