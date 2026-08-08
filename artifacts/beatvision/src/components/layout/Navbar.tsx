@@ -59,53 +59,17 @@ export function Navbar() {
               </span>
             </Link>
 
+            {/* Driven by navLinks so the top nav + account dropdown stay in sync. */}
             <nav className="hidden md:flex items-center gap-6">
-              {isAuthenticated && (
-                <>
-                  <Link
-                    href="/editor"
-                    className={`text-sm font-medium transition-colors hover:text-primary ${location === '/editor' ? 'text-foreground' : 'text-muted-foreground'}`}
-                  >
-                    Remix Lab
-                  </Link>
-                  <Link
-                    href="/generate"
-                    className={`text-sm font-medium transition-colors hover:text-primary ${location === '/generate' ? 'text-foreground' : 'text-muted-foreground'}`}
-                  >
-                    Generate
-                  </Link>
-                  <Link
-                    href="/soundtracks"
-                    className={`text-sm font-medium transition-colors hover:text-primary ${location === '/soundtracks' ? 'text-foreground' : 'text-muted-foreground'}`}
-                  >
-                    Soundtracks
-                  </Link>
-                  <Link
-                    href="/dashboard"
-                    className={`text-sm font-medium transition-colors hover:text-primary ${location === '/dashboard' ? 'text-foreground' : 'text-muted-foreground'}`}
-                  >
-                    Dashboard
-                  </Link>
-                  <Link
-                    href="/gallery"
-                    className={`text-sm font-medium transition-colors hover:text-primary ${location === '/gallery' ? 'text-foreground' : 'text-muted-foreground'}`}
-                  >
-                    Gallery
-                  </Link>
-                </>
-              )}
-              <Link
-                href="/explore"
-                className={`text-sm font-medium transition-colors hover:text-primary ${location === '/explore' ? 'text-foreground' : 'text-muted-foreground'}`}
-              >
-                Explore
-              </Link>
-              <Link
-                href="/pricing"
-                className={`text-sm font-medium transition-colors hover:text-primary ${location === '/pricing' ? 'text-foreground' : 'text-muted-foreground'}`}
-              >
-                Pricing
-              </Link>
+              {navLinks.map((l) => (
+                <Link
+                  key={l.href}
+                  href={l.href}
+                  className={`text-sm font-medium transition-colors hover:text-primary ${location === l.href ? 'text-foreground' : 'text-muted-foreground'}`}
+                >
+                  {l.label}
+                </Link>
+              ))}
             </nav>
           </div>
 
