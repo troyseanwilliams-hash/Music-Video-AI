@@ -781,10 +781,10 @@ export default function Generate() {
                     { value: CreateJobRequestRequestedDuration.NUMBER_30, label: "30 seconds", note: null },
                     { value: CreateJobRequestRequestedDuration.NUMBER_45, label: "45 seconds", note: null },
                     { value: CreateJobRequestRequestedDuration.NUMBER_60, label: "60 seconds", note: null },
-                    { value: CreateJobRequestRequestedDuration.NUMBER_90, label: "90 seconds", note: "~15 min" },
-                    { value: CreateJobRequestRequestedDuration.NUMBER_120, label: "120 seconds", note: "~20 min" },
-                    { value: CreateJobRequestRequestedDuration.NUMBER_300, label: "5 minutes", note: "~30 min" },
-                    { value: CreateJobRequestRequestedDuration.NUMBER_600, label: "10 minutes", note: "~30 min" },
+                    { value: CreateJobRequestRequestedDuration.NUMBER_90, label: "90 seconds", note: "~15 min render" },
+                    { value: CreateJobRequestRequestedDuration.NUMBER_120, label: "120 seconds", note: "~20 min render" },
+                    { value: CreateJobRequestRequestedDuration.NUMBER_300, label: "5 minutes", note: "~30 min render" },
+                    { value: CreateJobRequestRequestedDuration.NUMBER_600, label: "10 minutes", note: "~30 min render" },
                   ] as const).map(({ value, label, note }) => {
                     const base = estimateCreditCost(value, aiProvider, resolution, songDurationSec);
                     const is4k = (resolution as string) === "4k";
