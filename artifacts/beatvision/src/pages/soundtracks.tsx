@@ -440,7 +440,7 @@ export default function Soundtracks() {
                   </div>
                   <div>
                     <label className="text-xs font-medium text-muted-foreground">Voice</label>
-                    <div className="grid grid-cols-5 gap-1.5 mt-1">
+                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5 mt-1">
                       {VOCAL_STYLES.map((v) => (
                         <button key={v.key} type="button" onClick={() => setVocalStyle(v.key)}
                           className={`rounded-lg border px-1 py-1.5 text-xs font-medium transition-colors ${vocalStyle === v.key ? "border-primary bg-primary/10 text-primary" : "border-border bg-background/40 text-muted-foreground hover:border-primary/50"}`}>

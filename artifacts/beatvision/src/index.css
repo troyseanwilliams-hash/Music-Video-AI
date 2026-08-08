@@ -271,3 +271,50 @@ input[type="range"].waveform-range:active::-moz-range-thumb    { cursor: grabbin
 @media (prefers-reduced-motion: reduce) {
   .aurora-drift-1, .aurora-drift-2, .aurora-bar { animation: none; }
 }
+
+/* ── Accessibility & mobile baseline (ADA / WCAG 2.1 AA) ─────────────────── */
+
+/* Never let a page scroll sideways on a phone (long words, wide media, etc.).
+   `clip` (not `hidden`) avoids creating a scroll container that would break the
+   sticky navbar's position: sticky. */
+html, body { max-width: 100%; overflow-x: clip; }
+
+/* Respect users who ask the OS to minimize motion — flatten all animation
+   and smooth-scroll, not just the aurora hero. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Consistent, visible keyboard focus everywhere (WCAG 2.4.7). Mouse clicks
+   stay clean because :focus-visible only fires for keyboard/AT navigation. */
+:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* In-page anchors (skip link, #main-content) shouldn't hide under the sticky
+   header when focused/scrolled to. */
+[id] { scroll-margin-top: 5rem; }
+
+/* Comfortable tap targets on touch devices (WCAG 2.5.8 — 24px min; we aim ~40px).
+   Applies only where a pointer is coarse so desktop density is untouched. */
+@media (pointer: coarse) {
+  button, a[role="button"], [role="tab"], summary,
+  input[type="checkbox"], input[type="radio"] {
+    min-height: 40px;
+  }
+}
+
+/* Honor the iOS/Android safe-area (notch, home indicator). */
+@supports (padding: max(0px)) {
+  body {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}

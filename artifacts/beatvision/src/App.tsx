@@ -36,8 +36,15 @@ const queryClient = new QueryClient();
 function Router() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col font-sans">
+      {/* Keyboard/screen-reader skip link — first focusable element on the page */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[100] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white focus:shadow-glow"
+      >
+        Skip to main content
+      </a>
       <Navbar />
-      <main className="flex-1 flex flex-col">
+      <main id="main-content" tabIndex={-1} className="flex-1 flex flex-col outline-none">
         <Switch>
           <Route path="/" component={Home} />
           <Route path="/login" component={Login} />

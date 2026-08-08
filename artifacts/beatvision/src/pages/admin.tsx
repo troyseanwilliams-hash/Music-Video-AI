@@ -116,11 +116,11 @@ function CreditCell({ user, onSaved }: { user: AdminUser; onSaved: () => void })
           type="number"
           min={0}
         />
-        <Button size="icon" className="h-7 w-7" onClick={handleSave} disabled={mutation.isPending}>
-          {mutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+        <Button size="icon" className="h-7 w-7" onClick={handleSave} disabled={mutation.isPending} aria-label="Save credits">
+          {mutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" aria-hidden="true" />}
         </Button>
-        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setEditing(false); setValue(String(user.creditsRemaining)); }}>
-          <X className="h-3 w-3" />
+        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setEditing(false); setValue(String(user.creditsRemaining)); }} aria-label="Cancel edit">
+          <X className="h-3 w-3" aria-hidden="true" />
         </Button>
       </div>
     );

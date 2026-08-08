@@ -111,7 +111,7 @@ export default function LipSyncPanel({ videoId }: { videoId: string }) {
             )}
           </Button>
           {facePreview && !result && (
-            <img src={facePreview} alt="face" className="h-16 w-16 rounded-lg border border-border object-cover" />
+            <img src={facePreview} alt="Uploaded face photo preview" className="h-16 w-16 rounded-lg border border-border object-cover" />
           )}
         </div>
         {error && <p className="text-sm text-destructive">{error}</p>}

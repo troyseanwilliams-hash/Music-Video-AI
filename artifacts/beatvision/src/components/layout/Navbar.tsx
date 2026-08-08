@@ -108,7 +108,7 @@ export function Navbar() {
               <>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="relative h-9 w-9 rounded-full">
+                    <Button variant="ghost" className="relative h-9 w-9 rounded-full" aria-label="Account menu">
                       <Avatar className="h-9 w-9 border border-border/50">
                         <AvatarImage src={user.profileImageUrl || undefined} alt={user.firstName || 'User'} />
                         <AvatarFallback className="bg-primary/20 text-primary">
@@ -174,15 +174,17 @@ export function Navbar() {
                   </DropdownMenuContent>
                 </DropdownMenu>
 
-                {/* Mobile hamburger — shown only when authenticated, hidden on md+ */}
+                {/* Mobile hamburger — hidden on md+ */}
                 <button
-                  className="md:hidden flex items-center justify-center h-9 w-9 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 transition-colors"
+                  className="md:hidden flex items-center justify-center h-10 w-10 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   onClick={() => setMobileMenuOpen((v) => !v)}
-                  aria-label="Toggle menu"
+                  aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+                  aria-expanded={mobileMenuOpen}
+                  aria-controls="mobile-nav-panel"
                 >
                   {mobileMenuOpen
-                    ? <X className="h-5 w-5" />
-                    : <Menu className="h-5 w-5" />}
+                    ? <X className="h-5 w-5" aria-hidden="true" />
+                    : <Menu className="h-5 w-5" aria-hidden="true" />}
                 </button>
               </>
             ) : (
@@ -195,6 +197,18 @@ export function Navbar() {
                     Get Started
                   </Button>
                 </Link>
+                {/* Mobile hamburger for logged-out visitors — reach Explore/Pricing */}
+                <button
+                  className="md:hidden flex items-center justify-center h-10 w-10 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  onClick={() => setMobileMenuOpen((v) => !v)}
+                  aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+                  aria-expanded={mobileMenuOpen}
+                  aria-controls="mobile-nav-panel"
+                >
+                  {mobileMenuOpen
+                    ? <X className="h-5 w-5" aria-hidden="true" />
+                    : <Menu className="h-5 w-5" aria-hidden="true" />}
+                </button>
               </div>
             )}
           </div>
@@ -202,9 +216,9 @@ export function Navbar() {
       </header>
 
       {/* Mobile slide-down nav panel */}
-      {mobileMenuOpen && isAuthenticated && (
-        <div className="md:hidden fixed top-16 inset-x-0 z-40 border-b border-border/50 bg-background/95 backdrop-blur shadow-lg">
-          <nav className="container mx-auto px-4 py-3 flex flex-col gap-1">
+      {mobileMenuOpen && (
+        <div id="mobile-nav-panel" className="md:hidden fixed top-16 inset-x-0 z-40 border-b border-border/50 bg-background/95 backdrop-blur shadow-lg">
+          <nav aria-label="Mobile" className="container mx-auto px-4 py-3 flex flex-col gap-1">
             {navLinks.map(({ href, label, icon: Icon }) => (
               <Link
                 key={href}
@@ -222,11 +236,23 @@ export function Navbar() {
             ))}
 
             {/* Credits summary on mobile */}
-            {stats && (
+            {isAuthenticated && stats && (
               <div className="mt-2 pt-2 border-t border-border/40 flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
                 <Wand2 className="h-4 w-4 text-primary" />
                 <span><strong className="text-foreground">{stats.creditsRemaining}</strong> credits remaining</span>
               </div>
+            )}
+
+            {/* Sign-in prompt for logged-out visitors */}
+            {!isAuthenticated && (
+              <Link
+                href="/login"
+                onClick={() => setMobileMenuOpen(false)}
+                className="mt-2 pt-2 border-t border-border/40 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+              >
+                <LogOut className="h-4 w-4 shrink-0 rotate-180" aria-hidden="true" />
+                Sign in
+              </Link>
             )}
           </nav>
         </div>

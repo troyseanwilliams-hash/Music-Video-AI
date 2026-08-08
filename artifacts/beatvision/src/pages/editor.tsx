@@ -796,8 +796,8 @@ export default function Editor() {
       {/* Transport */}
       {segments.length > 0 && (
         <div className="mb-6 flex items-center gap-3">
-          <Button size="icon" variant="outline" onClick={togglePlay} className="h-9 w-9 shrink-0">
-            {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+          <Button size="icon" variant="outline" onClick={togglePlay} className="h-9 w-9 shrink-0" aria-label={playing ? "Pause preview" : "Play preview"}>
+            {playing ? <Pause className="h-4 w-4" aria-hidden="true" /> : <Play className="h-4 w-4" aria-hidden="true" />}
           </Button>
           <div className="bg-muted h-1.5 flex-1 overflow-hidden rounded">
             <div className="bg-primary h-full rounded" style={{ width: `${Math.round(progress * 100)}%` }} />

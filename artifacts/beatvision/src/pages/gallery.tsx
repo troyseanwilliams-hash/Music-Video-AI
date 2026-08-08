@@ -293,6 +293,7 @@ export default function Gallery() {
                     size="icon"
                     className="h-8 w-8 shrink-0"
                     title="Download video"
+                    aria-label="Download video"
                     disabled={!!loadingAction[video.jobId]}
                     onClick={() => handleDownload(video.jobId, video.title || video.prompt)}
                   >
@@ -306,6 +307,7 @@ export default function Gallery() {
                     size="icon"
                     className="h-8 w-8 shrink-0"
                     title="Open in Remix Lab"
+                    aria-label="Open in Remix Lab"
                     onClick={() => {
                       sessionStorage.setItem(
                         "editor:init",
@@ -326,8 +328,8 @@ export default function Gallery() {
 
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive">
-                        <Trash2 className="h-3.5 w-3.5" />
+                      <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive" aria-label="Delete video">
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>

@@ -98,7 +98,7 @@ export default function Home() {
                 The all-in-one AI music-video studio
               </div>
 
-              <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-6 leading-tight">
+              <h1 className="text-4xl sm:text-5xl md:text-7xl font-extrabold tracking-tight mb-6 leading-tight">
                 From a track to a <br />
                 <span className="text-gradient-electric">ready-to-post video</span>
               </h1>
