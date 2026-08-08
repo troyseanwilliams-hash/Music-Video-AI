@@ -487,7 +487,10 @@ export default function Soundtracks() {
               {!withVocals && (
                 <div>
                   <label className="text-sm font-medium">Loop to fill (optional)</label>
-                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mt-1.5">
+                  <p className="text-[11px] text-muted-foreground mt-0.5 mb-1.5">
+                    Generate a short clip and repeat it to this length — free, no extra credits (great for looping backgrounds).
+                  </p>
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                     {LOOP_OPTIONS.map((l) => (
                       <button key={l.key} type="button" onClick={() => setLoopKey(l.key)}
                         className={`rounded-lg border px-2 py-2 text-xs font-medium transition-colors ${loopKey === l.key ? "border-primary bg-primary/10 text-primary" : "border-border bg-background/40 text-muted-foreground hover:border-primary/50"}`}>

@@ -727,6 +727,11 @@ export default function Generate() {
                       {c.label}
                     </DropdownMenuItem>
                   ))}
+                  <div className="px-2 pt-1 pb-1.5">
+                    <p className="text-[10px] text-muted-foreground/60 leading-tight">
+                      Who's on screen. Add a reference image below to lock the same character across every clip.
+                    </p>
+                  </div>
                 </DropdownMenuContent>
               </DropdownMenu>
 
@@ -867,6 +872,11 @@ export default function Generate() {
                       </DropdownMenuItem>
                     );
                   })}
+                  <div className="px-2 pt-1 pb-1.5">
+                    <p className="text-[10px] text-muted-foreground/60 leading-tight">
+                      ×1.25 / ×5 is the credit cost vs 720p. 4K needs a Pro or Studio plan.
+                    </p>
+                  </div>
                 </DropdownMenuContent>
               </DropdownMenu>
 
