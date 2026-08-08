@@ -143,6 +143,17 @@ const CHARACTERS = [
 ] as const;
 type CharacterValue = (typeof CHARACTERS)[number]["value"];
 
+// Rough queue/render-time estimate shown on the page for the chosen duration —
+// longer videos use more clips and take longer to generate.
+function renderTimeEstimate(dur: CreateJobRequestRequestedDuration): string {
+  if (dur === CreateJobRequestRequestedDuration.full) return "~10–30 min";
+  const s = parseInt(dur as string, 10);
+  if (!Number.isFinite(s) || s <= 60) return "~2–5 min";
+  if (s <= 90) return "~15 min";
+  if (s <= 120) return "~20 min";
+  return "~30 min";
+}
+
 // estimateCreditCost + provider pricing now live in "@/lib/creditPricing"
 // (imported above) so the generate page and pricing page share one source.
 
@@ -781,16 +792,16 @@ export default function Generate() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-64">
                   {([
-                    { value: CreateJobRequestRequestedDuration.NUMBER_5, label: "5 seconds", note: null },
-                    { value: CreateJobRequestRequestedDuration.NUMBER_10, label: "10 seconds", note: null },
-                    { value: CreateJobRequestRequestedDuration.NUMBER_30, label: "30 seconds", note: null },
-                    { value: CreateJobRequestRequestedDuration.NUMBER_45, label: "45 seconds", note: null },
-                    { value: CreateJobRequestRequestedDuration.NUMBER_60, label: "60 seconds", note: null },
-                    { value: CreateJobRequestRequestedDuration.NUMBER_90, label: "90 seconds", note: "~15 min render" },
-                    { value: CreateJobRequestRequestedDuration.NUMBER_120, label: "120 seconds", note: "~20 min render" },
-                    { value: CreateJobRequestRequestedDuration.NUMBER_300, label: "5 minutes", note: "~30 min render" },
-                    { value: CreateJobRequestRequestedDuration.NUMBER_600, label: "10 minutes", note: "~30 min render" },
-                  ] as const).map(({ value, label, note }) => {
+                    { value: CreateJobRequestRequestedDuration.NUMBER_5, label: "5 seconds" },
+                    { value: CreateJobRequestRequestedDuration.NUMBER_10, label: "10 seconds" },
+                    { value: CreateJobRequestRequestedDuration.NUMBER_30, label: "30 seconds" },
+                    { value: CreateJobRequestRequestedDuration.NUMBER_45, label: "45 seconds" },
+                    { value: CreateJobRequestRequestedDuration.NUMBER_60, label: "60 seconds" },
+                    { value: CreateJobRequestRequestedDuration.NUMBER_90, label: "90 seconds" },
+                    { value: CreateJobRequestRequestedDuration.NUMBER_120, label: "120 seconds" },
+                    { value: CreateJobRequestRequestedDuration.NUMBER_300, label: "5 minutes" },
+                    { value: CreateJobRequestRequestedDuration.NUMBER_600, label: "10 minutes" },
+                  ] as const).map(({ value, label }) => {
                     const base = estimateCreditCost(value, aiProvider, resolution, songDurationSec);
                     const is4k = (resolution as string) === "4k";
                     const fourK = is4k ? null : estimateCreditCost(value, "kling", CreateJobRequestResolution["4k"], songDurationSec);
@@ -802,7 +813,7 @@ export default function Generate() {
                       >
                         <span>{label}</span>
                         <span className="text-xs text-muted-foreground shrink-0">
-                          {base.toLocaleString()} cr{fourK ? ` · 4K ${fourK.toLocaleString()}` : ""}{note ? ` · ${note}` : ""}
+                          {base.toLocaleString()} cr{fourK ? ` · 4K ${fourK.toLocaleString()}` : ""}
                         </span>
                       </DropdownMenuItem>
                     );
@@ -1502,6 +1513,13 @@ export default function Generate() {
                   {!canAfford && !isAdmin && (
                     <span className="ml-1">— insufficient balance</span>
                   )}
+                </div>
+                <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+                  <Clock className="h-3.5 w-3.5" />
+                  <span>
+                    Estimated render time <strong>{renderTimeEstimate(requestedDuration)}</strong>
+                    {" · "}charged only when it finishes
+                  </span>
                 </div>
               </div>
             );
