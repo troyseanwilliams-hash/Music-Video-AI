@@ -360,9 +360,23 @@ export default function Soundtracks() {
       </div>
 
       <div className="mb-6">
-        <TutorialTip id="soundtracks" title="How Soundtracks work">
-          Describe a vibe (or tap a preset), pick a length, and generate a royalty-free instrumental. It saves to your
-          library automatically — play it, download it, rename it, or drop it straight into a video.
+        <TutorialTip
+          id={withVocals ? "soundtracks-vocals" : "soundtracks"}
+          title={withVocals ? "How vocal songs work" : "How Soundtracks work"}
+        >
+          {withVocals ? (
+            <>
+              Write or paste your own lyrics (or tap <strong>Write for me</strong>, then <strong>Enhance</strong> to
+              polish them), choose a voice and length, and we'll generate a full royalty-free song with vocals. Use
+              [Verse] / [Chorus] / [Bridge] tags to shape it — or leave the lyrics blank and the model writes the words
+              from your vibe.
+            </>
+          ) : (
+            <>
+              Describe a vibe (or tap a preset), pick a length, and generate a royalty-free instrumental. It saves to your
+              library automatically — play it, download it, rename it, or drop it straight into a video.
+            </>
+          )}
         </TutorialTip>
       </div>
 
@@ -372,9 +386,11 @@ export default function Soundtracks() {
         <CardHeader className="pb-3">
           <CardTitle className="text-lg">New Soundtrack</CardTitle>
           <CardDescription>
-            Describe the vibe. {status && !status.subscriptionActive && !status.admin
-              ? "New users get 3 free to try — no credits used. Subscribe for a batch every month."
-              : "Free Soundtracks use your monthly free allowance and don't touch your credit balance. Only tracks beyond the free allowance cost credits (5–10 each)."}
+            {withVocals
+              ? `Write or paste lyrics (or let AI write them), pick a voice, and generate a full royalty-free song with vocals — ${status?.vocalCost ?? 15} credits each.`
+              : <>Describe the vibe. {status && !status.subscriptionActive && !status.admin
+                  ? "New users get 3 free to try — no credits used. Subscribe for a batch every month."
+                  : "Free Soundtracks use your monthly free allowance and don't touch your credit balance. Only tracks beyond the free allowance cost credits (5–10 each)."}</>}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
