@@ -523,7 +523,9 @@ export default function Soundtracks() {
                   disabled={prompt.trim().length < 3 || lyricsBusy}
                   className="bg-gradient-electric text-white border-0"
                 >
-                  <Wand2 className="h-4 w-4 mr-2" /> {withVocals ? `Generate Song · ${status?.vocalCost ?? 15} credits` : "Generate Soundtrack"}
+                  <Wand2 className="h-4 w-4 mr-2" /> {withVocals
+                    ? `Generate Song · ${status?.vocalCost ?? 15} credits`
+                    : `Generate Soundtrack · ${status?.admin || (status?.freeRemaining ?? 0) > 0 ? "Free" : `${songCredits(duration)} credits`}`}
                 </Button>
               )}
             </>
