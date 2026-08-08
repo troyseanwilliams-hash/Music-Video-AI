@@ -91,9 +91,15 @@ function Chips({ items, onPick }: { items: string[]; onPick: (v: string) => void
 }
 
 export default function PromptStudio() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+
+  // Admin-only while in refinement — redirect everyone else.
+  if (!isLoading && (!isAuthenticated || !user?.isAdmin)) {
+    setLocation("/");
+    return null;
+  }
 
   // Audio tab
   const [audioDesc, setAudioDesc] = useState("");
