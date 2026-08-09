@@ -32,6 +32,7 @@ import {
   AiMusicVideoLanding, LyricVideoLanding, InstrumentalLanding, SunoToVideoLanding,
   HipHopMusicVideoLanding, EdmMusicVideoLanding, RockMusicVideoLanding,
   PopMusicVideoLanding, CountryMusicVideoLanding, LofiMusicVideoLanding,
+  SlideshowMakerLanding, WeddingSlideshowLanding, CapcutAlternativeLanding,
 } from "@/pages/use-case-landing";
 import ForgotPassword from "@/pages/forgot-password";
 import ResetPassword from "@/pages/reset-password";
@@ -95,6 +96,9 @@ function Router() {
           <Route path="/pop-music-video-generator" component={PopMusicVideoLanding} />
           <Route path="/country-music-video-generator" component={CountryMusicVideoLanding} />
           <Route path="/lofi-music-video-generator" component={LofiMusicVideoLanding} />
+          <Route path="/slideshow-maker" component={SlideshowMakerLanding} />
+          <Route path="/wedding-slideshow-maker" component={WeddingSlideshowLanding} />
+          <Route path="/capcut-alternative" component={CapcutAlternativeLanding} />
           <Route component={NotFound} />
         </Switch>
       </main>

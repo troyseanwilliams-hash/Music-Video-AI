@@ -710,6 +710,7 @@ export default function Editor() {
           Your cut, <span className="text-gradient-electric">your rules</span>
         </h1>
         <p className="text-muted-foreground mt-2 text-sm md:text-base max-w-2xl">
+          A simple, AI-powered CapCut alternative for slideshows and videos — weddings, work, and social.
           Drop in clips and photos, lay them on the timeline, sync your music, add smooth transitions,
           preview it live, and export a crisp 1080p MP4 — no watermark.
         </p>

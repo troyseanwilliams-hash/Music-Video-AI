@@ -153,7 +153,7 @@ export default function Home() {
               {[
                 { icon: Music, title: "1 · Bring or make music", body: "Upload a song, paste a Suno link, or generate a royalty-free Soundtrack in seconds." },
                 { icon: Sparkles, title: "2 · AI beat-synced video", body: "The engine reads your track's beat, energy, and mood and renders cinematic, on-beat visuals." },
-                { icon: Scissors, title: "3 · Make it yours", body: "Fine-tune on the Remix Lab timeline — trim clips, sync music, add transitions, preview live." },
+                { icon: Scissors, title: "3 · Make it yours", body: "Fine-tune on the Remix Lab timeline — or build a slideshow from your own photos. Trim, sync music, add transitions, preview live. A simple CapCut alternative for weddings, work, and socials." },
                 { icon: Share2, title: "4 · Export everywhere", body: "One-click Release Kit gives you TikTok, Reels, Shorts, and Spotify Canvas cuts, ready to post." },
               ].map((s) => (
                 <div key={s.title} className="rounded-2xl border border-card-border bg-card p-6">

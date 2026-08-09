@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Sparkles, Wand2, Mic2, Music2, Film, Upload, Disc3 } from "lucide-react";
+import { ArrowRight, Sparkles, Wand2, Mic2, Music2, Film, Upload, Disc3, Images, Heart, Briefcase, Scissors } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { motion } from "framer-motion";
 import { AuroraBackground } from "@/components/AuroraBackground";
@@ -196,6 +196,59 @@ function genreCfg(genre: string): UseCaseConfig {
     ],
     seo: `AI Beat Sync turns ${genre} tracks into beat-synced cinematic music videos. Upload or generate a ${genre} song and the engine cuts each shot to the beat, then packages the full release — the video, vertical social cuts, a Spotify Canvas loop, and a thumbnail. Free to start.`,
   };
+}
+
+// ── Remix Lab positioning: slideshow / CapCut-alternative pages (CTA → editor) ──
+
+export function SlideshowMakerLanding() {
+  return <UseCaseLanding cfg={{
+    docTitle: "AI Slideshow Maker — Turn Photos Into a Video With Music | AI Beat Sync",
+    metaDescription: "Turn your photos into a beautiful slideshow video with music and smooth transitions. Perfect for weddings, events, and work presentations — no editing skills needed. Free to start.",
+    badge: "Photos in. A polished video out.",
+    h1a: "Turn your photos into a", h1accent: "slideshow video", h1b: "",
+    subhead: "Drop in your photos and clips, pick a song, and Remix Lab builds a smooth, beat-timed slideshow with transitions — ready for weddings, events, work, or social. No editing skills required.",
+    ctaLabel: "Make my slideshow", ctaHref: "/editor",
+    steps: [
+      { icon: Images, title: "Add your photos", body: "Drag in photos and video clips and arrange them on a simple timeline." },
+      { icon: Music2, title: "Pick music & transitions", body: "Add a song (or generate one) and smooth crossfades — timed automatically." },
+      { icon: Film, title: "Export & share", body: "Download your slideshow and one-click cuts for TikTok, Reels, and Shorts." },
+    ],
+    seo: "AI Beat Sync's Remix Lab is a fast, simple slideshow maker: turn photos into a polished video with music and smooth transitions. A friendlier, AI-powered alternative to complex editors like CapCut — great for wedding slideshows, event recaps, and work presentations. Start free.",
+  }} />;
+}
+
+export function WeddingSlideshowLanding() {
+  return <UseCaseLanding cfg={{
+    docTitle: "Wedding Slideshow Maker — Photos to a Video With Music | AI Beat Sync",
+    metaDescription: "Make a beautiful wedding slideshow from your photos in minutes. Add music and smooth transitions and export a video to share — no editing skills needed. Free to start.",
+    badge: "Your day, set to music.",
+    h1a: "Make a", h1accent: "wedding slideshow", h1b: "in minutes",
+    subhead: "Turn your engagement, ceremony, and reception photos into a heartfelt slideshow video with music and elegant transitions — ready to play at the reception or share with family.",
+    ctaLabel: "Make my wedding video", ctaHref: "/editor",
+    steps: [
+      { icon: Heart, title: "Add your photos", body: "Upload the moments that matter and put them in the order you want." },
+      { icon: Music2, title: "Choose your song", body: "Add your first-dance track or generate a royalty-free one, with smooth transitions between shots." },
+      { icon: Film, title: "Share the memory", body: "Export a polished video to play at the reception or send to friends and family." },
+    ],
+    seo: "AI Beat Sync makes wedding slideshows easy: upload your photos, add music, and get a polished video with smooth transitions — no video editor required. A simple, AI-powered alternative to CapCut for couples and wedding pros. Free to start.",
+  }} />;
+}
+
+export function CapcutAlternativeLanding() {
+  return <UseCaseLanding cfg={{
+    docTitle: "A Simpler CapCut Alternative — AI Video & Slideshow Editor | AI Beat Sync",
+    metaDescription: "Looking for a CapCut alternative? AI Beat Sync's Remix Lab is a simple, AI-powered editor for slideshows, music videos, and social clips — timeline editing, music, transitions, and one-click social exports.",
+    badge: "The simple, AI-powered CapCut alternative.",
+    h1a: "A simpler", h1accent: "CapCut alternative", h1b: "",
+    subhead: "Remix Lab gives you the essentials — a timeline, music, transitions, and one-click social exports — without the clutter. Build slideshows, music videos, and social clips, with AI to fill the gaps.",
+    ctaLabel: "Open the editor", ctaHref: "/editor",
+    steps: [
+      { icon: Upload, title: "Add photos or clips", body: "Bring your own media or AI-generated clips onto a clean, simple timeline." },
+      { icon: Scissors, title: "Trim, arrange, transition", body: "Cut, reorder, add music and smooth crossfades — no learning curve." },
+      { icon: Film, title: "Export everywhere", body: "One click gives you vertical TikTok/Reels/Shorts cuts and a shareable video." },
+    ],
+    seo: "AI Beat Sync's Remix Lab is a lightweight, AI-powered alternative to CapCut for slideshows, music videos, and social content. Timeline editing, music, smooth transitions, and one-click TikTok/Reels/Shorts exports — plus AI video and soundtrack generation built in. Free to start.",
+  }} />;
 }
 
 export function HipHopMusicVideoLanding() { return <UseCaseLanding cfg={genreCfg("Hip-Hop")} />; }

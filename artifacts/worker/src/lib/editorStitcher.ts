@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { buildTimedLines, buildAssKaraoke } from "./lyricTiming.js";
+import { logger } from "./logger.js";
 
 export interface EditorSegmentInput {
   buffer: Buffer;
@@ -60,12 +61,14 @@ export interface EditorStitchResult {
 
 const SAR = 48000;
 
-// Transitions join clips pairwise, re-encoding the whole (growing) timeline at
-// each step. That is slow and memory-hungry on long timelines and is the most
-// common cause of stitch failures. Past either threshold we drop the transition
-// and fall back to a hard-cut concat (the fast, robust `-c copy` path).
-const TRANSITION_MAX_SEGMENTS = 12; // more than this many clips => hard cut
-const TRANSITION_MAX_TOTAL_SEC = 150; // longer total runtime => hard cut
+// Transitions use a segment-and-concat crossfade (see the join step below):
+// each clip body is encoded once and only the short overlaps get an xfade, so
+// cost is O(total duration) and memory stays flat. That lets long slideshows
+// transition reliably, so the caps can be generous. Past either threshold we
+// still fall back to a hard-cut concat as a safety valve. And if the crossfade
+// errors for any reason, the render degrades to a hard cut rather than failing.
+const TRANSITION_MAX_SEGMENTS = 60; // e.g. a 60-photo wedding slideshow
+const TRANSITION_MAX_TOTAL_SEC = 600; // 10 minutes
 
 // ffmpeg xfade transition names keyed by our friendly names.
 // Only the simple crossfade is offered — the fancier wipes/slides/shapes were
@@ -288,40 +291,74 @@ export async function stitchEditorTimeline(
       }
     }
 
-    if (useTransition) {
-      const minDur = Math.min(...durs);
-      const t = Math.max(0.1, Math.min(input.transition?.durationSec || 0.5, minDur - 0.05, 2));
-      // Join two clips at a time instead of one N-input filter graph — a single
-      // graph buffers frames from every input at once and gets OOM-killed on
-      // long timelines in production. Pairwise keeps peak memory flat.
-      let acc = parts[0]!;
-      let accDur = durs[0]!;
-      for (let k = 1; k < parts.length; k++) {
-        const step = join(dir, `join_${String(k).padStart(4, "0")}.mp4`);
-        const offset = Math.max(0, accDur - t).toFixed(3);
-        await run([
-          "-y", "-i", acc, "-i", parts[k]!,
-          "-filter_complex",
-          `[0:v][1:v]xfade=transition=${xName}:duration=${t}:offset=${offset}[v];` +
-            `[0:a][1:a]acrossfade=d=${t}[a]`,
-          "-map", "[v]", "-map", "[a]",
-          "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
-          "-refs", "1", "-bf", "0", "-threads", "2",
-          "-pix_fmt", "yuv420p", "-r", String(FPS),
-          "-c:a", "aac", "-ar", String(SAR), "-ac", "2",
-          // Keep the same track timescale as the normalized segments — xfade
-          // refuses inputs whose video timebases differ.
-          "-video_track_timescale", "30000",
-          step,
-        ]);
-        acc = step;
-        accDur = accDur + durs[k]! - t;
-      }
-      await run(["-y", "-i", acc, "-c", "copy", joined]);
-    } else {
+    // Hard-cut concat (fast, robust, flat memory) — the safety net for both the
+    // "no transition" case and any crossfade failure.
+    const hardCut = async () => {
       const listFile = join(dir, "list.txt");
       await writeFile(listFile, parts.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join("\n"));
       await run(["-y", "-f", "concat", "-safe", "0", "-i", listFile, "-c", "copy", joined]);
+    };
+
+    if (useTransition) {
+      // Segment-and-concat crossfade. Encode each clip's BODY once and give only
+      // the short overlap between neighbours an xfade, then concat everything
+      // with `-c copy`. Total encode work is O(sum of durations) — a single pass
+      // — instead of the old accumulator that re-encoded the whole growing
+      // timeline at every join (O(N^2), the cause of the timeouts/OOM/failures).
+      // Peak memory stays flat because each ffmpeg step only touches 1–2 short
+      // inputs. Validated to be frame-accurate and A/V-synced.
+      const enc = [
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
+        "-refs", "1", "-bf", "0", "-threads", "2",
+        "-pix_fmt", "yuv420p", "-r", String(FPS),
+        "-c:a", "aac", "-ar", String(SAR), "-ac", "2",
+        // Keep a uniform track timescale so xfade + concat accept every piece.
+        "-video_track_timescale", "30000",
+      ];
+      const fx = (n: number) => n.toFixed(3);
+      const minDur = Math.min(...durs);
+      // Clamp so even the shortest middle clip keeps a real body (it loses 2·t).
+      const t = Math.max(0.1, Math.min(input.transition?.durationSec || 0.5, 2, (minDur - 0.1) / 2));
+      try {
+        const pieces: string[] = [];
+        for (let i = 0; i < parts.length; i++) {
+          const d = durs[i]!;
+          const bstart = i === 0 ? 0 : t;
+          const bend = i === parts.length - 1 ? d : d - t;
+          const blen = bend - bstart;
+          // Skip a body that would be shorter than a frame or two.
+          if (blen > 0.05) {
+            const body = join(dir, `body_${String(i).padStart(4, "0")}.mp4`);
+            await run(["-y", "-ss", fx(bstart), "-i", parts[i]!, "-t", fx(blen), ...enc, body]);
+            pieces.push(body);
+          }
+          if (i < parts.length - 1) {
+            // Crossfade the last t of clip i with the first t of clip i+1.
+            const tr = join(dir, `trans_${String(i).padStart(4, "0")}.mp4`);
+            await run([
+              "-y",
+              "-ss", fx(d - t), "-i", parts[i]!, "-t", fx(t),
+              "-ss", "0", "-i", parts[i + 1]!, "-t", fx(t),
+              "-filter_complex",
+              `[0:v][1:v]xfade=transition=${xName}:duration=${fx(t)}:offset=0[v];` +
+                `[0:a][1:a]acrossfade=d=${fx(t)}[a]`,
+              "-map", "[v]", "-map", "[a]", ...enc, tr,
+            ]);
+            pieces.push(tr);
+          }
+        }
+        const listFile = join(dir, "xflist.txt");
+        await writeFile(listFile, pieces.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join("\n"));
+        await run(["-y", "-f", "concat", "-safe", "0", "-i", listFile, "-c", "copy", joined]);
+      } catch (err) {
+        // A transition hiccup must never fail the whole render — fall back to a
+        // clean hard-cut concat and tell the caller transitions were dropped.
+        logger.warn({ err }, "Crossfade join failed — falling back to hard-cut concat");
+        transitionsDisabled = true;
+        await hardCut();
+      }
+    } else {
+      await hardCut();
     }
 
     let current = joined;
