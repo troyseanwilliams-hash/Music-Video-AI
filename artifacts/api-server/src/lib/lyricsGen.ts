@@ -42,7 +42,7 @@ CRAFT — treat these as hard rules, not suggestions:
 - No AI tells. Avoid greeting-card platitudes, generic uplift ("shining bright", "reach for the sky", "we are one"), stacked adjectives, and cliché rhyme pairs (fire/desire, heart/apart, fly/sky). Cut any line that could belong to any song.
 - Match the brief. Honor the requested genre and mood in diction, imagery, rhythm, and vocabulary — a trap song, a folk ballad, and a synthpop anthem should not sound alike.
 
-STRUCTURE — use section tags on their own lines exactly like: [Intro], [Verse], [Pre-Chorus], [Chorus], [Verse], [Bridge], [Chorus], [Outro]. Include a repeated chorus and a bridge that turns.
+STRUCTURE — use section tags on their own lines exactly like: [Intro], [Verse], [Pre-Chorus], [Chorus], [Verse], [Bridge], [Chorus], [Outro]. Include a repeated chorus and a bridge that turns. EVERY section tag you write MUST be followed by real lyric lines — never leave a section empty (an [Intro] or [Outro] with no words is not allowed). If a section would have no lyrics, leave its tag out entirely; if you open with [Intro], give it at least a line or two (an ad-lib, hook tease, or scene-setting line).
 
 Return ONLY the finished lyrics with section tags — no title, notes, commentary, or explanation of any kind.`;
 
@@ -158,27 +158,35 @@ async function viaOpenAI(req: LyricsRequest): Promise<string> {
 // Deterministic-quality fallback used only when no LLM key is configured. Picks
 // randomly from several openings/verses/bridges so it isn't identical every time
 // (the LLM path is far better — set ANTHROPIC_API_KEY for real variety).
-function templateLyrics(req: LyricsRequest): string {
-  const t = req.theme.trim() || "the open road";
-  const cap = t.charAt(0).toUpperCase() + t.slice(1);
+//
+// IMPORTANT: this fallback deliberately does NOT interpolate the user's
+// description into the lyrics — echoing the prompt verbatim is exactly the
+// behavior we forbid on the LLM path, so the template stays fully self-contained
+// and generic. The theme only steers song selection, never the words.
+function templateLyrics(_req: LyricsRequest): string {
   const pick = <T>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)]!;
 
+  const intro = pick([
+    `Oh-oh-oh, here we go\nOne more night, let it show`,
+    `Hmm, yeah\nFeel it coming, slow and low`,
+    `Here it comes, one more time\nCatch the rhythm, catch the rhyme`,
+  ]);
   const verse1 = pick([
-    `Streetlights blur outside the glass\n${cap} on my mind and it won't pass\nCounting all the reasons to stay\nBut something keeps pulling me away`,
-    `Left the door a little open\nWords I meant but left unspoken\n${cap} humming in the dark\nA quiet fire, a stubborn spark`,
-    `Rain came down and forgot to stop\nI watched it pool and overflow the top\n${cap} written in the fog\nA restless heart, a barking dog`,
-    `A half-drawn map, a rolled-up sleeve\nMore in these hands than I believe\n${cap} is calling out my name\nAnd nothing here will feel the same`,
+    `Streetlights blur outside the glass\nSomething on my mind that won't pass\nCounting all the reasons to stay\nBut something keeps pulling me away`,
+    `Left the door a little open\nWords I meant but left unspoken\nA whisper humming in the dark\nA quiet fire, a stubborn spark`,
+    `Rain came down and forgot to stop\nI watched it pool and overflow the top\nA message written in the fog\nA restless heart, a barking dog`,
+    `A half-drawn map, a rolled-up sleeve\nMore in these hands than I believe\nI hear the far road call my name\nAnd nothing here will feel the same`,
   ]);
   const prechorus = pick([
     `And when the lights go low\nThere's only one way left to go`,
     `So hold your breath and count to three\nThis is who we're meant to be`,
     `The night leans in, the city sighs\nI'm seeing it with open eyes`,
   ]);
-  const chorus = `${cap}, carry me away\n${cap}, I'm here to stay\nEvery heartbeat, every mile\n${cap} makes it all worthwhile`;
+  const chorus = `Carry me away\nI'm here to stay\nEvery heartbeat, every mile\nMakes it all worthwhile`;
   const verse2 = pick([
-    `Miles behind and miles to come\nBeating steady like a drum\nNothing's gonna hold me back\n${cap} keeps me on the track`,
-    `Photographs and dust and time\nA borrowed tune, a broken rhyme\n${cap} steady as the tide\nI'll keep it burning deep inside`,
-    `We traded silence for the road\nDropped the weight and left the load\n${cap} rising with the sun\nThe best of it has just begun`,
+    `Miles behind and miles to come\nBeating steady like a drum\nNothing's gonna hold me back\nStill I keep it on the track`,
+    `Photographs and dust and time\nA borrowed tune, a broken rhyme\nSteady as the turning tide\nI'll keep it burning deep inside`,
+    `We traded silence for the road\nDropped the weight and left the load\nSlowly rising with the sun\nThe best of it has just begun`,
   ]);
   const bridge = pick([
     `Close my eyes and breathe it in\nThis is where the dreams begin`,
@@ -186,7 +194,7 @@ function templateLyrics(req: LyricsRequest): string {
     `If it breaks, then let it break\nSome things are worth the ache`,
   ]);
 
-  return `[Intro]\n\n[Verse]\n${verse1}\n\n[Pre-Chorus]\n${prechorus}\n\n[Chorus]\n${chorus}\n\n[Verse]\n${verse2}\n\n[Bridge]\n${bridge}\n\n[Chorus]\n${chorus}\n\n[Outro]\n${cap}... carry me away`;
+  return `[Intro]\n${intro}\n\n[Verse]\n${verse1}\n\n[Pre-Chorus]\n${prechorus}\n\n[Chorus]\n${chorus}\n\n[Verse]\n${verse2}\n\n[Bridge]\n${bridge}\n\n[Chorus]\n${chorus}\n\n[Outro]\nCarry me away...`;
 }
 
 // ── Public entry ─────────────────────────────────────────────────────────────
