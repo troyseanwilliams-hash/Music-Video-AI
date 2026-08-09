@@ -112,6 +112,8 @@ export default function Soundtracks() {
   const [lyrics, setLyrics] = useState("");
   const [vocalLengthKey, setVocalLengthKey] = useState("v120");
   const [vocalStyle, setVocalStyle] = useState("auto");
+  const [explicit, setExplicit] = useState(false);
+  const [bpm, setBpm] = useState("");
   const [lyricsBusy, setLyricsBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -129,10 +131,11 @@ export default function Soundtracks() {
   const writeLyrics = async (mode: "write" | "enhance") => {
     setLyricsBusy(true);
     try {
+      const extras = { explicit, bpm: bpm.trim() ? Number(bpm) : undefined };
       const body =
         mode === "enhance"
-          ? { lyrics: lyrics.trim(), targetSeconds: duration }
-          : { theme: prompt.trim() || "an original, heartfelt song", targetSeconds: duration };
+          ? { lyrics: lyrics.trim(), targetSeconds: duration, ...extras }
+          : { theme: prompt.trim() || "an original, heartfelt song", targetSeconds: duration, ...extras };
       const res = await fetch("/api/prompt/lyrics", {
         method: "POST",
         credentials: "include",
@@ -463,6 +466,30 @@ export default function Soundtracks() {
                       </button>
                     </div>
                   </div>
+
+                  {/* Lyric-writer options — apply to Write for me / Enhance */}
+                  <div className="flex flex-wrap items-end gap-3">
+                    <div>
+                      <label className="text-[11px] font-medium text-muted-foreground">Language</label>
+                      <div className="mt-1 flex items-center gap-1 rounded-lg border border-border p-0.5">
+                        <button type="button" onClick={() => setExplicit(false)}
+                          className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${!explicit ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"}`}>
+                          Clean
+                        </button>
+                        <button type="button" onClick={() => setExplicit(true)}
+                          className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${explicit ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"}`}>
+                          Explicit
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-medium text-muted-foreground">Tempo (BPM)</label>
+                      <input type="number" inputMode="numeric" min={40} max={240} value={bpm}
+                        onChange={(e) => setBpm(e.target.value)} placeholder="optional"
+                        className="mt-1 w-24 rounded-lg border border-border bg-background/40 px-2 py-1.5 text-xs" />
+                    </div>
+                  </div>
+
                   <Textarea
                     value={lyrics}
                     onChange={(e) => setLyrics(e.target.value)}
