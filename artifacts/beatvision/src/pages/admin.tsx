@@ -12,7 +12,12 @@ import {
   MessageSquare, Users, ChevronDown, ChevronUp,
   CircleDot, Clock, CheckCircle2, XCircle, RotateCcw, AlertTriangle, RefreshCw,
   Film, Ban, Trash2, Play, Music2, Sparkles, Scissors, Download,
+  BarChart3, TrendingUp, Clock3, MousePointerClick, DollarSign,
 } from "lucide-react";
+import {
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip,
+  CartesianGrid, LineChart, Line, Legend,
+} from "recharts";
 import { useToast } from "@/hooks/use-toast";
 
 /* ─── User management types ─── */
@@ -694,7 +699,7 @@ function AdminMusicPanel() {
 }
 
 /* ─── Main admin page ─── */
-type Tab = "users" | "support" | "jobs" | "deleted" | "music";
+type Tab = "analytics" | "users" | "support" | "jobs" | "deleted" | "music";
 
 interface DeletedVideo {
   id: string;
@@ -919,6 +924,245 @@ function RecoverStrandedPanel() {
             {selected.size === 0 ? "Select jobs to recover" : `Recover ${selected.size} selected`}
           </button>
         </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Analytics dashboard ─── */
+interface AnalyticsOverview {
+  days: number;
+  funnel: { visitors: number; signups: number; activated: number; paid: number };
+  timePerPage: { path: string; views: number; avgSeconds: number; totalMinutes: number }[];
+  featureUsage: {
+    aiVideos: number; remixRenders: number; instrumentals: number; vocalSongs: number;
+    generationsPaid: number; generationsTrial: number;
+  };
+  sources: { source: string; visitors: number }[];
+  landingPages: { path: string; visitors: number }[];
+  trend: { day: string; visitors: number; signups: number }[];
+}
+
+function pct(part: number, whole: number): string {
+  if (!whole) return "—";
+  return `${Math.round((part / whole) * 1000) / 10}%`;
+}
+
+function StatCard({ icon: Icon, label, value, sub }: { icon: React.ElementType; label: string; value: string | number; sub?: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-4">
+      <div className="flex items-center gap-2 text-muted-foreground text-xs font-medium">
+        <Icon className="h-3.5 w-3.5" /> {label}
+      </div>
+      <div className="mt-1 text-2xl font-bold tabular-nums">{value}</div>
+      {sub && <div className="text-xs text-muted-foreground mt-0.5">{sub}</div>}
+    </div>
+  );
+}
+
+function AnalyticsPanel() {
+  const [days, setDays] = useState(30);
+  const { data, isLoading, isError } = useQuery<AnalyticsOverview>({
+    queryKey: ["admin-analytics", days],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/analytics/overview?days=${days}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load analytics");
+      return res.json();
+    },
+    refetchInterval: 60_000,
+  });
+
+  const funnelSteps = data
+    ? [
+        { key: "Visitors", value: data.funnel.visitors, of: data.funnel.visitors },
+        { key: "Signups", value: data.funnel.signups, of: data.funnel.visitors },
+        { key: "Made something", value: data.funnel.activated, of: data.funnel.signups },
+        { key: "Paid", value: data.funnel.paid, of: data.funnel.signups },
+      ]
+    : [];
+  const maxFunnel = data ? Math.max(1, data.funnel.visitors) : 1;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <p className="text-sm text-muted-foreground max-w-xl">
+          Where people spend time and where they drop off on the way to paying. Data comes from your own site — no third-party trackers.
+        </p>
+        <div className="flex items-center gap-1 rounded-lg border border-border p-1">
+          {[7, 30, 90].map((d) => (
+            <button
+              key={d}
+              onClick={() => setDays(d)}
+              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                days === d ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {d}d
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {isLoading && (
+        <div className="flex items-center gap-2 text-muted-foreground text-sm py-12 justify-center">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading analytics…
+        </div>
+      )}
+      {isError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+          Couldn't load analytics. If this is the first run, make sure the analytics_events migration has been applied.
+        </div>
+      )}
+
+      {data && (
+        <>
+          {/* Funnel */}
+          <div className="rounded-xl border border-border bg-card p-5">
+            <h3 className="text-sm font-semibold flex items-center gap-2 mb-4">
+              <TrendingUp className="h-4 w-4 text-primary" /> Conversion funnel
+              <span className="text-xs font-normal text-muted-foreground">last {data.days} days</span>
+            </h3>
+            <div className="space-y-3">
+              {funnelSteps.map((s, i) => (
+                <div key={s.key}>
+                  <div className="flex items-center justify-between text-sm mb-1">
+                    <span className="font-medium">{s.key}</span>
+                    <span className="tabular-nums text-muted-foreground">
+                      {s.value.toLocaleString()}
+                      {i > 0 && <span className="ml-2 text-xs">({pct(s.value, s.of)} of prev)</span>}
+                    </span>
+                  </div>
+                  <div className="h-2.5 rounded-full bg-secondary/60 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-electric"
+                      style={{ width: `${Math.max(2, Math.round((s.value / maxFunnel) * 100))}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground mt-4">
+              Overall visitor → paid: <strong className="text-foreground">{pct(data.funnel.paid, data.funnel.visitors)}</strong>.
+              The biggest gap is your best place to focus.
+            </p>
+          </div>
+
+          {/* Trend */}
+          <div className="rounded-xl border border-border bg-card p-5">
+            <h3 className="text-sm font-semibold flex items-center gap-2 mb-4">
+              <TrendingUp className="h-4 w-4 text-primary" /> Visitors & signups per day
+            </h3>
+            <div className="h-64 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={data.trend} margin={{ top: 5, right: 10, bottom: 5, left: -10 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="day" tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
+                  <YAxis tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" allowDecimals={false} />
+                  <RTooltip
+                    contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Line type="monotone" dataKey="visitors" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} name="Visitors" />
+                  <Line type="monotone" dataKey="signups" stroke="#22c55e" strokeWidth={2} dot={false} name="Signups" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Feature usage */}
+          <div>
+            <h3 className="text-sm font-semibold flex items-center gap-2 mb-3">
+              <Sparkles className="h-4 w-4 text-primary" /> What people make
+            </h3>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <StatCard icon={Film} label="AI videos" value={data.featureUsage.aiVideos.toLocaleString()} />
+              <StatCard icon={Scissors} label="Remix renders" value={data.featureUsage.remixRenders.toLocaleString()} />
+              <StatCard icon={Music2} label="Instrumentals" value={data.featureUsage.instrumentals.toLocaleString()} />
+              <StatCard icon={Music2} label="Vocal songs" value={data.featureUsage.vocalSongs.toLocaleString()} />
+            </div>
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              <StatCard icon={DollarSign} label="Generations by paid users" value={data.featureUsage.generationsPaid.toLocaleString()} />
+              <StatCard icon={MousePointerClick} label="Generations by trial users" value={data.featureUsage.generationsTrial.toLocaleString()} />
+            </div>
+          </div>
+
+          {/* Time per page */}
+          <div className="rounded-xl border border-border bg-card p-5">
+            <h3 className="text-sm font-semibold flex items-center gap-2 mb-4">
+              <Clock3 className="h-4 w-4 text-primary" /> Where attention goes
+            </h3>
+            {data.timePerPage.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No time-on-page data yet — it starts collecting as people browse.</p>
+            ) : (
+              <div className="overflow-x-auto -mx-5 px-5">
+                <table className="w-full text-sm min-w-[420px]">
+                  <thead>
+                    <tr className="text-left text-xs text-muted-foreground border-b border-border">
+                      <th className="py-2 font-medium">Page</th>
+                      <th className="py-2 font-medium text-right">Views</th>
+                      <th className="py-2 font-medium text-right">Avg time</th>
+                      <th className="py-2 font-medium text-right">Total time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.timePerPage.map((p) => (
+                      <tr key={p.path} className="border-b border-border/40">
+                        <td className="py-2 font-mono text-xs truncate max-w-[200px]">{p.path}</td>
+                        <td className="py-2 text-right tabular-nums">{p.views.toLocaleString()}</td>
+                        <td className="py-2 text-right tabular-nums">{p.avgSeconds}s</td>
+                        <td className="py-2 text-right tabular-nums">{p.totalMinutes} min</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Traffic sources + landing pages */}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="rounded-xl border border-border bg-card p-5">
+              <h3 className="text-sm font-semibold flex items-center gap-2 mb-4">
+                <MousePointerClick className="h-4 w-4 text-primary" /> Where visitors come from
+              </h3>
+              {data.sources.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No traffic data yet.</p>
+              ) : (
+                <div className="h-64 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={data.sources} layout="vertical" margin={{ left: 20, right: 10 }}>
+                      <XAxis type="number" tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" allowDecimals={false} />
+                      <YAxis type="category" dataKey="source" width={90} tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
+                      <RTooltip
+                        contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+                      />
+                      <Bar dataKey="visitors" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} name="Visitors" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+            <div className="rounded-xl border border-border bg-card p-5">
+              <h3 className="text-sm font-semibold flex items-center gap-2 mb-4">
+                <Film className="h-4 w-4 text-primary" /> Top landing pages
+              </h3>
+              {data.landingPages.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No landing-page data yet.</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <tbody>
+                    {data.landingPages.map((p) => (
+                      <tr key={p.path} className="border-b border-border/40">
+                        <td className="py-2 font-mono text-xs truncate max-w-[220px]">{p.path}</td>
+                        <td className="py-2 text-right tabular-nums">{p.visitors.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
@@ -1187,6 +1431,17 @@ export default function AdminPage() {
       {/* Tab bar — scrollable on mobile */}
       <div className="flex gap-1 mb-6 border-b border-border/50 overflow-x-auto scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
         <button
+          onClick={() => setTab("analytics")}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap ${
+            tab === "analytics"
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <BarChart3 className="h-4 w-4" />
+          Analytics
+        </button>
+        <button
           onClick={() => setTab("users")}
           className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
             tab === "users"
@@ -1261,6 +1516,8 @@ export default function AdminPage() {
           <span className="ml-1 px-1.5 py-0.5 rounded-full bg-primary/20 text-primary text-[10px] font-mono leading-none">Preview</span>
         </Link>
       </div>
+
+      {tab === "analytics" && <AnalyticsPanel />}
 
       {tab === "music" && <AdminMusicPanel />}
 

@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { track } from "@/lib/analytics";
 import {
   Check,
   Loader2,
@@ -129,10 +130,12 @@ export default function Pricing() {
 
   const handleSubscribe = async (priceId: string) => {
     if (!isAuthenticated) {
+      track("checkout_intent_logged_out", { priceId });
       setLocation("/login");
       return;
     }
     setBusyPriceId(priceId);
+    track("checkout_start", { priceId });
     try {
       const result = await createBillingCheckout({ priceId });
       window.location.href = result.url;

@@ -18,6 +18,8 @@ import referralsRouter from "./referrals.js";
 import teasersRouter from "./teasers.js";
 import promptRouter from "./prompt.js";
 import promoRouter from "./promo.js";
+import analyticsRouter from "./analytics.js";
+import adminAnalyticsRouter from "./admin-analytics.js";
 
 const router: IRouter = Router();
 
@@ -39,5 +41,8 @@ router.use(studioRouter);
 router.use(referralsRouter);
 router.use(teasersRouter);
 router.use(promptRouter);
+router.use(promoRouter);
+router.use(analyticsRouter);
+router.use(adminAnalyticsRouter);
 
 export default router;

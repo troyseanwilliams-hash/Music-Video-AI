@@ -365,3 +365,30 @@ export const promoRedemptionsTable = pgTable("promo_redemptions", {
   code: text("code").notNull(),
   redeemedAt: timestamp("redeemed_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// First-party product analytics. One row per tracked event (pageview, time-on-
+// page, or a named funnel event). Anonymous visitors are keyed by anonId (a
+// localStorage UUID) so we can follow a visitor from first landing through to
+// signup; userId is filled in once the request is authenticated. Kept
+// deliberately schemaless (meta jsonb) so new events need no migration.
+export const analyticsEventsTable = pgTable("analytics_events", {
+  id: text("id").primaryKey(),
+  // Anonymous, cross-session visitor id (localStorage). Null only for rare
+  // server-emitted events.
+  anonId: text("anon_id"),
+  // Set when the visitor is logged in — links anon activity to a real account.
+  userId: text("user_id").references(() => usersTable.id, { onDelete: "set null" }),
+  // "pageview" | "page_time" | funnel events ("signup", "checkout_start", ...).
+  eventType: text("event_type").notNull(),
+  path: text("path"),
+  referrer: text("referrer"),
+  utmSource: text("utm_source"),
+  utmMedium: text("utm_medium"),
+  utmCampaign: text("utm_campaign"),
+  // Milliseconds spent on the page — only set for "page_time" events.
+  durationMs: integer("duration_ms"),
+  meta: jsonb("meta"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type AnalyticsEvent = typeof analyticsEventsTable.$inferSelect;

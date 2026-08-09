@@ -1,5 +1,7 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
+import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { startAnalytics, trackPageview } from "@/lib/analytics";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Navbar } from "@/components/layout/Navbar";
@@ -33,6 +35,15 @@ import Redeem from "@/pages/redeem";
 
 const queryClient = new QueryClient();
 
+// Fires a pageview on every route change and records time-on-page. Rendered
+// inside the router so it sees wouter's location.
+function AnalyticsTracker() {
+  const [location] = useLocation();
+  useEffect(() => { startAnalytics(); }, []);
+  useEffect(() => { trackPageview(location); }, [location]);
+  return null;
+}
+
 function Router() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col font-sans">
@@ -43,6 +54,7 @@ function Router() {
       >
         Skip to main content
       </a>
+      <AnalyticsTracker />
       <Navbar />
       <main id="main-content" tabIndex={-1} className="flex-1 flex flex-col outline-none">
         <Switch>
