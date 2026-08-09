@@ -110,6 +110,8 @@ export default function PromptStudio() {
   const [theme, setTheme] = useState("");
   const [genre, setGenre] = useState("");
   const [mood, setMood] = useState("");
+  const [explicit, setExplicit] = useState(false);
+  const [bpm, setBpm] = useState("");
   const [lyricsBusy, setLyricsBusy] = useState(false);
   const [lyricsRes, setLyricsRes] = useState<LyricsResult | null>(null);
 
@@ -134,7 +136,13 @@ export default function PromptStudio() {
     if (theme.trim().length < 2) return;
     setLyricsBusy(true);
     try {
-      setLyricsRes(await postJSON<LyricsResult>("/api/prompt/lyrics", { theme, genre: genre || undefined, mood: mood || undefined }));
+      setLyricsRes(await postJSON<LyricsResult>("/api/prompt/lyrics", {
+        theme,
+        genre: genre || undefined,
+        mood: mood || undefined,
+        explicit,
+        bpm: bpm.trim() ? Number(bpm) : undefined,
+      }));
     } catch (err) { fail(err); } finally { setLyricsBusy(false); }
   }
 
@@ -256,6 +264,45 @@ export default function PromptStudio() {
           <p className="text-xs text-muted-foreground -mt-1">
             Adding a genre and mood makes the lyrics fit the sound — the writer matches diction and rhythm to the style.
           </p>
+
+          <div className="flex flex-wrap items-end gap-4">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Language</label>
+              <div className="mt-1 flex items-center gap-1 rounded-lg border border-border p-1">
+                <button
+                  type="button"
+                  onClick={() => setExplicit(false)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${!explicit ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  Clean
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExplicit(true)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${explicit ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  Explicit
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Tempo (BPM)</label>
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={40}
+                max={240}
+                value={bpm}
+                onChange={(e) => setBpm(e.target.value)}
+                placeholder="optional"
+                className="mt-1 w-28"
+              />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground -mt-1">
+            Set the BPM and we'll shape line length to sit on the beat. Leave it blank if you're not sure.
+          </p>
+
           <Button onClick={buildLyrics} disabled={lyricsBusy || theme.trim().length < 2} className="bg-gradient-electric text-white border-0">
             {lyricsBusy ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Writing…</> : <><Wand2 className="mr-2 h-4 w-4" /> Write lyrics · {LYRICS_BUILD_COST} cr</>}
           </Button>

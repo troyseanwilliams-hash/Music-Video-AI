@@ -131,6 +131,10 @@ const LyricsBody = z
     lyrics: z.string().max(5000).optional(),
     // Target song length (seconds) — scales how much lyric to write.
     targetSeconds: z.number().int().min(10).max(600).optional(),
+    // Allow explicit language (default clean).
+    explicit: z.boolean().optional(),
+    // Song tempo (BPM) for on-beat singability.
+    bpm: z.number().int().min(40).max(240).optional(),
   })
   .refine(
     (d) => (d.theme?.trim().length ?? 0) >= 2 || (d.lyrics?.trim().length ?? 0) >= 2,
@@ -169,6 +173,8 @@ router.post("/prompt/lyrics", async (req: Request, res: Response) => {
       mood: parsed.data.mood,
       existingLyrics: parsed.data.lyrics,
       targetSeconds: parsed.data.targetSeconds,
+      explicit: parsed.data.explicit,
+      bpm: parsed.data.bpm,
     });
     res.json({ ...result, charged: willUseLLM ? LYRICS_BUILD_COST : 0, enhanced: !!parsed.data.lyrics?.trim() });
   } catch (err) {

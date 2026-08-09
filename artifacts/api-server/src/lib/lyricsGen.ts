@@ -16,6 +16,11 @@ export interface LyricsRequest {
   // Target song length in seconds — scales how much lyric/structure to write so
   // the words fit the chosen song duration.
   targetSeconds?: number;
+  // Allow explicit language. Defaults to false = radio-clean.
+  explicit?: boolean;
+  // Song tempo (BPM). When set, the writer matches line length / syllable
+  // density to the groove so the words actually sing on the beat.
+  bpm?: number;
 }
 
 // Map a target duration to a concrete song structure so the amount of lyrics
@@ -60,6 +65,48 @@ function genreGuidance(genre?: string): string {
   return "Match the phrasing, rhythm, and vocabulary to the genre's conventions.";
 }
 
+// Match line length / syllable density to the groove so the words sing on-beat.
+function tempoGuidance(bpm?: number): string {
+  if (!bpm || bpm <= 0) return "";
+  const feel = bpm < 85 ? "slow, spacious" : bpm < 115 ? "mid-tempo" : bpm < 140 ? "upbeat" : "fast, driving";
+  const lineHint =
+    bpm < 85
+      ? "give lines room to breathe — longer, sustained phrases with fewer syllables per beat"
+      : bpm >= 140
+        ? "keep lines short and punchy, with tight rhythmic syllables that land right on the beat"
+        : "keep an even, steady syllable count per line so the words sit naturally in the pocket";
+  return `Tempo: about ${Math.round(bpm)} BPM (${feel}). Match line length and syllable density to this groove — ${lineHint}.`;
+}
+
+// Clean by default; only loosen when the caller explicitly opts in.
+function contentGuidance(explicit?: boolean): string {
+  return explicit
+    ? "Explicit language is permitted where it genuinely serves the emotion — never gratuitous, and don't force it in."
+    : "Keep it radio-clean: no profanity, slurs, or explicit sexual content.";
+}
+
+// Strip anything that isn't the song: model preambles ("Here are your lyrics:"),
+// markdown code fences, and trailing chit-chat. Belt-and-suspenders on top of the
+// prompt instruction so the UI never shows commentary.
+function sanitizeLyrics(raw: string): string {
+  let text = (raw ?? "").trim();
+  // Remove surrounding markdown code fences if the model wrapped the output.
+  text = text.replace(/^```[a-zA-Z]*\s*\n?/, "").replace(/\n?```\s*$/, "").trim();
+  // If there's a preamble before the first section tag AND it reads like
+  // commentary, drop everything up to that first tag.
+  const firstTag = text.search(/\[(intro|verse|pre-?chorus|chorus|bridge|hook|refrain|outro)\b/i);
+  if (firstTag > 0) {
+    const before = text.slice(0, firstTag);
+    if (/lyric|here('|’)?s|sure[,!]|of course|certainly|happy to|:\s*$/i.test(before)) {
+      text = text.slice(firstTag);
+    }
+  }
+  // Drop a trailing note paragraph (separated by a blank line) that's clearly
+  // the model talking, not lyrics.
+  text = text.replace(/\n{2,}\s*(let me know|i hope|feel free|note:|hope (you|this)|enjoy!)[\s\S]*$/i, "").trim();
+  return text.trim();
+}
+
 // Rotate the opening approach so no two generations start the same way.
 const OPENING_ANGLES = [
   "Open mid-scene, dropping the listener into a specific moment already in motion.",
@@ -82,6 +129,8 @@ function buildUserPrompt(req: LyricsRequest): string {
     if (req.genre) parts.push(`Genre: ${req.genre}. ${genreGuidance(req.genre)}`);
     if (req.mood) parts.push(`Mood: ${req.mood}.`);
     if (req.theme && req.theme.trim()) parts.push(`Emphasize this theme: ${req.theme}.`);
+    if (req.bpm) parts.push(tempoGuidance(req.bpm));
+    parts.push(contentGuidance(req.explicit));
     if (len) parts.push(`Adjust the length to fit a ${len} song — add or trim sections as needed.`);
     parts.push(`\n\nDraft lyrics:\n${req.existingLyrics.trim()}`);
     return parts.join(" ");
@@ -96,6 +145,8 @@ function buildUserPrompt(req: LyricsRequest): string {
     parts.push(`Genre: ${req.genre}. ${genreGuidance(req.genre)}`);
   }
   if (req.mood) parts.push(`Mood/emotional tone: ${req.mood} — carry it through the imagery and rhythm, don't just name it.`);
+  if (req.bpm) parts.push(tempoGuidance(req.bpm));
+  parts.push(contentGuidance(req.explicit));
   if (len) parts.push(`Length: aim for a ${len} song, using [Verse]/[Chorus]/[Bridge] structure tags to shape it.`);
   parts.push("Land one memorable, repeatable chorus hook tied to a concrete image, and vary the opening from the obvious.");
   parts.push(OPENING_ANGLES[Math.floor(Math.random() * OPENING_ANGLES.length)]!);
@@ -126,7 +177,7 @@ async function viaAnthropic(req: LyricsRequest): Promise<string> {
   const data = (await res.json()) as { content?: { text?: string }[] };
   const text = data.content?.map((b) => b.text ?? "").join("").trim();
   if (!text) throw new Error("Anthropic returned no lyrics");
-  return text;
+  return sanitizeLyrics(text);
 }
 
 async function viaOpenAI(req: LyricsRequest): Promise<string> {
@@ -150,7 +201,7 @@ async function viaOpenAI(req: LyricsRequest): Promise<string> {
   const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
   const text = data.choices?.[0]?.message?.content?.trim();
   if (!text) throw new Error("OpenAI returned no lyrics");
-  return text;
+  return sanitizeLyrics(text);
 }
 
 // ── Template fallback (no key) ───────────────────────────────────────────────
