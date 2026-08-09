@@ -57,6 +57,10 @@ export interface EditorStitchResult {
   // True when a requested transition was dropped in favor of a hard-cut concat
   // because the timeline was too long (see TRANSITION_MAX_* below).
   transitionsDisabled: boolean;
+  // Why, when transitionsDisabled is true — surfaced to the user on the
+  // finished job so "my transition didn't work" has a real answer instead of
+  // a silent hard cut. Undefined when transitions weren't requested at all.
+  transitionDropReason?: string;
 }
 
 const SAR = 48000;
@@ -287,11 +291,19 @@ export async function stitchEditorTimeline(
     // requested when xName is set and there are >=2 clips to blend.
     let useTransition = !!xName && parts.length >= 2;
     let transitionsDisabled = false;
+    let transitionDropReason: string | undefined;
+
+    // Requested a transition type we don't recognize (or "none"/single clip) —
+    // not a failure, just nothing to blend.
+    if (input.transition && input.transition.type !== "none" && !xName) {
+      logger.warn({ transType }, "Unknown transition type requested — rendering as hard cut");
+    }
 
     // Guard 1 (segment count): cheap, deterministic — no probing needed.
     if (useTransition && parts.length > TRANSITION_MAX_SEGMENTS) {
       useTransition = false;
       transitionsDisabled = true;
+      transitionDropReason = `Your timeline has ${parts.length} clips, above the ${TRANSITION_MAX_SEGMENTS}-clip limit for transitions, so it was joined with hard cuts instead.`;
     }
 
     // Probe durations only if we still intend to transition — needed for the
@@ -304,6 +316,7 @@ export async function stitchEditorTimeline(
       if (totalSec > TRANSITION_MAX_TOTAL_SEC) {
         useTransition = false;
         transitionsDisabled = true;
+        transitionDropReason = `Your timeline is over ${Math.round(TRANSITION_MAX_TOTAL_SEC / 60)} minutes, above the length limit for transitions, so it was joined with hard cuts instead.`;
       }
     }
 
@@ -377,8 +390,12 @@ export async function stitchEditorTimeline(
       } catch (err) {
         // A transition hiccup must never fail the whole render — fall back to a
         // clean hard-cut concat and tell the caller transitions were dropped.
-        logger.warn({ err }, "Crossfade join failed — falling back to hard-cut concat");
+        // Log the real ffmpeg stderr (via err.message, set by run()) so a
+        // "my transition didn't work" report is diagnosable instead of a guess,
+        // and pass a reason through to the job so the user sees it too.
+        logger.warn({ err, transType: xName }, "Crossfade join failed — falling back to hard-cut concat");
         transitionsDisabled = true;
+        transitionDropReason = `The "${transType}" transition couldn't be applied to this export (an ffmpeg error), so clips were joined with a hard cut instead. Your credits/render were not affected — try again or pick a different transition.`;
         await hardCut();
       }
     } else {
@@ -494,7 +511,7 @@ export async function stitchEditorTimeline(
       readFile(current),
       readFile(thumbPath),
     ]);
-    return { videoBuffer, thumbnailBuffer, durationSeconds, skipped, transitionsDisabled };
+    return { videoBuffer, thumbnailBuffer, durationSeconds, skipped, transitionsDisabled, transitionDropReason };
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {});
   }

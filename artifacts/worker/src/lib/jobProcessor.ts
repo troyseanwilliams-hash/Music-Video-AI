@@ -965,7 +965,9 @@ async function processEditorJob(job: JobRow): Promise<void> {
       isRetry && manifest.transition && manifest.transition.type !== "none"
         ? undefined
         : manifest.transition;
-    if (isRetry && effectiveTransition === undefined && manifest.transition) {
+    const transitionDroppedForRetry =
+      isRetry && effectiveTransition === undefined && !!manifest.transition && manifest.transition.type !== "none";
+    if (transitionDroppedForRetry) {
       logger.info(
         { jobId: job.id, retryCount: job.retryCount },
         "Retry after failure — dropping transition, rendering with hard cuts",
@@ -1000,8 +1002,8 @@ async function processEditorJob(job: JobRow): Promise<void> {
     }
     if (result.transitionsDisabled) {
       logger.info(
-        { jobId: job.id, segments: segments.length },
-        "Transitions disabled for long timeline — used hard-cut concat",
+        { jobId: job.id, segments: segments.length, reason: result.transitionDropReason },
+        "Transitions disabled — used hard-cut concat",
       );
     }
 
@@ -1043,16 +1045,24 @@ async function processEditorJob(job: JobRow): Promise<void> {
       logger.info({ jobId: job.id, creditCost }, "Editor credits deducted on success");
     }
 
-    // Surface removed files to the user on the finished job (the job page
-    // shows this note alongside the completed video).
+    // Surface removed files (and a dropped transition) to the user on the
+    // finished job — the job page shows this note alongside the completed
+    // video, so "my transition didn't work" has a real answer instead of a
+    // silently-successful hard cut.
     const removedNotice = removedFiles.length
       ? `Note: ${removedFiles.length === 1 ? "1 file" : `${removedFiles.length} files`} couldn't be processed and ${removedFiles.length === 1 ? "was" : "were"} removed from your video: ${removedFiles.join(", ")}. The rest of your files rendered normally.`
       : null;
+    const transitionNotice = result.transitionsDisabled
+      ? (result.transitionDropReason ?? "Note: your chosen transition couldn't be applied to this export, so clips were joined with a hard cut instead.")
+      : transitionDroppedForRetry
+        ? "Note: your first export attempt hit a hiccup, so the retry that succeeded used hard cuts instead of your chosen transition. Try the export again to get the transition."
+        : null;
+    const combinedNotice = [removedNotice, transitionNotice].filter(Boolean).join(" ") || null;
     await updateJobStatus(job.id, {
       status: "ready",
       progressPercent: 100,
       videoId,
-      errorMessage: removedNotice,
+      errorMessage: combinedNotice,
     });
     void notifyRenderReady(job);
     logger.info({ jobId: job.id, videoId }, "Editor render completed");
