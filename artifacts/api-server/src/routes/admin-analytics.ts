@@ -130,9 +130,23 @@ router.get("/admin/analytics/overview", async (req, res) => {
       GROUP BY 1 ORDER BY 1
     `);
 
-    const [funnel, time, feature, sources, landing, vTrend, sTrend] = await Promise.all([
-      funnelQ, timeQ, featureQ, sourcesQ, landingQ, visitorTrendQ, signupTrendQ,
+    // ── Key growth-loop actions (named events from the client tracker) ────
+    const actionsQ = db.execute(sql`
+      SELECT event_type, COUNT(*) AS n
+      FROM analytics_events
+      WHERE created_at >= NOW() - make_interval(days => ${days})
+        AND event_type IN ('share_clip','referral_share','referral_copy','checkout_start','checkout_intent_logged_out')
+      GROUP BY event_type
+    `);
+
+    const [funnel, time, feature, sources, landing, vTrend, sTrend, actions] = await Promise.all([
+      funnelQ, timeQ, featureQ, sourcesQ, landingQ, visitorTrendQ, signupTrendQ, actionsQ,
     ]);
+
+    const actionMap = new Map<string, number>();
+    for (const r of actions.rows as Record<string, unknown>[]) {
+      actionMap.set(String(r.event_type), num(r.n));
+    }
 
     const f = (funnel.rows[0] ?? {}) as Record<string, unknown>;
     const feat = (feature.rows[0] ?? {}) as Record<string, unknown>;
@@ -172,6 +186,13 @@ router.get("/admin/analytics/overview", async (req, res) => {
         vocalSongs: num(feat.vocal_songs),
         generationsPaid: num(feat.generations_paid),
         generationsTrial: num(feat.generations_trial),
+      },
+      keyActions: {
+        shareClip: actionMap.get("share_clip") ?? 0,
+        referralShare: actionMap.get("referral_share") ?? 0,
+        referralCopy: actionMap.get("referral_copy") ?? 0,
+        checkoutStart: actionMap.get("checkout_start") ?? 0,
+        checkoutIntentLoggedOut: actionMap.get("checkout_intent_logged_out") ?? 0,
       },
       sources: (sources.rows as Record<string, unknown>[]).map((r) => ({
         source: String(r.source),

@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Gift, Copy, Check, Users, Coins, Share2 } from "lucide-react";
+import { track } from "@/lib/analytics";
 
 interface ReferralInfo {
   code: string;
@@ -33,6 +34,7 @@ export default function ReferEarnCard() {
   const shareLink = `${window.location.origin}/register?ref=${data.code}`;
 
   async function handleCopy() {
+    track("referral_copy");
     try {
       await navigator.clipboard.writeText(shareLink);
       setCopied(true);
@@ -43,6 +45,7 @@ export default function ReferEarnCard() {
   }
 
   async function handleShare() {
+    track("referral_share");
     const text = `I'm making AI music videos on AIBeatSync — join with my link and we both get free credits: ${shareLink}`;
     try {
       if (navigator.share) {

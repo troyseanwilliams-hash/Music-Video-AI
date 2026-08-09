@@ -12,7 +12,7 @@ import {
   MessageSquare, Users, ChevronDown, ChevronUp,
   CircleDot, Clock, CheckCircle2, XCircle, RotateCcw, AlertTriangle, RefreshCw,
   Film, Ban, Trash2, Play, Music2, Sparkles, Scissors, Download,
-  BarChart3, TrendingUp, Clock3, MousePointerClick, DollarSign,
+  BarChart3, TrendingUp, Clock3, MousePointerClick, DollarSign, Share2, Gift, Copy,
 } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip,
@@ -938,6 +938,10 @@ interface AnalyticsOverview {
     aiVideos: number; remixRenders: number; instrumentals: number; vocalSongs: number;
     generationsPaid: number; generationsTrial: number;
   };
+  keyActions: {
+    shareClip: number; referralShare: number; referralCopy: number;
+    checkoutStart: number; checkoutIntentLoggedOut: number;
+  };
   sources: { source: string; visitors: number }[];
   landingPages: { path: string; visitors: number }[];
   trend: { day: string; visitors: number; signups: number }[];
@@ -1085,6 +1089,23 @@ function AnalyticsPanel() {
               <StatCard icon={MousePointerClick} label="Generations by trial users" value={data.featureUsage.generationsTrial.toLocaleString()} />
             </div>
           </div>
+
+          {/* Growth loop — share & referral actions */}
+          {data.keyActions && (
+            <div>
+              <h3 className="text-sm font-semibold flex items-center gap-2 mb-3">
+                <Share2 className="h-4 w-4 text-primary" /> Growth loop
+                <span className="text-xs font-normal text-muted-foreground">shares & referrals drive new visitors</span>
+              </h3>
+              <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                <StatCard icon={Share2} label="Clips shared" value={data.keyActions.shareClip.toLocaleString()} />
+                <StatCard icon={Gift} label="Referral shares" value={data.keyActions.referralShare.toLocaleString()} />
+                <StatCard icon={Copy} label="Referral copies" value={data.keyActions.referralCopy.toLocaleString()} />
+                <StatCard icon={DollarSign} label="Checkout starts" value={data.keyActions.checkoutStart.toLocaleString()} />
+                <StatCard icon={MousePointerClick} label="Checkout (logged out)" value={data.keyActions.checkoutIntentLoggedOut.toLocaleString()} sub="wanted to pay before signing in" />
+              </div>
+            </div>
+          )}
 
           {/* Time per page */}
           <div className="rounded-xl border border-border bg-card p-5">

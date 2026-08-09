@@ -12,6 +12,7 @@ import {
   LYRIC_OVERLAY_COST,
   RELEASE_KIT_COST,
 } from "@/lib/creditPricing";
+import { track } from "@/lib/analytics";
 
 interface TeaserItem {
   index: number;
@@ -122,6 +123,7 @@ export default function SocialExportsPanel({ videoId }: { videoId: string }) {
   // the link. Every shared clip carries the watermark, so it doubles as an ad.
   const SHARE_TEXT = "Made with AIBeatSync 🎬 — turn your music into an AI video at https://aibeatsync.com";
   async function shareClip(url: string, filename: string) {
+    track("share_clip", { kind: filename.startsWith("canvas") ? "canvas" : filename.startsWith("short") ? "short" : "video" });
     try {
       const res = await fetch(url);
       const blob = await res.blob();
