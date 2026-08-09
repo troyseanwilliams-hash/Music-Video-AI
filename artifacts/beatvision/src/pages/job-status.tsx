@@ -17,6 +17,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 
 import { motion, AnimatePresence } from "framer-motion";
 import SocialExportsPanel from "@/components/SocialExportsPanel";
 import LipSyncPanel from "@/components/LipSyncPanel";
+import ReferEarnCard from "@/components/ReferEarnCard";
 
 const TERMINAL_STATUSES = new Set(["ready", "failed"]);
 
@@ -723,6 +724,11 @@ export default function JobStatus() {
         {/* ── Lip Sync ── */}
         {isComplete && job.videoId && (
           <LipSyncPanel videoId={job.videoId} />
+        )}
+
+        {/* ── Refer & earn — surfaced right when they've got something to share ── */}
+        {isComplete && job.videoId && (
+          <ReferEarnCard />
         )}
 
         {/* ── Audio analysis ── */}

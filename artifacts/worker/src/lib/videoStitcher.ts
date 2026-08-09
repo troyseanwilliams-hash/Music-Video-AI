@@ -37,7 +37,7 @@ export async function applyWatermark(videoBuffer: Buffer): Promise<Buffer> {
     await mkdir(tmpDir, { recursive: true });
     await writeFile(inPath, videoBuffer);
     const draw =
-      "drawtext=text='AI Beat Sync':fontcolor=white@0.85:fontsize=h/22:" +
+      "drawtext=text='Made with AIBeatSync · aibeatsync.com':fontcolor=white@0.85:fontsize=h/28:" +
       "box=1:boxcolor=black@0.35:boxborderw=8:x=w-text_w-24:y=h-text_h-24";
     await runFfmpeg(
       ffmpeg(inPath)

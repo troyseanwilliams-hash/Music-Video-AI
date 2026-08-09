@@ -40,6 +40,7 @@ export default function SocialExportsPanel({ videoId }: { videoId: string }) {
   const [lyricsOpen, setLyricsOpen] = useState(false);
   const [lyricsText, setLyricsText] = useState("");
   const [lyricResult, setLyricResult] = useState<{ videoId: string; url: string } | null>(null);
+  const [sharedUrl, setSharedUrl] = useState<string | null>(null);
 
   // Release Kit state
   const [kitLyricsOpen, setKitLyricsOpen] = useState(false);
@@ -114,6 +115,36 @@ export default function SocialExportsPanel({ videoId }: { videoId: string }) {
     document.body.appendChild(a);
     a.click();
     a.remove();
+  }
+
+  // One-tap share. On mobile, tries to hand the actual video file to the OS share
+  // sheet (so it posts straight to TikTok/Reels/Shorts); otherwise shares/copies
+  // the link. Every shared clip carries the watermark, so it doubles as an ad.
+  const SHARE_TEXT = "Made with AIBeatSync 🎬 — turn your music into an AI video at https://aibeatsync.com";
+  async function shareClip(url: string, filename: string) {
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const file = new File([blob], filename, { type: blob.type || "video/mp4" });
+      const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
+      if (nav.canShare?.({ files: [file] })) {
+        await nav.share!({ files: [file], title: "Made with AIBeatSync", text: SHARE_TEXT });
+        return;
+      }
+    } catch {
+      /* CORS or cancel — fall through to link share */
+    }
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: "Made with AIBeatSync", text: SHARE_TEXT, url });
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      setSharedUrl(url);
+      setTimeout(() => setSharedUrl(null), 1500);
+    } catch {
+      /* user cancelled or clipboard blocked */
+    }
   }
 
   function downloadAll() {
@@ -239,6 +270,11 @@ export default function SocialExportsPanel({ videoId }: { videoId: string }) {
                 <Film className="mr-1.5 h-3.5 w-3.5" /> Video
               </Button>
             )}
+            {kitExtras.videoUrl && (
+              <Button size="sm" className="bg-gradient-electric text-white border-0" onClick={() => shareClip(kitExtras.videoUrl!, "video.mp4")}>
+                {sharedUrl === kitExtras.videoUrl ? <><Check className="mr-1.5 h-3.5 w-3.5" /> Link copied</> : <><Share2 className="mr-1.5 h-3.5 w-3.5" /> Share</>}
+              </Button>
+            )}
             {kitExtras.thumbnailUrl && (
               <Button size="sm" variant="outline" onClick={() => triggerDownload(kitExtras.thumbnailUrl!, "thumbnail.jpg")}>
                 <ImageIcon className="mr-1.5 h-3.5 w-3.5" /> Thumbnail
@@ -263,12 +299,23 @@ export default function SocialExportsPanel({ videoId }: { videoId: string }) {
                   playsInline
                   className="w-full aspect-[9/16] rounded-lg border border-border bg-black object-cover"
                 />
-                <a href={t.url} download={`${t.kind === "canvas" ? "canvas" : "teaser"}-${t.index + 1}.mp4`}>
-                  <Button size="sm" variant="ghost" className="w-full text-xs">
-                    <Download className="mr-1.5 h-3.5 w-3.5" />
-                    {t.kind === "canvas" ? "Canvas" : `Teaser ${t.index + 1}`} · {t.durationSec}s
+                <div className="flex gap-1">
+                  <a href={t.url} download={`${t.kind === "canvas" ? "canvas" : "teaser"}-${t.index + 1}.mp4`} className="flex-1">
+                    <Button size="sm" variant="ghost" className="w-full text-xs">
+                      <Download className="mr-1.5 h-3.5 w-3.5" />
+                      {t.kind === "canvas" ? "Canvas" : `Short ${t.index + 1}`}
+                    </Button>
+                  </a>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-xs shrink-0"
+                    aria-label="Share clip"
+                    onClick={() => shareClip(t.url, `${t.kind === "canvas" ? "canvas" : "short"}-${t.index + 1}.mp4`)}
+                  >
+                    {sharedUrl === t.url ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Share2 className="h-3.5 w-3.5" />}
                   </Button>
-                </a>
+                </div>
               </div>
             ))}
           </div>

@@ -5,6 +5,7 @@ import { eq, and, gte, ne, count } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import { FREE_EDITOR_EXPORTS_PER_MONTH, EDITOR_OVERAGE_COST } from "../lib/editorCost.js";
+import { getUserTier } from "../lib/tier.js";
 
 const router = Router();
 
@@ -124,6 +125,12 @@ router.post("/studio/render", async (req, res) => {
   // Full, free Editor access during the 7-day trial, with a subscription, or for admins.
   const fullAccess = isAdmin || isSubscribed || trialActive;
 
+  // Watermark every non-paying export (trial/free/Starter); Pro/Studio + admins
+  // render clean. tier lookup falls open (clean) on any Stripe error.
+  let editorTier: string | null = null;
+  try { editorTier = isAdmin ? null : await getUserTier(userRecord ?? {}); } catch { editorTier = null; }
+  const watermarkEditor = !isAdmin && editorTier !== "pro" && editorTier !== "studio";
+
   const resolution = input.resolution;
   const transition = input.transition;
   const totalDuration = input.segments.reduce((sum, s) => sum + (s.durationSec ?? 0), 0);
@@ -188,7 +195,9 @@ router.post("/studio/render", async (req, res) => {
     transition,
     resolution,
     orientation: input.orientation,
-    watermark: false,
+    // Free-tier Remix exports carry the "Made with AIBeatSync" watermark; only
+    // Pro/Studio (and admins) render clean. Same rule as the video generator.
+    watermark: watermarkEditor,
     chargeCredits,
     chargeAmount,
     lyricsText: input.lyricsText?.trim() || null,

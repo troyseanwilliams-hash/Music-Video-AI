@@ -28,7 +28,11 @@ import Settings from "@/pages/settings";
 import PromptStudio from "@/pages/prompt-studio";
 import SunoLanding from "@/pages/suno-landing";
 import CanvasLanding from "@/pages/canvas-landing";
-import { AiMusicVideoLanding, LyricVideoLanding, InstrumentalLanding } from "@/pages/use-case-landing";
+import {
+  AiMusicVideoLanding, LyricVideoLanding, InstrumentalLanding, SunoToVideoLanding,
+  HipHopMusicVideoLanding, EdmMusicVideoLanding, RockMusicVideoLanding,
+  PopMusicVideoLanding, CountryMusicVideoLanding, LofiMusicVideoLanding,
+} from "@/pages/use-case-landing";
 import ForgotPassword from "@/pages/forgot-password";
 import ResetPassword from "@/pages/reset-password";
 import Redeem from "@/pages/redeem";
@@ -84,6 +88,13 @@ function Router() {
           <Route path="/ai-music-video-generator" component={AiMusicVideoLanding} />
           <Route path="/ai-lyric-video" component={LyricVideoLanding} />
           <Route path="/instrumental-generator" component={InstrumentalLanding} />
+          <Route path="/suno-to-video" component={SunoToVideoLanding} />
+          <Route path="/hip-hop-music-video-generator" component={HipHopMusicVideoLanding} />
+          <Route path="/edm-music-video-generator" component={EdmMusicVideoLanding} />
+          <Route path="/rock-music-video-generator" component={RockMusicVideoLanding} />
+          <Route path="/pop-music-video-generator" component={PopMusicVideoLanding} />
+          <Route path="/country-music-video-generator" component={CountryMusicVideoLanding} />
+          <Route path="/lofi-music-video-generator" component={LofiMusicVideoLanding} />
           <Route component={NotFound} />
         </Switch>
       </main>

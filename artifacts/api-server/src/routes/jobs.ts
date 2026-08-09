@@ -220,9 +220,11 @@ router.post("/jobs", async (req, res) => {
     return;
   }
 
-  // Starter-tier videos carry a small "AI Beat Sync" watermark; Pro/Studio and
-  // admin render clean. Free viral loop + an upgrade incentive.
-  const watermark = !isAdmin && (tier ?? "").toLowerCase() === "starter";
+  // Every non-paying export (trial + Starter) carries a small "Made with
+  // AIBeatSync · aibeatsync.com" watermark — the shared clip is a free demo and
+  // an upgrade incentive. Only Pro/Studio (and admins) render clean.
+  const paidTier = (tier ?? "").toLowerCase();
+  const watermark = !isAdmin && paidTier !== "pro" && paidTier !== "studio";
 
   const songDurationSec = (audioAnalysis as { durationSeconds?: number } | null | undefined)?.durationSeconds;
   // Kling (via Pixazo) is cheaper than Runway, so the charge scales with the

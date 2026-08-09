@@ -27,9 +27,23 @@ function UseCaseLanding({ cfg }: { cfg: UseCaseConfig }) {
     const meta = document.querySelector('meta[name="description"]');
     const prev = meta?.getAttribute("content") ?? null;
     meta?.setAttribute("content", cfg.metaDescription);
+
+    // Set a self-referential canonical so each long-tail landing page is indexed
+    // on its own URL (and genre variants aren't flagged as duplicates).
+    const href = `https://aibeatsync.com${window.location.pathname}`;
+    let canonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]');
+    const prevCanonical = canonical?.getAttribute("href") ?? null;
+    if (!canonical) {
+      canonical = document.createElement("link");
+      canonical.setAttribute("rel", "canonical");
+      document.head.appendChild(canonical);
+    }
+    canonical.setAttribute("href", href);
+
     return () => {
       document.title = prevTitle;
       if (prev && meta) meta.setAttribute("content", prev);
+      if (prevCanonical && canonical) canonical.setAttribute("href", prevCanonical);
     };
   }, [cfg]);
 
@@ -147,3 +161,46 @@ export function InstrumentalLanding() {
     seo: "AI Beat Sync's soundtrack generator creates original, royalty-free instrumental music from a text description — free tracks included on every plan. Use the beats in your videos, streams, and social content, then turn any track into a cinematic AI music video in the same place.",
   }} />;
 }
+
+export function SunoToVideoLanding() {
+  return <UseCaseLanding cfg={{
+    docTitle: "Suno to Video — Turn Your Suno Song Into an AI Music Video | AI Beat Sync",
+    metaDescription: "Made a song in Suno? Turn it into a cinematic, beat-synced AI music video. Paste your Suno link or upload the track, pick a style, and export for YouTube, TikTok, and Reels.",
+    badge: "From Suno track to finished video.",
+    h1a: "Turn your", h1accent: "Suno song", h1b: "into a video",
+    subhead: "Love the track you made in Suno? Paste the link or upload the file and our AI builds a beat-synced cinematic music video around it — then hands you social cuts for every platform.",
+    ctaLabel: "Turn my Suno song into a video", ctaHref: "/generate",
+    steps: [
+      { icon: Upload, title: "Bring your Suno track", body: "Paste your Suno share link or upload the exported MP3 — no re-recording needed." },
+      { icon: Wand2, title: "Pick a look", body: "The AI reads your song's beat and energy and generates cinematic shots timed to each section." },
+      { icon: Film, title: "Export & post", body: "Download up to 4K, plus one-click TikTok/Reels/Shorts cuts and a Spotify Canvas loop." },
+    ],
+    seo: "AI Beat Sync is the fastest way to turn a Suno song into a music video. Bring any AI-generated or uploaded track, and the engine analyzes its beat, mood, and structure to render beat-synced cinematic visuals — then packages the full release: the video, vertical social cuts, a Spotify Canvas loop, and a thumbnail. Start free.",
+  }} />;
+}
+
+// Genre-targeted SEO pages. One config generator drives many long-tail landing
+// pages ("[genre] music video generator") that all funnel into /generate.
+function genreCfg(genre: string): UseCaseConfig {
+  return {
+    docTitle: `${genre} Music Video Generator — AI ${genre} Videos | AI Beat Sync`,
+    metaDescription: `Turn your ${genre} track into a cinematic, beat-synced AI music video. Upload or generate a ${genre} song, pick a look, and export visuals ready for YouTube, TikTok, and Reels.`,
+    badge: `Built for ${genre}.`,
+    h1a: "AI", h1accent: `${genre} music`, h1b: "videos",
+    subhead: `Drop in a ${genre} track — or generate one right here — and our AI cuts a cinematic, beat-synced video to match its energy. No editing skills required.`,
+    ctaLabel: "Make my video", ctaHref: "/generate",
+    steps: [
+      { icon: Upload, title: "Add your track", body: `Upload any ${genre} song, paste a link, or generate a royalty-free one on the spot.` },
+      { icon: Wand2, title: "Pick a look", body: `The AI times cinematic shots to the beat and energy of your ${genre} track.` },
+      { icon: Film, title: "Download & share", body: "Export up to 4K, plus one-click TikTok/Reels/Shorts cuts and a Spotify Canvas loop." },
+    ],
+    seo: `AI Beat Sync turns ${genre} tracks into beat-synced cinematic music videos. Upload or generate a ${genre} song and the engine cuts each shot to the beat, then packages the full release — the video, vertical social cuts, a Spotify Canvas loop, and a thumbnail. Free to start.`,
+  };
+}
+
+export function HipHopMusicVideoLanding() { return <UseCaseLanding cfg={genreCfg("Hip-Hop")} />; }
+export function EdmMusicVideoLanding() { return <UseCaseLanding cfg={genreCfg("EDM")} />; }
+export function RockMusicVideoLanding() { return <UseCaseLanding cfg={genreCfg("Rock")} />; }
+export function PopMusicVideoLanding() { return <UseCaseLanding cfg={genreCfg("Pop")} />; }
+export function CountryMusicVideoLanding() { return <UseCaseLanding cfg={genreCfg("Country")} />; }
+export function LofiMusicVideoLanding() { return <UseCaseLanding cfg={genreCfg("Lo-Fi")} />; }

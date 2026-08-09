@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Gift, Copy, Check, Users, Coins } from "lucide-react";
+import { Gift, Copy, Check, Users, Coins, Share2 } from "lucide-react";
 
 interface ReferralInfo {
   code: string;
@@ -40,6 +40,19 @@ export default function ReferEarnCard() {
     } catch {
       // clipboard unavailable — user can select the text manually
     }
+  }
+
+  async function handleShare() {
+    const text = `I'm making AI music videos on AIBeatSync — join with my link and we both get free credits: ${shareLink}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: "AIBeatSync", text, url: shareLink });
+        return;
+      }
+    } catch {
+      return; // user cancelled the share sheet
+    }
+    handleCopy(); // desktop fallback
   }
 
   return (
@@ -84,6 +97,14 @@ export default function ReferEarnCard() {
             ) : (
               <><Copy className="mr-1.5 h-3.5 w-3.5" /> Copy link</>
             )}
+          </Button>
+          <Button
+            size="sm"
+            onClick={handleShare}
+            className="shrink-0 bg-gradient-electric text-white border-0"
+            data-testid="button-share-referral"
+          >
+            <Share2 className="mr-1.5 h-3.5 w-3.5" /> Share
           </Button>
         </div>
       </CardContent>
