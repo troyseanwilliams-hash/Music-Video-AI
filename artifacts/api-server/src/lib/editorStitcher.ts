@@ -356,8 +356,16 @@ export async function stitchEditorTimeline(
               "-ss", fx(d - t), "-i", parts[i]!, "-t", fx(t),
               "-ss", "0", "-i", parts[i + 1]!, "-t", fx(t),
               "-filter_complex",
-              `[0:v][1:v]xfade=transition=${xName}:duration=${fx(t)}:offset=0[v];` +
-                `[0:a][1:a]acrossfade=d=${fx(t)}[a]`,
+              // Reset PTS and normalize the timebase on BOTH inputs before the
+              // xfade/acrossfade. Because each input is produced with an -ss
+              // seek, its timestamps don't start at 0, and many ffmpeg builds
+              // then reject xfade ("do not match" / no output) — the exact cause
+              // of the crossfade silently falling back to a hard cut in prod.
+              `[0:v]settb=AVTB,setpts=PTS-STARTPTS[xv0];` +
+                `[1:v]settb=AVTB,setpts=PTS-STARTPTS[xv1];` +
+                `[xv0][xv1]xfade=transition=${xName}:duration=${fx(t)}:offset=0[v];` +
+                `[0:a]asetpts=PTS-STARTPTS[xa0];[1:a]asetpts=PTS-STARTPTS[xa1];` +
+                `[xa0][xa1]acrossfade=d=${fx(t)}[a]`,
               "-map", "[v]", "-map", "[a]", ...enc, tr,
             ]);
             pieces.push(tr);
