@@ -1,11 +1,10 @@
--- First-party product analytics event log.
--- Powers the admin Analytics dashboard: funnel, time-per-page, feature usage,
--- and traffic sources. Safe to run more than once.
-
+-- Analytics events table for tracking pageviews, funnels, and feature usage.
+-- anon_id ties anonymous sessions together; user_id links to a real account
+-- once the visitor signs in. utm_* columns capture acquisition source.
 CREATE TABLE IF NOT EXISTS analytics_events (
   id            text PRIMARY KEY,
   anon_id       text,
-  user_id       varchar REFERENCES users(id) ON DELETE SET NULL,
+  user_id       text REFERENCES users(id) ON DELETE SET NULL,
   event_type    text NOT NULL,
   path          text,
   referrer      text,
@@ -17,11 +16,7 @@ CREATE TABLE IF NOT EXISTS analytics_events (
   created_at    timestamptz NOT NULL DEFAULT now()
 );
 
--- Time-range scans are the common access pattern for every dashboard query.
-CREATE INDEX IF NOT EXISTS analytics_events_created_at_idx ON analytics_events (created_at);
--- Filter by event type within a range (pageview vs page_time vs funnel).
-CREATE INDEX IF NOT EXISTS analytics_events_type_created_idx ON analytics_events (event_type, created_at);
--- Distinct-visitor and per-visitor funnel lookups.
-CREATE INDEX IF NOT EXISTS analytics_events_anon_idx ON analytics_events (anon_id);
--- Top-pages / landing-page grouping.
-CREATE INDEX IF NOT EXISTS analytics_events_path_idx ON analytics_events (path);
+CREATE INDEX IF NOT EXISTS analytics_events_user_id_idx    ON analytics_events (user_id);
+CREATE INDEX IF NOT EXISTS analytics_events_anon_id_idx    ON analytics_events (anon_id);
+CREATE INDEX IF NOT EXISTS analytics_events_event_type_idx ON analytics_events (event_type);
+CREATE INDEX IF NOT EXISTS analytics_events_created_at_idx ON analytics_events (created_at DESC);
