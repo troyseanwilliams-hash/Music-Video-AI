@@ -311,7 +311,7 @@ export default function Home() {
                 { icon: Lock, title: "Character Lock", body: "Lock a face or look from a reference image so the same character carries across every clip — no shape-shifting between shots.", tag: "New" },
                 { icon: Clapperboard, title: "Storyboard Preview", body: "See the planned shots — timing, energy, and prompt for each — before you spend a single credit. Approve, then render.", tag: "New" },
                 { icon: Share2, title: "Release Kit", body: "One click turns your finished video into a full set of social exports — vertical, square, and Spotify Canvas — sized for every platform.", tag: "New" },
-                { icon: Wand2, title: "Prompt Studio", body: "Describe a vibe in plain words and get a polished video or soundtrack prompt — or full, original lyrics — in seconds.", tag: "Beta" },
+                { icon: Wand2, title: "Prompt Studio", body: "Describe a vibe in plain words and get a polished video or soundtrack prompt — or full, original lyrics — in seconds.", tag: "New" },
                 { icon: Maximize, title: "Up to 4K & 10 minutes", body: "Go beyond quick clips: render crisp 4K and full-length videos up to ten minutes for premium releases.", tag: "New" },
                 { icon: Music, title: "Royalty-free Soundtracks", body: "No track? Generate original instrumentals you fully own and drop them straight into a video.", tag: null as string | null },
               ].map((f) => (

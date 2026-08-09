@@ -9,7 +9,7 @@ import { writeFile, unlink } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { logger } from "./logger.js";
-import { notifyRenderReady, notifyRenderFailed } from "./renderEmail.js";
+import { notifyRenderReady, notifyRenderFailed, notifyAdminRenderFailed } from "./renderEmail.js";
 import { ObjectStorageService } from "./objectStorage.js";
 import { analyzeAudioBuffer, type AudioAnalysis, type AudioSection } from "./audioAnalysis.js";
 import { generateClip, downloadClip, checkPixazoRequest, getActiveProvider, PROVIDER_API_FAILURE, PROVIDER_OUT_OF_CREDITS } from "./videoApis.js";
@@ -737,13 +737,14 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
   if (errMsg.includes(PROVIDER_API_FAILURE)) {
     const cleanMsg = errMsg.replace(PROVIDER_API_FAILURE, "").trim();
     logger.warn({ jobId: job.id }, "Permanent failure: AI provider error — not retrying to avoid repeated charges");
-    await refundReservation(job.id, job.userId, "provider-api-failure");
-    await cleanupPartialClips(job.id).catch(() => {});
+    // Do NOT auto-refund. Keep the reservation and alert the admin to attempt a
+    // fix/recovery (re-run failed clips, finalize from partials, or refund
+    // manually). Partial clips are retained so recovery is possible.
     await updateJobStatus(job.id, {
       status: "failed",
       errorMessage: cleanMsg,
     });
-    void notifyRenderFailed(job, cleanMsg);
+    void notifyAdminRenderFailed(job, cleanMsg);
     return;
   }
 
@@ -846,13 +847,14 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
   } else {
     // Out of retries — permanently failed. No refund: every attempt (including
     // the up-front reservation) incurred real provider spend, so the credits
-    // stay deducted. Drop any salvage copies.
-    await cleanupPartialClips(job.id).catch(() => {});
+    // stay deducted. Keep any salvage copies (partial clips) so the admin can
+    // recover the job, and alert the admin to attempt a fix rather than telling
+    // the user it's dead.
     await updateJobStatus(job.id, {
       status: "failed",
       errorMessage: `${errMsg} (max ${maxRetries} ${maxRetries === 1 ? "attempt" : "retries"} reached)`,
     });
-    void notifyRenderFailed(job, errMsg);
+    void notifyAdminRenderFailed(job, errMsg);
   }
 }
 

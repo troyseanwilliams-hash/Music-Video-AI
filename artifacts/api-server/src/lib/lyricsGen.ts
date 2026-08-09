@@ -31,15 +31,34 @@ function lengthGuidance(seconds?: number): string {
   return "~5 min: a full arrangement — intro, 3-4 verses, a pre-chorus, repeated choruses, a bridge, and an outro";
 }
 
-const SYSTEM_PROMPT = `You are an acclaimed songwriter with a vivid, distinctive voice. Write ORIGINAL song lyrics only — never reproduce or closely imitate existing copyrighted songs.
+const SYSTEM_PROMPT = `You are an acclaimed, award-winning songwriter with a vivid, distinctive voice. Write ORIGINAL song lyrics only — never reproduce, quote, or closely imitate existing copyrighted songs, titles, or hooks.
 
-Craft rules:
-- Open in a fresh, specific way — a concrete image, a small moment, a line of dialogue, an unexpected angle. NEVER open with clichés like "Thinking about…", "Woke up…", "Here I am…", "In the/this …", or by restating the theme.
-- Use concrete, sensory detail and a consistent point of view. Show, don't tell. No greeting-card platitudes or filler lines.
-- Give it real shape with section tags on their own lines: [Intro], [Verse], [Pre-Chorus], [Chorus], [Verse], [Bridge], [Chorus], [Outro]. Verses that build, a bridge that turns, and a repeated, singable chorus.
-- Aim for a full-length song (~5 minutes sung): 2–3 verses.
+CRAFT — treat these as hard rules, not suggestions:
+- Concrete over abstract. Anchor the song in specific, sensory, filmable details — objects, places, gestures, weather, times of day. Show the feeling through images; never name the emotion outright ("I'm so sad", "my heart is broken", "I feel alive" are banned).
+- Fresh open. Start on a concrete image, a small moment already in motion, or a line of dialogue. NEVER open with "Thinking about…", "Woke up…", "Here I am…", "In the/this …", "Tonight I…", or by restating the theme.
+- A real hook. The chorus must land one memorable, repeatable central line and return to it — singable, emotionally earned, and tied to the song's core image. Repetition in the chorus is good; filler is not.
+- Prosody & singability. Keep a consistent, natural meter and line length within each section so the words actually sing. Favor strong end-rhymes and the occasional internal rhyme, but never bend grammar or force an awkward word just to rhyme. Use contractions and plain speech the way people actually sing.
+- Emotional arc. Verse 1 sets the scene, verse 2 raises the stakes or turns, the bridge shifts perspective or breaks form, the final chorus hits hardest. Give it forward motion — don't restate the same idea in every verse.
+- No AI tells. Avoid greeting-card platitudes, generic uplift ("shining bright", "reach for the sky", "we are one"), stacked adjectives, and cliché rhyme pairs (fire/desire, heart/apart, fly/sky). Cut any line that could belong to any song.
+- Match the brief. Honor the requested genre and mood in diction, imagery, rhythm, and vocabulary — a trap song, a folk ballad, and a synthpop anthem should not sound alike.
 
-Return ONLY the lyrics with section tags — no title, commentary, or explanation.`;
+STRUCTURE — use section tags on their own lines exactly like: [Intro], [Verse], [Pre-Chorus], [Chorus], [Verse], [Bridge], [Chorus], [Outro]. Include a repeated chorus and a bridge that turns.
+
+Return ONLY the finished lyrics with section tags — no title, notes, commentary, or explanation of any kind.`;
+
+// Nudge diction/rhythm toward the requested genre so a trap song and a folk
+// ballad don't read the same. Free-text genres fall through to a generic note.
+function genreGuidance(genre?: string): string {
+  const g = (genre ?? "").toLowerCase();
+  if (/rap|hip.?hop|trap|drill/.test(g)) return "Lean into rhythmic, syllable-dense lines, internal rhyme, and a hard, chantable hook; conversational, specific, present-tense.";
+  if (/country|folk|americana|bluegrass/.test(g)) return "Tell a grounded story with plain-spoken, concrete detail and a warm, singable refrain; place and character matter.";
+  if (/rock|punk|metal|grunge/.test(g)) return "Punchy, driving lines with attitude and tension; a chorus built to be shouted back.";
+  if (/pop|synth|dance|edm|house/.test(g)) return "Bright, hooky, economical lines; a big repeatable chorus and a pre-chorus that lifts into it.";
+  if (/r.?&.?b|soul|neo.?soul/.test(g)) return "Smooth, intimate phrasing with room for melisma; sensual, specific imagery and a slow-burn hook.";
+  if (/indie|alt|dream|shoegaze|lo.?fi/.test(g)) return "Impressionistic, image-first lines with a wistful, understated hook; mood over exposition.";
+  if (/ballad|acoustic|singer.?songwriter/.test(g)) return "Quiet, confessional detail that builds; let one honest image carry the chorus.";
+  return "Match the phrasing, rhythm, and vocabulary to the genre's conventions.";
+}
 
 // Rotate the opening approach so no two generations start the same way.
 const OPENING_ANGLES = [
@@ -58,9 +77,9 @@ function buildUserPrompt(req: LyricsRequest): string {
   // Enhance mode: polish the user's draft rather than writing fresh lyrics.
   if (req.existingLyrics && req.existingLyrics.trim()) {
     const parts = [
-      "Polish and improve these draft song lyrics. Keep their core meaning, theme, and voice; sharpen the imagery, tighten weak or clichéd lines, improve the flow and rhyme, and make the chorus catchy and repeatable. Add [Verse] / [Chorus] / [Bridge] structure tags where they help. Return ONLY the improved lyrics — no commentary.",
+      "Polish and elevate these draft song lyrics. Keep their core meaning, theme, and voice, but: replace any abstract or clichéd lines with concrete, sensory images; fix meter so each section sings evenly; strengthen the rhymes without forcing them; and sharpen the chorus into one memorable, repeatable hook. Add [Verse] / [Chorus] / [Bridge] structure tags where they help. Return ONLY the improved lyrics — no commentary.",
     ];
-    if (req.genre) parts.push(`Genre: ${req.genre}.`);
+    if (req.genre) parts.push(`Genre: ${req.genre}. ${genreGuidance(req.genre)}`);
     if (req.mood) parts.push(`Mood: ${req.mood}.`);
     if (req.theme && req.theme.trim()) parts.push(`Emphasize this theme: ${req.theme}.`);
     if (len) parts.push(`Adjust the length to fit a ${len} song — add or trim sections as needed.`);
@@ -68,10 +87,12 @@ function buildUserPrompt(req: LyricsRequest): string {
     return parts.join(" ");
   }
   const parts = [`Write original song lyrics about: ${req.theme}.`];
-  if (req.genre) parts.push(`Genre: ${req.genre}.`);
-  if (req.mood) parts.push(`Mood: ${req.mood}.`);
+  if (req.genre) {
+    parts.push(`Genre: ${req.genre}. ${genreGuidance(req.genre)}`);
+  }
+  if (req.mood) parts.push(`Mood/emotional tone: ${req.mood} — carry it through the imagery and rhythm, don't just name it.`);
   if (len) parts.push(`Length: aim for a ${len} song, using [Verse]/[Chorus]/[Bridge] structure tags to shape it.`);
-  parts.push("Make the chorus catchy and repeatable, and vary the opening from the obvious.");
+  parts.push("Land one memorable, repeatable chorus hook tied to a concrete image, and vary the opening from the obvious.");
   parts.push(OPENING_ANGLES[Math.floor(Math.random() * OPENING_ANGLES.length)]!);
   return parts.join(" ");
 }
@@ -87,9 +108,11 @@ async function viaAnthropic(req: LyricsRequest): Promise<string> {
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      model: process.env.LYRICS_ANTHROPIC_MODEL ?? "claude-haiku-4-5-20251001",
-      max_tokens: 1500,
-      temperature: 1,
+      // Lyrics quality is very model-sensitive, and it's one short, infrequent
+      // call per song — worth Sonnet. Override with LYRICS_ANTHROPIC_MODEL.
+      model: process.env.LYRICS_ANTHROPIC_MODEL ?? "claude-sonnet-4-5",
+      max_tokens: 2000,
+      temperature: 0.9,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: buildUserPrompt(req) }],
     }),
@@ -109,9 +132,9 @@ async function viaOpenAI(req: LyricsRequest): Promise<string> {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: process.env.LYRICS_OPENAI_MODEL ?? "gpt-4o-mini",
-      max_tokens: 1500,
-      temperature: 1.05,
+      model: process.env.LYRICS_OPENAI_MODEL ?? "gpt-4o",
+      max_tokens: 2000,
+      temperature: 0.95,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: buildUserPrompt(req) },

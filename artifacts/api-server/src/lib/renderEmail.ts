@@ -68,6 +68,59 @@ export async function notifyRenderReady(job: RenderEmailJob): Promise<void> {
   }
 }
 
+/**
+ * Alerts the admin that a video render failed so they can attempt a fix/recovery
+ * (re-run failed clips for free, finalize from partial clips, or manually
+ * refund). Used INSTEAD of auto-refunding + emailing the user on fixable
+ * (technical/provider) failures — the goal is to save the sale and recover the
+ * job rather than silently hand the credits back. Never throws.
+ */
+export async function notifyAdminRenderFailed(job: RenderEmailJob, reason: string): Promise<void> {
+  try {
+    const adminEmail = process.env.ADMIN_EMAIL;
+    if (!adminEmail) {
+      logger.warn({ jobId: job.id }, "ADMIN_EMAIL not set — admin render-failure alert skipped");
+      return;
+    }
+    // Pull the owner's email for context (best-effort).
+    let userEmail: string | null = null;
+    try {
+      const [u] = await db
+        .select({ email: usersTable.email })
+        .from(usersTable)
+        .where(eq(usersTable.id, job.userId))
+        .limit(1);
+      userEmail = u?.email ?? null;
+    } catch { /* non-fatal */ }
+
+    const title = job.prompt?.slice(0, 100) || "(no prompt)";
+    await sendViaResend(
+      adminEmail,
+      `⚠️ Render failed — needs a fix (${job.id.slice(0, 8)})`,
+      `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+        <h2 style="margin:0 0 12px">A video render failed — credits were NOT refunded</h2>
+        <p style="color:#444">This job needs your attention. Try recovering it (re-run failed clips / finalize from partial clips) before deciding whether to refund the user manually.</p>
+        <table style="width:100%;border-collapse:collapse;margin-top:8px">
+          <tr><td style="padding:6px 0;color:#666;width:120px">Job ID</td><td style="padding:6px 0;font-family:monospace">${job.id}</td></tr>
+          <tr><td style="padding:6px 0;color:#666">User</td><td style="padding:6px 0">${userEmail ?? "unknown"}</td></tr>
+          <tr><td style="padding:6px 0;color:#666;vertical-align:top">Prompt</td><td style="padding:6px 0">${title}</td></tr>
+          <tr><td style="padding:6px 0;color:#666;vertical-align:top">Reason</td><td style="padding:6px 0;color:#b91c1c">${reason.slice(0, 300)}</td></tr>
+        </table>
+        <p style="margin:24px 0">
+          <a href="${APP_URL}/admin" style="background:#7c3aed;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">
+            Open Admin — recover this job →
+          </a>
+        </p>
+      </div>
+      `,
+    );
+    logger.info({ jobId: job.id }, "Admin render-failure alert sent");
+  } catch (err) {
+    logger.error({ err, jobId: job.id }, "Failed to send admin render-failure alert (non-fatal)");
+  }
+}
+
 /** Emails the job owner that their render permanently failed. Never throws. */
 export async function notifyRenderFailed(job: RenderEmailJob, reason: string): Promise<void> {
   try {
