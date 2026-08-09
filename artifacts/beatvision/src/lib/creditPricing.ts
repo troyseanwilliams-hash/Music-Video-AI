@@ -4,7 +4,7 @@ export type AiProvider = "runway" | "kling" | "luma";
 
 export const PROVIDER_LABELS: Record<AiProvider, string> = {
   runway: "Runway Gen-4",
-  kling: "Kling (via Pixazo)",
+  kling: "Kling",
   luma: "Luma Dream Machine",
 };
 
