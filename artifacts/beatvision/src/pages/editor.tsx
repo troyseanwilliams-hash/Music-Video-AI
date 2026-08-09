@@ -80,26 +80,27 @@ const TRANSITIONS = [
   { value: "radial", label: "Radial" },
 ];
 
-// Map each transition to a CSS animation for the in-app preview (the exported
-// MP4 uses FFmpeg's exact xfade; the preview is a close approximation). Slides
-// and wipes preview as a slide; everything else previews as a fade.
+// Map each transition to a CSS animation class suffix for the in-app preview
+// (the exported MP4 uses FFmpeg's exact xfade; the preview is a close, but now
+// visibly distinct, approximation). Each suffix has matching keyframes in the
+// <style> block below.
 const PREVIEW_ANIM: Record<string, string> = {
   crossfade: "fade",
-  fadeblack: "fade",
-  fadewhite: "fade",
   dissolve: "fade",
-  pixelize: "fade",
-  circleopen: "fade",
-  circleclose: "fade",
   radial: "fade",
-  wipeleft: "slide",
-  wiperight: "slide",
-  wipeup: "slide",
-  wipedown: "slide",
-  slideleft: "slide",
-  slideright: "slide",
-  slideup: "slide",
-  slidedown: "slide",
+  fadeblack: "fadeblack",
+  fadewhite: "fadewhite",
+  pixelize: "pixelize",
+  wipeleft: "wipeleft",
+  wiperight: "wiperight",
+  wipeup: "wipeup",
+  wipedown: "wipedown",
+  slideleft: "slideleft",
+  slideright: "slideright",
+  slideup: "slideup",
+  slidedown: "slidedown",
+  circleopen: "circleopen",
+  circleclose: "circleopen",
 };
 
 function uid() {
@@ -452,25 +453,40 @@ export default function Editor() {
     }
   }
 
-  function runTransition() {
+  // Animate whichever element is CURRENTLY showing the new segment (call this
+  // AFTER showSegment has swapped it in), revealing the captured previous frame
+  // beneath. Applying it post-swap is what makes photo↔video transitions work —
+  // the class lands on the element the viewer actually sees.
+  function animateTransition() {
     if (transition === "none") return;
-    captureTransPrev();
     const incoming =
       videoRef.current && videoRef.current.style.display !== "none" ? videoRef.current : photoRef.current;
     const tp = transPrevRef.current;
     if (stageRef.current) stageRef.current.style.setProperty("--bvtd", `${transitionDuration}s`);
-    if (tp) tp.style.display = "block";
+    if (tp && tp.getAttribute("src")) tp.style.display = "block";
     if (incoming) {
       const cls = `bv-anim-${PREVIEW_ANIM[transition] || "fade"}`;
       [...incoming.classList].forEach((c) => c.startsWith("bv-anim-") && incoming.classList.remove(c));
-      void incoming.offsetWidth;
+      void incoming.offsetWidth; // restart the animation
       incoming.classList.add(cls);
       window.setTimeout(() => {
         incoming.classList.remove(cls);
         if (tp) tp.style.display = "none";
-      }, transitionDuration * 1000 + 60);
+      }, transitionDuration * 1000 + 80);
     }
   }
+
+  // Instant demo: when the user picks a transition (while paused), replay it on
+  // the current frame so they can see what it does without hitting play.
+  useEffect(() => {
+    if (transition === "none") return;
+    if (playingRef.current) return;
+    if (segmentsRef.current.length === 0) return;
+    captureTransPrev();
+    const id = requestAnimationFrame(() => animateTransition());
+    return () => cancelAnimationFrame(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transition]);
 
   function showSegment(i: number, autoplay: boolean) {
     const segs = segmentsRef.current;
@@ -510,8 +526,11 @@ export default function Editor() {
   function advance() {
     const next = idxRef.current + 1;
     if (next < segmentsRef.current.length) {
-      runTransition();
+      // Capture the OLD frame, swap to the new segment, THEN animate the new
+      // element over the captured frame.
+      if (transition !== "none") captureTransPrev();
       showSegment(next, true);
+      if (transition !== "none") requestAnimationFrame(() => animateTransition());
     } else {
       pause();
     }
@@ -728,10 +747,32 @@ export default function Editor() {
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-8">
       <style>{`
-        @keyframes bvTrIn{from{opacity:0}to{opacity:1}}
-        @keyframes bvSlideIn{from{opacity:0;transform:translateX(6%)}to{opacity:1;transform:translateX(0)}}
-        .bv-anim-fade{animation:bvTrIn var(--bvtd,.5s) ease both}
-        .bv-anim-slide{animation:bvSlideIn var(--bvtd,.5s) ease both}
+        @keyframes bvFade{from{opacity:0}to{opacity:1}}
+        @keyframes bvFadeBlack{0%{opacity:1;filter:brightness(0)}45%{opacity:1;filter:brightness(0)}100%{opacity:1;filter:brightness(1)}}
+        @keyframes bvFadeWhite{0%{opacity:1;filter:brightness(6) contrast(0)}45%{opacity:1;filter:brightness(6) contrast(0)}100%{opacity:1;filter:brightness(1) contrast(1)}}
+        @keyframes bvPixelize{from{opacity:0;filter:blur(16px)}to{opacity:1;filter:blur(0)}}
+        @keyframes bvWipeLeft{from{clip-path:inset(0 0 0 100%)}to{clip-path:inset(0 0 0 0)}}
+        @keyframes bvWipeRight{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+        @keyframes bvWipeUp{from{clip-path:inset(100% 0 0 0)}to{clip-path:inset(0 0 0 0)}}
+        @keyframes bvWipeDown{from{clip-path:inset(0 0 100% 0)}to{clip-path:inset(0 0 0 0)}}
+        @keyframes bvSlideLeft{from{transform:translateX(100%)}to{transform:translateX(0)}}
+        @keyframes bvSlideRight{from{transform:translateX(-100%)}to{transform:translateX(0)}}
+        @keyframes bvSlideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+        @keyframes bvSlideDown{from{transform:translateY(-100%)}to{transform:translateY(0)}}
+        @keyframes bvCircleOpen{from{clip-path:circle(0% at 50% 50%)}to{clip-path:circle(75% at 50% 50%)}}
+        .bv-anim-fade{animation:bvFade var(--bvtd,.5s) ease both}
+        .bv-anim-fadeblack{animation:bvFadeBlack var(--bvtd,.5s) ease both}
+        .bv-anim-fadewhite{animation:bvFadeWhite var(--bvtd,.5s) ease both}
+        .bv-anim-pixelize{animation:bvPixelize var(--bvtd,.5s) ease both}
+        .bv-anim-wipeleft{animation:bvWipeLeft var(--bvtd,.5s) ease both}
+        .bv-anim-wiperight{animation:bvWipeRight var(--bvtd,.5s) ease both}
+        .bv-anim-wipeup{animation:bvWipeUp var(--bvtd,.5s) ease both}
+        .bv-anim-wipedown{animation:bvWipeDown var(--bvtd,.5s) ease both}
+        .bv-anim-slideleft{animation:bvSlideLeft var(--bvtd,.5s) ease both}
+        .bv-anim-slideright{animation:bvSlideRight var(--bvtd,.5s) ease both}
+        .bv-anim-slideup{animation:bvSlideUp var(--bvtd,.5s) ease both}
+        .bv-anim-slidedown{animation:bvSlideDown var(--bvtd,.5s) ease both}
+        .bv-anim-circleopen{animation:bvCircleOpen var(--bvtd,.5s) ease both}
       `}</style>
 
       <div className="mb-6">
