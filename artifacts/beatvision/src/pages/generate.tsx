@@ -803,8 +803,6 @@ export default function Generate() {
                     { value: CreateJobRequestRequestedDuration.NUMBER_600, label: "10 minutes" },
                   ] as const).map(({ value, label }) => {
                     const base = estimateCreditCost(value, aiProvider, resolution, songDurationSec);
-                    const is4k = (resolution as string) === "4k";
-                    const fourK = is4k ? null : estimateCreditCost(value, "kling", CreateJobRequestResolution["4k"], songDurationSec);
                     return (
                       <DropdownMenuItem
                         key={value}
@@ -813,7 +811,7 @@ export default function Generate() {
                       >
                         <span>{label}</span>
                         <span className="text-xs text-muted-foreground shrink-0">
-                          {base.toLocaleString()} cr{fourK ? ` · 4K ${fourK.toLocaleString()}` : ""}
+                          {base.toLocaleString()} cr
                         </span>
                       </DropdownMenuItem>
                     );
