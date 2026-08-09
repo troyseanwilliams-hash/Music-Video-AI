@@ -224,4 +224,4 @@ export const RELEASE_KIT_COST = TEASER_PACK_COST + CANVAS_EXPORT_COST - 10;
 // Cost to generate a full set of lyrics in Prompt Studio. Real LLM cost is tiny
 // (Claude Sonnet 5 ≈ $0.006–0.009 ≈ ~0.6 credits), so 2 credits covers it with a
 // healthy margin. Not charged when the no-key template fallback is used.
-export const LYRICS_BUILD_COST = 2;
+export const LYRICS_BUILD_COST = 3;

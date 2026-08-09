@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { TutorialTip } from "@/components/TutorialTip";
+import { LYRICS_BUILD_COST } from "@/lib/creditPricing";
 import {
   Loader2, Music2, Download, Video, Trash2, Share2, Link2, Lock, Wand2, Sparkles, Pencil, Check, X, Scissors,
 } from "lucide-react";
@@ -122,7 +123,7 @@ export default function Soundtracks() {
     : LENGTH_OPTIONS.find((l) => l.key === lengthKey)?.seconds ?? 10;
   const loopToSeconds = withVocals ? 0 : LOOP_OPTIONS.find((l) => l.key === loopKey)?.seconds ?? 0;
 
-  // Write or enhance lyrics via the Prompt Studio lyrics engine (2 credits when
+  // Write or enhance lyrics via the Prompt Studio lyrics engine (3 credits when
   // an LLM is configured). "enhance" polishes the current draft; "write" drafts
   // fresh lyrics from the vibe prompt.
   const writeLyrics = async (mode: "write" | "enhance") => {
@@ -470,7 +471,7 @@ export default function Soundtracks() {
                     className="resize-none text-sm"
                   />
                   <p className="text-[11px] text-muted-foreground">
-                    Optional: Write for me &amp; Enhance use the lyrics engine (2 credits each) — separate from the {status?.vocalCost ?? 15}-credit song. Leave blank and the song model writes lyrics from your prompt at no extra charge.
+                    Optional: Write for me &amp; Enhance use the lyrics engine ({LYRICS_BUILD_COST} credits each) — separate from the {status?.vocalCost ?? 15}-credit song. Leave blank and the song model writes lyrics from your prompt at no extra charge.
                   </p>
                 </div>
               )}

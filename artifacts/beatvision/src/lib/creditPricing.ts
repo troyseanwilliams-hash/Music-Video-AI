@@ -19,7 +19,7 @@ export const LYRIC_OVERLAY_COST = 10 * PRICE_MULTIPLIER;
 // Bundled Release Kit (teasers + Canvas) — ~20% off vs buying separately. Mirror creditCost.ts.
 export const RELEASE_KIT_COST = TEASER_PACK_COST + CANVAS_EXPORT_COST - 10;
 // Cost to generate lyrics in Prompt Studio (covers the LLM cost with margin).
-export const LYRICS_BUILD_COST = 2;
+export const LYRICS_BUILD_COST = 3;
 
 // Mirror of artifacts/api-server/src/lib/creditCost.ts. Charge = real provider
 // clip cost × tiered markup (2× single-clip / 1.5× multi-clip). Full videos are
