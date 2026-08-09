@@ -107,16 +107,46 @@ function uid() {
   return Math.random().toString(36).slice(2);
 }
 
+// Uploads can legitimately take a while on a slow connection or a big video,
+// but they should never hang forever — a stuck fetch (dropped connection,
+// bucket/network hiccup) used to leave the per-clip spinner spinning with no
+// way out. Each leg gets its own timeout so a failure surfaces as a clear
+// error instead of an infinite "uploading" badge.
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (err) {
+    if ((err as Error).name === "AbortError") {
+      throw new Error("Timed out — check your connection and try again");
+    }
+    throw err;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 async function presignAndUpload(file: File): Promise<string> {
-  const res = await fetch("/api/storage/uploads/request-url", {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
-  });
+  const res = await fetchWithTimeout(
+    "/api/storage/uploads/request-url",
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+    },
+    20_000,
+  );
   if (!res.ok) throw new Error("Could not get upload URL");
   const { uploadURL, objectPath } = await res.json();
-  const put = await fetch(uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+  // Large video uploads need more room than the request-url call, but still a
+  // hard ceiling so a dropped connection fails loudly instead of spinning.
+  const put = await fetchWithTimeout(
+    uploadURL,
+    { method: "PUT", headers: { "Content-Type": file.type }, body: file },
+    5 * 60_000,
+  );
   if (!put.ok) throw new Error(`Upload failed (${put.status})`);
   return objectPath as string;
 }

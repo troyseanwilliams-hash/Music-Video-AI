@@ -34,8 +34,8 @@ export function Navbar() {
 
   const navLinks = [
     ...(isAuthenticated ? [
-      { href: "/generate", label: "Generate", icon: Wand2 },
       { href: "/editor", label: "Remix Lab", icon: Video },
+      { href: "/generate", label: "Generate", icon: Wand2 },
       { href: "/prompt-studio", label: "Prompt Studio", icon: Sparkles },
       { href: "/soundtracks", label: "Soundtracks", icon: Music2 },
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
