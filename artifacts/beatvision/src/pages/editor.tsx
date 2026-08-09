@@ -63,12 +63,43 @@ interface MusicTrack {
 const TRANSITIONS = [
   { value: "none", label: "None (hard cut)" },
   { value: "crossfade", label: "Crossfade" },
+  { value: "fadeblack", label: "Fade through black" },
+  { value: "fadewhite", label: "Fade through white" },
+  { value: "dissolve", label: "Dissolve" },
+  { value: "pixelize", label: "Pixelize" },
+  { value: "wipeleft", label: "Wipe left" },
+  { value: "wiperight", label: "Wipe right" },
+  { value: "wipeup", label: "Wipe up" },
+  { value: "wipedown", label: "Wipe down" },
+  { value: "slideleft", label: "Slide left" },
+  { value: "slideright", label: "Slide right" },
+  { value: "slideup", label: "Slide up" },
+  { value: "slidedown", label: "Slide down" },
+  { value: "circleopen", label: "Circle open" },
+  { value: "circleclose", label: "Circle close" },
+  { value: "radial", label: "Radial" },
 ];
 
 // Map each transition to a CSS animation for the in-app preview (the exported
-// MP4 uses FFmpeg's exact xfade; the preview is a close approximation).
+// MP4 uses FFmpeg's exact xfade; the preview is a close approximation). Slides
+// and wipes preview as a slide; everything else previews as a fade.
 const PREVIEW_ANIM: Record<string, string> = {
   crossfade: "fade",
+  fadeblack: "fade",
+  fadewhite: "fade",
+  dissolve: "fade",
+  pixelize: "fade",
+  circleopen: "fade",
+  circleclose: "fade",
+  radial: "fade",
+  wipeleft: "slide",
+  wiperight: "slide",
+  wipeup: "slide",
+  wipedown: "slide",
+  slideleft: "slide",
+  slideright: "slide",
+  slideup: "slide",
+  slidedown: "slide",
 };
 
 function uid() {
@@ -698,7 +729,9 @@ export default function Editor() {
     <div className="mx-auto w-full max-w-5xl px-4 py-8">
       <style>{`
         @keyframes bvTrIn{from{opacity:0}to{opacity:1}}
+        @keyframes bvSlideIn{from{opacity:0;transform:translateX(6%)}to{opacity:1;transform:translateX(0)}}
         .bv-anim-fade{animation:bvTrIn var(--bvtd,.5s) ease both}
+        .bv-anim-slide{animation:bvSlideIn var(--bvtd,.5s) ease both}
       `}</style>
 
       <div className="mb-6">

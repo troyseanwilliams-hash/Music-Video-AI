@@ -31,13 +31,15 @@ const RenderSchema = z.object({
     .optional(),
   transition: z
     .object({
-      // Only None (hard cut) and Crossfade are supported. Older values still
-      // validate as a fallback but are treated as a hard cut on render.
+      // Full transition set (see the worker's XFADE map). Legacy/unknown values
+      // still validate and are treated as a hard cut on render.
       type: z.enum([
         "none", "crossfade", "fadeblack", "fadewhite", "dissolve", "pixelize",
-        "wipe", "wipeleft", "wipeup", "wipedown",
-        "slide", "slideright", "slideup", "slidedown",
-        "circle", "circleclose", "radial", "zoomin",
+        "wipeleft", "wiperight", "wipeup", "wipedown",
+        "slideleft", "slideright", "slideup", "slidedown",
+        "circleopen", "circleclose", "radial",
+        // legacy values kept for backwards compatibility (render as hard cut)
+        "wipe", "slide", "circle", "zoomin",
       ]),
       durationSec: z.number().min(0.2).max(2).default(0.5),
     })

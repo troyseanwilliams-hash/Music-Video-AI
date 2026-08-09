@@ -70,11 +70,27 @@ const SAR = 48000;
 const TRANSITION_MAX_SEGMENTS = 60; // e.g. a 60-photo wedding slideshow
 const TRANSITION_MAX_TOTAL_SEC = 600; // 10 minutes
 
-// ffmpeg xfade transition names keyed by our friendly names.
-// Only the simple crossfade is offered — the fancier wipes/slides/shapes were
-// removed to keep the transition set basic and reliable.
+// Friendly transition name -> ffmpeg xfade transition name. The efficient
+// segment-and-concat join makes every one of these as cheap as a crossfade, so
+// the full set is back. All names verified against ffmpeg 4.4 (production);
+// anything not listed here falls through to a hard cut.
 const XFADE: Record<string, string> = {
   crossfade: "fade",
+  fadeblack: "fadeblack",
+  fadewhite: "fadewhite",
+  dissolve: "dissolve",
+  pixelize: "pixelize",
+  wipeleft: "wipeleft",
+  wiperight: "wiperight",
+  wipeup: "wipeup",
+  wipedown: "wipedown",
+  slideleft: "slideleft",
+  slideright: "slideright",
+  slideup: "slideup",
+  slidedown: "slidedown",
+  circleopen: "circleopen",
+  circleclose: "circleclose",
+  radial: "radial",
 };
 
 // Hard cap on any single ffmpeg invocation. A healthy step (normalizing one
