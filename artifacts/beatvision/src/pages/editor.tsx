@@ -711,7 +711,7 @@ export default function Editor() {
         </h1>
         <p className="text-muted-foreground mt-2 text-sm md:text-base max-w-2xl">
           Turn your photos and clips into a polished video — the easy, AI-powered
-          alternative to CapCut. Made for weddings, work, and social.
+          alternative to CapCut. Made for weddings, work, social — or just for fun.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           {["1080p export", "No watermark", "Music sync", "Smooth transitions", "Live preview"].map((chip) => (

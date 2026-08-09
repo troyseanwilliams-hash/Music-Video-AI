@@ -206,7 +206,7 @@ export function SlideshowMakerLanding() {
     metaDescription: "Turn your photos into a beautiful slideshow video with music and smooth transitions. Perfect for weddings, events, and work presentations — no editing skills needed. Free to start.",
     badge: "Photos in. A polished video out.",
     h1a: "Turn your photos into a", h1accent: "slideshow video", h1b: "",
-    subhead: "Drop in your photos and clips, pick a song, and Remix Lab builds a smooth, beat-timed slideshow with transitions — ready for weddings, events, work, or social. No editing skills required.",
+    subhead: "Drop in your photos and clips, pick a song, and Remix Lab builds a smooth, beat-timed slideshow with transitions — ready for weddings, events, work, social, or just for fun. No editing skills required.",
     ctaLabel: "Make my slideshow", ctaHref: "/editor",
     steps: [
       { icon: Images, title: "Add your photos", body: "Drag in photos and video clips and arrange them on a simple timeline." },
