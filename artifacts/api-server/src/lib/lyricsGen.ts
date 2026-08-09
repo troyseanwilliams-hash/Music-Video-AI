@@ -86,7 +86,12 @@ function buildUserPrompt(req: LyricsRequest): string {
     parts.push(`\n\nDraft lyrics:\n${req.existingLyrics.trim()}`);
     return parts.join(" ");
   }
-  const parts = [`Write original song lyrics about: ${req.theme}.`];
+  const parts = [
+    `Write original song lyrics inspired by this idea: "${req.theme}".`,
+    // Users kept seeing their own description parroted back word-for-word. The
+    // description is a brief, not source text to quote.
+    "CRITICAL: Treat that description ONLY as subject matter. Do NOT copy, quote, echo, or reuse its exact words or phrases anywhere in the lyrics — not in the title line, not in the hook, not in any verse. Re-express the idea entirely in your own fresh, original wording. If a word from the description appears in your draft, replace it.",
+  ];
   if (req.genre) {
     parts.push(`Genre: ${req.genre}. ${genreGuidance(req.genre)}`);
   }
