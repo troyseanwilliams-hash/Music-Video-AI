@@ -137,6 +137,23 @@ const STATIC_PLANS = {
   ],
   topups: [
     {
+      // Low-cost entry point: same $0.02/credit rate as the other packs (no
+      // discount — it's an impulse-buy price, not a bulk deal), sized to let a
+      // first-time, still-skeptical visitor try the AI Generator for a few
+      // dollars instead of the previous $20 minimum. Requires a matching
+      // Stripe Price with lookup_key "topup_250" and metadata.credits="250"
+      // (see webhookHandlers.ts parseCreditsFromMetadata) — created manually
+      // in the Stripe Dashboard, not by this codebase.
+      id: "topup_250",
+      name: "250 Credits",
+      description: "250 credits · one-time purchase · never expires · perfect for trying it out",
+      kind: "topup" as const,
+      popular: false,
+      prices: [
+        { id: "topup_250", lookupKey: "topup_250", nickname: "250 Credits", unitAmount: 500, currency: "usd", credits: 250, interval: null },
+      ],
+    },
+    {
       id: "topup_1000",
       name: "1,000 Credits",
       description: "1,000 credits · one-time purchase · never expires",
