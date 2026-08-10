@@ -31,12 +31,12 @@ const CONTENT: Record<"generate" | "remix", Content> = {
         Build your own cut in the <span className="text-gradient-electric">Remix Lab</span>
       </>
     ),
-    sub: "Drop clips and photos on a timeline, sync music, add transitions, and export a clean 1080p video — no watermark. Free to start.",
+    sub: "Drop clips and photos on a timeline, sync music, add transitions, and export a clean 1080p video — no watermark. Free to start, with a 7-day trial of unlimited exports.",
     bullets: [
       { icon: Scissors, text: "Drag-to-trim timeline for your clips & photos" },
       { icon: Music, text: "Sync a music track — loop or fade it to fit" },
       { icon: Sparkles, text: "Smooth transitions with a live preview" },
-      { icon: Play, text: "Export crisp 1080p MP4, watermark-free" },
+      { icon: Play, text: "7-day trial: unlimited exports, no card required" },
     ],
   },
 };

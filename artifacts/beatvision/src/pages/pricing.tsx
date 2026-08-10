@@ -249,10 +249,20 @@ export default function Pricing() {
           <strong className="text-foreground">Kling</strong> (value — about 40%
           cheaper). Full-length videos scale with song length (up to 10 minutes).
           Render in 720p, 1080p HD (×1.25), or 4K Ultra (×5, Pro &amp; Studio).
-          TikTok teaser packs cost 30, Spotify Canvas loops 20. Plan credits
+          TikTok teaser packs cost 30, Spotify Canvas loops 20. Generating
+          lyrics in Prompt Studio or Soundtracks costs 3 credits. Plan credits
           reset each cycle — top-up credits never expire, and you can earn more
           by referring friends.
         </p>
+        <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-medium">
+          <Sparkles className="h-4 w-4 text-primary" />
+          <span>
+            Every new account gets a{" "}
+            <strong className="text-foreground">free 7-day trial</strong> with{" "}
+            <strong className="text-foreground">unlimited Remix Lab exports</strong>
+            {" "}— no credit card required
+          </span>
+        </div>
         {isAuthenticated && subscription && (
           <div
             className="mt-4 inline-flex items-center gap-2 rounded-full border border-border/50 bg-secondary/40 px-4 py-2 text-sm"
