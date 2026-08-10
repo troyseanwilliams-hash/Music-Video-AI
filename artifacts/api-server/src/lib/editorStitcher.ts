@@ -374,10 +374,31 @@ export async function stitchEditorTimeline(
               // seek, its timestamps don't start at 0, and many ffmpeg builds
               // then reject xfade ("do not match" / no output) — the exact cause
               // of the crossfade silently falling back to a hard cut in prod.
-              `[0:v]settb=AVTB,setpts=PTS-STARTPTS[xv0];` +
-                `[1:v]settb=AVTB,setpts=PTS-STARTPTS[xv1];` +
+              // The settb reset also erases the input's constant-frame-rate
+              // metadata (reports as 1/0), and ffmpeg 7.x's xfade — unlike 4.x —
+              // hard-rejects a non-constant frame rate ("The inputs needs to be
+              // a constant frame rate"), failing the encoder immediately and
+              // triggering the hard-cut fallback below on every single export.
+              // Re-stamping fps=FPS after the PTS reset restores a real frame
+              // rate for xfade to key off. Order matters: fps must come AFTER
+              // settb/setpts, not before, or the settb re-invalidates it.
+              // apad+atrim on both audio branches: ffprobe's reported duration
+              // for an AAC track can be a few ms longer than what's actually
+              // decodable (encoder priming/padding), so seeking to
+              // (bodyDuration - t) can leave acrossfade with slightly less
+              // than t seconds of real audio. ffmpeg 4.x tolerated that
+              // shortfall; ffmpeg 7.x's stricter scheduler treats "encoder
+              // received zero frames before EOF" as a hard error, which is
+              // what was silently killing the transition on every export in
+              // production (which runs ffmpeg 7, not the 4.4 this was
+              // originally verified against). Padding with silence first and
+              // trimming to exactly t guarantees acrossfade always gets a
+              // full window regardless of that precision gap.
+              `[0:v]settb=AVTB,setpts=PTS-STARTPTS,fps=${FPS}[xv0];` +
+                `[1:v]settb=AVTB,setpts=PTS-STARTPTS,fps=${FPS}[xv1];` +
                 `[xv0][xv1]xfade=transition=${xName}:duration=${fx(t)}:offset=0[v];` +
-                `[0:a]asetpts=PTS-STARTPTS[xa0];[1:a]asetpts=PTS-STARTPTS[xa1];` +
+                `[0:a]apad=pad_dur=1,atrim=duration=${fx(t)},asetpts=PTS-STARTPTS[xa0];` +
+                `[1:a]apad=pad_dur=1,atrim=duration=${fx(t)},asetpts=PTS-STARTPTS[xa1];` +
                 `[xa0][xa1]acrossfade=d=${fx(t)}[a]`,
               "-map", "[v]", "-map", "[a]", ...enc, tr,
             ]);
