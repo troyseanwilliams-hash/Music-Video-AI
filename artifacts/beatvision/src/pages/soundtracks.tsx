@@ -79,8 +79,16 @@ const PRESETS = [
   { label: "Cinematic", prompt: "Cinematic orchestral score, building strings, epic percussion, emotional" },
   { label: "Trap", prompt: "Dark trap beat, heavy 808 bass, crisp hi-hats, moody, 140 BPM" },
   { label: "Synthwave", prompt: "Upbeat synthwave, retro arpeggios, driving bassline, neon, 110 BPM" },
-  { label: "Acoustic", prompt: "Warm acoustic guitar, laid-back, coffee-shop, gentle percussion" },
   { label: "Ambient", prompt: "Ambient pads, ethereal, slow and dreamy soundscape, reverb" },
+  { label: "Pop anthem", prompt: "Upbeat pop anthem, driving four-on-the-floor beat, bright synths, big sing-along chorus energy, 118 BPM" },
+  { label: "R&B / Soul", prompt: "Smooth R&B, warm electric piano chords, laid-back groove, soulful and intimate, 90 BPM" },
+  { label: "EDM", prompt: "High-energy EDM, pulsing sidechained bass, euphoric build and drop, festival-ready, 128 BPM" },
+  { label: "Boom bap hip-hop", prompt: "Classic boom bap hip hop, dusty sampled drums, jazzy bassline, confident and gritty, 90 BPM" },
+  { label: "Anthemic rock", prompt: "Anthemic alternative rock, driving electric guitars, powerful drums, big chorus energy, 130 BPM" },
+  { label: "Reggaeton", prompt: "Reggaeton, dembow rhythm, warm bass, tropical percussion, festive and danceable, 95 BPM" },
+  { label: "Afrobeats", prompt: "Afrobeats, warm layered percussion, groovy bassline, sunny and rhythmic, 105 BPM" },
+  { label: "Gospel / choir", prompt: "Uplifting gospel, rich choir harmonies, organ and piano, powerful and inspirational, 100 BPM" },
+  { label: "Deep house", prompt: "Deep house, warm rolling bassline, soulful chords, hypnotic groove, 122 BPM" },
 ];
 
 function songCredits(seconds: number): number {
@@ -429,7 +437,7 @@ export default function Soundtracks() {
               />
               <div className="flex flex-wrap gap-1.5">
                 {PRESETS.map((p) => (
-                  <button key={p.label} type="button" onClick={() => setPrompt(p.prompt)}
+                  <button key={p.label} type="button" onClick={() => setPrompt(p.prompt)} title={p.prompt}
                     className="text-xs px-2.5 py-1 rounded-full border border-border bg-background/40 text-muted-foreground hover:border-primary hover:text-primary transition-colors">
                     {p.label}
                   </button>
