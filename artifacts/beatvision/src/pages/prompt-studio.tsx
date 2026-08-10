@@ -49,7 +49,10 @@ function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) 
   );
 }
 
-// Clickable starter suggestions to help users write good descriptions.
+// Clickable starter suggestions to help users write good descriptions. Each
+// string is both the label (truncated for display) and the full prompt
+// inserted on click — the untruncated text also shows as a hover tooltip
+// (see Chips below) so nothing is hidden from the user before they commit to it.
 const AUDIO_SAMPLES = [
   "dreamy lo-fi beat for a rainy night study session, mellow and nostalgic",
   "epic cinematic orchestral build for a movie trailer",
@@ -57,6 +60,10 @@ const AUDIO_SAMPLES = [
   "gritty boom-bap hip-hop with dusty vinyl and upright bass",
   "ethereal ambient pads for meditation, slow and weightless",
   "retro 80s synthwave, neon and chrome, driving arpeggios",
+  "upbeat pop anthem with a big sing-along chorus, 118 BPM",
+  "smooth R&B groove, warm electric piano, soulful and intimate",
+  "high-energy EDM festival drop, pulsing sidechained bass",
+  "sunny afrobeats with layered percussion and a groovy bassline",
 ];
 const VIDEO_SAMPLES = [
   "a lone astronaut discovering a glowing forest on an alien planet at dusk",
@@ -64,6 +71,9 @@ const VIDEO_SAMPLES = [
   "a surfer riding a giant wave in golden-hour slow motion",
   "close-up of a dancer spinning through drifting autumn leaves",
   "an old lighthouse in a storm, waves crashing, dramatic and cinematic",
+  "a couple's first dance at a candlelit wedding reception, warm and intimate",
+  "a drone shot soaring over a sunset skyline into the city lights",
+  "a runner sprinting through city streets at dawn, determined and driven",
 ];
 const LYRIC_SAMPLES = [
   "chasing a dream across a city that never sleeps",
@@ -71,6 +81,10 @@ const LYRIC_SAMPLES = [
   "a road trip with no destination and nothing to lose",
   "finding your voice after years of silence",
   "the last summer before everything changed",
+  "falling in love for the first time and not being scared of it",
+  "coming out the other side of a hard year, stronger than before",
+  "the friends who showed up when it mattered most",
+  "missing home while chasing something bigger",
 ];
 
 function Chips({ items, onPick }: { items: string[]; onPick: (v: string) => void }) {
@@ -81,6 +95,7 @@ function Chips({ items, onPick }: { items: string[]; onPick: (v: string) => void
           key={s}
           type="button"
           onClick={() => onPick(s)}
+          title={s}
           className="rounded-full border border-border/60 bg-secondary/40 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
         >
           {s.length > 46 ? s.slice(0, 44) + "…" : s}
