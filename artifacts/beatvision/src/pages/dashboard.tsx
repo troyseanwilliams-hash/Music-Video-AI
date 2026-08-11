@@ -5,12 +5,20 @@ import { useAuth } from "@/hooks/useAuth";
 import { useGetDashboardStats, getGetDashboardStatsQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus, Film, CheckCircle2, Clock, AlertCircle, Crown, Play, Coins, Trash2, Zap, Mail, X, Wand2, Music2, Sparkles } from "lucide-react";
+import { Loader2, Plus, Film, CheckCircle2, Clock, AlertCircle, Crown, Play, Coins, Trash2, Zap, Mail, X, Wand2, Music2, Sparkles, Smile, Quote, Lightbulb, type LucideIcon } from "lucide-react";
 import ReferEarnCard from "@/components/ReferEarnCard";
 import { Switch } from "@/components/ui/switch";
 import { useQuery } from "@tanstack/react-query";
+import { getDailyContent, type DailyItemType } from "@/lib/dailyContent";
 
 const LOW_CREDIT_THRESHOLD = 60; // ≈ one 10s video left
+
+const DAILY_ICONS: Record<DailyItemType, LucideIcon> = {
+  pun: Smile,
+  proverb: Quote,
+  fact: Lightbulb,
+  tip: Wand2,
+};
 
 function daysUntil(dateStr: string | null | undefined): number {
   if (!dateStr) return 0;
@@ -169,6 +177,8 @@ export default function Dashboard() {
   const subStatus = user?.subscriptionStatus ?? "none";
   const trialDaysLeft = daysUntil(user?.trialEndsAt);
   const trialExpired = subStatus === "trial" && trialDaysLeft === 0;
+  const daily = getDailyContent();
+  const DailyIcon = DAILY_ICONS[daily.type];
 
   return (
     <div className="container mx-auto px-4 py-12 max-w-6xl">
@@ -321,6 +331,17 @@ export default function Dashboard() {
               </Link>
             </div>
           )}
+
+          {/* Something of the Day — rotates daily, deterministic by date */}
+          <div className="flex items-start gap-4 p-5 rounded-2xl bg-card/60 border border-card-border">
+            <div className="flex-shrink-0 h-10 w-10 rounded-xl bg-primary/15 flex items-center justify-center">
+              <DailyIcon className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-primary mb-1">{daily.label}</div>
+              <p className="text-sm md:text-base text-foreground/90 leading-relaxed">{daily.text}</p>
+            </div>
+          </div>
 
           <ReferEarnCard />
 
