@@ -15,13 +15,14 @@ import {
   VideoStyle,
   type CreateJobRequest,
 } from "@workspace/api-client-react";
-import { estimateCreditCost, PROVIDER_LABELS, type AiProvider } from "@/lib/creditPricing";
+import { estimateCreditCost, canAffordCredits, PROVIDER_LABELS, type AiProvider } from "@/lib/creditPricing";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SoundtrackPickerDialog } from "@/components/SoundtrackPickerDialog";
+import TopUpRequiredDialog from "@/components/TopUpRequiredDialog";
 import { TutorialTip } from "@/components/TutorialTip";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -219,6 +220,7 @@ export default function Generate() {
   const [copyrightAcknowledged, setCopyrightAcknowledged] = useState(false);
   const [durationWarningOpen, setDurationWarningOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [topUpOpen, setTopUpOpen] = useState(false);
   // Storyboard preview shown in the confirm dialog (no charge, no render).
   type PlannedShot = { index: number; label: string; startTime: number; energy: number; prompt: string };
   const [shotPlan, setShotPlan] = useState<{ shots: PlannedShot[]; numClips: number; approximate: boolean } | null>(null);
@@ -517,6 +519,13 @@ export default function Generate() {
     );
   }
 
+  // Cost + affordability for the current selection — computed once here so
+  // both the pre-submit guard in handleGenerate and the render below share
+  // the exact same numbers (no duplicated inline logic).
+  const cost = estimateCreditCost(requestedDuration, aiProvider, resolution, songDurationSec);
+  const balance = statsData?.creditsRemaining ?? null;
+  const canAfford = canAffordCredits(cost, balance, isAdmin);
+
   const characterLabel = CHARACTERS.find((c) => c.value === character)?.label ?? "None";
 
   const submitJob = () => {
@@ -590,6 +599,13 @@ export default function Generate() {
   };
 
   const handleGenerate = () => {
+    // Proactive credit check — show the top-up modal instead of letting the
+    // user hit a backend INSUFFICIENT_CREDITS failure after submitting.
+    if (!canAfford) {
+      setTopUpOpen(true);
+      return;
+    }
+
     const errors: { prompt?: string; audio?: string } = {};
 
     if (!prompt.trim()) {
@@ -1463,9 +1479,6 @@ export default function Generate() {
 
           {/* ── Generate ── */}
           {(() => {
-            const cost = estimateCreditCost(requestedDuration, aiProvider, resolution, songDurationSec);
-            const balance = statsData?.creditsRemaining ?? null;
-            const canAfford = isAdmin || balance === null || balance >= cost;
             const isAnalyzingAudio =
               sourceType === CreateJobRequestAudioSourceType.upload &&
               objectPath !== null &&
@@ -1476,7 +1489,7 @@ export default function Generate() {
                 <Button
                   size="lg"
                   className="w-full h-14 text-lg bg-gradient-electric text-white shadow-glow mt-2"
-                  disabled={createJob.isPending || isAnalyzingAudio || !canAfford || !copyrightAcknowledged}
+                  disabled={createJob.isPending || isAnalyzingAudio || !copyrightAcknowledged}
                   onClick={handleGenerate}
                 >
                   {createJob.isPending ? (
@@ -1772,6 +1785,14 @@ export default function Generate() {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <TopUpRequiredDialog
+      open={topUpOpen}
+      onOpenChange={setTopUpOpen}
+      creditsRequired={cost}
+      creditsRemaining={balance ?? 0}
+      title="More credits needed to generate this video"
+    />
     </>
   );
 }

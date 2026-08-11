@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { LYRICS_BUILD_COST } from "@/lib/creditPricing";
+import { LYRICS_BUILD_COST, canAffordCredits } from "@/lib/creditPricing";
+import { useGetDashboardStats } from "@workspace/api-client-react";
+import TopUpRequiredDialog from "@/components/TopUpRequiredDialog";
 import {
   Sparkles, Music2, Film, FileText, Copy, Check, Loader2, ArrowRight, Wand2,
 } from "lucide-react";
@@ -129,6 +131,9 @@ export default function PromptStudio() {
   const [bpm, setBpm] = useState("");
   const [lyricsBusy, setLyricsBusy] = useState(false);
   const [lyricsRes, setLyricsRes] = useState<LyricsResult | null>(null);
+  const { data: statsData } = useGetDashboardStats({});
+  const balance = statsData?.creditsRemaining ?? null;
+  const [topUpOpen, setTopUpOpen] = useState(false);
 
   const fail = (err: unknown) =>
     toast({ title: "Couldn't build that", description: err instanceof Error ? err.message : "Try again", variant: "destructive" });
@@ -149,6 +154,12 @@ export default function PromptStudio() {
   }
   async function buildLyrics() {
     if (theme.trim().length < 2) return;
+    // Proactive credit check — show the top-up modal instead of letting the
+    // user hit a backend failure after submitting.
+    if (!canAffordCredits(LYRICS_BUILD_COST, balance)) {
+      setTopUpOpen(true);
+      return;
+    }
     setLyricsBusy(true);
     try {
       setLyricsRes(await postJSON<LyricsResult>("/api/prompt/lyrics", {
@@ -175,6 +186,7 @@ export default function PromptStudio() {
     );
   }
   return (
+    <>
     <div className="container mx-auto px-4 py-8 sm:py-12 max-w-3xl">
       <div className="mb-8 text-center">
         <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-electric shadow-glow mb-3">
@@ -344,5 +356,14 @@ export default function PromptStudio() {
         </TabsContent>
       </Tabs>
     </div>
+
+    <TopUpRequiredDialog
+      open={topUpOpen}
+      onOpenChange={setTopUpOpen}
+      creditsRequired={LYRICS_BUILD_COST}
+      creditsRemaining={balance ?? 0}
+      title="More credits needed for lyrics"
+    />
+    </>
   );
 }

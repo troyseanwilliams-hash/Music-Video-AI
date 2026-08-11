@@ -2,6 +2,9 @@ import { useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Smile, Upload } from "lucide-react";
+import { useGetDashboardStats } from "@workspace/api-client-react";
+import { canAffordCredits } from "@/lib/creditPricing";
+import TopUpRequiredDialog from "@/components/TopUpRequiredDialog";
 
 // Lip sync is billed per second (OmniHuman ~$0.16/s at 1.5× = 16 credits/s).
 const LIP_OPTIONS = [5, 10, 15, 20, 30];
@@ -33,8 +36,17 @@ export default function LipSyncPanel({ videoId }: { videoId: string }) {
   const [result, setResult] = useState<{ videoId: string; url: string } | null>(null);
   const [facePreview, setFacePreview] = useState<string | null>(null);
   const cost = seconds * CREDITS_PER_SEC;
+  const { data: statsData } = useGetDashboardStats({});
+  const balance = statsData?.creditsRemaining ?? null;
+  const [topUpOpen, setTopUpOpen] = useState(false);
 
   async function run(file: File) {
+    // Proactive credit check — show the top-up modal instead of letting the
+    // user hit a backend failure after submitting.
+    if (!canAffordCredits(cost, balance)) {
+      setTopUpOpen(true);
+      return;
+    }
     setBusy(true);
     setError(null);
     setResult(null);
@@ -58,6 +70,7 @@ export default function LipSyncPanel({ videoId }: { videoId: string }) {
   }
 
   return (
+    <>
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base font-semibold">
@@ -123,5 +136,14 @@ export default function LipSyncPanel({ videoId }: { videoId: string }) {
         )}
       </CardContent>
     </Card>
+
+    <TopUpRequiredDialog
+      open={topUpOpen}
+      onOpenChange={setTopUpOpen}
+      creditsRequired={cost}
+      creditsRemaining={balance ?? 0}
+      title="More credits needed for lipsync"
+    />
+    </>
   );
 }

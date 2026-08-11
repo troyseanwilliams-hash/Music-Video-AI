@@ -76,3 +76,10 @@ export function estimateCreditCost(
   const markup = numClips <= 1 ? SHORT_MARKUP : provider === "kling" ? KLING_LONG_MARKUP : LONG_MARKUP;
   return Math.ceil(costCredits * markup * resolutionMultiplier(resolution));
 }
+
+// Shared affordability check — mirrors the inline logic used across submission
+// flows (admins always pass; a null/unknown balance doesn't block since we
+// haven't loaded it yet — the backend is still the source of truth).
+export function canAffordCredits(cost: number, balance: number | null | undefined, isAdmin?: boolean): boolean {
+  return !!isAdmin || balance == null || balance >= cost;
+}

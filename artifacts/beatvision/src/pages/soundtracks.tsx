@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { TutorialTip } from "@/components/TutorialTip";
-import { LYRICS_BUILD_COST } from "@/lib/creditPricing";
+import { LYRICS_BUILD_COST, canAffordCredits } from "@/lib/creditPricing";
+import TopUpRequiredDialog from "@/components/TopUpRequiredDialog";
 import {
   Loader2, Music2, Download, Video, Trash2, Share2, Link2, Lock, Wand2, Sparkles, Pencil, Check, X, Scissors,
 } from "lucide-react";
@@ -128,6 +129,8 @@ export default function Soundtracks() {
   const [editTitle, setEditTitle] = useState("");
   const [libSearch, setLibSearch] = useState("");
   const [libSort, setLibSort] = useState<"new" | "old" | "name">("new");
+  const [topUpOpen, setTopUpOpen] = useState(false);
+  const [topUpCost, setTopUpCost] = useState(0);
   const duration = withVocals
     ? VOCAL_LENGTH_OPTIONS.find((l) => l.key === vocalLengthKey)?.seconds ?? 120
     : LENGTH_OPTIONS.find((l) => l.key === lengthKey)?.seconds ?? 10;
@@ -137,6 +140,13 @@ export default function Soundtracks() {
   // an LLM is configured). "enhance" polishes the current draft; "write" drafts
   // fresh lyrics from the vibe prompt.
   const writeLyrics = async (mode: "write" | "enhance") => {
+    // Proactive credit check — show the top-up modal instead of letting the
+    // user hit a backend failure after submitting.
+    if (!canAffordCredits(LYRICS_BUILD_COST, status?.creditsRemaining)) {
+      setTopUpCost(LYRICS_BUILD_COST);
+      setTopUpOpen(true);
+      return;
+    }
     setLyricsBusy(true);
     try {
       const extras = { explicit, bpm: bpm.trim() ? Number(bpm) : undefined };
@@ -354,6 +364,7 @@ export default function Soundtracks() {
     });
 
   return (
+    <>
     <div className="container mx-auto px-4 py-8 max-w-5xl">
       <div className="flex items-center justify-between gap-4 mb-6">
         <div>
@@ -571,7 +582,16 @@ export default function Soundtracks() {
                 </div>
               ) : (
                 <Button
-                  onClick={() => gen.mutate()}
+                  onClick={() => {
+                    // Proactive credit check — show the top-up modal instead
+                    // of letting the user hit a backend failure after submitting.
+                    if (!canAffordCredits(status?.vocalCost ?? 0, status?.creditsRemaining)) {
+                      setTopUpCost(status?.vocalCost ?? 0);
+                      setTopUpOpen(true);
+                      return;
+                    }
+                    gen.mutate();
+                  }}
                   disabled={prompt.trim().length < 3 || lyricsBusy}
                   className="bg-gradient-electric text-white border-0"
                 >
@@ -701,5 +721,14 @@ export default function Soundtracks() {
         </div>
       )}
     </div>
+
+    <TopUpRequiredDialog
+      open={topUpOpen}
+      onOpenChange={setTopUpOpen}
+      creditsRequired={topUpCost}
+      creditsRemaining={status?.creditsRemaining ?? 0}
+      title="More credits needed"
+    />
+    </>
   );
 }

@@ -8,7 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { SoundtrackPickerDialog } from "@/components/SoundtrackPickerDialog";
+import TopUpRequiredDialog from "@/components/TopUpRequiredDialog";
 import { TutorialTip } from "@/components/TutorialTip";
+import { useGetDashboardStats } from "@workspace/api-client-react";
+import { canAffordCredits } from "@/lib/creditPricing";
 import {
   Select,
   SelectContent,
@@ -286,6 +289,9 @@ export default function Editor() {
   const [analyzingBeats, setAnalyzingBeats] = useState(false);
   const [beatsPerPhoto, setBeatsPerPhoto] = useState(2);
   const [acceptedCopyright, setAcceptedCopyright] = useState(false);
+  const { data: statsData } = useGetDashboardStats({});
+  const balance = statsData?.creditsRemaining ?? null;
+  const [topUpOpen, setTopUpOpen] = useState(false);
 
   // Preview state
   const [playing, setPlaying] = useState(false);
@@ -716,6 +722,12 @@ export default function Editor() {
       toast({ title: "Add some clips first", variant: "destructive" });
       return;
     }
+    // Proactive credit check — show the top-up modal instead of letting the
+    // user hit a backend 402 after submitting.
+    if (!canAffordCredits(estimatedCost, balance)) {
+      setTopUpOpen(true);
+      return;
+    }
     pause();
     setSubmitting(true);
     try {
@@ -775,6 +787,7 @@ export default function Editor() {
   if (!isAuthenticated) return isAuthLoading ? null : <SignupTeaser variant="remix" />;
 
   return (
+    <>
     <div className="mx-auto w-full max-w-5xl px-4 py-8">
       <style>{`
         @keyframes bvFade{from{opacity:0}to{opacity:1}}
@@ -1356,5 +1369,14 @@ export default function Editor() {
         )}
       </div>
     </div>
+
+    <TopUpRequiredDialog
+      open={topUpOpen}
+      onOpenChange={setTopUpOpen}
+      creditsRequired={estimatedCost}
+      creditsRemaining={balance ?? 0}
+      title="More credits needed to export"
+    />
+    </>
   );
 }
