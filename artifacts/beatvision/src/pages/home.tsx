@@ -1,9 +1,17 @@
 import { useState, useRef } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Play, Sparkles, Zap, Music, MonitorPlay, ExternalLink, ScanLine, ImagePlus, Volume2, VolumeX, Scissors, Lock, Clapperboard, Share2, Wand2, Maximize } from "lucide-react";
+import { Play, Sparkles, Zap, Music, MonitorPlay, ExternalLink, ScanLine, ImagePlus, Volume2, VolumeX, Scissors, Lock, Clapperboard, Share2, Wand2, Maximize, Smile, Quote, Lightbulb, type LucideIcon } from "lucide-react";
 import { motion } from "framer-motion";
 import { AuroraBackground } from "@/components/AuroraBackground";
+import { getDailyContent, type DailyItemType } from "@/lib/dailyContent";
+
+const DAILY_ICONS: Record<DailyItemType, LucideIcon> = {
+  pun: Smile,
+  proverb: Quote,
+  fact: Lightbulb,
+  tip: Wand2,
+};
 
 const SAMPLES = [
   { src: "/sample1.mp4", label: "Cinematic" },
@@ -77,6 +85,9 @@ function SampleVideo({ src, label }: { src: string; label: string }) {
 }
 
 export default function Home() {
+  const daily = getDailyContent();
+  const DailyIcon = DAILY_ICONS[daily.type];
+
   return (
     <div className="flex flex-col min-h-[calc(100vh-4rem)]">
       <main className="flex-1">
@@ -135,6 +146,27 @@ export default function Home() {
                 <Link href="/dashboard" className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground">
                   earn free credits by referring friends
                 </Link>
+              </div>
+            </motion.div>
+          </div>
+        </section>
+
+        {/* Something of the Day — rotates daily */}
+        <section className="pb-2">
+          <div className="container px-4 md:px-6 mx-auto max-w-3xl">
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.4 }}
+              className="flex items-start gap-4 p-5 rounded-2xl bg-card/60 border border-card-border backdrop-blur-sm"
+            >
+              <div className="flex-shrink-0 h-10 w-10 rounded-xl bg-primary/15 flex items-center justify-center">
+                <DailyIcon className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wider text-primary mb-1">{daily.label}</div>
+                <p className="text-sm md:text-base text-foreground/90 leading-relaxed">{daily.text}</p>
               </div>
             </motion.div>
           </div>
