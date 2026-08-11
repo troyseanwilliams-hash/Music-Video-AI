@@ -1,16 +1,43 @@
-# PodSync — Sister Site Concept
+# AI Pod Sync — Sister Site Concept
 
-*A working name, not a confirmed brand — check domain/trademark availability before committing to it.*
+**Confirmed brand:** AI Pod Sync — **domain: aipodsync.com** (secured/available, matches the "AI ___ Sync"
+naming family alongside AI Beat Sync).
+
+## Decision log (as of this revision)
+
+- **Target the smaller, less-contested pie on purpose.** Market research (see "Market reality" below) found
+  the broad "AI clip your long-form content" category is already dominated by a well-funded leader (OpusClip —
+  ~$50M raised, $215M valuation, 10M+ users) plus a crowded second tier (Vizard, Descript, Riverside,
+  ClipSpeedAI, Reap, Clouted). That entire tier is built around **video-recorded** source content. The
+  narrower **audio-only podcast → audiogram** niche (the Headliner/Wavve lane) is smaller but meaningfully
+  less contested — that's the deliberate wedge for AI Pod Sync, not a head-on OpusClip competitor.
+- **This is a suite play, not a standalone bet.** AI Pod Sync exists to sit next to AI Beat Sync as a second
+  product in an "AI ___ Sync" family — shared backend/account infrastructure, separate front-facing brand,
+  built specifically so the two properties can cross-promote to each other's audiences at near-zero
+  incremental CAC rather than needing to out-market a $215M-funded competitor for cold traffic.
 
 ## Positioning
 
-AI Beat Sync turns a **song** into a beat-synced video. PodSync turns a **podcast episode** into share-ready
-social clips — audiograms with animated waveforms, burned-in captions, and AI-picked highlight moments.
+AI Beat Sync turns a **song** into a beat-synced video. AI Pod Sync turns a **podcast episode** into
+share-ready social clips — audiograms with animated waveforms, burned-in captions, and AI-picked highlight
+moments — deliberately scoped to audio-first podcasts rather than competing with video-clipping incumbents.
 
-Same underlying muscle (audio in, polished short-form video out), completely different audience: podcasters,
-interview shows, YouTube-to-podcast crossposters, and the networks/agencies that manage them. Almost no
-overlap with AI Beat Sync's musician base, which makes this additive rather than cannibalizing — and it's a
-much bigger addressable market (there are vastly more active podcasts than musicians actively releasing beat-synced videos).
+Same underlying muscle (audio in, polished short-form video out), a different but adjacent audience:
+podcasters, interview shows, and the networks/agencies that manage them. Little overlap with AI Beat Sync's
+musician base, which makes this additive rather than cannibalizing, and it plugs into a real, still-growing
+market (4.8M active podcasts, 584M+ global listeners in 2026) even scoped down to the audio-first niche.
+
+## Market reality (researched)
+
+- **The overall pie is large and real:** ~4.8M active podcasts globally (2026), 584M listeners growing to an
+  estimated 619M by year-end, 58% of Americans 12+ are monthly listeners (~167M people). Global podcasting
+  market valued around $50.8B in 2026; podcast ad revenue ~$5B globally, up 20% YoY.
+- **The clipping-tool category is not empty — it has an incumbent leader:** OpusClip ($215M valuation, 10M+
+  users, 172M+ clips generated) dominates general AI video-to-clips. Vizard, Descript, Riverside, Headliner,
+  Wavve, ClipSpeedAI, Reap, and Clouted round out a genuinely crowded field.
+- **The differentiated slice:** most of that field assumes a video-recorded source (Zoom/Riverside-style
+  podcasts already on YouTube). Audio-only podcast audiograms specifically (Headliner/Wavve's lane) are a
+  smaller sub-market but far less contested — the intentional target here, not the whole category.
 
 ## Core product loop
 
@@ -41,7 +68,7 @@ Audiogram clips are computationally *much* cheaper to produce than AI-generated 
 model in the critical path for the base tier — mostly transcription + deterministic waveform rendering), so
 the pricing can be more generous than AI Beat Sync's to drive adoption and virality:
 
-- **Free** — 3 clips/month, 720p, "Made with PodSync" watermark (same growth mechanic as AI Beat Sync's free
+- **Free** — 3 clips/month, 720p, "Made with AI Pod Sync" watermark (same growth mechanic as AI Beat Sync's free
   watermarked tier).
 - **Creator** — ~$12–15/mo, unlimited clips up to N episodes/month, no watermark, custom branding, 1080p.
 - **Studio/Network** — for podcast networks and agencies managing multiple shows: team seats, multiple show
@@ -57,7 +84,7 @@ the pricing can be more generous than AI Beat Sync's to drive adoption and viral
 - Upload + presigned-URL flow (`presignAndUpload`/object storage pattern from `editor.tsx`).
 - Credits + Stripe billing scaffolding (`STATIC_PLANS`, checkout, webhook credit-granting) — new product line under the same billing architecture.
 - ffmpeg pipeline and transition/crossfade logic from `editorStitcher.ts` — captions and waveform are just another filter-graph layer on the same rendering approach.
-- Admin dashboard tab pattern (`admin.tsx`, `admin-jobs.ts`) — add a "PodSync jobs" tab or a fully separate but structurally identical admin.
+- Admin dashboard tab pattern (`admin.tsx`, `admin-jobs.ts`) — add a "AI Pod Sync jobs" tab or a fully separate but structurally identical admin.
 - Email/SMS admin-alert infra (`notifications.ts`, `renderEmail.ts`) — reused as-is.
 - Referral system pattern (`ReferEarnCard`, `referralsTable`).
 - The "Something of the Day" rotation pattern — reused for a podcast-specific tip/fact rotation on the dashboard.
@@ -72,20 +99,25 @@ the pricing can be more generous than AI Beat Sync's to drive adoption and viral
 - New marketing site content, new pricing copy, new brand assets.
 - A decision on account/billing separation (see below) — whichever way it goes, some new plumbing either way.
 
-## Brand & account strategy — one open decision
+## Brand & account strategy — decided: shared backend, separate front door, suite branding
 
-**Option A — fully separate:** new domain, new signup, own credit wallet. Cleanest positioning for selling into
-podcast networks (no "music video" association to explain away), simplest to reason about, but no cross-sell
-without extra work and it's two logins to maintain.
+Confirmed direction: same `api-server` monorepo, new route namespace (`/api/aipodsync/*`), same company and
+(ideally) single sign-on so one account can reach both products. Same infrastructure leverage as before, now
+explicitly framed as building a **suite**, not just two unrelated products that happen to share a backend:
 
-**Option B — shared backend, separate front door:** same `api-server` monorepo, new route namespace
-(`/api/podsync/*`), optionally single sign-on so one account can access both products — either sharing one
-credit pool or keeping two separate balances under one login. Maximizes reuse and lets you cross-promote
-("also try PodSync" in the AI Beat Sync nav and vice versa) without duplicating auth/billing infrastructure.
-
-Recommendation: **Option B**, but with genuinely separate marketing sites and pricing pages — same company,
-same login, distinct product identity. It gets you the infrastructure leverage without confusing either
-audience about what the product is for.
+- **aibeatsync.com** and **aipodsync.com** as siblings under one "AI ___ Sync" naming family — reads as an
+  intentional product line, not a random second app, and leaves room for future additions in the same pattern.
+- **Cross-promotion built into both navbars from day one** — an AI Beat Sync user who also runs a podcast is
+  exactly the ideal first AI Pod Sync customer, and vice versa (a podcaster who wants a beat-synced trailer or
+  Spotify Canvas clip for their show). This is the actual growth engine for AI Pod Sync given the plan to target
+  the smaller, less-contested niche rather than outspending OpusClip on paid acquisition.
+- **Shared credits vs. separate wallets is still open** — simplest v1 is two separate credit balances under one
+  login (avoids pricing-communication confusion, since audiogram costs should be much cheaper per-unit than
+  video generation), with a possible future "suite bundle" plan that pools both once there's usage data to
+  price it correctly.
+- **A lightweight suite hub** (e.g. a shared account/billing page, or a simple "Products" switcher in each
+  app's nav) ties the two together visually without merging the marketing sites themselves — each keeps its
+  own homepage, pricing page, and positioning aimed at its own audience.
 
 ## Rough MVP scope (first cut, not full spec)
 
