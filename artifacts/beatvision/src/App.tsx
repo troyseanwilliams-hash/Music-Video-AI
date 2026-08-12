@@ -2,6 +2,7 @@ import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { startAnalytics, trackPageview } from "@/lib/analytics";
+import { ScrollToTop } from "@/components/ScrollToTop";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Navbar } from "@/components/layout/Navbar";
@@ -61,6 +62,7 @@ function Router() {
         Skip to main content
       </a>
       <AnalyticsTracker />
+      <ScrollToTop />
       <Navbar />
       <main id="main-content" tabIndex={-1} className="flex-1 flex flex-col outline-none">
         <Switch>
