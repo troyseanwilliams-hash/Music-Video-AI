@@ -26,7 +26,7 @@ const COLUMNS: { title: string; links: { label: string; href: string; external?:
       { label: "Terms of Service", href: "/terms" },
       { label: "DMCA / Copyright", href: "/dmca" },
       { label: "Contact", href: "mailto:legal@aibeatsync.com", external: true },
-      { label: "Also try AI Pod Sync", href: "https://aipodsync.com", external: true },
+      { label: "Also try AIPodSync", href: "https://aipodsync.com", external: true },
     ],
   },
 ];

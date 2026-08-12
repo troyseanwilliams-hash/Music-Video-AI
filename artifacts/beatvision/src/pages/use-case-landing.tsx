@@ -254,17 +254,17 @@ export function CapcutAlternativeLanding() {
 export function PodcastToVideoLanding() {
   return <UseCaseLanding cfg={{
     docTitle: "Podcast to Video — Turn Your Episode Into an AI Music Video | AI Beat Sync",
-    metaDescription: "Made an episode on AI Pod Sync (or recorded your own)? Turn the audio into a cinematic AI video — upload the file, pick a style, and export for YouTube, TikTok, and Reels.",
-    badge: "From AI Pod Sync episode to finished video.",
+    metaDescription: "Made an episode on AIPodSync (or recorded your own)? Turn the audio into a cinematic AI video — upload the file, pick a style, and export for YouTube, TikTok, and Reels.",
+    badge: "From AIPodSync episode to finished video.",
     h1a: "Turn your", h1accent: "podcast episode", h1b: "into a video",
-    subhead: "Wrote a script and got an AI-narrated episode on AI Pod Sync? Upload the finished audio here and our AI builds a cinematic video around it — timed to the narration, ready to post.",
+    subhead: "Wrote a script and got an AI-narrated episode on AIPodSync? Upload the finished audio here and our AI builds a cinematic video around it — timed to the narration, ready to post.",
     ctaLabel: "Upload my episode", ctaHref: "/generate",
     steps: [
-      { icon: Mic2, title: "Bring your episode", body: "Upload the MP3 you downloaded from AI Pod Sync — or any podcast episode you've already recorded." },
+      { icon: Mic2, title: "Bring your episode", body: "Upload the MP3 you downloaded from AIPodSync — or any podcast episode you've already recorded." },
       { icon: Wand2, title: "Pick a look", body: "Cinematic, documentary-style, abstract, and more — the AI paces visuals to your episode's length and mood." },
       { icon: Film, title: "Export & post", body: "Download the full video, plus one-click vertical cuts for TikTok, Reels, and Shorts." },
     ],
-    seo: "AI Beat Sync turns podcast episodes into videos — a natural next step after writing a script and generating an AI-narrated episode on AI Pod Sync. Upload the finished audio and the engine builds cinematic visuals paced to your episode, then packages social cuts for every platform. Start free.",
+    seo: "AI Beat Sync turns podcast episodes into videos — a natural next step after writing a script and generating an AI-narrated episode on AIPodSync. Upload the finished audio and the engine builds cinematic visuals paced to your episode, then packages social cuts for every platform. Start free.",
   }} />;
 }
 
