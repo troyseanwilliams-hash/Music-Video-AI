@@ -30,6 +30,7 @@ import SunoLanding from "@/pages/suno-landing";
 import CanvasLanding from "@/pages/canvas-landing";
 import {
   AiMusicVideoLanding, LyricVideoLanding, InstrumentalLanding, SunoToVideoLanding,
+  PodcastToVideoLanding,
   HipHopMusicVideoLanding, EdmMusicVideoLanding, RockMusicVideoLanding,
   PopMusicVideoLanding, CountryMusicVideoLanding, LofiMusicVideoLanding,
   SlideshowMakerLanding, WeddingSlideshowLanding, CapcutAlternativeLanding,
@@ -90,6 +91,7 @@ function Router() {
           <Route path="/ai-lyric-video" component={LyricVideoLanding} />
           <Route path="/instrumental-generator" component={InstrumentalLanding} />
           <Route path="/suno-to-video" component={SunoToVideoLanding} />
+          <Route path="/podcast-to-video" component={PodcastToVideoLanding} />
           <Route path="/hip-hop-music-video-generator" component={HipHopMusicVideoLanding} />
           <Route path="/edm-music-video-generator" component={EdmMusicVideoLanding} />
           <Route path="/rock-music-video-generator" component={RockMusicVideoLanding} />
