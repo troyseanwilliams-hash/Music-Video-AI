@@ -10,8 +10,11 @@ import { LYRICS_BUILD_COST, canAffordCredits } from "@/lib/creditPricing";
 import { useGetDashboardStats } from "@workspace/api-client-react";
 import TopUpRequiredDialog from "@/components/TopUpRequiredDialog";
 import {
-  Sparkles, Music2, Film, FileText, Copy, Check, Loader2, ArrowRight, Wand2,
+  Sparkles, Music2, Film, FileText, Copy, Check, Loader2, ArrowRight, Wand2, Lightbulb,
 } from "lucide-react";
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu";
 
 type AudioResult = { prompt: string; genre: string; mood: string; bpm: number | null; tags: string[]; source: string };
 type VideoResult = { prompt: string; negativePrompt: string; source: string };
@@ -89,21 +92,28 @@ const LYRIC_SAMPLES = [
   "missing home while chasing something bigger",
 ];
 
-function Chips({ items, onPick }: { items: string[]; onPick: (v: string) => void }) {
+// Replaces the old wrapping grid of pill buttons — same "click an example
+// to fill the field" behavior, but as a single compact trigger instead of
+// 8-10 chips crowding the page. Not a controlled Select: picking one is a
+// one-off action (fills the textarea), not a persistent field value, so a
+// menu fits better than something that would sit there showing "selected".
+function PresetMenu({ items, onPick, label = "Need inspiration?" }: { items: string[]; onPick: (v: string) => void; label?: string }) {
   return (
-    <div className="flex flex-wrap gap-1.5">
-      {items.map((s) => (
-        <button
-          key={s}
-          type="button"
-          onClick={() => onPick(s)}
-          title={s}
-          className="rounded-full border border-border/60 bg-secondary/40 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
-        >
-          {s.length > 46 ? s.slice(0, 44) + "…" : s}
-        </button>
-      ))}
-    </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button type="button" variant="outline" size="sm" className="text-muted-foreground font-normal">
+          <Lightbulb className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" /> {label}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-[min(24rem,calc(100vw-2rem))] max-h-72 overflow-y-auto">
+        <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">Pick an example to start from</DropdownMenuLabel>
+        {items.map((s) => (
+          <DropdownMenuItem key={s} onSelect={() => onPick(s)} className="whitespace-normal text-sm py-2">
+            {s}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -210,8 +220,10 @@ export default function PromptStudio() {
 
         {/* Audio */}
         <TabsContent value="audio" className="space-y-4 pt-4">
-          <label className="text-sm font-medium">Describe the vibe</label>
-          <Chips items={AUDIO_SAMPLES} onPick={setAudioDesc} />
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <label className="text-sm font-medium">Describe the vibe</label>
+            <PresetMenu items={AUDIO_SAMPLES} onPick={setAudioDesc} label="Need inspiration?" />
+          </div>
           <Textarea
             value={audioDesc}
             onChange={(e) => setAudioDesc(e.target.value)}
@@ -243,8 +255,10 @@ export default function PromptStudio() {
 
         {/* Video */}
         <TabsContent value="video" className="space-y-4 pt-4">
-          <label className="text-sm font-medium">Describe the scene</label>
-          <Chips items={VIDEO_SAMPLES} onPick={setVideoDesc} />
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <label className="text-sm font-medium">Describe the scene</label>
+            <PresetMenu items={VIDEO_SAMPLES} onPick={setVideoDesc} label="Need inspiration?" />
+          </div>
           <Textarea
             value={videoDesc}
             onChange={(e) => setVideoDesc(e.target.value)}
@@ -276,8 +290,10 @@ export default function PromptStudio() {
 
         {/* Lyrics */}
         <TabsContent value="lyrics" className="space-y-4 pt-4">
-          <label className="text-sm font-medium">What's the song about?</label>
-          <Chips items={LYRIC_SAMPLES} onPick={setTheme} />
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <label className="text-sm font-medium">What's the song about?</label>
+            <PresetMenu items={LYRIC_SAMPLES} onPick={setTheme} label="Need inspiration?" />
+          </div>
           <Textarea
             value={theme}
             onChange={(e) => setTheme(e.target.value)}

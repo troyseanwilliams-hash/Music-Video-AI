@@ -54,7 +54,7 @@ export function Navbar() {
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-electric shadow-glow">
                 <Video className="h-5 w-5 text-white" />
               </div>
-              <span className="font-bold text-xl tracking-tight hidden sm:inline-block">
+              <span className="font-bold text-lg sm:text-xl tracking-tight">
                 AIBeatSync
               </span>
             </Link>
