@@ -840,7 +840,7 @@ export default function Editor() {
             </span>
           ))}
         </div>
-        <p className="mt-3 text-xs text-muted-foreground">
+        <p className="mt-3 text-xs text-muted-foreground text-center">
           <a href="https://aipodsync.com" className="text-primary font-medium hover:underline">
             Create your own podcast with AIPodSync
           </a>
