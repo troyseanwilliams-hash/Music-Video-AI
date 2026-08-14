@@ -45,7 +45,7 @@ export default function SharedSoundtrack() {
               </div>
               <div className="min-w-0">
                 <h1 className="font-semibold truncate">{data.title || "AI Soundtrack"}</h1>
-                <p className="text-xs text-muted-foreground">Shared from AI Beat Sync</p>
+                <p className="text-xs text-muted-foreground">Shared from AIBeatSync</p>
               </div>
             </div>
             {data.prompt && <p className="text-sm text-muted-foreground">{data.prompt}</p>}

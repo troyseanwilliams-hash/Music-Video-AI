@@ -3,7 +3,7 @@ import { ArrowLeft, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const EFFECTIVE_DATE = "May 6, 2025";
-const COMPANY_NAME = "AI Beat Sync";
+const COMPANY_NAME = "AIBeatSync";
 const SITE_URL = "https://aibeatsync.com";
 const CONTACT_EMAIL = "legal@aibeatsync.com";
 

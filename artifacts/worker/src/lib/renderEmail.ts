@@ -11,7 +11,7 @@ import { eq } from "drizzle-orm";
 import { logger } from "./logger.js";
 
 const APP_URL = process.env.APP_URL ?? "https://aibeatsync.com";
-const FROM = "AI Beat Sync <notifications@aibeatsync.com>";
+const FROM = "AIBeatSync <notifications@aibeatsync.com>";
 
 async function sendViaResend(to: string, subject: string, html: string): Promise<void> {
   const key = process.env.RESEND_API_KEY;

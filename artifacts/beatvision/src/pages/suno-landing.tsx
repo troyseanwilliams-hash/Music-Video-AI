@@ -21,7 +21,7 @@ export default function SunoLanding() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    document.title = "Suno to Music Video — AI Beat Sync";
+    document.title = "Suno to Music Video — AIBeatSync";
     const meta = document.querySelector('meta[name="description"]');
     const prev = meta?.getAttribute("content") ?? null;
     meta?.setAttribute(
@@ -29,7 +29,7 @@ export default function SunoLanding() {
       "Paste your Suno song link and get an AI-generated, beat-synced music video with karaoke lyrics. Free to try — no upload needed.",
     );
     return () => {
-      document.title = "AI Beat Sync";
+      document.title = "AIBeatSync";
       if (prev && meta) meta.setAttribute("content", prev);
     };
   }, []);

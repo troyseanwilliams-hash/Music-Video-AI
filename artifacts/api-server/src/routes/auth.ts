@@ -230,13 +230,13 @@ router.post("/auth/forgot-password", async (req: Request, res: Response) => {
     }
     const resetUrl = `${APP_URL}/reset-password?token=${token}`;
     await new Resend(process.env.RESEND_API_KEY).emails.send({
-      from: "AI Beat Sync <notifications@aibeatsync.com>",
+      from: "AIBeatSync <notifications@aibeatsync.com>",
       to: user.email!,
-      subject: "Reset your AI Beat Sync password",
+      subject: "Reset your AIBeatSync password",
       html: `
         <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
           <h2 style="margin:0 0 16px">Reset your password</h2>
-          <p>We received a request to reset your AI Beat Sync password. This link expires in 1 hour.</p>
+          <p>We received a request to reset your AIBeatSync password. This link expires in 1 hour.</p>
           <p style="margin:24px 0">
             <a href="${resetUrl}" style="background:#7c3aed;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">
               Choose a new password →

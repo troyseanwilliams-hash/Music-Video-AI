@@ -235,7 +235,7 @@ export default function Dashboard() {
                 <X className="h-4 w-4" />
               </button>
               <h2 className="flex items-center gap-2 text-xl font-bold">
-                <Sparkles className="h-5 w-5 text-primary" /> Welcome to AI Beat Sync
+                <Sparkles className="h-5 w-5 text-primary" /> Welcome to AIBeatSync
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 Your 7-day trial includes full Remix Studio access and <strong className="text-foreground">3 free Soundtracks</strong>. Here's how to start:

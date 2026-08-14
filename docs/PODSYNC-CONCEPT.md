@@ -1,7 +1,7 @@
 # AIPodSync — Sister Site Concept
 
 **Confirmed brand:** AIPodSync — **domain: aipodsync.com** (secured/available, matches the "AI ___ Sync"
-naming family alongside AI Beat Sync).
+naming family alongside AIBeatSync).
 
 ## Decision log (as of this revision)
 
@@ -11,19 +11,19 @@ naming family alongside AI Beat Sync).
   ClipSpeedAI, Reap, Clouted). That entire tier is built around **video-recorded** source content. The
   narrower **audio-only podcast → audiogram** niche (the Headliner/Wavve lane) is smaller but meaningfully
   less contested — that's the deliberate wedge for AIPodSync, not a head-on OpusClip competitor.
-- **This is a suite play, not a standalone bet.** AIPodSync exists to sit next to AI Beat Sync as a second
+- **This is a suite play, not a standalone bet.** AIPodSync exists to sit next to AIBeatSync as a second
   product in an "AI ___ Sync" family — shared backend/account infrastructure, separate front-facing brand,
   built specifically so the two properties can cross-promote to each other's audiences at near-zero
   incremental CAC rather than needing to out-market a $215M-funded competitor for cold traffic.
 
 ## Positioning
 
-AI Beat Sync turns a **song** into a beat-synced video. AIPodSync turns a **podcast episode** into
+AIBeatSync turns a **song** into a beat-synced video. AIPodSync turns a **podcast episode** into
 share-ready social clips — audiograms with animated waveforms, burned-in captions, and AI-picked highlight
 moments — deliberately scoped to audio-first podcasts rather than competing with video-clipping incumbents.
 
 Same underlying muscle (audio in, polished short-form video out), a different but adjacent audience:
-podcasters, interview shows, and the networks/agencies that manage them. Little overlap with AI Beat Sync's
+podcasters, interview shows, and the networks/agencies that manage them. Little overlap with AIBeatSync's
 musician base, which makes this additive rather than cannibalizing, and it plugs into a real, still-growing
 market (4.8M active podcasts, 584M+ global listeners in 2026) even scoped down to the audio-first niche.
 
@@ -49,7 +49,7 @@ market (4.8M active podcasts, 584M+ global listeners in 2026) even scoped down t
 4. **Generate the clip** — animated waveform (or a simple background/host photo), burned-in captions styled to
    the selected preset, episode branding (logo, name), sized for the target platform.
 5. **Export everywhere** — vertical (TikTok/Reels/Shorts), square (Instagram feed), and a Spotify-Canvas-style
-   loop, all in one pass — mirrors AI Beat Sync's existing Release Kit multi-format export.
+   loop, all in one pass — mirrors AIBeatSync's existing Release Kit multi-format export.
 
 ## Site map
 
@@ -66,15 +66,15 @@ market (4.8M active podcasts, 584M+ global listeners in 2026) even scoped down t
 
 Audiogram clips are computationally *much* cheaper to produce than AI-generated video (no generative video
 model in the critical path for the base tier — mostly transcription + deterministic waveform rendering), so
-the pricing can be more generous than AI Beat Sync's to drive adoption and virality:
+the pricing can be more generous than AIBeatSync's to drive adoption and virality:
 
-- **Free** — 3 clips/month, 720p, "Made with AIPodSync" watermark (same growth mechanic as AI Beat Sync's free
+- **Free** — 3 clips/month, 720p, "Made with AIPodSync" watermark (same growth mechanic as AIBeatSync's free
   watermarked tier).
 - **Creator** — ~$12–15/mo, unlimited clips up to N episodes/month, no watermark, custom branding, 1080p.
 - **Studio/Network** — for podcast networks and agencies managing multiple shows: team seats, multiple show
   profiles, priority processing, bulk/batch clip generation from a full back catalog. This is the highest-margin
   tier and the one most worth a direct sales motion.
-- **Pay-as-you-go top-ups** — same credit-pack pattern as the recently-added $5/250-credit AI Beat Sync pack,
+- **Pay-as-you-go top-ups** — same credit-pack pattern as the recently-added $5/250-credit AIBeatSync pack,
   for occasional users who don't want a subscription.
 
 ## Backend reuse vs. net-new
@@ -107,7 +107,7 @@ explicitly framed as building a **suite**, not just two unrelated products that 
 
 - **aibeatsync.com** and **aipodsync.com** as siblings under one "AI ___ Sync" naming family — reads as an
   intentional product line, not a random second app, and leaves room for future additions in the same pattern.
-- **Cross-promotion built into both navbars from day one** — an AI Beat Sync user who also runs a podcast is
+- **Cross-promotion built into both navbars from day one** — an AIBeatSync user who also runs a podcast is
   exactly the ideal first AIPodSync customer, and vice versa (a podcaster who wants a beat-synced trailer or
   Spotify Canvas clip for their show). This is the actual growth engine for AIPodSync given the plan to target
   the smaller, less-contested niche rather than outspending OpusClip on paid acquisition.

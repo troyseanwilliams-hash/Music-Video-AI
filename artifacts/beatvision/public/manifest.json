@@ -1,6 +1,6 @@
 {
-  "name": "AI Beat Sync — AI Music Video Generator",
-  "short_name": "AI Beat Sync",
+  "name": "AIBeatSync — AI Music Video Generator",
+  "short_name": "AIBeatSync",
   "description": "Turn your music into stunning AI-generated, beat-synced cinematic videos in minutes.",
   "start_url": "/",
   "display": "standalone",
@@ -33,7 +33,7 @@
       "src": "/opengraph.jpg",
       "sizes": "1200x630",
       "type": "image/jpeg",
-      "label": "AI Beat Sync — Generate AI music videos"
+      "label": "AIBeatSync — Generate AI music videos"
     }
   ]
 }

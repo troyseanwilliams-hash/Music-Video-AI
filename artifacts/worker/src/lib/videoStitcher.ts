@@ -25,7 +25,7 @@ function runFfmpeg(cmd: ffmpeg.FfmpegCommand): Promise<void> {
   });
 }
 
-// Burns a small semi-transparent "AI Beat Sync" watermark (bottom-right) onto a
+// Burns a small semi-transparent "AIBeatSync" watermark (bottom-right) onto a
 // finished video. Used for Starter-tier exports so shared videos market the site
 // (Pro/Studio render clean). Returns the watermarked buffer; on any failure it
 // returns the original so a watermark hiccup never fails a render.

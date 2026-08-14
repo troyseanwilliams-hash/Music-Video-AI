@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
 const DMCA_AGENT_EMAIL = "legal@aibeatsync.com";
-const COMPANY_NAME = "AI Beat Sync";
+const COMPANY_NAME = "AIBeatSync";
 
 export default function Dmca() {
   return (

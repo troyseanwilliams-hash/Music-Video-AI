@@ -458,11 +458,11 @@ router.post("/billing/portal", async (req, res) => {
   }
 });
 
-// POST /billing/redeem-drift-pro — comp AI Beat Sync membership for Digital
+// POST /billing/redeem-drift-pro — comp AIBeatSync membership for Digital
 // Drift *Pro* subscribers. Both sites share one Stripe account, so we verify
 // against Stripe directly (no shared secret codes): if the logged-in user's
 // email has an active Digital Drift Pro subscription (price lookup_key starting
-// "creator_pro"), grant them an active AI Beat Sync membership. Tied to their
+// "creator_pro"), grant them an active AIBeatSync membership. Tied to their
 // own email, so it can't be claimed with someone else's subscription.
 const DRIFT_PRO_LOOKUP_PREFIX = "creator_pro";
 
@@ -525,7 +525,7 @@ router.post("/billing/redeem-drift-pro", async (req, res) => {
       .where(eq(usersTable.id, user.id));
 
     req.log.info({ userId: user.id, email }, "Digital Drift Pro bundle redeemed");
-    res.json({ success: true, message: "AI Beat Sync membership activated through your Digital Drift Pro plan." });
+    res.json({ success: true, message: "AIBeatSync membership activated through your Digital Drift Pro plan." });
   } catch (err) {
     req.log.error({ err }, "Failed to redeem Digital Drift Pro bundle");
     res.status(500).json({ error: "Could not verify your Digital Drift Pro membership. Please try again." });

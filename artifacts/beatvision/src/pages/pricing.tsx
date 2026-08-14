@@ -326,7 +326,7 @@ export default function Pricing() {
           <div>
             <p className="text-sm font-semibold">Have a Digital Drift <span className="text-primary">Pro</span> membership?</p>
             <p className="text-sm text-muted-foreground mt-1">
-              Your Pro plan includes AI Beat Sync — activate it here. Use the same email you subscribed with on digitaldriftproductions.
+              Your Pro plan includes AIBeatSync — activate it here. Use the same email you subscribed with on digitaldriftproductions.
             </p>
           </div>
           <button

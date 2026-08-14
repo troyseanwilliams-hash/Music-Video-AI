@@ -290,9 +290,9 @@ router.post("/admin/test-email", async (req, res) => {
         method: "POST",
         headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          from: "AI Beat Sync <notifications@aibeatsync.com>",
+          from: "AIBeatSync <notifications@aibeatsync.com>",
           to,
-          subject: "AI Beat Sync — email delivery test",
+          subject: "AIBeatSync — email delivery test",
           html: `<div style="font-family:sans-serif;padding:24px"><h2>Email works ✔</h2><p>This is a delivery test sent from the admin panel at ${new Date().toISOString()}.</p></div>`,
         }),
       });

@@ -113,7 +113,7 @@ function UseCaseLanding({ cfg }: { cfg: UseCaseConfig }) {
 
 export function AiMusicVideoLanding() {
   return <UseCaseLanding cfg={{
-    docTitle: "AI Music Video Generator — Turn a Song Into a Video | AI Beat Sync",
+    docTitle: "AI Music Video Generator — Turn a Song Into a Video | AIBeatSync",
     metaDescription: "Turn any song into a cinematic, beat-synced AI music video in minutes. Upload a track or generate one, pick a style, and download a video ready for YouTube, TikTok, and Reels.",
     badge: "One song in. A cinematic video out.",
     h1a: "Turn any song into an", h1accent: "AI music video", h1b: "",
@@ -124,13 +124,13 @@ export function AiMusicVideoLanding() {
       { icon: Wand2, title: "Pick a style", body: "Cinematic, anime, neon, and more — the AI generates shots timed to each section of your song." },
       { icon: Film, title: "Download & share", body: "Export up to 4K, plus one-click shorts and a Spotify Canvas loop for every platform." },
     ],
-    seo: "AI Beat Sync is an AI music video generator that turns your audio into cinematic, beat-synchronized visuals. Unlike raw AI video tools, it analyzes your song's structure and cuts each shot to the beat — then packages the whole release: the full video, vertical TikTok/Shorts cuts, a Spotify Canvas loop, and a thumbnail. Start free.",
+    seo: "AIBeatSync is an AI music video generator that turns your audio into cinematic, beat-synchronized visuals. Unlike raw AI video tools, it analyzes your song's structure and cuts each shot to the beat — then packages the whole release: the full video, vertical TikTok/Shorts cuts, a Spotify Canvas loop, and a thumbnail. Start free.",
   }} />;
 }
 
 export function LyricVideoLanding() {
   return <UseCaseLanding cfg={{
-    docTitle: "AI Lyric Video Maker — Add Animated Lyrics to Your Song | AI Beat Sync",
+    docTitle: "AI Lyric Video Maker — Add Animated Lyrics to Your Song | AIBeatSync",
     metaDescription: "Make a lyric video from your song with AI. Generate a beat-synced music video and burn in karaoke-style animated lyrics — synced to the beat and ready to post.",
     badge: "Your words, on screen, on beat.",
     h1a: "Make an", h1accent: "AI lyric video", h1b: "for your song",
@@ -141,13 +141,13 @@ export function LyricVideoLanding() {
       { icon: Mic2, title: "Add your lyrics", body: "Paste lyrics (or .lrc timestamps) and we burn animated captions synced to the music." },
       { icon: Film, title: "Export & post", body: "Download the lyric video plus vertical cuts for TikTok, Reels, and Shorts." },
     ],
-    seo: "AI Beat Sync doubles as an AI lyric video maker: generate a music video, then overlay karaoke-style animated lyrics that follow the beat. Supports plain text, LRC line timestamps, and word-level enhanced LRC for precise, sing-along sync — no video editor required.",
+    seo: "AIBeatSync doubles as an AI lyric video maker: generate a music video, then overlay karaoke-style animated lyrics that follow the beat. Supports plain text, LRC line timestamps, and word-level enhanced LRC for precise, sing-along sync — no video editor required.",
   }} />;
 }
 
 export function InstrumentalLanding() {
   return <UseCaseLanding cfg={{
-    docTitle: "Free AI Instrumental Generator — Royalty-Free Beats | AI Beat Sync",
+    docTitle: "Free AI Instrumental Generator — Royalty-Free Beats | AIBeatSync",
     metaDescription: "Generate royalty-free instrumental music with AI. Describe a vibe and get an original beat you can use in videos, streams, and content — free tracks included.",
     badge: "Original beats. Royalty-free. Yours.",
     h1a: "Free", h1accent: "AI instrumental", h1b: "generator",
@@ -158,13 +158,13 @@ export function InstrumentalLanding() {
       { icon: Disc3, title: "Loop or reuse", body: "Loop it to any length, save it to your library, or drop it into a video." },
       { icon: Film, title: "Turn it into a video", body: "One click sends your beat into the video generator for a full music video." },
     ],
-    seo: "AI Beat Sync's soundtrack generator creates original, royalty-free instrumental music from a text description — free tracks included on every plan. Use the beats in your videos, streams, and social content, then turn any track into a cinematic AI music video in the same place.",
+    seo: "AIBeatSync's soundtrack generator creates original, royalty-free instrumental music from a text description — free tracks included on every plan. Use the beats in your videos, streams, and social content, then turn any track into a cinematic AI music video in the same place.",
   }} />;
 }
 
 export function SunoToVideoLanding() {
   return <UseCaseLanding cfg={{
-    docTitle: "Suno to Video — Turn Your Suno Song Into an AI Music Video | AI Beat Sync",
+    docTitle: "Suno to Video — Turn Your Suno Song Into an AI Music Video | AIBeatSync",
     metaDescription: "Made a song in Suno? Turn it into a cinematic, beat-synced AI music video. Paste your Suno link or upload the track, pick a style, and export for YouTube, TikTok, and Reels.",
     badge: "From Suno track to finished video.",
     h1a: "Turn your", h1accent: "Suno song", h1b: "into a video",
@@ -175,7 +175,7 @@ export function SunoToVideoLanding() {
       { icon: Wand2, title: "Pick a look", body: "The AI reads your song's beat and energy and generates cinematic shots timed to each section." },
       { icon: Film, title: "Export & post", body: "Download up to 4K, plus one-click TikTok/Reels/Shorts cuts and a Spotify Canvas loop." },
     ],
-    seo: "AI Beat Sync is the fastest way to turn a Suno song into a music video. Bring any AI-generated or uploaded track, and the engine analyzes its beat, mood, and structure to render beat-synced cinematic visuals — then packages the full release: the video, vertical social cuts, a Spotify Canvas loop, and a thumbnail. Start free.",
+    seo: "AIBeatSync is the fastest way to turn a Suno song into a music video. Bring any AI-generated or uploaded track, and the engine analyzes its beat, mood, and structure to render beat-synced cinematic visuals — then packages the full release: the video, vertical social cuts, a Spotify Canvas loop, and a thumbnail. Start free.",
   }} />;
 }
 
@@ -183,7 +183,7 @@ export function SunoToVideoLanding() {
 // pages ("[genre] music video generator") that all funnel into /generate.
 function genreCfg(genre: string): UseCaseConfig {
   return {
-    docTitle: `${genre} Music Video Generator — AI ${genre} Videos | AI Beat Sync`,
+    docTitle: `${genre} Music Video Generator — AI ${genre} Videos | AIBeatSync`,
     metaDescription: `Turn your ${genre} track into a cinematic, beat-synced AI music video. Upload or generate a ${genre} song, pick a look, and export visuals ready for YouTube, TikTok, and Reels.`,
     badge: `Built for ${genre}.`,
     h1a: "AI", h1accent: `${genre} music`, h1b: "videos",
@@ -194,7 +194,7 @@ function genreCfg(genre: string): UseCaseConfig {
       { icon: Wand2, title: "Pick a look", body: `The AI times cinematic shots to the beat and energy of your ${genre} track.` },
       { icon: Film, title: "Download & share", body: "Export up to 4K, plus one-click TikTok/Reels/Shorts cuts and a Spotify Canvas loop." },
     ],
-    seo: `AI Beat Sync turns ${genre} tracks into beat-synced cinematic music videos. Upload or generate a ${genre} song and the engine cuts each shot to the beat, then packages the full release — the video, vertical social cuts, a Spotify Canvas loop, and a thumbnail. Free to start.`,
+    seo: `AIBeatSync turns ${genre} tracks into beat-synced cinematic music videos. Upload or generate a ${genre} song and the engine cuts each shot to the beat, then packages the full release — the video, vertical social cuts, a Spotify Canvas loop, and a thumbnail. Free to start.`,
   };
 }
 
@@ -202,7 +202,7 @@ function genreCfg(genre: string): UseCaseConfig {
 
 export function SlideshowMakerLanding() {
   return <UseCaseLanding cfg={{
-    docTitle: "AI Slideshow Maker — Turn Photos Into a Video With Music | AI Beat Sync",
+    docTitle: "AI Slideshow Maker — Turn Photos Into a Video With Music | AIBeatSync",
     metaDescription: "Turn your photos into a beautiful slideshow video with music and smooth transitions. Perfect for weddings, events, and work presentations — no editing skills needed. Free to start.",
     badge: "Photos in. A polished video out.",
     h1a: "Turn your photos into a", h1accent: "slideshow video", h1b: "",
@@ -213,13 +213,13 @@ export function SlideshowMakerLanding() {
       { icon: Music2, title: "Pick music & transitions", body: "Add a song (or generate one) and smooth crossfades — timed automatically." },
       { icon: Film, title: "Export & share", body: "Download your slideshow and one-click cuts for TikTok, Reels, and Shorts." },
     ],
-    seo: "AI Beat Sync's Remix Lab is a fast, simple slideshow maker: turn photos into a polished video with music and smooth transitions. A friendlier, AI-powered alternative to complex editors like CapCut — great for wedding slideshows, event recaps, and work presentations. Start free.",
+    seo: "AIBeatSync's Remix Lab is a fast, simple slideshow maker: turn photos into a polished video with music and smooth transitions. A friendlier, AI-powered alternative to complex editors like CapCut — great for wedding slideshows, event recaps, and work presentations. Start free.",
   }} />;
 }
 
 export function WeddingSlideshowLanding() {
   return <UseCaseLanding cfg={{
-    docTitle: "Wedding Slideshow Maker — Photos to a Video With Music | AI Beat Sync",
+    docTitle: "Wedding Slideshow Maker — Photos to a Video With Music | AIBeatSync",
     metaDescription: "Make a beautiful wedding slideshow from your photos in minutes. Add music and smooth transitions and export a video to share — no editing skills needed. Free to start.",
     badge: "Your day, set to music.",
     h1a: "Make a", h1accent: "wedding slideshow", h1b: "in minutes",
@@ -230,14 +230,14 @@ export function WeddingSlideshowLanding() {
       { icon: Music2, title: "Choose your song", body: "Add your first-dance track or generate a royalty-free one, with smooth transitions between shots." },
       { icon: Film, title: "Share the memory", body: "Export a polished video to play at the reception or send to friends and family." },
     ],
-    seo: "AI Beat Sync makes wedding slideshows easy: upload your photos, add music, and get a polished video with smooth transitions — no video editor required. A simple, AI-powered alternative to CapCut for couples and wedding pros. Free to start.",
+    seo: "AIBeatSync makes wedding slideshows easy: upload your photos, add music, and get a polished video with smooth transitions — no video editor required. A simple, AI-powered alternative to CapCut for couples and wedding pros. Free to start.",
   }} />;
 }
 
 export function CapcutAlternativeLanding() {
   return <UseCaseLanding cfg={{
-    docTitle: "A Simpler CapCut Alternative — AI Video & Slideshow Editor | AI Beat Sync",
-    metaDescription: "Looking for a CapCut alternative? AI Beat Sync's Remix Lab is a simple, AI-powered editor for slideshows, music videos, and social clips — timeline editing, music, transitions, and one-click social exports.",
+    docTitle: "A Simpler CapCut Alternative — AI Video & Slideshow Editor | AIBeatSync",
+    metaDescription: "Looking for a CapCut alternative? AIBeatSync's Remix Lab is a simple, AI-powered editor for slideshows, music videos, and social clips — timeline editing, music, transitions, and one-click social exports.",
     badge: "The simple, AI-powered CapCut alternative.",
     h1a: "A simpler", h1accent: "CapCut alternative", h1b: "",
     subhead: "Remix Lab gives you the essentials — a timeline, music, transitions, and one-click social exports — without the clutter. Build slideshows, music videos, and social clips, with AI to fill the gaps.",
@@ -247,13 +247,13 @@ export function CapcutAlternativeLanding() {
       { icon: Scissors, title: "Trim, arrange, transition", body: "Cut, reorder, add music and smooth crossfades — no learning curve." },
       { icon: Film, title: "Export everywhere", body: "One click gives you vertical TikTok/Reels/Shorts cuts and a shareable video." },
     ],
-    seo: "AI Beat Sync's Remix Lab is a lightweight, AI-powered alternative to CapCut for slideshows, music videos, and social content. Timeline editing, music, smooth transitions, and one-click TikTok/Reels/Shorts exports — plus AI video and soundtrack generation built in. Free to start.",
+    seo: "AIBeatSync's Remix Lab is a lightweight, AI-powered alternative to CapCut for slideshows, music videos, and social content. Timeline editing, music, smooth transitions, and one-click TikTok/Reels/Shorts exports — plus AI video and soundtrack generation built in. Free to start.",
   }} />;
 }
 
 export function PodcastToVideoLanding() {
   return <UseCaseLanding cfg={{
-    docTitle: "Podcast to Video — Turn Your Episode Into an AI Music Video | AI Beat Sync",
+    docTitle: "Podcast to Video — Turn Your Episode Into an AI Music Video | AIBeatSync",
     metaDescription: "Made an episode on AIPodSync (or recorded your own)? Turn the audio into a cinematic AI video — upload the file, pick a style, and export for YouTube, TikTok, and Reels.",
     badge: "From AIPodSync episode to finished video.",
     h1a: "Turn your", h1accent: "podcast episode", h1b: "into a video",
@@ -264,7 +264,7 @@ export function PodcastToVideoLanding() {
       { icon: Wand2, title: "Pick a look", body: "Cinematic, documentary-style, abstract, and more — the AI paces visuals to your episode's length and mood." },
       { icon: Film, title: "Export & post", body: "Download the full video, plus one-click vertical cuts for TikTok, Reels, and Shorts." },
     ],
-    seo: "AI Beat Sync turns podcast episodes into videos — a natural next step after writing a script and generating an AI-narrated episode on AIPodSync. Upload the finished audio and the engine builds cinematic visuals paced to your episode, then packages social cuts for every platform. Start free.",
+    seo: "AIBeatSync turns podcast episodes into videos — a natural next step after writing a script and generating an AI-narrated episode on AIPodSync. Upload the finished audio and the engine builds cinematic visuals paced to your episode, then packages social cuts for every platform. Start free.",
   }} />;
 }
 

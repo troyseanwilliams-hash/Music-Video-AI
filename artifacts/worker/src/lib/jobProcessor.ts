@@ -1398,7 +1398,7 @@ async function processJob(job: JobRow): Promise<void> {
       }
     }
 
-    // Starter-tier videos get a small "AI Beat Sync" watermark so shared clips
+    // Starter-tier videos get a small "AIBeatSync" watermark so shared clips
     // market the site (Pro/Studio render clean). Falls open on any ffmpeg error.
     if ((job as JobRow & { watermark?: boolean }).watermark) {
       videoBuffer = await applyWatermark(videoBuffer);

@@ -79,7 +79,7 @@ export default function Login() {
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-electric shadow-glow">
             <Music2 className="h-5 w-5 text-white" />
           </div>
-          <span className="text-xl font-bold tracking-tight">AI Beat Sync</span>
+          <span className="text-xl font-bold tracking-tight">AIBeatSync</span>
         </div>
 
         <div className="relative z-10 space-y-8">
@@ -132,7 +132,7 @@ export default function Login() {
         </div>
 
         <p className="relative z-10 text-xs text-muted-foreground/60">
-          &copy; {new Date().getFullYear()} AI Beat Sync. All rights reserved.
+          &copy; {new Date().getFullYear()} AIBeatSync. All rights reserved.
         </p>
       </div>
 
@@ -151,7 +151,7 @@ export default function Login() {
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-electric shadow-glow">
               <Music2 className="h-4 w-4 text-white" />
             </div>
-            <span className="font-bold text-lg">AI Beat Sync</span>
+            <span className="font-bold text-lg">AIBeatSync</span>
           </div>
 
           <div className="mb-8">

@@ -42,7 +42,7 @@ export function Footer() {
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-electric shadow-glow">
                 <Video className="h-5 w-5 text-white" />
               </div>
-              <span className="text-lg font-bold tracking-tight">AI Beat Sync</span>
+              <span className="text-lg font-bold tracking-tight">AIBeatSync</span>
             </Link>
             <p className="mt-3 max-w-xs text-sm text-muted-foreground">
               Turn your music into beat-synced AI videos and royalty-free soundtracks.
@@ -72,7 +72,7 @@ export function Footer() {
         </div>
 
         <div className="mt-8 border-t border-border/30 pt-5 text-xs text-muted-foreground">
-          © {new Date().getFullYear()} AI Beat Sync. All rights reserved.
+          © {new Date().getFullYear()} AIBeatSync. All rights reserved.
         </div>
       </div>
     </footer>

@@ -33,7 +33,7 @@ export function notifyJobPendingApproval(job: JobInfo): void {
   if (resend && adminEmail) {
     resend.emails
       .send({
-        from: "AI Beat Sync <notifications@aibeatsync.com>",
+        from: "AIBeatSync <notifications@aibeatsync.com>",
         to: adminEmail,
         subject: `New job awaiting approval — ${job.id.slice(0, 8)}`,
         html: `
@@ -89,7 +89,7 @@ export function notifyNewSupportTicket(ticket: SupportTicketInfo): void {
   if (resend && adminEmail) {
     resend.emails
       .send({
-        from: "AI Beat Sync <notifications@aibeatsync.com>",
+        from: "AIBeatSync <notifications@aibeatsync.com>",
         to: adminEmail,
         subject: `[Support] ${ticket.subject}`,
         html: `
@@ -137,7 +137,7 @@ export function notifyNewUser(user: { id: string; email?: string | null; name?: 
   if (resend && adminEmail) {
     resend.emails
       .send({
-        from: "AI Beat Sync <notifications@aibeatsync.com>",
+        from: "AIBeatSync <notifications@aibeatsync.com>",
         to: adminEmail,
         subject: `🎉 New signup — ${user.email ?? user.id.slice(0, 8)}`,
         html: `
@@ -181,7 +181,7 @@ export function notifyPayment(p: {
   if (resend && adminEmail) {
     resend.emails
       .send({
-        from: "AI Beat Sync <notifications@aibeatsync.com>",
+        from: "AIBeatSync <notifications@aibeatsync.com>",
         to: adminEmail,
         subject: `💰 ${amount} — ${kindLabel} from ${p.email ?? "a customer"}`,
         html: `
@@ -219,7 +219,7 @@ export function notifyFeatureRequest(p: { email?: string | null; feature: string
   if (resend && adminEmail) {
     resend.emails
       .send({
-        from: "AI Beat Sync <notifications@aibeatsync.com>",
+        from: "AIBeatSync <notifications@aibeatsync.com>",
         to: adminEmail,
         subject: `👋 Feature request: ${p.feature} — ${p.email ?? "a user"}`,
         html: `

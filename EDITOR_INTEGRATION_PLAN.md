@@ -1,4 +1,4 @@
-# AI Beat Sync — Editor ("Studio") Integration Plan
+# AIBeatSync — Editor ("Studio") Integration Plan
 
 Bringing the Splicer timeline editor into aibeatsync.com as a first-class feature: a
 **user-controlled version of the stitching you already do automatically.** Users arrange
@@ -184,7 +184,7 @@ Gen-4 runs about **$0.05/credit, ≈ $6 per 10-second clip** — trivial for a c
 
 Concrete promo pipeline (dogfooding your own stack):
 1. Generate a small library of **on-brand Gen-4 clips** (same character/scene via world consistency)
-   in the AI Beat Sync orange aesthetic.
+   in the AIBeatSync orange aesthetic.
 2. **Assemble them in Studio** with one of your tracks, beat-synced cuts, and transitions — the exact
    feature you're launching, so the promo *demonstrates the product.*
 3. Use **Aleph 2.0** to spin variants (9:16 for TikTok/Reels, 1:1 for IG, 16:9 for YouTube pre-roll)

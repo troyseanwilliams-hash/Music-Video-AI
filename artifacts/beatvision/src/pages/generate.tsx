@@ -697,6 +697,13 @@ export default function Generate() {
           <p className="mt-3 text-xs text-muted-foreground">
             Templates fill in a prompt, style, aspect ratio, and length — tweak anything after.
           </p>
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            Got a podcast script too?{" "}
+            <a href="https://aipodsync.com" className="text-primary font-medium hover:underline">
+              Turn it into a narrated episode with AIPodSync
+            </a>
+            .
+          </p>
           <div className="mt-4 border-t border-border/40 pt-3">
             <div className="mb-2 text-xs font-medium text-muted-foreground">Sized for</div>
             <div className="flex flex-wrap gap-2">

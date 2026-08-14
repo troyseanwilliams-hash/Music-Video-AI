@@ -1,4 +1,4 @@
-# AI Beat Sync — Feature Roadmap
+# AIBeatSync — Feature Roadmap
 
 Ordered build plan for the features from the site review. **Ship one unit at a
 time, top to bottom.** Each unit is self-contained: it lists goal, scope, files,

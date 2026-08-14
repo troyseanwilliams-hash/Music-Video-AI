@@ -10,7 +10,7 @@ interface SEOProps {
   jsonLd?: object | null;
 }
 
-const SITE_NAME = "AI Beat Sync";
+const SITE_NAME = "AIBeatSync";
 const BASE_URL = "https://aibeatsync.com";
 const DEFAULT_OG_IMAGE = `${BASE_URL}/opengraph.jpg`;
 

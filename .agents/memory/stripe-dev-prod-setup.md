@@ -3,7 +3,7 @@ name: Stripe dev/prod connection setup
 description: Two separate Stripe connections (dev + prod) and how to verify the managed webhook
 ---
 
-# Stripe setup gotchas (AI Beat Sync)
+# Stripe setup gotchas (AIBeatSync)
 
 There are **two** Replit Stripe connections, both can be `healthy`:
 - `environment: production` — live keys

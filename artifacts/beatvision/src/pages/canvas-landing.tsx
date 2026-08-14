@@ -12,7 +12,7 @@ import { AuroraBackground } from "@/components/AuroraBackground";
  */
 export default function CanvasLanding() {
   useEffect(() => {
-    document.title = "Spotify Canvas Maker — AI Beat Sync";
+    document.title = "Spotify Canvas Maker — AIBeatSync";
     const meta = document.querySelector('meta[name="description"]');
     const prev = meta?.getAttribute("content") ?? null;
     meta?.setAttribute(
@@ -20,7 +20,7 @@ export default function CanvasLanding() {
       "Make a looping Spotify Canvas for your track in one click. AI-generated 9:16 visuals synced to your music — ready to upload in Spotify for Artists.",
     );
     return () => {
-      document.title = "AI Beat Sync";
+      document.title = "AIBeatSync";
       if (prev && meta) meta.setAttribute("content", prev);
     };
   }, []);

@@ -138,7 +138,7 @@ export default function Explore() {
   useSEO({
     title: "Explore — Community AI Music Videos",
     description:
-      "Discover the best community-made AI music videos. Beat-synced, cinematic visuals created with AI Beat Sync. Like your favorites — no account needed to watch.",
+      "Discover the best community-made AI music videos. Beat-synced, cinematic visuals created with AIBeatSync. Like your favorites — no account needed to watch.",
     canonical: "/explore",
     jsonLd:
       videos.length > 0
@@ -244,7 +244,7 @@ export default function Explore() {
       <header className="mb-10 text-center">
         <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Explore the community</h1>
         <p className="text-muted-foreground mx-auto mt-3 max-w-2xl">
-          Videos and royalty-free soundtracks made by the AI Beat Sync community. Watch, listen, get inspired, and
+          Videos and royalty-free soundtracks made by the AIBeatSync community. Watch, listen, get inspired, and
           reuse your favorites.
         </p>
       </header>

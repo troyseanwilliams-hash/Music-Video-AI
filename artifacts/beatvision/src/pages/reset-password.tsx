@@ -64,7 +64,7 @@ export default function ResetPassword() {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-electric shadow-glow">
             <Music2 className="h-4 w-4 text-white" />
           </div>
-          <span className="font-bold text-lg">AI Beat Sync</span>
+          <span className="font-bold text-lg">AIBeatSync</span>
         </div>
 
         {done ? (
