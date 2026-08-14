@@ -185,9 +185,9 @@ export default function Register() {
 
         <p className="text-center text-xs text-muted-foreground/60 mt-4">
           By creating an account, you agree to our{" "}
-          <span className="underline underline-offset-2 cursor-pointer hover:text-muted-foreground">Terms of Service</span>{" "}
+          <Link href="/terms" className="underline underline-offset-2 hover:text-muted-foreground">Terms of Service</Link>{" "}
           and{" "}
-          <span className="underline underline-offset-2 cursor-pointer hover:text-muted-foreground">Privacy Policy</span>.
+          <Link href="/privacy" className="underline underline-offset-2 hover:text-muted-foreground">Privacy Policy</Link>.
         </p>
       </motion.div>
     </div>

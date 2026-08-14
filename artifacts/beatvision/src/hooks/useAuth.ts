@@ -67,6 +67,24 @@ export function useAuth() {
     window.location.href = "/api/logout";
   }, [queryClient]);
 
+  const deleteAccount = useCallback(
+    async (password: string): Promise<void> => {
+      const res = await fetch("/api/auth/account", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ password }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Couldn't delete your account");
+      }
+      queryClient.setQueryData(AUTH_QUERY_KEY, null);
+      queryClient.clear();
+    },
+    [queryClient],
+  );
+
   return {
     user: user ?? null,
     isAuthenticated: user != null,
@@ -74,5 +92,6 @@ export function useAuth() {
     login,
     register,
     logout,
+    deleteAccount,
   };
 }

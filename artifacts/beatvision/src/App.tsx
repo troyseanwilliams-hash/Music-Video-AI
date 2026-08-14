@@ -24,6 +24,7 @@ import Pricing from "@/pages/pricing";
 import Admin from "@/pages/admin";
 import Terms from "@/pages/terms";
 import Dmca from "@/pages/dmca";
+import Privacy from "@/pages/privacy";
 import Support from "@/pages/support";
 import Settings from "@/pages/settings";
 import PromptStudio from "@/pages/prompt-studio";
@@ -85,6 +86,7 @@ function Router() {
           <Route path="/admin" component={Admin} />
           <Route path="/terms" component={Terms} />
           <Route path="/dmca" component={Dmca} />
+          <Route path="/privacy" component={Privacy} />
           <Route path="/support" component={Support} />
           <Route path="/settings" component={Settings} />
           <Route path="/suno" component={SunoLanding} />

@@ -344,6 +344,72 @@ router.get("/auth/preferences", async (req: Request, res: Response) => {
   res.json({ notifyOnComplete: user?.notifyOnComplete ?? true });
 });
 
+// DELETE /api/auth/account — self-service account closure. Requires the
+// current password as confirmation.
+//
+// This is a SOFT close, not a hard delete — matching how individual videos
+// already work in this app (DELETE /videos/:id marks deletedAt rather than
+// removing the row/files; see routes/videos.ts). usersTable.id cascades
+// via onDelete: "cascade" into videos, soundtracks, credits, referrals,
+// support tickets, and promo redemptions — a hard delete here would wipe
+// all of that, including financial/audit records and other users' referral
+// history that shouldn't disappear just because this account closed. So
+// instead: disable login, clear the password hash so it can never succeed
+// even if isDisabled were bypassed, and scrub the directly-identifying
+// fields (email, name). Content stays in place, same as a soft-deleted
+// video — an admin/auto-purge process is the right place to actually
+// remove it later, not this endpoint.
+//
+// Does NOT cancel an active Stripe subscription — that's a separate,
+// deliberate action a user takes via "Manage billing & plan" in Settings,
+// not something to do silently as a side effect of closing the account.
+const deleteAccountBodySchema = z.object({
+  password: z.string().min(1, "Enter your password to confirm"),
+});
+
+router.delete("/auth/account", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const parsed = deleteAccountBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Password confirmation is required" });
+    return;
+  }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.user.id)).limit(1);
+  if (!user) {
+    res.status(404).json({ error: "Account not found" });
+    return;
+  }
+  const validPassword = user.passwordHash ? await bcrypt.compare(parsed.data.password, user.passwordHash) : false;
+  if (!validPassword) {
+    res.status(401).json({ error: "Incorrect password" });
+    return;
+  }
+
+  await db
+    .update(usersTable)
+    .set({
+      isDisabled: true,
+      email: null,
+      passwordHash: null,
+      firstName: null,
+      lastName: null,
+      profileImageUrl: null,
+      passwordResetToken: null,
+      passwordResetExpires: null,
+    })
+    .where(eq(usersTable.id, req.user.id));
+
+  req.log.info({ userId: req.user.id }, "Account closed by user (self-service)");
+
+  const sid = getSessionId(req);
+  await clearSession(res, sid);
+  res.status(204).end();
+});
+
 router.get("/logout", async (req: Request, res: Response) => {
   const sid = getSessionId(req);
   await clearSession(res, sid);
