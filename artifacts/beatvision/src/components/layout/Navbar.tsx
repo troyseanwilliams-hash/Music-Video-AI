@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useGetDashboardStats, getGetDashboardStatsQueryKey } from "@workspace/api-client-react";
 import {
   Video, LayoutDashboard, Wand2, LogOut, Loader2, ShieldCheck,
-  MessageSquare, Menu, X, Film, CreditCard, Compass, Music2, Settings, Sparkles, Gift,
+  MessageSquare, Menu, X, Film, CreditCard, Compass, Music2, Settings, Sparkles, Gift, Mic,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -74,6 +74,15 @@ export function Navbar() {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Always visible — icon-only on mobile, icon+label from sm: up — so it's never dropped from the right nav on small screens. */}
+            <a
+              href="https://aipodsync.com"
+              className="flex items-center gap-1.5 rounded-full border border-border/50 bg-secondary/40 px-2.5 sm:px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+              title="Make a podcast with AIPodSync"
+            >
+              <Mic className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="hidden sm:inline">Podcast</span>
+            </a>
             {isAuthenticated && processingCount > 0 && (
               <Link
                 href="/dashboard"
