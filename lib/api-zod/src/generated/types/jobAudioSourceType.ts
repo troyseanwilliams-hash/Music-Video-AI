@@ -17,4 +17,5 @@ export const JobAudioSourceType = {
   upload: "upload",
   youtube: "youtube",
   suno: "suno",
+  none: "none",
 } as const;

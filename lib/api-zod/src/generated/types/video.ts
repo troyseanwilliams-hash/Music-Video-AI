@@ -25,5 +25,7 @@ export interface Video {
   shareToken?: string | null;
   isPublic?: boolean;
   likeCount?: number;
+  /** False for silent videos rendered via the "no audio" Generate option, meant to have a soundtrack added later in the Editor. */
+  hasAudio?: boolean;
   createdAt: Date;
 }

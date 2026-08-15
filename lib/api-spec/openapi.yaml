@@ -1037,7 +1037,7 @@ components:
           $ref: '#/components/schemas/JobStatus'
         audioSourceType:
           type: [string, 'null']
-          enum: [upload, youtube, suno, null]
+          enum: [upload, youtube, suno, none, null]
         audioObjectPath:
           type: [string, 'null']
         audioSourceUrl:
@@ -1093,7 +1093,7 @@ components:
           $ref: '#/components/schemas/VideoStyle'
         audioSourceType:
           type: string
-          enum: [upload, youtube, suno]
+          enum: [upload, youtube, suno, none]
         audioObjectPath:
           type: [string, 'null']
         audioSourceUrl:
@@ -1120,7 +1120,7 @@ components:
         requestedDuration:
           type: [string, 'null']
           enum: ['5', '8', '10', '30', '45', '60', '90', '120', '300', '600', 'full', null]
-          description: Requested output video length. '5'/'8'/'10' = short clip, '30'/'60'/'90'/'120' = multi-clip stitch, 'full' = full audio length (default)
+          description: Requested output video length. '5'/'8'/'10' = short clip, '30'/'60'/'90'/'120' = multi-clip stitch, 'full' = full audio length (default; not valid when audioSourceType is "none", since there is no audio to derive a length from)
         clipStartTime:
           type: [number, 'null']
           minimum: 0
@@ -1234,6 +1234,9 @@ components:
           type: boolean
         likeCount:
           type: integer
+        hasAudio:
+          type: boolean
+          description: False for silent videos rendered via the "no audio" Generate option, meant to have a soundtrack added later in the Editor.
         createdAt:
           type: string
           format: date-time

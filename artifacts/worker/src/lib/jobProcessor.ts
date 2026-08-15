@@ -1391,14 +1391,16 @@ async function processJob(job: JobRow): Promise<void> {
       videoBuffer = stitchResult.videoBuffer;
       thumbnailBuffer = stitchResult.thumbnailBuffer;
     } else {
-      const firstClip = clips[0];
-      if (firstClip) {
-        videoBuffer = firstClip.buffer;
-        thumbnailBuffer = await extractVideoThumbnail(videoBuffer, 2);
-      } else {
-        videoBuffer = await createSimulationClip(10);
-        thumbnailBuffer = await extractVideoThumbnail(videoBuffer, 2);
-      }
+      // No audio — either the user intentionally chose "no audio" (a silent
+      // video meant to get a soundtrack added later in the Editor), or audio
+      // couldn't be loaded. Either way, stitch every generated clip into one
+      // silent video rather than discarding all but the first clip.
+      const stitchResult = await stitchVideoClips({
+        clips,
+        totalDuration: plan.targetOutputDuration,
+      });
+      videoBuffer = stitchResult.videoBuffer;
+      thumbnailBuffer = stitchResult.thumbnailBuffer;
     }
 
     // Starter-tier videos get a small "AIBeatSync" watermark so shared clips
@@ -1434,6 +1436,7 @@ async function processJob(job: JobRow): Promise<void> {
       prompt: job.prompt,
       clips: clipMetas as unknown as Record<string, unknown>,
       shareToken: randomUUID().replace(/-/g, "").slice(0, 16),
+      hasAudio: !!audioData,
     });
 
     // Credits were RESERVED (charged) up front when the job was created, so we

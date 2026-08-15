@@ -13,4 +13,5 @@ export const CreateJobRequestAudioSourceType = {
   upload: "upload",
   youtube: "youtube",
   suno: "suno",
+  none: "none",
 } as const;

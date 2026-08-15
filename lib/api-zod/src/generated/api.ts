@@ -216,6 +216,7 @@ export const ListJobsResponse = zod.object({
           zod.literal("upload"),
           zod.literal("youtube"),
           zod.literal("suno"),
+          zod.literal("none"),
           zod.literal(null),
         ])
         .nullish(),
@@ -345,7 +346,7 @@ export const CreateJobBody = zod.object({
     "fantasy",
     "documentary",
   ]),
-  audioSourceType: zod.enum(["upload", "youtube", "suno"]),
+  audioSourceType: zod.enum(["upload", "youtube", "suno", "none"]),
   audioObjectPath: zod.string().nullish(),
   audioSourceUrl: zod.string().nullish(),
   lyricsText: zod
@@ -401,7 +402,7 @@ export const CreateJobBody = zod.object({
     ])
     .nullish()
     .describe(
-      "Requested output video length. '5'\/'8'\/'10' = short clip, '30'\/'60'\/'90'\/'120' = multi-clip stitch, 'full' = full audio length (default)",
+      "Requested output video length. '5'\/'8'\/'10' = short clip, '30'\/'60'\/'90'\/'120' = multi-clip stitch, 'full' = full audio length (default; not valid when audioSourceType is \"none\", since there is no audio to derive a length from)",
     ),
   clipStartTime: zod
     .number()
@@ -482,6 +483,7 @@ export const GetJobResponse = zod.object({
       zod.literal("upload"),
       zod.literal("youtube"),
       zod.literal("suno"),
+      zod.literal("none"),
       zod.literal(null),
     ])
     .nullish(),
@@ -658,6 +660,12 @@ export const ListVideosResponse = zod.object({
       shareToken: zod.string().nullish(),
       isPublic: zod.boolean().optional(),
       likeCount: zod.number().optional(),
+      hasAudio: zod
+        .boolean()
+        .optional()
+        .describe(
+          'False for silent videos rendered via the \"no audio\" Generate option, meant to have a soundtrack added later in the Editor.',
+        ),
       createdAt: zod.coerce.date(),
     }),
   ),
@@ -693,6 +701,12 @@ export const GetVideoResponse = zod.object({
   shareToken: zod.string().nullish(),
   isPublic: zod.boolean().optional(),
   likeCount: zod.number().optional(),
+  hasAudio: zod
+    .boolean()
+    .optional()
+    .describe(
+      'False for silent videos rendered via the \"no audio\" Generate option, meant to have a soundtrack added later in the Editor.',
+    ),
   createdAt: zod.coerce.date(),
 });
 
@@ -1088,6 +1102,7 @@ export const GetDashboardStatsResponse = zod.object({
             zod.literal("upload"),
             zod.literal("youtube"),
             zod.literal("suno"),
+            zod.literal("none"),
             zod.literal(null),
           ])
           .nullish(),

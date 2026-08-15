@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useListVideos, useDeleteVideo, getListVideosQueryKey, getGetDashboardStatsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Loader2, Trash2, Play, Film, Download, Scissors, Globe, Pencil, X } from "lucide-react";
+import { Loader2, Trash2, Play, Film, Download, Scissors, Globe, Pencil, X, Music } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -303,11 +303,11 @@ export default function Gallery() {
                   </Button>
 
                   <Button
-                    variant="outline"
+                    variant={video.hasAudio === false ? "default" : "outline"}
                     size="icon"
                     className="h-8 w-8 shrink-0"
-                    title="Open in Remix Lab"
-                    aria-label="Open in Remix Lab"
+                    title={video.hasAudio === false ? "Add Music" : "Open in Remix Lab"}
+                    aria-label={video.hasAudio === false ? "Add Music" : "Open in Remix Lab"}
                     onClick={() => {
                       sessionStorage.setItem(
                         "editor:init",
@@ -323,7 +323,7 @@ export default function Gallery() {
                       setLocation("/editor");
                     }}
                   >
-                    <Scissors className="h-3.5 w-3.5" />
+                    {video.hasAudio === false ? <Music className="h-3.5 w-3.5" /> : <Scissors className="h-3.5 w-3.5" />}
                   </Button>
 
                   <AlertDialog>

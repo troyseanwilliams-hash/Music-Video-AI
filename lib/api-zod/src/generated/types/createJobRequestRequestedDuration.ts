@@ -7,7 +7,7 @@
  */
 
 /**
- * Requested output video length. '5'/'8'/'10' = short clip, '30'/'60'/'90'/'120' = multi-clip stitch, 'full' = full audio length (default)
+ * Requested output video length. '5'/'8'/'10' = short clip, '30'/'60'/'90'/'120' = multi-clip stitch, 'full' = full audio length (default; not valid when audioSourceType is "none", since there is no audio to derive a length from)
  * @nullable
  */
 export type CreateJobRequestRequestedDuration =

@@ -173,17 +173,21 @@ router.post("/jobs", async (req, res) => {
     return;
   }
 
-  // Require the copyright/ownership attestation (sent with the request).
-  if ((req.body as { acceptCopyright?: unknown })?.acceptCopyright !== true) {
+  const { prompt, style, audioSourceType, audioObjectPath, audioSourceUrl, lyricsText, aspectRatio, resolution, character, referenceImagePath, requestedDuration, clipStartTime, audioAnalysis, aiProvider } =
+    parseResult.data;
+
+  // "No audio" jobs render a silent video (soundtrack added later in the
+  // Editor) — there's no audio to attest ownership of, and no song to derive
+  // a "full length" from, so both requirements below are skipped for them.
+  const noAudio = audioSourceType === "none";
+
+  if (!noAudio && (req.body as { acceptCopyright?: unknown })?.acceptCopyright !== true) {
     res.status(403).json({
       error: "You must confirm you own or are licensed to use this audio before generating.",
       code: "COPYRIGHT_REQUIRED",
     });
     return;
   }
-
-  const { prompt, style, audioSourceType, audioObjectPath, audioSourceUrl, lyricsText, aspectRatio, resolution, character, referenceImagePath, requestedDuration, clipStartTime, audioAnalysis, aiProvider } =
-    parseResult.data;
 
   if (audioSourceType === "upload" && !audioObjectPath) {
     res
@@ -198,6 +202,12 @@ router.post("/jobs", async (req, res) => {
     res
       .status(400)
       .json({ error: "audioSourceUrl required for youtube/suno source type" });
+    return;
+  }
+  if (noAudio && (!requestedDuration || requestedDuration === "full")) {
+    res.status(400).json({
+      error: "Choose a specific length for a no-audio video — there's no song to derive a \"full length\" from.",
+    });
     return;
   }
 
@@ -379,13 +389,15 @@ router.get("/jobs/:id", async (req, res) => {
     const storageService = new ObjectStorageService();
     jobData.videoUrl = await storageService.getVideoSignedUrl(job[0].videoId);
 
-    // Surface the per-clip metadata so the remix UI can list individual clips.
+    // Surface the per-clip metadata so the remix UI can list individual clips,
+    // and hasAudio so job-status can offer "Add Music" for a silent render.
     const [video] = await db
-      .select({ clips: videosTable.clips, durationSeconds: videosTable.durationSeconds })
+      .select({ clips: videosTable.clips, durationSeconds: videosTable.durationSeconds, hasAudio: videosTable.hasAudio })
       .from(videosTable)
       .where(eq(videosTable.id, job[0].videoId))
       .limit(1);
     if (video?.clips) jobData.clips = video.clips;
+    if (video) jobData.hasAudio = video.hasAudio;
   }
   res.json(jobData);
 });

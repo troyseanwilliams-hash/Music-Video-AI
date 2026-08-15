@@ -166,6 +166,7 @@ export const JobAudioSourceType = {
   upload: "upload",
   youtube: "youtube",
   suno: "suno",
+  none: "none",
 } as const;
 
 /**
@@ -258,6 +259,7 @@ export const CreateJobRequestAudioSourceType = {
   upload: "upload",
   youtube: "youtube",
   suno: "suno",
+  none: "none",
 } as const;
 
 /**
@@ -291,7 +293,7 @@ export const CreateJobRequestResolution = {
 } as const;
 
 /**
- * Requested output video length. '5'/'8'/'10' = short clip, '30'/'60'/'90'/'120' = multi-clip stitch, 'full' = full audio length (default)
+ * Requested output video length. '5'/'8'/'10' = short clip, '30'/'60'/'90'/'120' = multi-clip stitch, 'full' = full audio length (default; not valid when audioSourceType is "none", since there is no audio to derive a length from)
  * @nullable
  */
 export type CreateJobRequestRequestedDuration =
@@ -366,7 +368,7 @@ export interface CreateJobRequest {
    */
   referenceImagePath?: string | null;
   /**
-   * Requested output video length. '5'/'8'/'10' = short clip, '30'/'60'/'90'/'120' = multi-clip stitch, 'full' = full audio length (default)
+   * Requested output video length. '5'/'8'/'10' = short clip, '30'/'60'/'90'/'120' = multi-clip stitch, 'full' = full audio length (default; not valid when audioSourceType is "none", since there is no audio to derive a length from)
    * @nullable
    */
   requestedDuration?: CreateJobRequestRequestedDuration;
@@ -434,6 +436,8 @@ export interface Video {
   shareToken?: string | null;
   isPublic?: boolean;
   likeCount?: number;
+  /** False for silent videos rendered via the "no audio" Generate option, meant to have a soundtrack added later in the Editor. */
+  hasAudio?: boolean;
   createdAt: string;
 }
 

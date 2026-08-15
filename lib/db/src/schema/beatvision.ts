@@ -106,6 +106,10 @@ export const videosTable = pgTable("videos", {
   // { index, objectPath, startTime, durationSec }. Null until generated.
   teasers: jsonb("teasers"),
   shareToken: text("share_token").unique(),
+  // False for videos rendered via the "no audio" Generate option — a silent,
+  // beat-synced-to-nothing video meant to have a soundtrack added later in the
+  // Editor (Remix Lab). True (default) for every normal audio-driven render.
+  hasAudio: boolean("has_audio").notNull().default(true),
   // Public gallery: opt-in visibility + denormalized like count for fast sorting.
   isPublic: boolean("is_public").notNull().default(false),
   likeCount: integer("like_count").notNull().default(0),

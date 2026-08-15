@@ -44,7 +44,7 @@ import {
   Upload, Music, Sparkles, Loader2, CheckCircle2, XCircle,
   Users, Clapperboard, Layers, Zap, Film, Wand2, Video as VideoIcon, FileText,
   ChevronDown, User, Maximize2, Captions, Pencil, MonitorPlay, ImageIcon,
-  Lock, Crown, Coins, AlertTriangle, CreditCard, Clock, ShieldAlert, Info,
+  Lock, Crown, Coins, AlertTriangle, CreditCard, Clock, ShieldAlert, Info, VideoOff,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -559,8 +559,11 @@ export default function Generate() {
             analyzeAudio.data
               ? analyzeAudio.data
               : null,
-          // Copyright/ownership attestation (gated by the checkbox above).
-          acceptCopyright: copyrightAcknowledged,
+          // Copyright/ownership attestation (gated by the checkbox above) —
+          // not applicable to a silent "no audio" render, so it's implicitly
+          // satisfied for that mode.
+          acceptCopyright:
+            sourceType === CreateJobRequestAudioSourceType.none ? true : copyrightAcknowledged,
         } as unknown as CreateJobRequest,
       },
       {
@@ -616,6 +619,9 @@ export default function Generate() {
     }
     if (sourceType === CreateJobRequestAudioSourceType.suno && !sunoResolved) {
       errors.audio = sunoResolving ? "Loading track — wait a moment." : "Please load a Suno track first.";
+    }
+    if (sourceType === CreateJobRequestAudioSourceType.none && requestedDuration === CreateJobRequestRequestedDuration.full) {
+      errors.audio = "Choose a specific length for a no-audio video.";
     }
 
     if (Object.keys(errors).length > 0) {
@@ -953,10 +959,18 @@ export default function Generate() {
           <div ref={audioSectionRef}>
           <Tabs
             value={sourceType}
-            onValueChange={(v) => { setSourceType(v as CreateJobRequestAudioSourceType); setFieldErrors((e) => ({ ...e, audio: undefined })); }}
+            onValueChange={(v) => {
+              const next = v as CreateJobRequestAudioSourceType;
+              setSourceType(next);
+              setFieldErrors((e) => ({ ...e, audio: undefined }));
+              // No audio to derive a "full length" from — force a concrete duration.
+              if (next === CreateJobRequestAudioSourceType.none && requestedDuration === CreateJobRequestRequestedDuration.full) {
+                setRequestedDuration(CreateJobRequestRequestedDuration.NUMBER_30);
+              }
+            }}
             className="w-full"
           >
-            <TabsList className="grid w-full grid-cols-2 mb-6">
+            <TabsList className="grid w-full grid-cols-3 mb-6">
               <TabsTrigger
                 value={CreateJobRequestAudioSourceType.upload}
                 className="flex items-center gap-1.5 text-xs sm:text-sm"
@@ -970,6 +984,13 @@ export default function Generate() {
               >
                 <MonitorPlay className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0 text-[#1DB954]" />
                 <span>Suno</span>
+              </TabsTrigger>
+              <TabsTrigger
+                value={CreateJobRequestAudioSourceType.none}
+                className="flex items-center gap-1.5 text-xs sm:text-sm"
+              >
+                <VideoOff className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+                <span>No audio</span>
               </TabsTrigger>
             </TabsList>
 
@@ -1207,6 +1228,19 @@ export default function Generate() {
                     <XCircle className="h-4 w-4 shrink-0" /> {sunoError}
                   </p>
                 )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value={CreateJobRequestAudioSourceType.none} className="mt-0">
+              <div className="flex items-start gap-3 rounded-xl border border-border/60 bg-background/30 p-4">
+                <VideoOff className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">Silent video — add music later</p>
+                  <p className="text-sm text-muted-foreground">
+                    Renders your visuals with no soundtrack. Once it's ready, open it in the Editor
+                    (Remix Lab) to add a track — your own upload, a Suno link, or a Soundtrack.
+                  </p>
+                </div>
               </div>
             </TabsContent>
           </Tabs>
@@ -1471,18 +1505,20 @@ export default function Generate() {
             )}
           </div>
 
-          {/* ── Copyright Acknowledgment ── */}
-          <label className="flex items-start gap-3 cursor-pointer group">
-            <input
-              type="checkbox"
-              checked={copyrightAcknowledged}
-              onChange={(e) => setCopyrightAcknowledged(e.target.checked)}
-              className="mt-0.5 h-4 w-4 shrink-0 accent-primary cursor-pointer"
-            />
-            <span className="text-xs text-muted-foreground leading-relaxed group-hover:text-foreground/80 transition-colors">
-              I confirm I have the right to use this audio (owned, licensed, or royalty-free).
-            </span>
-          </label>
+          {/* ── Copyright Acknowledgment (not applicable to a silent "no audio" render) ── */}
+          {sourceType !== CreateJobRequestAudioSourceType.none && (
+            <label className="flex items-start gap-3 cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={copyrightAcknowledged}
+                onChange={(e) => setCopyrightAcknowledged(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-primary cursor-pointer"
+              />
+              <span className="text-xs text-muted-foreground leading-relaxed group-hover:text-foreground/80 transition-colors">
+                I confirm I have the right to use this audio (owned, licensed, or royalty-free).
+              </span>
+            </label>
+          )}
 
           {/* ── Generate ── */}
           {(() => {
@@ -1496,7 +1532,11 @@ export default function Generate() {
                 <Button
                   size="lg"
                   className="w-full h-14 text-lg bg-gradient-electric text-white shadow-glow mt-2"
-                  disabled={createJob.isPending || isAnalyzingAudio || !copyrightAcknowledged}
+                  disabled={
+                    createJob.isPending ||
+                    isAnalyzingAudio ||
+                    (sourceType !== CreateJobRequestAudioSourceType.none && !copyrightAcknowledged)
+                  }
                   onClick={handleGenerate}
                 >
                   {createJob.isPending ? (

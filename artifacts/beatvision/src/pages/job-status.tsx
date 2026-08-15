@@ -727,9 +727,14 @@ export default function JobStatus() {
         </AnimatePresence>
 
         {isComplete && job.videoId && (
-          <div className="flex justify-center">
+          <div className="flex flex-col items-center gap-2">
+            {(job as unknown as { hasAudio?: boolean }).hasAudio === false && (
+              <p className="text-sm text-muted-foreground text-center max-w-sm">
+                This video was rendered without a soundtrack — add one in the Editor whenever you're ready.
+              </p>
+            )}
             <Button
-              variant="outline"
+              variant={(job as unknown as { hasAudio?: boolean }).hasAudio === false ? "default" : "outline"}
               className="gap-2"
               onClick={async () => {
                 const vid = job.videoId!;
@@ -760,7 +765,11 @@ export default function JobStatus() {
                 setLocation("/editor");
               }}
             >
-              <Scissors className="h-4 w-4" /> Open in Remix Lab
+              {(job as unknown as { hasAudio?: boolean }).hasAudio === false ? (
+                <><Music className="h-4 w-4" /> Add Music</>
+              ) : (
+                <><Scissors className="h-4 w-4" /> Open in Remix Lab</>
+              )}
             </Button>
           </div>
         )}
