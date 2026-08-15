@@ -8,4 +8,5 @@
 - [Stripe dev/prod setup](stripe-dev-prod-setup.md) — two separate Stripe connections; seed each env independently; managed webhook won't show in webhookEndpoints.list, verify via logs.
 - [Manifest jsonb writes](manifest-jsonb-writes.md) — salvage keys (partialClips/pendingRequests) need atomic jsonb_set writes, never full-row overwrites; pendingRequests enables free stranded-clip recovery.
 - [Finalize-partial jobs](finalize-partial-jobs.md) — finalizeWithPartial runs must be free everywhere (retry + watchdog cost 0), flag is one-shot, re-spread runtime across salvaged clips.
+- [Stale lib tsbuildinfo](stale-tsbuildinfo.md) — phantom "no exported member"/missing-column TS errors: delete lib/*/tsconfig.tsbuildinfo and rebuild before debugging.
 - [Pixazo slug validation](pixazo-slug-validation.md) — probe gateway keyless: 401=valid slug, 404=dead; verify secrets slugs before render failures.

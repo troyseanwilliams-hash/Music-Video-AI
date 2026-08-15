@@ -7,8 +7,10 @@ import { buildTimedLines, buildAssKaraoke } from "./lyricTiming.js";
 
 export interface StitchInput {
   clips: { buffer: Buffer; targetDuration: number }[];
-  audioBuffer: Buffer;
-  audioExt: string;
+  // Optional: omit to stitch a silent video (no audio track at all) — used for
+  // "no audio" generations that get a soundtrack added later in the Editor.
+  audioBuffer?: Buffer;
+  audioExt?: string;
   totalDuration: number;
   lyricsText?: string;
 }
@@ -23,6 +25,37 @@ function runFfmpeg(cmd: ffmpeg.FfmpegCommand): Promise<void> {
   return new Promise((resolve, reject) => {
     cmd.on("end", () => resolve()).on("error", (err) => reject(err)).run();
   });
+}
+
+// Burns a small semi-transparent "AIBeatSync" watermark (bottom-right) onto a
+// finished video. Used for Starter-tier exports so shared videos market the site
+// (Pro/Studio render clean). Returns the watermarked buffer; on any failure it
+// returns the original so a watermark hiccup never fails a render.
+export async function applyWatermark(videoBuffer: Buffer): Promise<Buffer> {
+  const tmpDir = join(tmpdir(), `bv_wm_${randomUUID()}`);
+  const inPath = join(tmpDir, "in.mp4");
+  const outPath = join(tmpDir, "out.mp4");
+  try {
+    await mkdir(tmpDir, { recursive: true });
+    await writeFile(inPath, videoBuffer);
+    const draw =
+      "drawtext=text='Made with AIBeatSync · aibeatsync.com':fontcolor=white@0.85:fontsize=h/28:" +
+      "box=1:boxcolor=black@0.35:boxborderw=8:x=w-text_w-24:y=h-text_h-24";
+    await runFfmpeg(
+      ffmpeg(inPath)
+        .videoFilters(draw)
+        .outputOptions([
+          "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+          "-c:a", "copy", "-movflags", "+faststart",
+        ])
+        .output(outPath),
+    );
+    return await readFile(outPath);
+  } catch {
+    return videoBuffer;
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  }
 }
 
 // Hard-kill ffmpeg if it exceeds the timeout. Converts an infinite hang (e.g.
@@ -130,13 +163,14 @@ export async function stitchVideoClips(input: StitchInput): Promise<StitchResult
 
   const trimmedPaths: string[] = [];
   const concatListPath = join(tmpDir, "concat.txt");
-  const audioPath = join(tmpDir, `audio.${input.audioExt}`);
+  const hasAudio = !!(input.audioBuffer && input.audioExt);
+  const audioPath = hasAudio ? join(tmpDir, `audio.${input.audioExt}`) : null;
   const stitchedPath = join(tmpDir, "stitched.mp4");
   const outputPath = join(tmpDir, "output.mp4");
   const thumbPath = join(tmpDir, "thumb.jpg");
 
   try {
-    await writeFile(audioPath, input.audioBuffer);
+    if (hasAudio && audioPath) await writeFile(audioPath, input.audioBuffer!);
 
     // Process each clip independently: if one is corrupt/unreadable, skip it and
     // keep going rather than failing the whole render.
@@ -174,19 +208,33 @@ export async function stitchVideoClips(input: StitchInput): Promise<StitchResult
         .output(stitchedPath),
     );
 
-    const outputOptions = [
-      "-map", "0:v",
-      "-map", "1:a",
-      "-t", String(input.totalDuration),   // hard cap — guarantees correct duration
-      "-c:v", "libx264",
-      "-preset", "fast",
-      "-crf", "22",
-      "-threads", "2",
-      "-c:a", "aac",
-      "-b:a", "192k",
-      "-shortest",
-      "-movflags", "+faststart",
-    ];
+    const outputOptions = hasAudio
+      ? [
+          "-map", "0:v",
+          "-map", "1:a",
+          "-t", String(input.totalDuration),   // hard cap — guarantees correct duration
+          "-c:v", "libx264",
+          "-preset", "fast",
+          "-crf", "22",
+          "-threads", "2",
+          "-c:a", "aac",
+          "-b:a", "192k",
+          "-shortest",
+          "-movflags", "+faststart",
+        ]
+      : [
+          // No audio track at all (silent video, to be scored later in the
+          // Editor) — video-only encode, no -shortest/-c:a since there's no
+          // second input to trim against.
+          "-map", "0:v",
+          "-an",
+          "-t", String(input.totalDuration),
+          "-c:v", "libx264",
+          "-preset", "fast",
+          "-crf", "22",
+          "-threads", "2",
+          "-movflags", "+faststart",
+        ];
 
     // Lyric mode: word-level karaoke via an ASS subtitle burn (libass). Falls
     // back to the v1 line-timed drawtext filter if the subtitles filter is
@@ -204,27 +252,21 @@ export async function stitchVideoClips(input: StitchInput): Promise<StitchResult
       ? [...outputOptions, "-vf", `subtitles=${assPath.replace(/([\\':])/g, "\\$1")}`]
       : outputOptions;
 
+    const buildCmd = (options: string[]) => {
+      const cmd = ffmpeg().input(stitchedPath);
+      if (hasAudio && audioPath) cmd.input(audioPath);
+      return cmd.outputOptions(options).output(outputPath);
+    };
+
     try {
-      await runFfmpegWithTimeout(
-        ffmpeg()
-          .input(stitchedPath)
-          .input(audioPath)
-          .outputOptions(karaokeOptions)
-          .output(outputPath),
-      );
+      await runFfmpegWithTimeout(buildCmd(karaokeOptions));
     } catch (err) {
       if (!assPath) throw err;
       // libass unavailable — retry with the simple drawtext lyric overlay.
       const fallbackOptions = [...outputOptions];
       const lyricsFilter = buildLyricsFilter(input.lyricsText!, input.totalDuration);
       if (lyricsFilter) fallbackOptions.push("-vf", lyricsFilter);
-      await runFfmpegWithTimeout(
-        ffmpeg()
-          .input(stitchedPath)
-          .input(audioPath)
-          .outputOptions(fallbackOptions)
-          .output(outputPath),
-      );
+      await runFfmpegWithTimeout(buildCmd(fallbackOptions));
     }
 
     const thumbTimestamp = Math.max(1, input.totalDuration * 0.3);

@@ -293,29 +293,32 @@ router.post("/jobs", async (req, res) => {
   // fails or is canceled. This replaces the old "deduct only on success" model,
   // which let failed/partial multi-clip jobs incur real provider spend while
   // charging the user nothing.
-  await db
-    .update(creditsTable)
-    .set({
-      subscriptionCredits: sql`GREATEST(subscription_credits - ${creditCost}, 0)`,
-      topupCredits: sql`GREATEST(topup_credits - GREATEST(${creditCost} - subscription_credits, 0), 0)`,
-      creditsRemaining: sql`GREATEST(credits_remaining - ${creditCost}, 0)`,
-      creditsUsed: sql`credits_used + ${creditCost}`,
-      updatedAt: new Date(),
-    })
-    .where(eq(creditsTable.userId, req.user.id));
-
+  // Reservation + job insert run in ONE transaction so a failed insert rolls
+  // back the exact bucket debits (no lossy compensating update).
   const jobId = randomUUID();
-  const [job] = await db
-    .insert(jobsTable)
-    .values({
+  const job = await db.transaction(async (tx) => {
+    await tx
+      .update(creditsTable)
+      .set({
+        subscriptionCredits: sql`GREATEST(subscription_credits - ${creditCost}, 0)`,
+        topupCredits: sql`GREATEST(topup_credits - GREATEST(${creditCost} - subscription_credits, 0), 0)`,
+        creditsRemaining: sql`GREATEST(credits_remaining - ${creditCost}, 0)`,
+        creditsUsed: sql`credits_used + ${creditCost}`,
+        updatedAt: new Date(),
+      })
+      .where(eq(creditsTable.userId, req.user.id));
+
+    const [inserted] = await tx
+      .insert(jobsTable)
+      .values({
       id: jobId,
       userId: req.user.id,
       status: "queued",
-      audioSourceType: audioSourceType as
-        | "upload"
-        | "youtube"
-        | "suno"
-        | undefined,
+      // "none" (prompt-only / silent video) is not a value in the DB enum —
+      // store null; the processor detects no-audio by the missing audio source.
+      audioSourceType: noAudio
+        ? null
+        : (audioSourceType as "upload" | "youtube" | "suno" | undefined),
       audioObjectPath: audioObjectPath ?? null,
       audioSourceUrl: audioSourceUrl ?? null,
       lyricsText: lyricsText ?? null,
@@ -343,8 +346,10 @@ router.post("/jobs", async (req, res) => {
         | "documentary"
         | undefined,
       progressPercent: 0,
-    })
-    .returning();
+      })
+      .returning();
+    return inserted;
+  });
 
   req.log.info(
     { userId: req.user.id, requestedDuration, creditCost, isAdmin },
