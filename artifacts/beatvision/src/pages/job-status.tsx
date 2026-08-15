@@ -378,7 +378,17 @@ export default function JobStatus() {
   const currentStage = STAGES[currentStageIdx] ?? STAGES[0];
 
   const analysis = job.audioAnalysis as Record<string, unknown> | null | undefined;
-  const noAudioJob = (job as { audioSourceType?: string }).audioSourceType === "none";
+  // No-audio (prompt-only) jobs store a NULL audio source in the DB ("none"
+  // isn't a valid enum value) — detect by the absence of any audio source.
+  const jobAudio = job as {
+    audioSourceType?: string | null;
+    audioObjectPath?: string | null;
+    audioSourceUrl?: string | null;
+  };
+  const noAudioJob =
+    (!jobAudio.audioSourceType || jobAudio.audioSourceType === "none") &&
+    !jobAudio.audioObjectPath &&
+    !jobAudio.audioSourceUrl;
   const errInfo = categoriseError(job.errorMessage);
 
   // Estimate number of clips for the progress hint
