@@ -1398,6 +1398,7 @@ async function processJob(job: JobRow): Promise<void> {
       const stitchResult = await stitchVideoClips({
         clips,
         totalDuration: plan.targetOutputDuration,
+        lyricsText,
       });
       videoBuffer = stitchResult.videoBuffer;
       thumbnailBuffer = stitchResult.thumbnailBuffer;

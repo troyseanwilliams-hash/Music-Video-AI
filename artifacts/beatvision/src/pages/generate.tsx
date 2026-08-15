@@ -1245,6 +1245,12 @@ export default function Generate() {
                     Renders your visuals with no soundtrack. Once it's ready, open it in the Editor
                     (Remix Lab) to add a track — your own upload, a Suno link, or a Soundtrack.
                   </p>
+                  <p className="text-sm text-muted-foreground pt-1">
+                    Need exact words on screen — a title card or a CTA? Don't type them into the prompt
+                    above; the AI will draw them as pixels and often garbles the spelling. Use the{" "}
+                    <span className="text-foreground font-medium">On-screen text</span> section below instead
+                    — it burns real, crisp text into the video.
+                  </p>
                 </div>
               </div>
             </TabsContent>
@@ -1399,7 +1405,9 @@ export default function Generate() {
               <div className="flex items-center gap-2 min-w-0">
                 <FileText className="h-4 w-4 text-primary shrink-0" />
                 <Label htmlFor="lyrics-toggle" className="cursor-pointer font-medium">
-                  Lyric video · karaoke captions
+                  {sourceType === CreateJobRequestAudioSourceType.none
+                    ? "On-screen text · burned-in captions"
+                    : "Lyric video · karaoke captions"}
                 </Label>
                 <Popover>
                   <PopoverTrigger asChild>
@@ -1436,7 +1444,9 @@ export default function Generate() {
                   </PopoverContent>
                 </Popover>
                 <span className="text-xs text-muted-foreground hidden sm:inline">
-                  — words fill in as they're sung, in sync with the track
+                  {sourceType === CreateJobRequestAudioSourceType.none
+                    ? "— exact text burned into the video, not drawn by the AI"
+                    : "— words fill in as they're sung, in sync with the track"}
                 </span>
               </div>
               <Switch
@@ -1453,7 +1463,11 @@ export default function Generate() {
                 exit={{ opacity: 0, height: 0 }}
               >
                 <Textarea
-                  placeholder="Paste plain lyrics — or an .lrc file with [mm:ss] timestamps for exact line sync (word-level <mm:ss> tags supported too)..."
+                  placeholder={
+                    sourceType === CreateJobRequestAudioSourceType.none
+                      ? "Type the exact words you want on screen, one line at a time — a title, a CTA like \"Try it free at yoursite.com\", credits, etc. They'll be spread evenly across the video and rendered as real text."
+                      : "Paste plain lyrics — or an .lrc file with [mm:ss] timestamps for exact line sync (word-level <mm:ss> tags supported too)..."
+                  }
                   className="min-h-[120px] resize-none bg-background/50 border-input"
                   value={lyricsText}
                   onChange={(e) => setLyricsText(e.target.value)}
