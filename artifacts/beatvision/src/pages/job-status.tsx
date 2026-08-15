@@ -18,6 +18,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import SocialExportsPanel from "@/components/SocialExportsPanel";
 import LipSyncPanel from "@/components/LipSyncPanel";
 import ReferEarnCard from "@/components/ReferEarnCard";
+import GenerationFiller from "@/components/GenerationFiller";
 
 const TERMINAL_STATUSES = new Set(["ready", "failed"]);
 
@@ -377,6 +378,7 @@ export default function JobStatus() {
   const currentStage = STAGES[currentStageIdx] ?? STAGES[0];
 
   const analysis = job.audioAnalysis as Record<string, unknown> | null | undefined;
+  const noAudioJob = (job as { audioSourceType?: string }).audioSourceType === "none";
   const errInfo = categoriseError(job.errorMessage);
 
   // Estimate number of clips for the progress hint
@@ -795,7 +797,7 @@ export default function JobStatus() {
         )}
 
         {/* ── Audio analysis ── */}
-        {analysis && (
+        {analysis && !noAudioJob && (
           <div className="grid md:grid-cols-3 gap-6">
             <div className="md:col-span-1">
               <Card>
@@ -902,6 +904,10 @@ export default function JobStatus() {
             </div>
           </div>
         )}
+
+        {/* ── Silent-video filler: no real audio to analyse, so swap the fake
+             track-structure chart for rotating prompt tips / fun facts / hints. ── */}
+        {noAudioJob && isActive && <GenerationFiller />}
       </div>
     </div>
   );
