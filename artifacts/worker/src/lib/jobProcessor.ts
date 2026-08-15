@@ -152,6 +152,9 @@ async function persistPartialClip(jobId: string, index: number, objectPath: stri
         updated_at = NOW()
     WHERE id = ${jobId}
   `);
+  // Push immediately so the job-status page's "Scenes" preview can render this
+  // clip the moment it lands, instead of waiting for the next progress tick.
+  await notifyJobUpdate(jobId);
 }
 
 // Record the provider request for a clip the moment it is accepted, so a clip

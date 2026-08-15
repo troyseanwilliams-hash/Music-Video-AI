@@ -387,6 +387,10 @@ export default function JobStatus() {
     numClips = Math.max(1, Math.ceil(d / clipSec));
   }
   const clipHint = inferClipProgress(job.status ?? "", displayPercent, { numClips });
+  const previewClips =
+    (job as { previewClips?: Record<string, string> } | undefined)?.previewClips ?? {};
+  const showScenePreviews =
+    (job.status === "generating" || job.status === "stitching") && numClips > 0;
 
   function copyLink() {
     navigator.clipboard.writeText(window.location.href).then(() => {
@@ -559,6 +563,56 @@ export default function JobStatus() {
                         : currentStage?.description}
                     </motion.p>
                   </AnimatePresence>
+
+                  {/* ── Live scene previews: each clip appears here the moment it
+                      finishes rendering, well before the final stitch. ── */}
+                  {showScenePreviews && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-1.5 text-xs font-mono uppercase tracking-wide text-muted-foreground">
+                        <Clapperboard className="h-3.5 w-3.5" />
+                        Scenes
+                        <span className="text-muted-foreground/60">
+                          {Object.keys(previewClips).length}/{numClips}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                        {Array.from({ length: numClips }).map((_, i) => {
+                          const clipUrl = previewClips[String(i)];
+                          return (
+                            <div
+                              key={i}
+                              className="relative aspect-video rounded-md overflow-hidden border border-border bg-secondary/40"
+                            >
+                              {clipUrl ? (
+                                <motion.video
+                                  initial={{ opacity: 0, scale: 1.03 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  transition={{ duration: 0.4 }}
+                                  src={clipUrl}
+                                  className="h-full w-full object-cover"
+                                  muted
+                                  loop
+                                  playsInline
+                                  autoPlay
+                                />
+                              ) : (
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                  <motion.div
+                                    className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent"
+                                    animate={{ x: ["-100%", "100%"] }}
+                                    transition={{ duration: 1.6, repeat: Infinity, ease: "linear" }}
+                                  />
+                                  <span className="text-[10px] font-mono text-muted-foreground/50">
+                                    {i + 1}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {/* ── Slow-job warning ── */}
                   <AnimatePresence>

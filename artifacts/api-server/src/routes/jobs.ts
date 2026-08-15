@@ -26,6 +26,25 @@ type AiJobMeta = {
   partialClips?: Record<string, string>;
 };
 
+// Turn manifest.partialClips (clip index -> raw object storage path, e.g.
+// "/objects/clips/job-xxx/2.mp4") into URLs the frontend can drop straight
+// into a <video src>, reusing the same /storage/objects/* route that already
+// serves thumbnails and finished videos. Lets the job-status page show each
+// scene as soon as it's rendered, instead of only after the whole video is
+// stitched together.
+function resolvePreviewClips(manifest: unknown): Record<string, string> | undefined {
+  const meta = manifest && typeof manifest === "object" ? (manifest as AiJobMeta) : {};
+  const partial = meta.partialClips;
+  if (!partial || Object.keys(partial).length === 0) return undefined;
+  const out: Record<string, string> = {};
+  for (const [index, objectPath] of Object.entries(partial)) {
+    if (typeof objectPath === "string" && objectPath.startsWith("/objects/")) {
+      out[index] = `/api/storage/objects${objectPath.slice("/objects".length)}`;
+    }
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 // Refund a job's up-front credit reservation exactly once. Idempotent via the
 // manifest.refunded flag, so cancel/delete/worker-fail can all call it safely.
 // Also best-effort deletes any persisted partial clips. Returns credits refunded.
@@ -354,6 +373,8 @@ router.get("/jobs/:id", async (req, res) => {
   }
 
   const jobData: Record<string, unknown> = { ...job[0] };
+  const previewClips = resolvePreviewClips(job[0].manifest);
+  if (previewClips) jobData.previewClips = previewClips;
   if (job[0].videoId && job[0].status === "ready") {
     const storageService = new ObjectStorageService();
     jobData.videoUrl = await storageService.getVideoSignedUrl(job[0].videoId);
@@ -397,7 +418,9 @@ router.get("/jobs/:id/events", async (req, res) => {
   res.flushHeaders();
 
   const sendJob = (job: typeof existing[0]) => {
-    res.write(`data: ${JSON.stringify(job)}\n\n`);
+    const previewClips = resolvePreviewClips(job.manifest);
+    const payload = previewClips ? { ...job, previewClips } : job;
+    res.write(`data: ${JSON.stringify(payload)}\n\n`);
   };
 
   sendJob(existing[0]);
