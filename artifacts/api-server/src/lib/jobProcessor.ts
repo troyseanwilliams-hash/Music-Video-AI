@@ -1344,6 +1344,7 @@ async function processJob(job: JobRow): Promise<void> {
         clips,
         totalDuration:
           !reqDur || reqDur === "full" ? analysis.durationSeconds : parseInt(reqDur, 10),
+        lyricsText, // captions burn onto silent videos too
       });
       videoBuffer = stitchResult.videoBuffer;
       thumbnailBuffer = stitchResult.thumbnailBuffer;
