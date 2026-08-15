@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Play, Sparkles, Zap, Music, MonitorPlay, ExternalLink, ScanLine, ImagePlus, Volume2, VolumeX, Scissors, Lock, Clapperboard, Share2, Wand2, Maximize } from "lucide-react";
+import { Play, Sparkles, Zap, Music, MonitorPlay, ExternalLink, ScanLine, ImagePlus, Volume2, VolumeX, Scissors, Lock, Clapperboard, Share2, Wand2, Maximize, VideoOff } from "lucide-react";
 import { motion } from "framer-motion";
 import { AuroraBackground } from "@/components/AuroraBackground";
 
@@ -318,6 +318,7 @@ export default function Home() {
                 { icon: Share2, title: "Release Kit", body: "One click turns your finished video into a full set of social exports — vertical, square, and Spotify Canvas — sized for every platform.", tag: "New" },
                 { icon: Wand2, title: "Prompt Studio", body: "Describe a vibe in plain words and get a polished video or soundtrack prompt — or full, original lyrics — in seconds.", tag: "New" },
                 { icon: Maximize, title: "Up to 4K & 10 minutes", body: "Go beyond quick clips: render crisp 4K and full-length videos up to ten minutes for premium releases.", tag: "New" },
+                { icon: VideoOff, title: "Score It Later", body: "Render your visuals with no soundtrack, then add the perfect track once you've found it, right in the Editor — a workflow most AI video generators don't offer.", tag: "New" },
                 { icon: Music, title: "Royalty-free Soundtracks", body: "No track? Generate original instrumentals you fully own and drop them straight into a video.", tag: null as string | null },
               ].map((f) => (
                 <div key={f.title} className="rounded-2xl border border-card-border bg-card p-6 transition-colors hover:border-primary/40">

@@ -1232,7 +1232,12 @@ export default function Generate() {
             </TabsContent>
 
             <TabsContent value={CreateJobRequestAudioSourceType.none} className="mt-0">
-              <div className="flex items-start gap-3 rounded-xl border border-border/60 bg-background/30 p-4">
+              <TutorialTip id="no-audio" title="Score it later — most AI video generators can't do this">
+                Render your visuals now with no soundtrack, then add the perfect track once you've found
+                it — your own upload, a Suno link, or a generated Soundtrack — right in the Editor's Remix
+                Lab. No need to have a song picked out before you start creating.
+              </TutorialTip>
+              <div className="mt-3 flex items-start gap-3 rounded-xl border border-border/60 bg-background/30 p-4">
                 <VideoOff className="h-5 w-5 text-primary shrink-0 mt-0.5" />
                 <div className="space-y-1">
                   <p className="text-sm font-medium">Silent video — add music later</p>
