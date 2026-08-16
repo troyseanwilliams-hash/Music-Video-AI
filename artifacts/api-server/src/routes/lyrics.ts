@@ -9,35 +9,55 @@ import { LYRIC_ALIGN_COST } from "../lib/creditCost.js";
 const router = Router();
 const storageService = new ObjectStorageService();
 
-// Credit helpers — mirror the prompt-builder charge/refund split: charge up
-// front (alignment always hits the paid AssemblyAI API), refund if it fails.
-async function chargeCredits(userId: string, cost: number): Promise<{ ok: boolean; remaining: number }> {
-  let [c] = await db.select().from(creditsTable).where(eq(creditsTable.userId, userId)).limit(1);
-  if (!c) [c] = await db.insert(creditsTable).values({ id: randomUUID(), userId }).returning();
-  if (c!.creditsRemaining < cost) return { ok: false, remaining: c!.creditsRemaining };
-  await db.update(creditsTable).set({
-    subscriptionCredits: sql`GREATEST(subscription_credits - ${cost}, 0)`,
-    topupCredits: sql`GREATEST(topup_credits - GREATEST(${cost} - subscription_credits, 0), 0)`,
-    creditsRemaining: sql`GREATEST(credits_remaining - ${cost}, 0)`,
-    creditsUsed: sql`credits_used + ${cost}`,
-    updatedAt: new Date(),
-  }).where(eq(creditsTable.userId, userId));
-  return { ok: true, remaining: c!.creditsRemaining - cost };
+type ChargeResult =
+  | { ok: true; remaining: number; subDebit: number; topDebit: number }
+  | { ok: false; remaining: number };
+
+/**
+ * Atomically debit credits. Row-locked (SELECT ... FOR UPDATE) so two
+ * concurrent align calls can't both pass the balance check, and the exact
+ * subscription/top-up split is recorded so a refund restores the same buckets.
+ */
+async function chargeCredits(userId: string, cost: number): Promise<ChargeResult> {
+  return db.transaction(async (tx) => {
+    let [c] = await tx.select().from(creditsTable).where(eq(creditsTable.userId, userId)).limit(1).for("update");
+    if (!c) [c] = await tx.insert(creditsTable).values({ id: randomUUID(), userId }).returning();
+    if (c!.creditsRemaining < cost) return { ok: false as const, remaining: c!.creditsRemaining };
+    const subDebit = Math.min(c!.subscriptionCredits, cost);
+    const topDebit = cost - subDebit;
+    await tx.update(creditsTable).set({
+      subscriptionCredits: sql`subscription_credits - ${subDebit}`,
+      topupCredits: sql`topup_credits - ${topDebit}`,
+      creditsRemaining: sql`credits_remaining - ${cost}`,
+      creditsUsed: sql`credits_used + ${cost}`,
+      updatedAt: new Date(),
+    }).where(eq(creditsTable.userId, userId));
+    return { ok: true as const, remaining: c!.creditsRemaining - cost, subDebit, topDebit };
+  });
 }
-async function refundCredits(userId: string, cost: number): Promise<void> {
+
+/** Refund exactly the buckets that were debited. */
+async function refundCredits(userId: string, subDebit: number, topDebit: number): Promise<void> {
   await db.update(creditsTable).set({
-    topupCredits: sql`topup_credits + ${cost}`,
-    creditsRemaining: sql`credits_remaining + ${cost}`,
-    creditsUsed: sql`GREATEST(credits_used - ${cost}, 0)`,
+    subscriptionCredits: sql`subscription_credits + ${subDebit}`,
+    topupCredits: sql`topup_credits + ${topDebit}`,
+    creditsRemaining: sql`credits_remaining + ${subDebit + topDebit}`,
+    creditsUsed: sql`GREATEST(credits_used - ${subDebit + topDebit}, 0)`,
     updatedAt: new Date(),
   }).where(eq(creditsTable.userId, userId));
+}
+
+/** An LRC is usable when it has at least one timestamped line. */
+function lrcUsable(lrc: unknown): boolean {
+  return typeof lrc === "string" && /\[\d{2}:\d{2}/.test(lrc);
 }
 
 /**
  * POST /lyrics/align
  * Transcribe / align a loaded song into enhanced LRC for karaoke.
  * Body: { audioObjectPath: string, lyricsText?: string }
- * Returns: { lrc, confidence, source, wordCount, lowConfidence }
+ * Returns: { lrc, confidence, source, wordCount, lowConfidence, charged }
+ * Costs LYRIC_ALIGN_COST credits; refunded if alignment fails.
  */
 router.post("/lyrics/align", async (req, res) => {
   if (!req.isAuthenticated()) {
@@ -60,8 +80,17 @@ router.post("/lyrics/align", async (req, res) => {
     return;
   }
 
+  const userId = (req.user as { id: string }).id;
+
+  // Ownership check: only sign objects this user is allowed to read.
   let audioUrl: string;
   try {
+    const objectFile = await storageService.getObjectEntityFile(audioObjectPath);
+    const allowed = await storageService.canAccessObjectEntity({ userId, objectFile });
+    if (!allowed) {
+      res.status(403).json({ error: "You don't have access to that audio file" });
+      return;
+    }
     audioUrl = await storageService.getObjectEntitySignedUrl(audioObjectPath, 3600);
   } catch (err) {
     if (err instanceof ObjectNotFoundError) {
@@ -72,7 +101,6 @@ router.post("/lyrics/align", async (req, res) => {
   }
 
   // Alignment always runs the paid AssemblyAI API, so it costs credits.
-  const userId = (req.user as { id: string }).id;
   const charge = await chargeCredits(userId, LYRIC_ALIGN_COST);
   if (!charge.ok) {
     res.status(402).json({
@@ -86,9 +114,10 @@ router.post("/lyrics/align", async (req, res) => {
 
   try {
     const result = await alignLyrics({ audioUrl, lyricsText });
+    if (!lrcUsable(result.lrc)) throw new Error("Alignment produced no usable timing");
     res.json({ ...result, charged: LYRIC_ALIGN_COST });
   } catch (err) {
-    await refundCredits(userId, LYRIC_ALIGN_COST);
+    await refundCredits(userId, charge.subDebit, charge.topDebit);
     req.log.warn({ err, audioObjectPath }, "Lyric alignment failed (credits refunded)");
     res.status(502).json({ error: err instanceof Error ? err.message : "Lyric alignment failed" });
   }
