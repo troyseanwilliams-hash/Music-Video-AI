@@ -120,7 +120,7 @@ export async function notifyRenderFailed(job: RenderEmailJob, reason: string): P
     await sendViaResend(
       user.email,
       "Your render didn't finish",
-      renderFailedEmailHtml({ title, reason, jobUrl: `${APP_URL}/jobs/${job.id}` }),
+      renderFailedEmailHtml({ title, reason, jobUrl: `${APP_URL}/jobs/${job.id}`, supportUrl: `${APP_URL}/support` }),
     );
     logger.info({ jobId: job.id }, "Render-failed email sent");
   } catch (err) {

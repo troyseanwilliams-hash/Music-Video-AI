@@ -103,7 +103,7 @@ export function renderReadyEmailHtml(p: { title: string; jobUrl: string }): stri
 }
 
 /** "Your render didn't finish" — honest, calm, with a retry path. */
-export function renderFailedEmailHtml(p: { title: string; reason: string; jobUrl: string }): string {
+export function renderFailedEmailHtml(p: { title: string; reason: string; jobUrl: string; supportUrl: string }): string {
   const title = escapeHtml(p.title);
   const reason = escapeHtml(p.reason.slice(0, 200));
   return emailShell(
@@ -115,10 +115,11 @@ export function renderFailedEmailHtml(p: { title: string; reason: string; jobUrl
       <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 16px;font-size:14px;color:#991b1b;line-height:1.5">
         ${reason}
       </div>
-      ${ctaButton(p.jobUrl, "View details &amp; retry →")}
+      ${ctaButton(p.supportUrl, "Create a support ticket →")}
       <p style="font-size:14px;line-height:1.6;color:#555;margin:0">
-        Most failures are temporary — retrying usually works. If it keeps failing, reply to this
-        email and we'll make it right.
+        <strong>Please don't retry and spend more credits</strong> — create a support ticket instead
+        and we'll fix the job or make it right. You can also review the job
+        <a href="${p.jobUrl}" style="color:#7c3aed;text-decoration:none;font-weight:600">here</a>.
       </p>
     `,
     { footerNote: "You can turn these emails off from your dashboard. Questions? Just reply. — The AIBeatSync team" },
