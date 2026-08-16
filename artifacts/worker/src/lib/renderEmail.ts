@@ -9,12 +9,20 @@
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger.js";
-import { renderReadyEmailHtml, renderFailedEmailHtml, adminEmailHtml, detailRow, escapeHtml } from "./emailTemplates.js";
+import {
+  renderReadyEmailHtml,
+  renderFailedEmailHtml,
+  adminEmailHtml,
+  detailRow,
+  escapeHtml,
+  unsubscribeUrl,
+  unsubscribeHeaders,
+} from "./emailTemplates.js";
 
 const APP_URL = process.env.APP_URL ?? "https://aibeatsync.com";
 const FROM = "AIBeatSync <notifications@aibeatsync.com>";
 
-async function sendViaResend(to: string, subject: string, html: string): Promise<void> {
+async function sendViaResend(to: string, subject: string, html: string, extraHeaders?: Record<string, string>): Promise<void> {
   const key = process.env.RESEND_API_KEY;
   if (!key) {
     logger.warn("RESEND_API_KEY not set — render email skipped");
@@ -23,7 +31,7 @@ async function sendViaResend(to: string, subject: string, html: string): Promise
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: FROM, to, subject, html }),
+    body: JSON.stringify({ from: FROM, to, subject, html, ...(extraHeaders ? { headers: extraHeaders } : {}) }),
   });
   if (!res.ok) {
     throw new Error(`Resend API ${res.status}: ${await res.text().catch(() => "")}`);
@@ -47,10 +55,12 @@ export async function notifyRenderReady(job: RenderEmailJob): Promise<void> {
     if (!user?.email || user.notifyOnComplete === false) return;
 
     const title = job.prompt?.slice(0, 80) || "Your video";
+    const unsub = unsubscribeUrl(APP_URL, job.userId);
     await sendViaResend(
       user.email,
       "Your video is ready 🎬",
-      renderReadyEmailHtml({ title, jobUrl: `${APP_URL}/jobs/${job.id}` }),
+      renderReadyEmailHtml({ title, jobUrl: `${APP_URL}/jobs/${job.id}`, unsubscribeUrl: unsub }),
+      unsubscribeHeaders(unsub),
     );
     logger.info({ jobId: job.id }, "Render-ready email sent");
   } catch (err) {
@@ -117,10 +127,12 @@ export async function notifyRenderFailed(job: RenderEmailJob, reason: string): P
     if (!user?.email || user.notifyOnComplete === false) return;
 
     const title = job.prompt?.slice(0, 80) || "Your video";
+    const unsub = unsubscribeUrl(APP_URL, job.userId);
     await sendViaResend(
       user.email,
       "Your render didn't finish",
-      renderFailedEmailHtml({ title, reason, jobUrl: `${APP_URL}/jobs/${job.id}`, supportUrl: `${APP_URL}/support` }),
+      renderFailedEmailHtml({ title, reason, jobUrl: `${APP_URL}/jobs/${job.id}`, supportUrl: `${APP_URL}/support`, unsubscribeUrl: unsub }),
+      unsubscribeHeaders(unsub),
     );
     logger.info({ jobId: job.id }, "Render-failed email sent");
   } catch (err) {

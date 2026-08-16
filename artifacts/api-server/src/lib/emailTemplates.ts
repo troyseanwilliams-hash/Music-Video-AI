@@ -5,7 +5,38 @@
 //
 // Keep this file identical in artifacts/api-server and artifacts/worker.
 
+import crypto from "node:crypto";
+
 const GRADIENT = "linear-gradient(90deg,#7c3aed,#2563eb)";
+
+// ---------------------------------------------------------------------------
+// One-click unsubscribe tokens (HMAC of the user id — no DB table needed).
+// Security emails (password reset) must never use these links.
+// ---------------------------------------------------------------------------
+
+export function unsubscribeToken(userId: string): string {
+  const secret = process.env.SESSION_SECRET ?? "aibeatsync-unsub";
+  return crypto.createHmac("sha256", secret).update(`unsub:${userId}`).digest("hex").slice(0, 32);
+}
+
+export function verifyUnsubscribeToken(userId: string, token: string): boolean {
+  const expected = unsubscribeToken(userId);
+  if (token.length !== expected.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expected));
+}
+
+/** No-login unsubscribe URL for notification emails. */
+export function unsubscribeUrl(appUrl: string, userId: string): string {
+  return `${appUrl}/api/email/unsubscribe?uid=${encodeURIComponent(userId)}&token=${unsubscribeToken(userId)}`;
+}
+
+/** RFC 8058 one-click unsubscribe headers for Resend sends. */
+export function unsubscribeHeaders(unsubUrl: string): Record<string, string> {
+  return {
+    "List-Unsubscribe": `<${unsubUrl}>`,
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+  };
+}
 
 /** Escape user-supplied text before interpolating into HTML. */
 export function escapeHtml(s: string): string {
@@ -82,7 +113,7 @@ export function sectionLabel(text: string): string {
 // ---------------------------------------------------------------------------
 
 /** "Your video is ready" — celebration + watch CTA + what-to-do-next. */
-export function renderReadyEmailHtml(p: { title: string; jobUrl: string }): string {
+export function renderReadyEmailHtml(p: { title: string; jobUrl: string; unsubscribeUrl?: string }): string {
   const title = escapeHtml(p.title);
   return emailShell(
     `
@@ -98,18 +129,19 @@ export function renderReadyEmailHtml(p: { title: string; jobUrl: string }): stri
         ${featureRow("Remix Lab", "not feeling a shot? regenerate just that clip — you only pay for what you redo.")}
       </table>
     `,
-    { footerNote: notifyFooter(p.jobUrl) },
+    { footerNote: notifyFooter(p.jobUrl, p.unsubscribeUrl) },
   );
 }
 
 /** Footer for notification emails: working opt-out link (CAN-SPAM / deliverability best practice). */
-function notifyFooter(anyAppUrl: string): string {
+function notifyFooter(anyAppUrl: string, unsubUrl?: string): string {
   const origin = anyAppUrl.replace(/^(https?:\/\/[^/]+).*$/, "$1");
-  return `<a href="${origin}/dashboard" style="color:#7c3aed;text-decoration:none">Turn off these notifications</a> from your dashboard. Questions? Just reply. — The AIBeatSync team`;
+  const href = unsubUrl ?? `${origin}/dashboard`;
+  return `<a href="${href}" style="color:#7c3aed;text-decoration:none">Unsubscribe from these notifications</a> — one click, no login needed. Questions? Just reply. — The AIBeatSync team`;
 }
 
 /** "Your render didn't finish" — honest, calm, with a support-ticket path. */
-export function renderFailedEmailHtml(p: { title: string; reason: string; jobUrl: string; supportUrl: string }): string {
+export function renderFailedEmailHtml(p: { title: string; reason: string; jobUrl: string; supportUrl: string; unsubscribeUrl?: string }): string {
   const title = escapeHtml(p.title);
   const reason = escapeHtml(p.reason.slice(0, 200));
   return emailShell(
@@ -128,7 +160,7 @@ export function renderFailedEmailHtml(p: { title: string; reason: string; jobUrl
         <a href="${p.jobUrl}" style="color:#7c3aed;text-decoration:none;font-weight:600">here</a>.
       </p>
     `,
-    { footerNote: notifyFooter(p.jobUrl) },
+    { footerNote: notifyFooter(p.jobUrl, p.unsubscribeUrl) },
   );
 }
 

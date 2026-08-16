@@ -21,6 +21,7 @@ import promptRouter from "./prompt.js";
 import promoRouter from "./promo.js";
 import analyticsRouter from "./analytics.js";
 import adminAnalyticsRouter from "./admin-analytics.js";
+import emailPrefsRouter from "./email-prefs.js";
 
 const router: IRouter = Router();
 
@@ -46,5 +47,6 @@ router.use(promptRouter);
 router.use(promoRouter);
 router.use(analyticsRouter);
 router.use(adminAnalyticsRouter);
+router.use(emailPrefsRouter);
 
 export default router;

@@ -1,7 +1,7 @@
 import { Resend } from "resend";
 import twilio from "twilio";
 import { logger } from "./logger.js";
-import { adminEmailHtml, detailRow, escapeHtml } from "./emailTemplates.js";
+import { adminEmailHtml, detailRow, escapeHtml, unsubscribeUrl, unsubscribeHeaders } from "./emailTemplates.js";
 
 function getSmsClient(): ReturnType<typeof twilio> | null {
   const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN } = process.env;
@@ -160,6 +160,7 @@ export function sendWelcomeEmail(user: { id: string; email?: string | null; name
   if (!resend || !user.email) return;
   const firstName = (user.name ?? "").trim().split(/\s+/)[0] || null;
   const appUrl = process.env.APP_URL ?? "https://aibeatsync.com";
+  const unsub = unsubscribeUrl(appUrl, user.id);
   const feature = (title: string, desc: string) => `
     <tr>
       <td style="padding:10px 0;vertical-align:top;width:8px">
@@ -175,6 +176,7 @@ export function sendWelcomeEmail(user: { id: string; email?: string | null; name
       from: "AIBeatSync <notifications@aibeatsync.com>",
       to: user.email,
       subject: "Welcome to AIBeatSync 🎬 — turn your songs into music videos",
+      headers: unsubscribeHeaders(unsub),
       html: `
         <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;padding:32px 24px;color:#111">
           <div style="text-align:center;margin-bottom:24px">
@@ -201,8 +203,8 @@ export function sendWelcomeEmail(user: { id: string; email?: string | null; name
             which turns a written script into a professional, narrated podcast. Same idea, different craft.
           </p>
           <p style="font-size:12px;color:#999;margin:16px 0 0">
-            Questions? Just reply to this email. You can manage email notifications from your
-            <a href="${appUrl}/dashboard" style="color:#7c3aed;text-decoration:none">dashboard</a>. — The AIBeatSync team
+            Questions? Just reply to this email. — The AIBeatSync team ·
+            <a href="${unsub}" style="color:#7c3aed;text-decoration:none">Unsubscribe from notifications</a>
           </p>
         </div>
       `,
