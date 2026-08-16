@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useGetDashboardStats, getGetDashboardStatsQueryKey } from "@workspace/api-client-react";
 import {
   Video, LayoutDashboard, Wand2, LogOut, Loader2, ShieldCheck,
-  MessageSquare, Menu, X, Film, CreditCard, Compass, Music2, Settings, Sparkles, Gift, Mic, ChevronDown,
+  MessageSquare, Menu, X, Film, CreditCard, Compass, Music2, Settings, Sparkles, Gift, Mic,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -32,27 +32,29 @@ export function Navbar() {
 
   const processingCount = ((stats as unknown as { activeJobs?: unknown[] })?.activeJobs?.length) ?? 0;
 
-  // Grouped for a compact top bar; flattened for the account dropdown + mobile panel.
-  const createLinks = [
+  // Flat top bar links; Gallery lives only in the account dropdown + mobile panel.
+  const memberLinks = [
     { href: "/generate", label: "Generate", icon: Wand2 },
-    { href: "/editor", label: "Remix Lab", icon: Video },
+    { href: "/editor", label: "Remix", icon: Video },
     { href: "/prompt-studio", label: "Prompt Studio", icon: Sparkles },
     { href: "/soundtracks", label: "Soundtracks", icon: Music2 },
-  ];
-  const libraryLinks = [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/gallery", label: "Gallery", icon: Film },
   ];
+  const galleryLink = { href: "/gallery", label: "Gallery", icon: Film };
   const publicLinks = [
     { href: "/explore", label: "Explore", icon: Compass },
     { href: "/pricing", label: "Pricing", icon: CreditCard },
   ];
-  const navLinks = [
-    ...(isAuthenticated ? [...createLinks, ...libraryLinks] : []),
+  // Top bar: flat member links + public links (no Gallery).
+  const topBarLinks = [
+    ...(isAuthenticated ? memberLinks : []),
     ...publicLinks,
   ];
-  const inCreate = createLinks.some((l) => l.href === location);
-  const inLibrary = libraryLinks.some((l) => l.href === location);
+  // Account dropdown + mobile panel: everything, including Gallery.
+  const navLinks = [
+    ...(isAuthenticated ? [...memberLinks, galleryLink] : []),
+    ...publicLinks,
+  ];
 
   return (
     <>
@@ -68,43 +70,9 @@ export function Navbar() {
               </span>
             </Link>
 
-            {/* Compact top bar: tools grouped under two dropdowns; public links stay flat. */}
-            <nav className="hidden md:flex items-center gap-6">
-              {isAuthenticated && (
-                <>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger className={`flex items-center gap-1 text-sm font-medium transition-colors hover:text-primary focus-visible:outline-none ${inCreate ? 'text-foreground' : 'text-muted-foreground'}`}>
-                      Create <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-48">
-                      {createLinks.map((l) => (
-                        <DropdownMenuItem key={l.href} asChild>
-                          <Link href={l.href} className="cursor-pointer flex items-center">
-                            <l.icon className="mr-2 h-4 w-4" />
-                            <span>{l.label}</span>
-                          </Link>
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger className={`flex items-center gap-1 text-sm font-medium transition-colors hover:text-primary focus-visible:outline-none ${inLibrary ? 'text-foreground' : 'text-muted-foreground'}`}>
-                      My Videos <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-48">
-                      {libraryLinks.map((l) => (
-                        <DropdownMenuItem key={l.href} asChild>
-                          <Link href={l.href} className="cursor-pointer flex items-center">
-                            <l.icon className="mr-2 h-4 w-4" />
-                            <span>{l.label}</span>
-                          </Link>
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </>
-              )}
-              {publicLinks.map((l) => (
+            {/* Flat top bar: all member tools inline; Gallery lives in the account dropdown. */}
+            <nav className="hidden md:flex items-center gap-5">
+              {topBarLinks.map((l) => (
                 <Link
                   key={l.href}
                   href={l.href}
