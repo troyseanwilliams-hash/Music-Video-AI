@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useGetDashboardStats, getGetDashboardStatsQueryKey } from "@workspace/api-client-react";
 import {
   Video, LayoutDashboard, Wand2, LogOut, Loader2, ShieldCheck,
-  MessageSquare, Menu, X, Film, CreditCard, Compass, Music2, Settings, Sparkles, Gift, Mic,
+  MessageSquare, Menu, X, Film, CreditCard, Compass, Music2, Settings, Sparkles, Gift, Mic, ChevronDown,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -32,18 +32,27 @@ export function Navbar() {
 
   const processingCount = ((stats as unknown as { activeJobs?: unknown[] })?.activeJobs?.length) ?? 0;
 
-  const navLinks = [
-    ...(isAuthenticated ? [
-      { href: "/editor", label: "Remix Lab", icon: Video },
-      { href: "/generate", label: "Generate", icon: Wand2 },
-      { href: "/prompt-studio", label: "Prompt Studio", icon: Sparkles },
-      { href: "/soundtracks", label: "Soundtracks", icon: Music2 },
-      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/gallery", label: "Gallery", icon: Film },
-    ] : []),
+  // Grouped for a compact top bar; flattened for the account dropdown + mobile panel.
+  const createLinks = [
+    { href: "/generate", label: "Generate", icon: Wand2 },
+    { href: "/editor", label: "Remix Lab", icon: Video },
+    { href: "/prompt-studio", label: "Prompt Studio", icon: Sparkles },
+    { href: "/soundtracks", label: "Soundtracks", icon: Music2 },
+  ];
+  const libraryLinks = [
+    { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/gallery", label: "Gallery", icon: Film },
+  ];
+  const publicLinks = [
     { href: "/explore", label: "Explore", icon: Compass },
     { href: "/pricing", label: "Pricing", icon: CreditCard },
   ];
+  const navLinks = [
+    ...(isAuthenticated ? [...createLinks, ...libraryLinks] : []),
+    ...publicLinks,
+  ];
+  const inCreate = createLinks.some((l) => l.href === location);
+  const inLibrary = libraryLinks.some((l) => l.href === location);
 
   return (
     <>
@@ -59,9 +68,43 @@ export function Navbar() {
               </span>
             </Link>
 
-            {/* Driven by navLinks so the top nav + account dropdown stay in sync. */}
+            {/* Compact top bar: tools grouped under two dropdowns; public links stay flat. */}
             <nav className="hidden md:flex items-center gap-6">
-              {navLinks.map((l) => (
+              {isAuthenticated && (
+                <>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger className={`flex items-center gap-1 text-sm font-medium transition-colors hover:text-primary focus-visible:outline-none ${inCreate ? 'text-foreground' : 'text-muted-foreground'}`}>
+                      Create <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-48">
+                      {createLinks.map((l) => (
+                        <DropdownMenuItem key={l.href} asChild>
+                          <Link href={l.href} className="cursor-pointer flex items-center">
+                            <l.icon className="mr-2 h-4 w-4" />
+                            <span>{l.label}</span>
+                          </Link>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger className={`flex items-center gap-1 text-sm font-medium transition-colors hover:text-primary focus-visible:outline-none ${inLibrary ? 'text-foreground' : 'text-muted-foreground'}`}>
+                      My Videos <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-48">
+                      {libraryLinks.map((l) => (
+                        <DropdownMenuItem key={l.href} asChild>
+                          <Link href={l.href} className="cursor-pointer flex items-center">
+                            <l.icon className="mr-2 h-4 w-4" />
+                            <span>{l.label}</span>
+                          </Link>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </>
+              )}
+              {publicLinks.map((l) => (
                 <Link
                   key={l.href}
                   href={l.href}
@@ -102,12 +145,7 @@ export function Navbar() {
                 data-testid="navbar-credits"
               >
                 <Wand2 className="h-4 w-4 text-primary" />
-                <span>{stats.creditsRemaining} Credits</span>
-                {stats.topupCredits > 0 && (
-                  <span className="text-xs text-muted-foreground font-normal">
-                    ({stats.subscriptionCredits} + {stats.topupCredits})
-                  </span>
-                )}
+                <span>{stats.creditsRemaining}</span>
               </div>
             )}
 
