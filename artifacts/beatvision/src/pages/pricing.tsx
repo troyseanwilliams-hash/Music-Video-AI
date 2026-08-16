@@ -250,7 +250,9 @@ export default function Pricing() {
           cheaper). Full-length videos scale with song length (up to 10 minutes).
           Render in 720p, 1080p HD (×1.25), or 4K Ultra (×5, Pro &amp; Studio).
           TikTok teaser packs cost 30, Spotify Canvas loops 20. Generating
-          lyrics in Prompt Studio or Soundtracks costs 3 credits. Plan credits
+          lyrics in Prompt Studio or Soundtracks costs 3 credits.{" "}
+          <strong className="text-foreground">Lip Sync</strong> (a singing avatar of
+          any face) is a premium add-on at 16 credits/second. Plan credits
           reset each cycle — top-up credits never expire, and you can earn more
           by referring friends.
         </p>
@@ -429,6 +431,13 @@ export default function Pricing() {
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                     <span>Karaoke lyric sync (LRC &amp; word-level timing)</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                    <span>
+                      Lip Sync singing avatar{" "}
+                      <span className="text-muted-foreground">(premium add-on — 16 credits/second)</span>
+                    </span>
                   </li>
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />

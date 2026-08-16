@@ -30,6 +30,8 @@ import Settings from "@/pages/settings";
 import PromptStudio from "@/pages/prompt-studio";
 import SunoLanding from "@/pages/suno-landing";
 import CanvasLanding from "@/pages/canvas-landing";
+import LyricSyncPage from "@/pages/lyric-sync";
+import { LYRICSYNC_PUBLIC } from "@/lib/featureFlags";
 import {
   AiMusicVideoLanding, LyricVideoLanding, InstrumentalLanding, SunoToVideoLanding,
   PodcastToVideoLanding,
@@ -79,6 +81,7 @@ function Router() {
           <Route path="/gallery" component={Gallery} />
           <Route path="/soundtracks" component={Soundtracks} />
           <Route path="/prompt-studio" component={PromptStudio} />
+          {LYRICSYNC_PUBLIC && <Route path="/lyric-sync" component={LyricSyncPage} />}
           <Route path="/s/:token" component={SharedSoundtrack} />
           <Route path="/explore" component={Explore} />
           <Route path="/jobs/:id" component={JobStatus} />

@@ -186,6 +186,12 @@ export function calculateLipsyncCost(seconds: number | null | undefined): number
   return Math.ceil((s * LIPSYNC_USD_PER_SECOND * MUSIC_GEN_MARKUP) / USD_PER_CREDIT);
 }
 
+// Lyric alignment (AssemblyAI Universal-2 ≈ $0.15/hr → ~$0.01 for a 4-min song).
+// Standard 1.5× markup with a small floor for overhead:
+//   ceil($0.01 × 1.5 / $0.015) = 1 → floored to 2 credits.
+// Mirror in artifacts/beatvision/src/lib/creditPricing.ts.
+export const LYRIC_ALIGN_COST = 2;
+
 // Cost to remix (regenerate) a subset of an existing video's clips. Charged
 // proportionally to the number of clips regenerated — never the full job. We
 // divide the original job's full cost across its clips and bill only for the

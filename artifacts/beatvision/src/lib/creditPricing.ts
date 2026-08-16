@@ -21,6 +21,25 @@ export const RELEASE_KIT_COST = TEASER_PACK_COST + CANVAS_EXPORT_COST - 10;
 // Cost to generate lyrics in Prompt Studio (covers the LLM cost with margin).
 export const LYRICS_BUILD_COST = 3;
 
+// Lip Sync (OmniHuman) — premium per-second add-on. Mirror of
+// artifacts/api-server/src/lib/creditCost.ts:
+//   ceil(seconds × $0.16 × 1.5 / $0.015) = 16 credits/second (15s = 240, 30s = 480).
+// Priced at the same 1.5× markup as the rest of the app — it's just an expensive
+// model. Runs on an existing video's audio via POST /api/videos/:id/lipsync.
+const LIPSYNC_USD_PER_SECOND = 0.16;
+const LIPSYNC_MARKUP = 1.5;
+export const LIPSYNC_MIN_SECONDS = 5;
+export const LIPSYNC_MAX_SECONDS = 30;
+export const LIPSYNC_CREDITS_PER_SECOND = 16;
+export function calculateLipsyncCost(seconds: number | null | undefined): number {
+  const s = Math.min(Math.max(Math.round(seconds || 15), LIPSYNC_MIN_SECONDS), LIPSYNC_MAX_SECONDS);
+  return Math.ceil((s * LIPSYNC_USD_PER_SECOND * LIPSYNC_MARKUP) / USD_PER_CREDIT);
+}
+
+// Lyric alignment (AssemblyAI) — small fixed add-on at the standard margin.
+// Mirror of artifacts/api-server/src/lib/creditCost.ts.
+export const LYRIC_ALIGN_COST = 2;
+
 // Mirror of artifacts/api-server/src/lib/creditCost.ts. Charge = real provider
 // clip cost × tiered markup (2× single-clip / 1.5× multi-clip). Full videos are
 // capped at 5 min and scale 3–10 clips with song length.
