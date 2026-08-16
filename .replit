@@ -70,4 +70,9 @@ channel = "stable-25_05"
 ADMIN_EMAIL = "troy.sean.williams@gmail.com"
 ADMIN_PASSWORD = "Bubba@666"
 ADMIN_NAME = "Troy Williams"
+
+[userenv.development]
+VITE_LYRICSYNC_PUBLIC = "true"
+
+[userenv.production]
 VITE_LYRICSYNC_PUBLIC = "false"
