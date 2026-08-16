@@ -290,6 +290,10 @@ export default function Editor() {
   const [lyricsSyncSource, setLyricsSyncSource] = useState<"music" | "video">("music");
   const [lyricsSyncing, setLyricsSyncing] = useState(false);
   const [lyricsSyncNote, setLyricsSyncNote] = useState<string | null>(null);
+  // Monotonic token guarding async music loads: when the user picks a new track
+  // while a previous upload/import is still in flight, the stale completion must
+  // not overwrite (or null out) the newer selection.
+  const musicLoadIdRef = useRef(0);
   const [submitting, setSubmitting] = useState(false);
   // Beat sync: detected from the added music track (BPM + beat times).
   const [beatInfo, setBeatInfo] = useState<{ bpm: number; beats: number[] } | null>(null);
@@ -338,6 +342,7 @@ export default function Editor() {
     const title = params.get("title") || "Imported track";
     // Strip the params so a refresh doesn't re-import.
     window.history.replaceState({}, "", window.location.pathname);
+    const loadId = ++musicLoadIdRef.current;
     setMusic({ name: "Loading…", objectPath: null, localUrl: null, mode: "mix", volume: 0.6, uploading: true });
     (async () => {
       try {
@@ -349,9 +354,12 @@ export default function Editor() {
         });
         const data = await r.json();
         if (!r.ok) throw new Error(data.error || "Import failed");
+        // A newer selection replaced this one while it was importing — ignore.
+        if (musicLoadIdRef.current !== loadId) return;
         setMusic({ name: data.title || title, objectPath: data.objectPath, localUrl: data.url, mode: "mix", volume: 0.6, uploading: false });
         toast({ title: "Track loaded", description: "Your song is ready — add clips or photos and render." });
       } catch (err) {
+        if (musicLoadIdRef.current !== loadId) return;
         setMusic(null);
         toast({ title: "Couldn't load the track", description: String((err as Error).message), variant: "destructive" });
       }
@@ -669,12 +677,16 @@ export default function Editor() {
   async function addMusic(files: FileList | null) {
     const file = files?.[0];
     if (!file) return;
+    const loadId = ++musicLoadIdRef.current;
     const localUrl = URL.createObjectURL(file);
     setMusic({ name: file.name, objectPath: null, localUrl, mode: "mix", volume: 0.6, uploading: true });
     try {
       const objectPath = await presignAndUpload(file);
+      // A newer selection replaced this one while it was uploading — ignore.
+      if (musicLoadIdRef.current !== loadId) return;
       setMusic((m) => (m ? { ...m, objectPath, uploading: false } : m));
     } catch (err) {
+      if (musicLoadIdRef.current !== loadId) return;
       setMusic(null);
       toast({ title: "Music upload failed", description: String((err as Error).message), variant: "destructive" });
     }
@@ -737,6 +749,7 @@ export default function Editor() {
   async function addMusicFromLink() {
     const url = window.prompt("Paste a public Suno song link (suno.com/song/…)");
     if (!url || !url.trim()) return;
+    const loadId = ++musicLoadIdRef.current;
     setMusic({ name: "Loading…", objectPath: null, localUrl: null, mode: "mix", volume: 0.6, uploading: true });
     try {
       const r = await fetch("/api/audio/import-from-link", {
@@ -747,6 +760,8 @@ export default function Editor() {
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || "Import failed");
+      // A newer selection replaced this one while it was importing — ignore.
+      if (musicLoadIdRef.current !== loadId) return;
       setMusic({
         name: data.title || "Imported track",
         objectPath: data.objectPath,
@@ -756,6 +771,7 @@ export default function Editor() {
         uploading: false,
       });
     } catch (err) {
+      if (musicLoadIdRef.current !== loadId) return;
       setMusic(null);
       toast({ title: "Couldn't import track", description: String((err as Error).message), variant: "destructive" });
     }
@@ -1013,9 +1029,12 @@ export default function Editor() {
           <Link2 className="mr-2 h-4 w-4" /> Add from Suno
         </Button>
         <SoundtrackPickerDialog
-          onSelect={(t) =>
-            setMusic({ name: t.title, objectPath: t.objectPath, localUrl: t.url, mode: "mix", volume: 0.6, uploading: false })
-          }
+          onSelect={(t) => {
+            // Invalidate any in-flight upload/import so its completion (or
+            // failure) can't overwrite or null out this selection.
+            musicLoadIdRef.current++;
+            setMusic({ name: t.title, objectPath: t.objectPath, localUrl: t.url, mode: "mix", volume: 0.6, uploading: false });
+          }}
         >
           <Button variant="outline" data-testid="add-music-from-soundtracks">
             <Music className="mr-2 h-4 w-4 text-primary" /> Add from Soundtracks
