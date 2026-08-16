@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
 import { alignLyrics, lyricAlignAvailable } from "../lib/lyricAlign.js";
-import { db, creditsTable } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { db, creditsTable, soundtracksTable } from "@workspace/db";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { LYRIC_ALIGN_COST } from "../lib/creditCost.js";
 
@@ -83,10 +83,25 @@ router.post("/lyrics/align", async (req, res) => {
   const userId = (req.user as { id: string }).id;
 
   // Ownership check: only sign objects this user is allowed to read.
+  // Audio objects in this app don't carry storage-level ACL metadata, so
+  // authorize at the app level: the path must be a soundtrack the user owns
+  // (or a public one), or a direct upload (unguessable UUID under uploads/).
   let audioUrl: string;
   try {
     const objectFile = await storageService.getObjectEntityFile(audioObjectPath);
-    const allowed = await storageService.canAccessObjectEntity({ userId, objectFile });
+    let allowed = await storageService.canAccessObjectEntity({ userId, objectFile });
+    if (!allowed) {
+      const [track] = await db
+        .select({ id: soundtracksTable.id })
+        .from(soundtracksTable)
+        .where(and(
+          eq(soundtracksTable.objectPath, audioObjectPath),
+          isNull(soundtracksTable.deletedAt),
+          or(eq(soundtracksTable.userId, userId), eq(soundtracksTable.isPublic, true)),
+        ))
+        .limit(1);
+      allowed = Boolean(track) || audioObjectPath.startsWith("/objects/uploads/");
+    }
     if (!allowed) {
       res.status(403).json({ error: "You don't have access to that audio file" });
       return;
