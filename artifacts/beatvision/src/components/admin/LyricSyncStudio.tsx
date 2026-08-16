@@ -284,6 +284,11 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
       if (parsed.length === 0) throw new Error("No timing returned");
       setLines(parsed);
       setSynced(true);
+      // ASR mode (no lyrics provided): the vocal was transcribed — put the
+      // generated lyrics into the box so the user can see and edit them.
+      if (data.source === "asr") {
+        setLyrics(parsed.map((ln) => ln.words.map((w) => w.w).join(" ")).join("\n"));
+      }
       toast({
         title: data.lowConfidence ? "Synced — low confidence" : "Synced to vocal",
         description: data.lowConfidence
@@ -327,7 +332,9 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
   }, [playing, audioUrl, duration]);
 
   const togglePlay = useCallback(() => {
-    if (!synced) runSync();
+    // Play never triggers the paid alignment API — if nothing is synced yet,
+    // spread the lines for free so the preview still shows something.
+    if (!synced) estimateSync();
     if (audioRef.current && audioUrl) {
       if (playing) audioRef.current.pause();
       else audioRef.current.play().catch(() => {});
@@ -335,7 +342,7 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
       if (simClock.current >= duration - 0.05) simClock.current = 0;
     }
     setPlaying((p) => !p);
-  }, [synced, runSync, playing, audioUrl, duration]);
+  }, [synced, estimateSync, playing, audioUrl, duration]);
 
   const seek = useCallback((t: number) => {
     t = Math.max(0, Math.min(duration, t));
@@ -478,7 +485,10 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
                   <Button onClick={runSync} disabled={syncing} className="gap-1.5">
                     {syncing
                       ? <><Loader2 className="h-4 w-4 animate-spin" /> Reading vocal…</>
-                      : <><Wand2 className="h-4 w-4" /> Auto-sync timing</>}
+                      : <><Wand2 className="h-4 w-4" /> {lyrics.trim() ? "Auto-sync timing" : "Generate lyrics from vocal"} · {LYRIC_ALIGN_COST} credits</>}
+                  </Button>
+                  <Button variant="outline" onClick={estimateSync} disabled={syncing} className="gap-1.5">
+                    Estimate (free)
                   </Button>
                   <span className="text-xs text-muted-foreground">
                     {syncing ? "aligning to the song…" : synced ? `${lines.length} lines synced` : "not synced yet"}
