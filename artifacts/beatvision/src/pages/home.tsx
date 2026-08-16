@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Play, Sparkles, Zap, Music, MonitorPlay, ExternalLink, ScanLine, ImagePlus, Volume2, VolumeX, Scissors, Lock, Clapperboard, Share2, Wand2, Maximize, VideoOff } from "lucide-react";
+import { Play, Sparkles, Zap, Music, MonitorPlay, ExternalLink, ScanLine, ImagePlus, Volume2, VolumeX, Scissors, Lock, Clapperboard, Share2, Wand2, Maximize, VideoOff, Mic2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { AuroraBackground } from "@/components/AuroraBackground";
 
@@ -316,6 +316,7 @@ export default function Home() {
                 { icon: Lock, title: "Character Lock", body: "Lock a face or look from a reference image so the same character carries across every clip — no shape-shifting between shots.", tag: "New" },
                 { icon: Clapperboard, title: "Storyboard Preview", body: "See the planned shots — timing, energy, and prompt for each — before you spend a single credit. Approve, then render.", tag: "New" },
                 { icon: Share2, title: "Release Kit", body: "One click turns your finished video into a full set of social exports — vertical, square, and Spotify Canvas — sized for every platform.", tag: "New" },
+                { icon: Mic2, title: "Karaoke Lyric Videos", body: "Type or paste your lyrics — or let Auto-sync time them for you — and we burn beat-synced karaoke captions right into the video. Ready to sing along.", tag: "New" },
                 { icon: Wand2, title: "Prompt Studio", body: "Describe a vibe in plain words and get a polished video or soundtrack prompt — or full, original lyrics — in seconds.", tag: "New" },
                 { icon: Maximize, title: "Up to 4K & 10 minutes", body: "Go beyond quick clips: render crisp 4K and full-length videos up to ten minutes for premium releases.", tag: "New" },
                 { icon: VideoOff, title: "Score It Later", body: "Render your visuals with no soundtrack, then add the perfect track once you've found it, right in the Editor — a workflow most AI video generators don't offer.", tag: "New" },
@@ -341,6 +342,81 @@ export default function Home() {
                   <Play className="mr-2 h-4 w-4" /> Start your video
                 </Button>
               </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* Karaoke Spotlight */}
+        <section className="py-20 border-t border-border/30 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-pink-500/5 via-transparent to-primary/5 pointer-events-none" />
+          <div className="container px-4 md:px-6 mx-auto max-w-6xl relative z-10">
+            <div className="grid md:grid-cols-2 gap-10 items-center">
+              {/* Left: copy */}
+              <motion.div
+                initial={{ opacity: 0, y: 16 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5 }}
+              >
+                <div className="inline-flex items-center rounded-full border border-pink-500/30 bg-pink-500/10 px-3 py-1 text-sm font-medium text-pink-400 mb-4">
+                  <Mic2 className="mr-2 h-3.5 w-3.5" /> Karaoke mode
+                </div>
+                <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-4">
+                  Make videos you can <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-primary">sing along to</span>
+                </h2>
+                <p className="text-muted-foreground text-lg leading-relaxed mb-6">
+                  Turn any track into a karaoke lyric video. Type or paste your lyrics — or let Auto-sync
+                  listen to your song and time every line for you — and we burn glowing, beat-synced
+                  captions straight into the video. Perfect for karaoke nights, sing-along releases, and
+                  lyric drops your fans can belt out.
+                </p>
+                <ul className="space-y-2.5 mb-8 text-sm">
+                  {[
+                    "Paste plain lyrics or LRC files — or type them from memory",
+                    "Auto-sync times every line to your vocals automatically",
+                    "Works on new videos, remixes, and videos you've already made",
+                  ].map((line) => (
+                    <li key={line} className="flex items-start gap-2.5 text-foreground/85">
+                      <Sparkles className="h-4 w-4 text-pink-400 mt-0.5 flex-shrink-0" />
+                      {line}
+                    </li>
+                  ))}
+                </ul>
+                <div className="flex flex-wrap gap-3">
+                  <Link href="/generate">
+                    <Button size="lg" className="bg-gradient-to-r from-pink-500 to-primary text-white border-0 shadow-glow hover:opacity-90">
+                      <Mic2 className="mr-2 h-4 w-4" /> Make a karaoke video
+                    </Button>
+                  </Link>
+                  <Link href="/ai-lyric-video">
+                    <Button size="lg" variant="outline" className="border-pink-500/40 hover:bg-pink-500/10 hover:text-pink-400">
+                      How lyric videos work
+                    </Button>
+                  </Link>
+                </div>
+              </motion.div>
+
+              {/* Right: karaoke caption mock */}
+              <motion.div
+                initial={{ opacity: 0, y: 16 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, delay: 0.1 }}
+                className="relative rounded-2xl border border-white/10 bg-black overflow-hidden shadow-xl"
+                style={{ aspectRatio: "16/9" }}
+              >
+                <div className="absolute inset-0 bg-gradient-to-br from-primary/25 via-purple-900/40 to-pink-500/25" />
+                <div className="absolute inset-0 flex flex-col items-center justify-end pb-8 px-6 text-center gap-2">
+                  <p className="text-white/35 text-sm md:text-base font-semibold">city lights are calling out my name</p>
+                  <p className="text-white text-xl md:text-2xl font-extrabold tracking-tight drop-shadow-[0_0_14px_rgba(236,72,153,0.85)]">
+                    tonight we're singing in the rain
+                  </p>
+                  <p className="text-white/35 text-sm md:text-base font-semibold">turn it up and don't look down</p>
+                </div>
+                <div className="absolute top-4 left-4 inline-flex items-center gap-1.5 rounded-full bg-black/50 backdrop-blur-sm border border-white/15 px-2.5 py-1 text-[11px] font-semibold text-pink-300">
+                  <Mic2 className="h-3 w-3" /> Karaoke captions
+                </div>
+              </motion.div>
             </div>
           </div>
         </section>
