@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRoute, useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
+import { SAMPLE_LYRICS } from "@/lib/sampleLyrics";
 import { useGetJob, getGetJobQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -1349,11 +1350,31 @@ function RemixPanel({
                 <textarea
                   value={lyricsText}
                   onChange={(e) => setLyricsText(e.target.value.slice(0, 5000))}
-                  placeholder="Paste your lyrics here — or leave empty and hit Auto-sync to transcribe them from the track…"
+                  placeholder="Paste your lyrics here — or leave empty and hit Auto-sync to transcribe them from the track. LRC with [mm:ss] timestamps works too…"
                   rows={5}
                   className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm resize-none"
                   data-testid="textarea-remix-lyrics"
                 />
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs text-muted-foreground">
+                    {lyricsText.length}/5000 characters
+                    {/\[\d{1,2}:\d{2}/.test(lyricsText)
+                      ? " · LRC timestamps detected — exact sync"
+                      : lyricsText.trim()
+                        ? " · no timestamps — lines will be spread evenly (paste LRC for exact sync)"
+                        : ""}
+                  </p>
+                  {!lyricsText.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => setLyricsText(SAMPLE_LYRICS)}
+                      className="text-xs text-primary hover:underline shrink-0"
+                      data-testid="button-remix-lyrics-sample"
+                    >
+                      Try a sample
+                    </button>
+                  )}
+                </div>
                 <label className="flex items-start gap-2 text-xs text-muted-foreground cursor-pointer">
                   <input
                     type="checkbox"
@@ -1367,9 +1388,11 @@ function RemixPanel({
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <span className="text-xs text-muted-foreground">
                     {syncNote ??
-                      (/\[\d{1,2}:\d{2}/.test(lyricsText)
-                        ? "Timestamps detected — exact sync."
-                        : "Auto-sync listens to the track and times each word (2 credits).")}
+                      (!rightsOk
+                        ? "Tick the rights box above to enable Auto-sync (2 credits)."
+                        : /\[\d{1,2}:\d{2}/.test(lyricsText)
+                          ? "Timestamps detected — already synced."
+                          : "Auto-sync listens to the track and times each word (2 credits). Leave the box empty to transcribe the lyrics too.")}
                   </span>
                   <Button
                     size="sm"
