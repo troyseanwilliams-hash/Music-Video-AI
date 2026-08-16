@@ -121,7 +121,7 @@ export function Navbar() {
             <a
               href="https://aipodsync.com"
               className="flex items-center gap-1.5 rounded-full border border-border/50 bg-secondary/40 px-2.5 sm:px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
-              title="Make a podcast with AIPodSync"
+              aria-label="Make a podcast with AIPodSync"
             >
               <Mic className="h-3.5 w-3.5" aria-hidden="true" />
               <span className="hidden sm:inline">Podcast</span>
@@ -130,7 +130,7 @@ export function Navbar() {
               <Link
                 href="/dashboard"
                 className="flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-sm font-medium text-primary transition-opacity hover:opacity-80"
-                title={`${processingCount} video${processingCount === 1 ? "" : "s"} processing`}
+                aria-label={`${processingCount} video${processingCount === 1 ? "" : "s"} processing`}
               >
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 <span className="hidden sm:inline">{processingCount} processing</span>
@@ -141,7 +141,7 @@ export function Navbar() {
             {isAuthenticated && stats && (
               <div
                 className="hidden sm:flex items-center gap-2 rounded-full border border-border/50 bg-secondary/50 px-3 py-1 text-sm font-medium"
-                title={`Plan: ${stats.subscriptionCredits} · Top-up: ${stats.topupCredits}`}
+                aria-label={`Plan: ${stats.subscriptionCredits} · Top-up: ${stats.topupCredits}`}
                 data-testid="navbar-credits"
               >
                 <Wand2 className="h-4 w-4 text-primary" />
