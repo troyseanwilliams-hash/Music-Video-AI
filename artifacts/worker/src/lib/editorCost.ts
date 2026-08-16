@@ -36,3 +36,19 @@ export function calculateEditorCost(input: EditorCostInput): number {
   const secs = billableSeconds(input.durationSec);
   return (BASE_CREDITS + Math.ceil(secs * CREDITS_PER_SECOND)) * PRICE_MULTIPLIER;
 }
+
+// ── Freemium Remix Lab pricing ───────────────────────────────────────────────
+// The editor is pure ffmpeg (no AI provider cost), so it's a growth/retention
+// hook rather than a cost-recovery product. Everyone gets a generous free
+// monthly allotment; beyond it, a token flat fee (well under any paid editor).
+// Subscribers, trial users, and admins are unlimited (handled in the route).
+export const FREE_EDITOR_EXPORTS_PER_MONTH = 10;
+export const EDITOR_OVERAGE_COST = 15; // ~$0.30 at $0.02/credit, flat per export
+
+// ── Trial karaoke allowance ──────────────────────────────────────────────────
+// Karaoke lyric burns carry real cost (extra ffmpeg render time, and users
+// often pair them with paid AssemblyAI auto-sync), so the free 7-day trial
+// includes a limited number of lyric-burn exports. Beyond the allowance, trial
+// users pay the standard lyric add-on from their credit balance. Subscribers
+// and admins are unaffected.
+export const TRIAL_LYRIC_EXPORTS = 3;

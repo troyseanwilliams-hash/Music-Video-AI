@@ -1,10 +1,11 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { jobsTable, creditsTable, usersTable } from "@workspace/db";
-import { eq, and, gte, ne, count } from "drizzle-orm";
+import { eq, and, gte, ne, count, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { z } from "zod";
-import { FREE_EDITOR_EXPORTS_PER_MONTH, EDITOR_OVERAGE_COST } from "../lib/editorCost.js";
+import { FREE_EDITOR_EXPORTS_PER_MONTH, EDITOR_OVERAGE_COST, TRIAL_LYRIC_EXPORTS } from "../lib/editorCost.js";
+import { LYRIC_OVERLAY_COST } from "../lib/creditCost.js";
 
 const router = Router();
 
@@ -72,11 +73,46 @@ router.get("/studio/quota", async (req, res) => {
         ne(jobsTable.status, "failed"),
       ),
     );
+  // Trial karaoke allowance (see /studio/render): only meaningful for
+  // non-subscribed users inside their 7-day trial.
+  const [quotaUser] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.id, req.user.id))
+    .limit(1);
+  const quotaTrialActive =
+    !!quotaUser?.trialEndsAt &&
+    new Date(quotaUser.trialEndsAt).getTime() > Date.now() &&
+    (quotaUser?.subscriptionStatus ?? "none") !== "active";
+  let lyricUsed = 0;
+  if (quotaTrialActive) {
+    const [{ used: lu }] = await db
+      .select({ used: count() })
+      .from(jobsTable)
+      .where(
+        and(
+          eq(jobsTable.userId, req.user.id),
+          eq(jobsTable.jobType, "editor_render"),
+          ne(jobsTable.status, "failed"),
+          sql`coalesce(${jobsTable.manifest} ->> 'lyricsText', '') <> ''`,
+        ),
+      );
+    lyricUsed = lu;
+  }
+
   res.json({
     used,
     free: FREE_EDITOR_EXPORTS_PER_MONTH,
     remaining: Math.max(0, FREE_EDITOR_EXPORTS_PER_MONTH - used),
     overageCost: EDITOR_OVERAGE_COST,
+    trial: quotaTrialActive
+      ? {
+          lyricUsed,
+          lyricFree: TRIAL_LYRIC_EXPORTS,
+          lyricRemaining: Math.max(0, TRIAL_LYRIC_EXPORTS - lyricUsed),
+          lyricOverageCost: LYRIC_OVERLAY_COST,
+        }
+      : null,
   });
 });
 
@@ -140,6 +176,51 @@ router.post("/studio/render", async (req, res) => {
   // flat low overage per export.
   let chargeCredits = false;
   let chargeAmount = 0;
+
+  // Trial karaoke allowance: lyric burns cost real money, so trial users get
+  // TRIAL_LYRIC_EXPORTS free lyric-burn exports. Beyond that, the standard
+  // lyric add-on is charged from their credit balance.
+  const lyricsRequested = !!input.lyricsText?.trim();
+  if (lyricsRequested && trialActive && !isAdmin && !isSubscribed) {
+    const [{ used: lyricUsed }] = await db
+      .select({ used: count() })
+      .from(jobsTable)
+      .where(
+        and(
+          eq(jobsTable.userId, req.user.id),
+          eq(jobsTable.jobType, "editor_render"),
+          ne(jobsTable.status, "failed"),
+          sql`coalesce(${jobsTable.manifest} ->> 'lyricsText', '') <> ''`,
+        ),
+      );
+
+    if (lyricUsed >= TRIAL_LYRIC_EXPORTS) {
+      chargeCredits = true;
+      chargeAmount = LYRIC_OVERLAY_COST;
+
+      let [userCredits] = await db
+        .select()
+        .from(creditsTable)
+        .where(eq(creditsTable.userId, req.user.id))
+        .limit(1);
+      if (!userCredits) {
+        [userCredits] = await db
+          .insert(creditsTable)
+          .values({ id: randomUUID(), userId: req.user.id })
+          .returning();
+      }
+      if (userCredits.creditsRemaining < chargeAmount) {
+        res.status(402).json({
+          error: `Your free trial includes ${TRIAL_LYRIC_EXPORTS} karaoke lyric exports and you've used them all. Extra lyric exports cost ${chargeAmount} credits (you have ${userCredits.creditsRemaining}) — or subscribe for unlimited karaoke videos.`,
+          code: "TRIAL_LYRIC_LIMIT",
+          creditsRequired: chargeAmount,
+          creditsRemaining: userCredits.creditsRemaining,
+          trialLyricLimit: TRIAL_LYRIC_EXPORTS,
+        });
+        return;
+      }
+    }
+  }
 
   if (!fullAccess) {
     const monthStart = new Date();

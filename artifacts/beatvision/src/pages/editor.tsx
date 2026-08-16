@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import SignupTeaser from "@/components/SignupTeaser";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -406,14 +406,22 @@ export default function Editor() {
   const fullAccess = !!user && (user.isAdmin || user.subscriptionStatus === "active" || trialActive);
 
   // Free-Remix quota (only relevant for non-subscribers after trial).
-  const [quota, setQuota] = useState<{ used: number; free: number; remaining: number; overageCost: number } | null>(null);
+  const [quota, setQuota] = useState<{
+    used: number;
+    free: number;
+    remaining: number;
+    overageCost: number;
+    trial: { lyricUsed: number; lyricFree: number; lyricRemaining: number; lyricOverageCost: number } | null;
+  } | null>(null);
   useEffect(() => {
-    if (!isAuthenticated || fullAccess) return;
+    // Subscribers/admins are unlimited; trial users still need the quota for
+    // their limited karaoke-lyric allowance.
+    if (!isAuthenticated || (fullAccess && !trialActive) || user?.subscriptionStatus === "active" || user?.isAdmin) return;
     fetch("/api/studio/quota", { credentials: "include" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => d && setQuota(d))
       .catch(() => {});
-  }, [isAuthenticated, fullAccess]);
+  }, [isAuthenticated, fullAccess, trialActive, user?.subscriptionStatus, user?.isAdmin]);
 
   // Logged-out visitors get a teaser (below) instead of a redirect, so they can
   // see what Remix Lab does and sign up.
@@ -1430,6 +1438,25 @@ export default function Editor() {
                 </PopoverContent>
               </Popover>
             </div>
+            {trialActive && quota?.trial && (
+              <p className="mb-2 text-xs text-muted-foreground" data-testid="text-trial-lyric-allowance">
+                {quota.trial.lyricRemaining > 0 ? (
+                  <>
+                    Free trial includes{" "}
+                    <strong className="text-foreground">
+                      {quota.trial.lyricRemaining} of {quota.trial.lyricFree} karaoke lyric exports
+                    </strong>
+                    . After that, each lyric export is {quota.trial.lyricOverageCost} credits.
+                  </>
+                ) : (
+                  <>
+                    You've used your {quota.trial.lyricFree} free trial karaoke exports — extra lyric
+                    exports cost {quota.trial.lyricOverageCost} credits, or{" "}
+                    <Link href="/pricing" className="text-primary underline">subscribe for unlimited</Link>.
+                  </>
+                )}
+              </p>
+            )}
             <Textarea
               placeholder="Optional — paste lyrics here, or leave empty and hit Auto-sync to transcribe them from the track. LRC with [mm:ss] timestamps works too…"
               className="min-h-[90px] resize-none text-sm"
