@@ -641,10 +641,25 @@ export default function Editor() {
     if (!files) return;
     const VIDEO_EXTS = new Set(["mp4","mov","webm","mkv","avi","wmv","m4v","3gp","ts","mts","m2ts","ogv"]);
     const IMAGE_EXTS = new Set(["jpg","jpeg","png","gif","webp","bmp","heic","heif","avif","tiff","tif"]);
+    const AUDIO_EXTS = new Set(["mp3","wav","flac","ogg","oga","m4a","aac","opus","wma","aiff","aif"]);
+    let routedAudio = false;
     for (const file of Array.from(files)) {
       const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
       const isVideo = file.type.startsWith("video/") || VIDEO_EXTS.has(ext);
       const isImage = file.type.startsWith("image/") || IMAGE_EXTS.has(ext);
+      const isAudio = !isVideo && (file.type.startsWith("audio/") || AUDIO_EXTS.has(ext));
+      if (isAudio) {
+        // Users often pick their song via "Add media" — route it to the music
+        // slot instead of rejecting it (only one music track is supported).
+        if (routedAudio || music) {
+          toast({ title: "Only one music track", description: `"${file.name}" skipped — a music track is already loaded. Use "Change music" to swap it.` });
+          continue;
+        }
+        routedAudio = true;
+        toast({ title: "Added as music track", description: `"${file.name}" was loaded as the soundtrack.` });
+        void addMusicFile(file);
+        continue;
+      }
       if (!isVideo && !isImage) {
         toast({ title: "Unsupported file", description: `"${file.name}" is not a recognised video or image type.`, variant: "destructive" });
         continue;
@@ -677,6 +692,10 @@ export default function Editor() {
   async function addMusic(files: FileList | null) {
     const file = files?.[0];
     if (!file) return;
+    await addMusicFile(file);
+  }
+
+  async function addMusicFile(file: File) {
     const loadId = ++musicLoadIdRef.current;
     const localUrl = URL.createObjectURL(file);
     setMusic({ name: file.name, objectPath: null, localUrl, mode: "mix", volume: 0.6, uploading: true });
@@ -1017,7 +1036,7 @@ export default function Editor() {
 
       {/* Add media */}
       <div className="mb-4 flex flex-wrap gap-3">
-        <input ref={mediaInputRef} type="file" accept="video/*,image/*,.mp4,.mov,.webm,.mkv,.avi,.wmv,.m4v,.3gp,.ts,.ogv" multiple hidden onChange={(e) => addMedia(e.target.files)} />
+        <input ref={mediaInputRef} type="file" accept="video/*,image/*,audio/*,.mp4,.mov,.webm,.mkv,.avi,.wmv,.m4v,.3gp,.ts,.ogv,.mp3,.wav,.flac,.m4a,.aac,.ogg" multiple hidden onChange={(e) => addMedia(e.target.files)} />
         <Button onClick={() => mediaInputRef.current?.click()}>
           <Upload className="mr-2 h-4 w-4" /> Add media
         </Button>

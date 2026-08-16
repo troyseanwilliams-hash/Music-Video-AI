@@ -11,3 +11,4 @@
 - [Stale lib tsbuildinfo](stale-tsbuildinfo.md) — phantom "no exported member"/missing-column TS errors: delete lib/*/tsconfig.tsbuildinfo and rebuild before debugging.
 - [Pixazo slug validation](pixazo-slug-validation.md) — probe gateway keyless: 401=valid slug, 404=dead; verify secrets slugs before render failures.
 - [Credit charge/refund pattern](credit-charge-pattern.md) — paid API routes must debit atomically (row-locked, balance-checked) and refund the exact sub/topup split; never clamp-with-GREATEST check-then-update.
+- [Async audio-load staleness guards](async-audio-load-races.md) — music selection state set by async uploads/imports needs monotonic load tokens; stale completions clobbered newer tracks and disabled Auto-sync.
