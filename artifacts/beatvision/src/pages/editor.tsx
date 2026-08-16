@@ -729,9 +729,11 @@ export default function Editor() {
     setLyricsSyncing(true);
     setLyricsSyncNote(null);
     try {
-      const body: Record<string, string | undefined> = {
+      // acceptCopyright must be a real boolean — the API rejects the string
+      // "true" with a 400 (strict `!== true` check server-side).
+      const body: Record<string, string | boolean | undefined> = {
         lyricsText: lyricsText.trim() || undefined,
-        acceptCopyright: "true",
+        acceptCopyright: true,
       };
       if (effectiveSyncSource === "music" && music?.objectPath) {
         body.audioObjectPath = music.objectPath;
