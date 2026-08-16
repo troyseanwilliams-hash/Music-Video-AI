@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Loader2, Share2, Download, Smartphone, Disc3, Coins, Mic2, Package, Film,
-  Image as ImageIcon, Check,
+  Image as ImageIcon, Check, Sparkles,
 } from "lucide-react";
 import {
   TEASER_PACK_COST,
@@ -49,6 +49,35 @@ export default function SocialExportsPanel({ videoId }: { videoId: string }) {
   // One rights attestation shared by both lyric-burn paths (kit + standalone);
   // the server rejects lyric burns without it.
   const [rightsAcknowledged, setRightsAcknowledged] = useState(false);
+  // Auto-sync: AI listens to this video's track and returns word-timed lyrics.
+  const [syncing, setSyncing] = useState<"lyrics" | "kit" | null>(null);
+
+  async function autoSync(target: "lyrics" | "kit") {
+    if (!rightsAcknowledged || syncing) return;
+    setSyncing(target);
+    setError(null);
+    try {
+      const current = (target === "kit" ? kitLyrics : lyricsText).trim();
+      const r = await fetch(`/api/lyrics/align`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoId, lyricsText: current || undefined, acceptCopyright: true }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error ?? "Auto-sync failed");
+      if (typeof data.lrc === "string" && data.lrc.trim()) {
+        if (target === "kit") setKitLyrics(data.lrc);
+        else setLyricsText(data.lrc);
+      } else {
+        throw new Error("Auto-sync couldn't detect vocals in this track.");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Auto-sync failed");
+    } finally {
+      setSyncing(null);
+    }
+  }
   const [kitExtras, setKitExtras] = useState<KitExtras | null>(null);
 
   useEffect(() => {
@@ -240,19 +269,30 @@ export default function SocialExportsPanel({ videoId }: { videoId: string }) {
                 maxLength={5000}
                 data-testid="textarea-kit-lyrics"
               />
-              {kitLyrics.trim() && (
-                <label className="flex items-start gap-2.5 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={rightsAcknowledged}
-                    onChange={(e) => setRightsAcknowledged(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 shrink-0 accent-primary cursor-pointer"
-                  />
-                  <span className="text-xs text-muted-foreground leading-relaxed group-hover:text-foreground/80 transition-colors">
-                    I confirm I have the rights to this song <em>and</em> its lyrics (owned, licensed, or created here). Lyrics are copyrighted separately from the recording.
-                  </span>
-                </label>
-              )}
+              <label className="flex items-start gap-2.5 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={rightsAcknowledged}
+                  onChange={(e) => setRightsAcknowledged(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-primary cursor-pointer"
+                />
+                <span className="text-xs text-muted-foreground leading-relaxed group-hover:text-foreground/80 transition-colors">
+                  I confirm I have the rights to this song <em>and</em> its lyrics (owned, licensed, or created here). Lyrics are copyrighted separately from the recording.
+                </span>
+              </label>
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busy !== null || syncing !== null || !rightsAcknowledged}
+                  onClick={() => autoSync("kit")}
+                  data-testid="button-autosync-kit"
+                >
+                  {syncing === "kit"
+                    ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Listening…</>
+                    : <><Sparkles className="mr-1.5 h-3.5 w-3.5" /> Auto-sync to vocals (2 cr)</>}
+                </Button>
+              </div>
             </>
           )}
 
@@ -427,9 +467,20 @@ export default function SocialExportsPanel({ videoId }: { videoId: string }) {
                   {/\[\d{1,2}:\d{2}/.test(lyricsText)
                     ? "LRC timestamps detected — exact sync"
                     : lyricsText.trim()
-                      ? "No timestamps — lines will be spread evenly"
-                      : "Creates a new video in your library; the original is untouched."}
+                      ? "No timestamps — Auto-sync times each word (2 cr), or lines spread evenly"
+                      : "Paste lyrics, or hit Auto-sync to transcribe them from the track (2 cr)."}
                 </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busy !== null || syncing !== null || !rightsAcknowledged}
+                  onClick={() => autoSync("lyrics")}
+                  data-testid="button-autosync-lyrics"
+                >
+                  {syncing === "lyrics"
+                    ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Listening…</>
+                    : <><Sparkles className="mr-1.5 h-3.5 w-3.5" /> Auto-sync to vocals</>}
+                </Button>
                 <Button
                   size="sm"
                   disabled={busy !== null || !lyricsText.trim() || !rightsAcknowledged}
