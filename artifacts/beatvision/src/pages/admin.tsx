@@ -12,13 +12,14 @@ import {
   MessageSquare, Users, ChevronDown, ChevronUp,
   CircleDot, Clock, CheckCircle2, XCircle, RotateCcw, AlertTriangle, RefreshCw,
   Film, Ban, Trash2, Play, Music2, Sparkles, Scissors, Download,
-  BarChart3, TrendingUp, Clock3, MousePointerClick, DollarSign, Share2, Gift, Copy,
+  BarChart3, TrendingUp, Clock3, MousePointerClick, DollarSign, Share2, Gift, Copy, Mic2,
 } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip,
   CartesianGrid, LineChart, Line, Legend,
 } from "recharts";
 import { useToast } from "@/hooks/use-toast";
+import LyricSyncStudio from "@/components/admin/LyricSyncStudio";
 
 /* ─── User management types ─── */
 interface AdminUser {
@@ -699,7 +700,7 @@ function AdminMusicPanel() {
 }
 
 /* ─── Main admin page ─── */
-type Tab = "analytics" | "users" | "support" | "jobs" | "deleted" | "music";
+type Tab = "analytics" | "users" | "support" | "jobs" | "deleted" | "music" | "lyricsync";
 
 interface DeletedVideo {
   id: string;
@@ -1528,6 +1529,18 @@ export default function AdminPage() {
           Soundtracks
           <span className="ml-1 px-1.5 py-0.5 rounded-full bg-primary/20 text-primary text-[10px] font-mono leading-none">Beta</span>
         </button>
+        <button
+          onClick={() => setTab("lyricsync")}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap ${
+            tab === "lyricsync"
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Mic2 className="h-4 w-4" />
+          Lyric + Lip Sync
+          <span className="ml-1 px-1.5 py-0.5 rounded-full bg-primary/20 text-primary text-[10px] font-mono leading-none">Beta</span>
+        </button>
         <Link
           href="/prompt-studio"
           className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px border-transparent text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap"
@@ -1540,6 +1553,8 @@ export default function AdminPage() {
       {tab === "analytics" && <AnalyticsPanel />}
 
       {tab === "music" && <AdminMusicPanel />}
+
+      {tab === "lyricsync" && <LyricSyncStudio />}
 
       {/* ── Users tab ── */}
       {tab === "users" && (
