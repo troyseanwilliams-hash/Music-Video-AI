@@ -3,7 +3,15 @@ import { writeFile, readFile, unlink, mkdir, rm } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { randomUUID } from "crypto";
-import { buildTimedLines, buildAssKaraoke } from "./lyricTiming.js";
+import { buildTimedLines, buildAssKaraoke, karaokeFontsDir } from "./lyricTiming.js";
+
+// `:fontsdir=` option pointing libass at the bundled karaoke font (Archivo
+// Black); empty string when the font directory is missing.
+function fontsDirOpt(): string {
+  const dir = karaokeFontsDir();
+  return dir ? `:fontsdir=${dir.replace(/([\\':])/g, "\\$1")}` : "";
+}
+
 
 export interface StitchInput {
   clips: { buffer: Buffer; targetDuration: number }[];
@@ -249,7 +257,7 @@ export async function stitchVideoClips(input: StitchInput): Promise<StitchResult
     }
 
     const karaokeOptions = assPath
-      ? [...outputOptions, "-vf", `subtitles=${assPath.replace(/([\\':])/g, "\\$1")}`]
+      ? [...outputOptions, "-vf", `subtitles=${assPath.replace(/([\\':])/g, "\\$1")}${fontsDirOpt()}`]
       : outputOptions;
 
     const buildCmd = (options: string[]) => {

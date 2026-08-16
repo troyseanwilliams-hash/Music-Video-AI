@@ -7,7 +7,15 @@ import { writeFile, readFile, mkdir, rm } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { randomUUID } from "crypto";
-import { buildTimedLines, buildAssKaraoke } from "./lyricTiming.js";
+import { buildTimedLines, buildAssKaraoke, karaokeFontsDir } from "./lyricTiming.js";
+
+// `:fontsdir=` option pointing libass at the bundled karaoke font (Archivo
+// Black); empty string when the font directory is missing.
+function fontsDirOpt(): string {
+  const dir = karaokeFontsDir();
+  return dir ? `:fontsdir=${dir.replace(/([\\':])/g, "\\$1")}` : "";
+}
+
 
 function runFfmpeg(cmd: ffmpeg.FfmpegCommand): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -42,7 +50,7 @@ export async function burnLyricsOnVideo(
       ffmpeg()
         .input(srcPath)
         .outputOptions([
-          "-vf", `subtitles=${assPath.replace(/([\\':])/g, "\\$1")}`,
+          "-vf", `subtitles=${assPath.replace(/([\\':])/g, "\\$1")}${fontsDirOpt()}`,
           "-c:v", "libx264",
           "-preset", "fast",
           "-crf", "22",

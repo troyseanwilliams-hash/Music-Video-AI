@@ -12,6 +12,10 @@
 // {\k} karaoke tags (burned in via ffmpeg's `subtitles` filter). Keep this
 // file identical in artifacts/api-server and artifacts/worker.
 
+import { existsSync } from "fs";
+import { fileURLToPath } from "url";
+import { dirname as pathDirname, join as pathJoin } from "path";
+
 export interface TimedWord {
   text: string;
   start: number; // seconds
@@ -172,8 +176,34 @@ function escapeAss(s: string): string {
 }
 
 /**
+ * Directory holding the bundled karaoke font (Archivo Black), passed to
+ * ffmpeg's subtitles filter via `fontsdir` so libass finds it without a
+ * system-wide install. Returns null when the font isn't present (libass then
+ * falls back to a system font, e.g. DejaVu Sans).
+ */
+export function karaokeFontsDir(): string | null {
+  try {
+    const here = pathDirname(fileURLToPath(import.meta.url));
+    for (const candidate of [
+      pathJoin(here, "../fonts"), // dist/index.mjs → <artifact>/fonts
+      pathJoin(here, "../../fonts"), // src/lib/*.ts → <artifact>/fonts
+      pathJoin(process.cwd(), "fonts"),
+    ]) {
+      if (existsSync(pathJoin(candidate, "ArchivoBlack-Regular.ttf"))) return candidate;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+/**
  * Renders timed lines as an ASS subtitle script with {\k} karaoke tags:
  * unsung text is white, sung text fills in electric cyan.
+ *
+ * Style tuned for social-video engagement: Archivo Black (the heavy caption
+ * font popularized by TikTok/CapCut lyric videos), ~8% of frame height,
+ * thick outline + soft shadow for readability over any footage.
  */
 export function buildAssKaraoke(lines: TimedLine[]): string {
   const header = `[Script Info]
@@ -184,7 +214,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Karaoke,DejaVu Sans,44,&H00EED322,&H00FFFFFF,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,2,1,2,60,60,54,1
+Style: Karaoke,Archivo Black,58,&H00EED322,&H00FFFFFF,&H00000000,&H90000000,0,0,0,0,100,100,0,0,1,3,1,2,60,60,64,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

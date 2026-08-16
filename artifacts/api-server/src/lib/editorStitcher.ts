@@ -10,7 +10,15 @@ import { writeFile, readFile, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
-import { buildTimedLines, buildAssKaraoke } from "./lyricTiming.js";
+import { buildTimedLines, buildAssKaraoke, karaokeFontsDir } from "./lyricTiming.js";
+
+// `:fontsdir=` option pointing libass at the bundled karaoke font (Archivo
+// Black); empty string when the font directory is missing.
+function fontsDirOpt(): string {
+  const dir = karaokeFontsDir();
+  return dir ? `:fontsdir=${dir.replace(/([\\':])/g, "\\$1")}` : "";
+}
+
 import { logger } from "./logger.js";
 
 export interface EditorSegmentInput {
@@ -507,7 +515,7 @@ export async function stitchEditorTimeline(
           const withLyrics = join(dir, "lyrics.mp4");
           await run([
             "-y", "-i", current,
-            "-vf", `subtitles=${assPath.replace(/([\\':])/g, "\\$1")}`,
+            "-vf", `subtitles=${assPath.replace(/([\\':])/g, "\\$1")}${fontsDirOpt()}`,
             "-c:v", "libx264", "-preset", "fast", "-crf", "22", "-threads", "2", "-pix_fmt", "yuv420p",
             "-c:a", "copy", "-movflags", "+faststart", withLyrics,
           ]);
