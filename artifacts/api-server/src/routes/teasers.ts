@@ -227,7 +227,14 @@ router.post("/videos/:id/canvas", makeHandler("canvas"));
 // Burn karaoke lyrics onto a finished video → saved as a NEW video in the
 // user's library (the original is untouched). Charged flat; refunded on
 // failure. Lyrics accept plain text, LRC, or word-level enhanced LRC.
-const LyricsBody = z.object({ lyricsText: z.string().min(1).max(5000) });
+// acceptCopyright: server-side record of the rights attestation the UI collects
+// (lyrics are copyrighted separately from the recording) — can't be bypassed.
+const LyricsBody = z.object({
+  lyricsText: z.string().min(1).max(5000),
+  acceptCopyright: z.literal(true, {
+    errorMap: () => ({ message: "You must confirm you have the rights to this song and its lyrics." }),
+  }),
+});
 
 router.post("/videos/:id/lyrics", async (req: Request<{ id: string }>, res: Response) => {
   if (!req.isAuthenticated()) {
@@ -303,7 +310,11 @@ router.post("/videos/:id/lyrics", async (req: Request<{ id: string }>, res: Resp
 // in a single call at a bundled discount, optionally burn a karaoke-lyrics
 // version, and return download URLs for the whole drop (full video, thumbnail,
 // shorts, Canvas, lyric video). Already-generated parts are reused (not recharged).
-const ReleaseKitBody = z.object({ lyricsText: z.string().max(5000).optional() });
+const ReleaseKitBody = z
+  .object({ lyricsText: z.string().max(5000).optional(), acceptCopyright: z.boolean().optional() })
+  .refine((d) => !d.lyricsText?.trim() || d.acceptCopyright === true, {
+    message: "You must confirm you have the rights to this song and its lyrics.",
+  });
 
 router.post("/videos/:id/release-kit", async (req: Request<{ id: string }>, res: Response) => {
   if (!req.isAuthenticated()) {

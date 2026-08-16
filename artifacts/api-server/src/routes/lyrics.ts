@@ -86,6 +86,15 @@ router.post("/lyrics/align", async (req, res) => {
     res.status(400).json({ error: "Provide exactly one of audioObjectPath or videoId" });
     return;
   }
+  // Server-side record of the rights attestation the UI collects — lyrics are
+  // copyrighted separately from the recording, so this can't be bypassed.
+  if (body.acceptCopyright !== true) {
+    res.status(400).json({
+      error: "You must confirm you have the rights to this song and its lyrics.",
+      code: "COPYRIGHT_NOT_ACCEPTED",
+    });
+    return;
+  }
 
   const userId = (req.user as { id: string }).id;
 

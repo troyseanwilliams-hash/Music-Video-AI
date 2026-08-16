@@ -368,7 +368,7 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
     if (!audioFile && !libObjectPath && !pickedVideo) { estimateSync(); return; }
     setSyncing(true);
     try {
-      const body: Record<string, unknown> = { lyricsText: lyrics.trim() || null };
+      const body: Record<string, unknown> = { lyricsText: lyrics.trim() || null, acceptCopyright: rightsAcknowledged };
       if (pickedVideo) body.videoId = pickedVideo.id;
       else body.audioObjectPath = libObjectPath ?? (await presignAndUpload(audioFile!));
       const res = await fetch("/api/lyrics/align", {
@@ -489,7 +489,7 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lyricsText: lrc }),
+        body: JSON.stringify({ lyricsText: lrc, acceptCopyright: rightsAcknowledged }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Burn failed");

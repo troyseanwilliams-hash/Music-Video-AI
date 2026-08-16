@@ -14,25 +14,36 @@ import { LYRICS_BUILD_COST } from "../lib/creditCost.js";
 
 const router: IRouter = Router();
 
-// Small credit helpers (mirror the social-export charge/refund split).
-async function chargeCredits(userId: string, cost: number): Promise<{ ok: boolean; remaining: number }> {
-  let [c] = await db.select().from(creditsTable).where(eq(creditsTable.userId, userId)).limit(1);
-  if (!c) [c] = await db.insert(creditsTable).values({ id: randomUUID(), userId }).returning();
-  if (c!.creditsRemaining < cost) return { ok: false, remaining: c!.creditsRemaining };
-  await db.update(creditsTable).set({
-    subscriptionCredits: sql`GREATEST(subscription_credits - ${cost}, 0)`,
-    topupCredits: sql`GREATEST(topup_credits - GREATEST(${cost} - subscription_credits, 0), 0)`,
-    creditsRemaining: sql`GREATEST(credits_remaining - ${cost}, 0)`,
-    creditsUsed: sql`credits_used + ${cost}`,
-    updatedAt: new Date(),
-  }).where(eq(creditsTable.userId, userId));
-  return { ok: true, remaining: c!.creditsRemaining - cost };
+// Credit helpers — atomic row-locked debit with exact sub/top-up split, and a
+// refund that restores exactly the buckets that were debited (same pattern as
+// routes/lyrics.ts and routes/teasers.ts).
+type ChargeResult =
+  | { ok: true; remaining: number; subDebit: number; topDebit: number }
+  | { ok: false; remaining: number };
+
+async function chargeCredits(userId: string, cost: number): Promise<ChargeResult> {
+  return db.transaction(async (tx) => {
+    let [c] = await tx.select().from(creditsTable).where(eq(creditsTable.userId, userId)).limit(1).for("update");
+    if (!c) [c] = await tx.insert(creditsTable).values({ id: randomUUID(), userId }).returning();
+    if (c!.creditsRemaining < cost) return { ok: false as const, remaining: c!.creditsRemaining };
+    const subDebit = Math.min(c!.subscriptionCredits, cost);
+    const topDebit = cost - subDebit;
+    await tx.update(creditsTable).set({
+      subscriptionCredits: sql`subscription_credits - ${subDebit}`,
+      topupCredits: sql`topup_credits - ${topDebit}`,
+      creditsRemaining: sql`credits_remaining - ${cost}`,
+      creditsUsed: sql`credits_used + ${cost}`,
+      updatedAt: new Date(),
+    }).where(eq(creditsTable.userId, userId));
+    return { ok: true as const, remaining: c!.creditsRemaining - cost, subDebit, topDebit };
+  });
 }
-async function refundCredits(userId: string, cost: number): Promise<void> {
+async function refundCredits(userId: string, subDebit: number, topDebit: number): Promise<void> {
   await db.update(creditsTable).set({
-    topupCredits: sql`topup_credits + ${cost}`,
-    creditsRemaining: sql`credits_remaining + ${cost}`,
-    creditsUsed: sql`GREATEST(credits_used - ${cost}, 0)`,
+    subscriptionCredits: sql`subscription_credits + ${subDebit}`,
+    topupCredits: sql`topup_credits + ${topDebit}`,
+    creditsRemaining: sql`credits_remaining + ${subDebit + topDebit}`,
+    creditsUsed: sql`GREATEST(credits_used - ${subDebit + topDebit}, 0)`,
     updatedAt: new Date(),
   }).where(eq(creditsTable.userId, userId));
 }
@@ -154,6 +165,7 @@ router.post("/prompt/lyrics", async (req: Request, res: Response) => {
   }
   // Charge only when a real LLM will run (the no-key template fallback is free).
   const willUseLLM = lyricsProviderAvailable() !== "template";
+  let debit: { subDebit: number; topDebit: number } | null = null;
   if (willUseLLM) {
     const charge = await chargeCredits(user.id, LYRICS_BUILD_COST);
     if (!charge.ok) {
@@ -165,6 +177,7 @@ router.post("/prompt/lyrics", async (req: Request, res: Response) => {
       });
       return;
     }
+    debit = { subDebit: charge.subDebit, topDebit: charge.topDebit };
   }
   try {
     const result = await generateLyrics({
@@ -178,7 +191,7 @@ router.post("/prompt/lyrics", async (req: Request, res: Response) => {
     });
     res.json({ ...result, charged: willUseLLM ? LYRICS_BUILD_COST : 0, enhanced: !!parsed.data.lyrics?.trim() });
   } catch (err) {
-    if (willUseLLM) await refundCredits(user.id, LYRICS_BUILD_COST);
+    if (debit) await refundCredits(user.id, debit.subDebit, debit.topDebit);
     logger.error({ err }, "Lyrics build failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Lyrics build failed" });
   }

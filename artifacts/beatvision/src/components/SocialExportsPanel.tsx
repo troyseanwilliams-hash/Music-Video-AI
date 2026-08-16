@@ -46,6 +46,9 @@ export default function SocialExportsPanel({ videoId }: { videoId: string }) {
   // Release Kit state
   const [kitLyricsOpen, setKitLyricsOpen] = useState(false);
   const [kitLyrics, setKitLyrics] = useState("");
+  // One rights attestation shared by both lyric-burn paths (kit + standalone);
+  // the server rejects lyric burns without it.
+  const [rightsAcknowledged, setRightsAcknowledged] = useState(false);
   const [kitExtras, setKitExtras] = useState<KitExtras | null>(null);
 
   useEffect(() => {
@@ -86,7 +89,9 @@ export default function SocialExportsPanel({ videoId }: { videoId: string }) {
     setBusy("kit");
     setError(null);
     try {
-      const body = kitLyrics.trim() ? { lyricsText: kitLyrics.trim() } : {};
+      const body = kitLyrics.trim()
+        ? { lyricsText: kitLyrics.trim(), acceptCopyright: rightsAcknowledged }
+        : {};
       const r = await fetch(`/api/videos/${videoId}/release-kit`, {
         method: "POST",
         credentials: "include",
@@ -169,7 +174,7 @@ export default function SocialExportsPanel({ videoId }: { videoId: string }) {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lyricsText: lyricsText.trim() }),
+        body: JSON.stringify({ lyricsText: lyricsText.trim(), acceptCopyright: rightsAcknowledged }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error ?? "Lyric burn failed");
@@ -226,19 +231,34 @@ export default function SocialExportsPanel({ videoId }: { videoId: string }) {
               + Add a karaoke-lyrics version (+{LYRIC_OVERLAY_COST} cr)
             </button>
           ) : (
-            <Textarea
-              placeholder="Paste lyrics to also get a karaoke version (plain text or .lrc). Leave blank to skip."
-              className="min-h-[70px] resize-none text-sm"
-              value={kitLyrics}
-              onChange={(e) => setKitLyrics(e.target.value)}
-              maxLength={5000}
-              data-testid="textarea-kit-lyrics"
-            />
+            <>
+              <Textarea
+                placeholder="Paste lyrics to also get a karaoke version (plain text or .lrc). Leave blank to skip."
+                className="min-h-[70px] resize-none text-sm"
+                value={kitLyrics}
+                onChange={(e) => setKitLyrics(e.target.value)}
+                maxLength={5000}
+                data-testid="textarea-kit-lyrics"
+              />
+              {kitLyrics.trim() && (
+                <label className="flex items-start gap-2.5 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={rightsAcknowledged}
+                    onChange={(e) => setRightsAcknowledged(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-primary cursor-pointer"
+                  />
+                  <span className="text-xs text-muted-foreground leading-relaxed group-hover:text-foreground/80 transition-colors">
+                    I confirm I have the rights to this song <em>and</em> its lyrics (owned, licensed, or created here). Lyrics are copyrighted separately from the recording.
+                  </span>
+                </label>
+              )}
+            </>
           )}
 
           {!kitDone ? (
             <Button
-              disabled={busy !== null}
+              disabled={busy !== null || (!!kitLyrics.trim() && !rightsAcknowledged)}
               onClick={runReleaseKit}
               className="w-full bg-gradient-electric text-white border-0"
               data-testid="button-release-kit"
@@ -391,6 +411,17 @@ export default function SocialExportsPanel({ videoId }: { videoId: string }) {
                 maxLength={5000}
                 data-testid="textarea-lyric-burn"
               />
+              <label className="flex items-start gap-2.5 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={rightsAcknowledged}
+                  onChange={(e) => setRightsAcknowledged(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-primary cursor-pointer"
+                />
+                <span className="text-xs text-muted-foreground leading-relaxed group-hover:text-foreground/80 transition-colors">
+                  I confirm I have the rights to this song <em>and</em> its lyrics (owned, licensed, or created here). Lyrics are copyrighted separately from the recording.
+                </span>
+              </label>
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs text-muted-foreground">
                   {/\[\d{1,2}:\d{2}/.test(lyricsText)
@@ -401,7 +432,7 @@ export default function SocialExportsPanel({ videoId }: { videoId: string }) {
                 </p>
                 <Button
                   size="sm"
-                  disabled={busy !== null || !lyricsText.trim()}
+                  disabled={busy !== null || !lyricsText.trim() || !rightsAcknowledged}
                   onClick={burnLyrics}
                   data-testid="button-burn-lyrics"
                 >
