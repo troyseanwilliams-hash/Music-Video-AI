@@ -1426,6 +1426,7 @@ export default function Editor() {
               value={lyricsText}
               onChange={(e) => setLyricsText(e.target.value)}
               maxLength={5000}
+              disabled={lyricsSyncing}
               data-testid="textarea-editor-lyrics"
             />
             <div className="flex items-center justify-between gap-3 mt-1.5">
