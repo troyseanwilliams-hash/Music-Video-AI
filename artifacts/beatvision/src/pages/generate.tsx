@@ -185,7 +185,6 @@ export default function Generate() {
   const [lyricsEnabled, setLyricsEnabled] = useState(false);
   const [lyricsText, setLyricsText] = useState("");
   // Auto-sync: AI listens to the uploaded track and returns word-timed lyrics.
-  const [lyricsRightsOk, setLyricsRightsOk] = useState(false);
   const [lyricsSyncing, setLyricsSyncing] = useState(false);
   const [lyricsSyncNote, setLyricsSyncNote] = useState<string | null>(null);
 
@@ -535,7 +534,7 @@ export default function Generate() {
   // Auto-sync lyrics against the uploaded audio (2 credits). Only available
   // when the audio source is an uploaded file with a stored object path.
   const autoSyncLyrics = async () => {
-    if (!objectPath || !lyricsRightsOk || lyricsSyncing) return;
+    if (!objectPath || !copyrightAcknowledged || lyricsSyncing) return;
     setLyricsSyncing(true);
     setLyricsSyncNote(null);
     try {
@@ -1509,7 +1508,7 @@ export default function Generate() {
                   placeholder={
                     sourceType === CreateJobRequestAudioSourceType.none
                       ? "Type the exact words you want on screen, one line at a time — a title, a CTA like \"Try it free at yoursite.com\", credits, etc. They'll be spread evenly across the video and rendered as real text."
-                      : "Paste plain lyrics — or an .lrc file with [mm:ss] timestamps for exact line sync (word-level <mm:ss> tags supported too)..."
+                      : "Paste your lyrics here — or leave empty and hit Auto-sync to transcribe them from the track. LRC with [mm:ss] timestamps works too…"
                   }
                   className="min-h-[120px] resize-none bg-background/50 border-input"
                   value={lyricsText}
@@ -1537,37 +1536,31 @@ export default function Generate() {
                   )}
                 </div>
 
-                {/* Auto-sync to vocals — only for uploaded audio */}
-                {sourceType === CreateJobRequestAudioSourceType.upload && objectPath && (
-                  <div className="mt-3 space-y-2">
-                    <label className="flex items-start gap-2 text-xs text-muted-foreground cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={lyricsRightsOk}
-                        onChange={(e) => setLyricsRightsOk(e.target.checked)}
-                        className="mt-0.5 accent-primary"
-                        data-testid="checkbox-generate-lyrics-rights"
-                      />
-                      <span>I confirm I have the rights to this song and its lyrics.</span>
-                    </label>
-                    <div className="flex items-center justify-between gap-3 flex-wrap">
-                      <span className="text-xs text-muted-foreground">
-                        {lyricsSyncNote ??
-                          "Auto-sync listens to your uploaded track and times each word (2 credits). Leave the box empty to transcribe the lyrics too."}
-                      </span>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={autoSyncLyrics}
-                        disabled={lyricsSyncing || !lyricsRightsOk}
-                        className="gap-2 shrink-0"
-                        data-testid="button-generate-autosync"
-                      >
-                        {lyricsSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                        {lyricsSyncing ? "Listening to the track…" : "Auto-sync to vocals"}
-                      </Button>
-                    </div>
+                {/* Auto-sync to vocals — mirrors the Remix panel; only uploaded audio can be analyzed */}
+                {sourceType === CreateJobRequestAudioSourceType.upload && (
+                  <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
+                    <span className="text-xs text-muted-foreground">
+                      {lyricsSyncNote ??
+                        (!objectPath
+                          ? "Upload your track above, then Auto-sync can time each word to the vocals (2 credits)."
+                          : !copyrightAcknowledged
+                            ? "Tick the rights box below the summary to enable Auto-sync (2 credits)."
+                            : /\[\d{1,2}:\d{2}/.test(lyricsText)
+                              ? "Timestamps detected — already synced."
+                              : "Auto-sync listens to the track and times each word (2 credits). Leave the box empty to transcribe the lyrics too.")}
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={autoSyncLyrics}
+                      disabled={lyricsSyncing || !objectPath || !copyrightAcknowledged}
+                      className="gap-2 shrink-0"
+                      data-testid="button-generate-autosync"
+                    >
+                      {lyricsSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                      {lyricsSyncing ? "Listening to the track…" : "Auto-sync to vocals"}
+                    </Button>
                   </div>
                 )}
               </motion.div>
