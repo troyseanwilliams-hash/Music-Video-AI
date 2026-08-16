@@ -6,4 +6,4 @@ Rule: any route that charges credits for a paid provider call must (1) debit ins
 
 **Why:** code review of the lyric-align endpoint found double-spend races, bucket corruption on refund, and an object-path disclosure hole in the naive prompt.ts-style helpers (which still have these flaws).
 
-**How to apply:** copy the pattern from artifacts/api-server/src/routes/lyrics.ts when adding new paid endpoints; treat prompt.ts/teasers.ts chargeCredits as legacy, not a template.
+**How to apply:** copy the pattern from artifacts/api-server/src/routes/lyrics.ts when adding new paid endpoints; teasers.ts now uses the atomic pattern too (fixed later), but prompt.ts chargeCredits is still legacy, not a template. Also: once work is durably delivered (e.g. video row inserted), post-delivery failures like URL signing must NOT refund.

@@ -255,6 +255,7 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
 
   // ── Style ──
   const [lipEnabled, setLipEnabled] = useState(false);
+  const [rightsAcknowledged, setRightsAcknowledged] = useState(false);
   const [preset, setPreset] = useState<Preset>("karaoke");
   const [position, setPosition] = useState<Position>("center");
   const [color, setColor] = useState(COLORS[0].key);
@@ -613,7 +614,7 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
                   placeholder="Paste plain lyrics — one line each. Section tags like [Chorus] are ignored for timing."
                 />
                 <div className="flex items-center gap-2 mt-2">
-                  <Button onClick={runSync} disabled={syncing} className="gap-1.5">
+                  <Button onClick={runSync} disabled={syncing || !rightsAcknowledged} className="gap-1.5">
                     {syncing
                       ? <><Loader2 className="h-4 w-4 animate-spin" /> Reading vocal…</>
                       : <><Wand2 className="h-4 w-4" /> {lyrics.trim() ? "Auto-sync timing" : "Generate lyrics from vocal"} · {LYRIC_ALIGN_COST} credits</>}
@@ -625,6 +626,31 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
                     {syncing ? "aligning to the song…" : synced ? `${lines.length} lines synced` : "not synced yet"}
                   </span>
                 </div>
+              </div>
+
+              {/* Rights disclaimer — lyrics are copyrighted separately from the
+                  recording, so karaoke burns need an explicit attestation. */}
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 space-y-2">
+                <p className="flex items-start gap-1.5 text-[11px] text-muted-foreground leading-relaxed">
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
+                  <span>
+                    <span className="font-medium text-foreground/90">Lyrics are copyrighted works</span> — separately
+                    from the recording itself. Displaying or distributing someone else's lyrics in a karaoke video
+                    generally requires a license from the songwriter or publisher. Only sync and burn lyrics for music
+                    you wrote, own, or have licensed (including AI-generated songs made in this app).
+                  </span>
+                </p>
+                <label className="flex items-start gap-2.5 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={rightsAcknowledged}
+                    onChange={(e) => setRightsAcknowledged(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-primary cursor-pointer"
+                  />
+                  <span className="text-xs text-muted-foreground leading-relaxed group-hover:text-foreground/80 transition-colors">
+                    I confirm I have the rights to this song <em>and</em> its lyrics (owned, licensed, or created here).
+                  </span>
+                </label>
               </div>
 
               {/* Timeline / editor */}
@@ -834,7 +860,7 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
             <Textarea readOnly value={lrc || "// Auto-sync to generate LRC…"} className="min-h-[110px] font-mono text-xs bg-background/60" />
             <div className="flex flex-wrap items-center gap-2 pt-1">
               {pickedVideo ? (
-                <Button onClick={burnOnVideo} disabled={!lines.length || burning} className="gap-1.5">
+                <Button onClick={burnOnVideo} disabled={!lines.length || burning || !rightsAcknowledged} className="gap-1.5">
                   {burning
                     ? <><Loader2 className="h-4 w-4 animate-spin" /> Burning lyrics…</>
                     : <><Film className="h-4 w-4" /> Burn onto “{pickedVideo.title}” · {LYRIC_OVERLAY_COST} credits</>}
