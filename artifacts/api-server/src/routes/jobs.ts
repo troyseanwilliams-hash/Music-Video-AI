@@ -740,7 +740,14 @@ const RemixBody = z.object({
     ])
     .optional(),
   promptOverride: z.string().max(1000).optional(),
-});
+  // Optional karaoke captions burned into the remixed video. When omitted the
+  // original job's lyrics are inherited; an empty string clears them.
+  lyricsText: z.string().max(5000).optional(),
+  acceptCopyright: z.boolean().optional(),
+}).refine(
+  (b) => !b.lyricsText?.trim() || b.acceptCopyright === true,
+  { message: "You must confirm you have the rights to this song and its lyrics.", path: ["acceptCopyright"] },
+);
 
 // POST /api/jobs/:id/remix — regenerate selected clips of a finished video and
 // re-stitch into a NEW video. Credits are charged proportionally to the number
@@ -756,7 +763,7 @@ router.post("/jobs/:id/remix", async (req, res) => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const { clipIndexes, style, promptOverride } = parsed.data;
+  const { clipIndexes, style, promptOverride, lyricsText, acceptCopyright } = parsed.data;
 
   const [job] = await db
     .select()
@@ -770,6 +777,17 @@ router.post("/jobs/:id/remix", async (req, res) => {
   }
   if (job.status !== "ready" || !job.videoId) {
     res.status(400).json({ error: "Only completed videos can be remixed." });
+    return;
+  }
+
+  // Rights attestation must cover the EFFECTIVE lyrics — including lyrics
+  // inherited from the original job when the request omits lyricsText.
+  const effectiveLyrics = lyricsText !== undefined ? (lyricsText.trim() || null) : job.lyricsText;
+  if (effectiveLyrics && acceptCopyright !== true) {
+    res.status(400).json({
+      error: "This remix will burn lyrics into the video — you must confirm you have the rights to this song and its lyrics.",
+      code: "COPYRIGHT_NOT_ACCEPTED",
+    });
     return;
   }
 
@@ -858,7 +876,8 @@ router.post("/jobs/:id/remix", async (req, res) => {
       audioSourceType: job.audioSourceType,
       audioObjectPath: job.audioObjectPath,
       audioSourceUrl: job.audioSourceUrl,
-      lyricsText: job.lyricsText,
+      // Caller-provided lyrics win; empty string clears; omitted inherits.
+      lyricsText: effectiveLyrics,
       aspectRatio: job.aspectRatio,
       resolution: job.resolution,
       requestedDuration: job.requestedDuration,

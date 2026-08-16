@@ -596,6 +596,8 @@ export const remixJobBodyClipIndexesMax = 64;
 
 export const remixJobBodyPromptOverrideMax = 1000;
 
+export const remixJobBodyLyricsTextMax = 5000;
+
 export const RemixJobBody = zod.object({
   clipIndexes: zod
     .array(zod.number().min(remixJobBodyClipIndexesItemMin))
@@ -619,6 +621,17 @@ export const RemixJobBody = zod.object({
     .max(remixJobBodyPromptOverrideMax)
     .optional()
     .describe("Optional prompt applied to the regenerated clips"),
+  lyricsText: zod
+    .string()
+    .max(remixJobBodyLyricsTextMax)
+    .optional()
+    .describe(
+      "Karaoke captions burned into the remixed video. Omitted = inherit the original job's lyrics; empty string = clear them.",
+    ),
+  acceptCopyright: zod
+    .boolean()
+    .optional()
+    .describe("Required (true) whenever the remix will burn lyrics."),
 });
 
 /**

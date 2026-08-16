@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from "recharts";
 import { motion, AnimatePresence } from "framer-motion";
+import { Switch } from "@/components/ui/switch";
 import SocialExportsPanel from "@/components/SocialExportsPanel";
 import LipSyncPanel from "@/components/LipSyncPanel";
 import ReferEarnCard from "@/components/ReferEarnCard";
@@ -1141,6 +1142,13 @@ function RemixPanel({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  // Karaoke captions burned into the remixed video (moved here from Generate).
+  const [videoId, setVideoId] = useState<string | null>(null);
+  const [lyricsEnabled, setLyricsEnabled] = useState(false);
+  const [lyricsText, setLyricsText] = useState("");
+  const [rightsOk, setRightsOk] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncNote, setSyncNote] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -1150,10 +1158,55 @@ function RemixPanel({
         if (cancelled) return;
         const c = (data?.clips as RemixClip[] | undefined) ?? [];
         setClips(Array.isArray(c) ? [...c].sort((a, b) => a.index - b.index) : []);
+        if (typeof data?.videoId === "string") setVideoId(data.videoId);
+        // Pre-fill with the lyrics the original render used, if any.
+        if (typeof data?.lyricsText === "string" && data.lyricsText.trim()) {
+          setLyricsText(data.lyricsText);
+          setLyricsEnabled(true);
+        }
       })
       .catch(() => !cancelled && setClips([]));
     return () => { cancelled = true; };
   }, [jobId]);
+
+  // Auto-sync: AI listens to this video's track and returns word-timed lyrics.
+  const autoSync = async () => {
+    if (!videoId || !rightsOk) return;
+    setSyncing(true);
+    setSyncNote(null);
+    setError(null);
+    try {
+      const res = await fetch(`/api/lyrics/align`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          videoId,
+          lyricsText: lyricsText.trim() || undefined,
+          acceptCopyright: true,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data?.error || "Auto-sync failed. Please try again.");
+        return;
+      }
+      if (typeof data?.lrc === "string" && data.lrc.trim()) {
+        setLyricsText(data.lrc);
+        setSyncNote(
+          data?.source === "asr"
+            ? "Lyrics transcribed from the audio and timed word-by-word — review and edit below."
+            : "Your lyrics are now timed word-by-word to the vocals.",
+        );
+      } else {
+        setError("Auto-sync couldn't detect vocals in this track.");
+      }
+    } catch {
+      setError("Network error — please try again.");
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   // Older videos generated before clip metadata existed can't be remixed.
   if (clips !== null && clips.length === 0) return null;
@@ -1182,6 +1235,9 @@ function RemixPanel({
           clipIndexes: Array.from(selected),
           style: style === "keep" ? undefined : style,
           promptOverride: promptOverride.trim() || undefined,
+          // Enabled → burn these lyrics; disabled → clear any inherited ones.
+          lyricsText: lyricsEnabled ? lyricsText.trim() : "",
+          acceptCopyright: lyricsEnabled && lyricsText.trim() ? rightsOk : undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -1276,6 +1332,61 @@ function RemixPanel({
             </div>
           </div>
 
+          {/* ── Karaoke captions (burned into the remixed video) ── */}
+          <div className="rounded-lg border border-border bg-background/30 p-4 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">Lyric video · karaoke captions</p>
+                <p className="text-xs text-muted-foreground">
+                  Burn lyrics onto the new video — words fill in as they're sung.
+                </p>
+              </div>
+              <Switch checked={lyricsEnabled} onCheckedChange={setLyricsEnabled} />
+            </div>
+
+            {lyricsEnabled && (
+              <div className="space-y-3">
+                <textarea
+                  value={lyricsText}
+                  onChange={(e) => setLyricsText(e.target.value.slice(0, 5000))}
+                  placeholder="Paste your lyrics here — or leave empty and hit Auto-sync to transcribe them from the track…"
+                  rows={5}
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm resize-none"
+                  data-testid="textarea-remix-lyrics"
+                />
+                <label className="flex items-start gap-2 text-xs text-muted-foreground cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={rightsOk}
+                    onChange={(e) => setRightsOk(e.target.checked)}
+                    className="mt-0.5"
+                    data-testid="checkbox-remix-rights"
+                  />
+                  <span>I confirm I have the rights to this song and its lyrics.</span>
+                </label>
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <span className="text-xs text-muted-foreground">
+                    {syncNote ??
+                      (/\[\d{1,2}:\d{2}/.test(lyricsText)
+                        ? "Timestamps detected — exact sync."
+                        : "Auto-sync listens to the track and times each word (2 credits).")}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={autoSync}
+                    disabled={syncing || !rightsOk || !videoId}
+                    className="gap-2"
+                    data-testid="button-remix-autosync"
+                  >
+                    {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                    {syncing ? "Listening to the track…" : "Auto-sync to vocals"}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+
           {error && (
             <div className="flex items-start gap-2 text-sm text-destructive">
               <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" /> {error}
@@ -1288,7 +1399,11 @@ function RemixPanel({
                 ? "Select at least one clip"
                 : <>Regenerating {selected.size} of {clips?.length} clips · <span className="font-medium text-foreground tabular-nums">~{cost} credits</span></>}
             </span>
-            <Button onClick={regenerate} disabled={submitting || selected.size === 0} className="gap-2">
+            <Button
+              onClick={regenerate}
+              disabled={submitting || selected.size === 0 || (lyricsEnabled && !!lyricsText.trim() && !rightsOk)}
+              className="gap-2"
+            >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
               Regenerate selected
             </Button>

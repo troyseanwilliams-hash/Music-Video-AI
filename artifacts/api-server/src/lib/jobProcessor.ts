@@ -1164,8 +1164,17 @@ async function processRemixJob(job: JobRow): Promise<void> {
       });
       videoBuffer = stitchResult.videoBuffer;
       thumbnailBuffer = stitchResult.thumbnailBuffer;
+    } else if (built.length > 0) {
+      // Silent remix — stitch all clips (and burn captions) without audio.
+      const stitchResult = await stitchVideoClips({
+        clips: built.map((c) => ({ buffer: c.buffer, targetDuration: c.targetDuration })),
+        totalDuration,
+        lyricsText: (job as JobRow & { lyricsText?: string | null }).lyricsText ?? undefined,
+      });
+      videoBuffer = stitchResult.videoBuffer;
+      thumbnailBuffer = stitchResult.thumbnailBuffer;
     } else {
-      videoBuffer = built[0]?.buffer ?? (await createSimulationClip(10));
+      videoBuffer = await createSimulationClip(10);
       thumbnailBuffer = await extractVideoThumbnail(videoBuffer, 2);
     }
 

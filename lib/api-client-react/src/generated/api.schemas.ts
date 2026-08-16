@@ -400,6 +400,13 @@ export interface RemixJobRequest {
    * @maxLength 1000
    */
   promptOverride?: string;
+  /**
+   * Karaoke captions burned into the remixed video. Omitted = inherit the original job's lyrics; empty string = clear them.
+   * @maxLength 5000
+   */
+  lyricsText?: string;
+  /** Required (true) whenever the remix will burn lyrics. */
+  acceptCopyright?: boolean;
 }
 
 export interface RemixJobResponse {

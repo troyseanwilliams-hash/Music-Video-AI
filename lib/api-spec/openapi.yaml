@@ -1177,6 +1177,15 @@ components:
           type: string
           maxLength: 1000
           description: Optional prompt applied to the regenerated clips
+        lyricsText:
+          type: string
+          maxLength: 5000
+          description: >-
+            Karaoke captions burned into the remixed video. Omitted = inherit the
+            original job's lyrics; empty string = clear them.
+        acceptCopyright:
+          type: boolean
+          description: Required (true) whenever the remix will burn lyrics.
 
     RemixJobResponse:
       type: object
