@@ -162,7 +162,7 @@ export default function Generate() {
   const [sunoInputUrl, setSunoInputUrl] = useState("");
   const [sunoAutoResolve, setSunoAutoResolve] = useState(false);
   const [sunoResolving, setSunoResolving] = useState(false);
-  const [sunoResolved, setSunoResolved] = useState<{ audioUrl: string; title: string; artist: string } | null>(null);
+  const [sunoResolved, setSunoResolved] = useState<{ audioUrl: string; title: string; artist: string; objectPath?: string } | null>(null);
   const [sunoError, setSunoError] = useState<string | null>(null);
   const [objectPath, setObjectPath] = useState<string | null>(null);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
@@ -524,19 +524,61 @@ export default function Generate() {
 
   const characterLabel = CHARACTERS.find((c) => c.value === character)?.label ?? "None";
 
-  // Auto-sync lyrics against the uploaded audio (2 credits). Only available
-  // when the audio source is an uploaded file with a stored object path.
+  // Auto-sync lyrics against the audio source (2 credits).
+  // Upload tab: uses the stored objectPath directly.
+  // Suno tab: imports the resolved streaming URL to object storage first (cached
+  //           on sunoResolved.objectPath so repeat clicks don't re-import).
+  const canAutoSync =
+    sourceType === CreateJobRequestAudioSourceType.upload
+      ? !!objectPath
+      : sourceType === CreateJobRequestAudioSourceType.suno
+        ? !!sunoResolved
+        : false;
+
   const autoSyncLyrics = async () => {
-    if (!objectPath || !copyrightAcknowledged || lyricsSyncing) return;
+    if (!canAutoSync || !copyrightAcknowledged || lyricsSyncing) return;
     setLyricsSyncing(true);
     setLyricsSyncNote(null);
     try {
+      let audioObjectPath: string | null = null;
+
+      if (sourceType === CreateJobRequestAudioSourceType.upload) {
+        audioObjectPath = objectPath;
+      } else if (sourceType === CreateJobRequestAudioSourceType.suno && sunoResolved) {
+        // Use cached objectPath from a prior import, or import now.
+        if (sunoResolved.objectPath) {
+          audioObjectPath = sunoResolved.objectPath;
+        } else {
+          setLyricsSyncNote("Importing track… this takes a few seconds.");
+          const imp = await fetch("/api/audio/import-from-link", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: sunoResolved.audioUrl }),
+          });
+          const impData = await imp.json().catch(() => ({}));
+          if (!imp.ok) {
+            setLyricsSyncNote(impData?.error || "Couldn't import track. Please try again.");
+            return;
+          }
+          audioObjectPath = impData.objectPath as string;
+          // Cache so the next Auto-sync click skips the import.
+          setSunoResolved((prev) => prev ? { ...prev, objectPath: audioObjectPath! } : prev);
+        }
+        setLyricsSyncNote(null);
+      }
+
+      if (!audioObjectPath) {
+        setLyricsSyncNote("No audio source found — upload a track or load a Suno link.");
+        return;
+      }
+
       const res = await fetch(`/api/lyrics/align`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          audioObjectPath: objectPath,
+          audioObjectPath,
           lyricsText: lyricsText.trim() || undefined,
           acceptCopyright: true,
         }),
@@ -1529,25 +1571,29 @@ export default function Generate() {
                   )}
                 </div>
 
-                {/* Auto-sync to vocals — mirrors the Remix panel; only uploaded audio can be analyzed */}
-                {sourceType === CreateJobRequestAudioSourceType.upload && (
+                {/* Auto-sync to vocals — available for uploaded files and resolved Suno tracks */}
+                {sourceType !== CreateJobRequestAudioSourceType.none && (
                   <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
                     <span className="text-xs text-muted-foreground">
                       {lyricsSyncNote ??
-                        (!objectPath
-                          ? "Upload your track above, then Auto-sync can time each word to the vocals (2 credits)."
+                        (!canAutoSync
+                          ? sourceType === CreateJobRequestAudioSourceType.upload
+                            ? "Upload your track above, then Auto-sync can time each word to the vocals (2 credits)."
+                            : "Load a Suno track above, then Auto-sync can time each word to the vocals (2 credits)."
                           : !copyrightAcknowledged
                             ? "Tick the rights box below the summary to enable Auto-sync (2 credits)."
                             : /\[\d{1,2}:\d{2}/.test(lyricsText)
                               ? "Timestamps detected — already synced."
-                              : "Auto-sync listens to the track and times each word (2 credits). Leave the box empty to transcribe the lyrics too.")}
+                              : sourceType === CreateJobRequestAudioSourceType.suno
+                                ? "Auto-sync imports your Suno track and times each word (2 credits). Leave the box empty to transcribe too."
+                                : "Auto-sync listens to the track and times each word (2 credits). Leave the box empty to transcribe the lyrics too.")}
                     </span>
                     <Button
                       type="button"
                       size="sm"
                       variant="outline"
                       onClick={autoSyncLyrics}
-                      disabled={lyricsSyncing || !objectPath || !copyrightAcknowledged}
+                      disabled={lyricsSyncing || !canAutoSync || !copyrightAcknowledged}
                       className="gap-2 shrink-0"
                       data-testid="button-generate-autosync"
                     >
