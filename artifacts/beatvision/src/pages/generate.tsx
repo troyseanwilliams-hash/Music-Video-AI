@@ -15,7 +15,8 @@ import {
   VideoStyle,
   type CreateJobRequest,
 } from "@workspace/api-client-react";
-import { estimateCreditCost, canAffordCredits, LYRIC_OVERLAY_COST, PROVIDER_LABELS, type AiProvider } from "@/lib/creditPricing";
+import { estimateCreditCost, canAffordCredits, LYRIC_ALIGN_COST, LYRIC_OVERLAY_COST, PROVIDER_LABELS, type AiProvider } from "@/lib/creditPricing";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -1624,6 +1625,16 @@ export default function Generate() {
                       {lyricsSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                       {lyricsSyncing ? "Listening to the track…" : "Auto-sync to vocals"}
                     </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button type="button" aria-label="Auto-sync cost details" className="text-muted-foreground hover:text-foreground transition-colors shrink-0" data-testid="tooltip-generate-autosync-cost">
+                          <Info className="h-4 w-4" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-[260px] text-xs">
+                        Auto-sync costs {LYRIC_ALIGN_COST} credits each run — AI listens to your track and times every word to the vocals. Generating with lyrics also adds {LYRIC_OVERLAY_COST} credits to the video's cost for the karaoke burn (already included in the price shown).
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
                 )}
               </motion.div>

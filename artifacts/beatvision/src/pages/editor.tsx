@@ -11,7 +11,8 @@ import { SoundtrackPickerDialog } from "@/components/SoundtrackPickerDialog";
 import TopUpRequiredDialog from "@/components/TopUpRequiredDialog";
 import { TutorialTip } from "@/components/TutorialTip";
 import { useGetDashboardStats } from "@workspace/api-client-react";
-import { canAffordCredits } from "@/lib/creditPricing";
+import { canAffordCredits, LYRIC_ALIGN_COST } from "@/lib/creditPricing";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SAMPLE_LYRICS } from "@/lib/sampleLyrics";
 import {
   Select,
@@ -1515,6 +1516,16 @@ export default function Editor() {
                   {lyricsSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                   {lyricsSyncing ? "Listening to the track…" : "Auto-sync to vocals"}
                 </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button type="button" aria-label="Auto-sync cost details" className="text-muted-foreground hover:text-foreground transition-colors shrink-0" data-testid="tooltip-editor-autosync-cost">
+                      <Info className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-[260px] text-xs">
+                    Auto-sync costs {LYRIC_ALIGN_COST} credits each run — AI listens to the audio and times every word to the vocals. The synced lyrics are then burned into your export as karaoke captions.
+                  </TooltipContent>
+                </Tooltip>
               </div>
             </div>
           </div>

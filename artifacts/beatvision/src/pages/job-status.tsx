@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useRoute, useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { SAMPLE_LYRICS } from "@/lib/sampleLyrics";
-import { LYRIC_OVERLAY_COST } from "@/lib/creditPricing";
+import { LYRIC_ALIGN_COST, LYRIC_OVERLAY_COST } from "@/lib/creditPricing";
+import { Tooltip as UiTooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useGetJob, getGetJobQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Loader2, Music, CheckCircle2, AlertCircle, ArrowLeft,
   Play, RefreshCw, Download, ExternalLink, Clock,
-  AudioWaveform, Clapperboard, Scissors, Sparkles, RotateCcw,
+  AudioWaveform, Clapperboard, Scissors, Sparkles, RotateCcw, Info,
   WifiOff, Wifi, FileAudio, Server, Zap, Plus, Link2, Check, ShieldAlert,
   TriangleAlert, X,
 } from "lucide-react";
@@ -1410,6 +1411,16 @@ function RemixPanel({
                     {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                     {syncing ? "Listening to the track…" : "Auto-sync to vocals"}
                   </Button>
+                  <UiTooltip>
+                    <TooltipTrigger asChild>
+                      <button type="button" aria-label="Auto-sync cost details" className="text-muted-foreground hover:text-foreground transition-colors shrink-0" data-testid="tooltip-remix-autosync-cost">
+                        <Info className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-[260px] text-xs">
+                      Auto-sync costs {LYRIC_ALIGN_COST} credits each run — AI listens to the track and times every word to the vocals. Remixing with lyrics also adds {LYRIC_OVERLAY_COST} credits to the remix cost for the karaoke burn (included in the total shown).
+                    </TooltipContent>
+                  </UiTooltip>
                 </div>
               </div>
             )}
