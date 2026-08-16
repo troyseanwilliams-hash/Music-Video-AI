@@ -283,6 +283,9 @@ export default function Editor() {
   const [resolution, setResolution] = useState<"720p" | "1080p">("720p");
   const [orientation, setOrientation] = useState<"landscape" | "portrait">("landscape");
   const [videoName, setVideoName] = useState("");
+  // The ID of the source video loaded from Gallery — used as the audio source
+  // for Auto-sync when no separate music file has been added.
+  const [sourceVideoId, setSourceVideoId] = useState<string | null>(null);
   const [lyricsText, setLyricsText] = useState("");
   const [lyricsSyncing, setLyricsSyncing] = useState(false);
   const [lyricsSyncNote, setLyricsSyncNote] = useState<string | null>(null);
@@ -425,6 +428,9 @@ export default function Editor() {
             uploading: false,
           },
         ]);
+      }
+      if (typeof init?.videoId === "string" && init.videoId) {
+        setSourceVideoId(init.videoId);
       }
     } catch {
       /* ignore */
@@ -672,22 +678,30 @@ export default function Editor() {
     }
   }
 
-  // Auto-sync lyrics against the added music track (2 credits). Mirrors the
-  // Generate page — only a track with a stored object path can be analyzed.
+  // Auto-sync lyrics (2 credits).
+  // Priority: uploaded music track → source video audio (loaded from Gallery).
+  // Returns true when at least one audio source is available.
+  const canAutoSync = !!(music?.objectPath || sourceVideoId);
   const autoSyncLyrics = async () => {
-    if (!music?.objectPath || !acceptedCopyright || lyricsSyncing) return;
+    if (!canAutoSync || !acceptedCopyright || lyricsSyncing) return;
     setLyricsSyncing(true);
     setLyricsSyncNote(null);
     try {
+      // Prefer the added music file; fall back to the Gallery video's own audio.
+      const body: Record<string, string | undefined> = {
+        lyricsText: lyricsText.trim() || undefined,
+        acceptCopyright: "true",
+      };
+      if (music?.objectPath) {
+        body.audioObjectPath = music.objectPath;
+      } else {
+        body.videoId = sourceVideoId!;
+      }
       const res = await fetch(`/api/lyrics/align`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          audioObjectPath: music.objectPath,
-          lyricsText: lyricsText.trim() || undefined,
-          acceptCopyright: true,
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -1389,24 +1403,26 @@ export default function Editor() {
               )}
             </div>
 
-            {/* Auto-sync to vocals — mirrors Generate/Remix; needs an uploaded music track */}
+            {/* Auto-sync to vocals — music track preferred; falls back to the video's own audio */}
             <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
               <span className="text-xs text-muted-foreground">
                 {lyricsSyncNote ??
-                  (!music?.objectPath
-                    ? "Add a music track above, then Auto-sync can time each word to the vocals (2 credits)."
+                  (!canAutoSync
+                    ? "Add a music track above (or open from Gallery) so Auto-sync can time each word to the vocals (2 credits)."
                     : !acceptedCopyright
                       ? "Tick the rights box below to enable Auto-sync (2 credits)."
                       : /\[\d{1,2}:\d{2}/.test(lyricsText)
                         ? "Timestamps detected — already synced."
-                        : "Auto-sync listens to the track and times each word (2 credits). Leave the box empty to transcribe the lyrics too.")}
+                        : music?.objectPath
+                          ? "Auto-sync times each word to your music track (2 credits). Leave the box empty to transcribe the lyrics too."
+                          : "Auto-sync times each word to the video's own audio (2 credits). Leave the box empty to transcribe the lyrics too.")}
               </span>
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
                 onClick={autoSyncLyrics}
-                disabled={lyricsSyncing || !music?.objectPath || !acceptedCopyright}
+                disabled={lyricsSyncing || !canAutoSync || !acceptedCopyright}
                 className="gap-2 shrink-0"
                 data-testid="button-editor-autosync"
               >

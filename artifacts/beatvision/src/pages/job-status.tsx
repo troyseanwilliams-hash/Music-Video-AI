@@ -775,7 +775,7 @@ export default function JobStatus() {
                 } catch {
                   /* fall back to constructed paths */
                 }
-                sessionStorage.setItem("editor:init", JSON.stringify({ video }));
+                sessionStorage.setItem("editor:init", JSON.stringify({ video, videoId: vid }));
                 setLocation("/editor");
               }}
             >
