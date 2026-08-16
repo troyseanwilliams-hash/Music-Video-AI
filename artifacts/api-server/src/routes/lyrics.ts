@@ -50,21 +50,37 @@ async function refundCredits(userId: string, subDebit: number, topDebit: number)
 /**
  * Trial allowance: consume one of the user's TRIAL_FREE_ALIGNS free auto-sync
  * runs. Row-locked so concurrent aligns can't both grab the last free slot.
- * Returns true when a free slot was consumed (no credit charge needed).
+ * - "free":      a free slot was consumed (no credit charge needed)
+ * - "exhausted": user is on an active trial with no free slots left — Auto-sync
+ *                is LOCKED for the rest of the trial (no pay-with-credits path)
+ * - "not_trial": not on a trial — normal credit charging applies
  */
-async function consumeTrialAlign(userId: string): Promise<boolean> {
+async function consumeTrialAlign(userId: string): Promise<"free" | "exhausted" | "not_trial"> {
   return db.transaction(async (tx) => {
     const [u] = await tx.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1).for("update");
-    if (!u) return false;
+    if (!u) return "not_trial";
+    const isAdmin = !!(
+      process.env.ADMIN_EMAIL && u.email?.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase()
+    );
     const trialActive =
-      !!u.trialEndsAt && new Date(u.trialEndsAt).getTime() > Date.now() && u.subscriptionStatus !== "active";
-    if (!trialActive || u.trialAlignsUsed >= TRIAL_FREE_ALIGNS) return false;
+      !isAdmin &&
+      !!u.trialEndsAt && new Date(u.trialEndsAt).getTime() > Date.now() &&
+      u.subscriptionStatus !== "active";
+    if (!trialActive) return "not_trial";
+    if (u.trialAlignsUsed >= TRIAL_FREE_ALIGNS) return "exhausted";
     await tx.update(usersTable)
       .set({ trialAlignsUsed: sql`trial_aligns_used + 1` })
       .where(eq(usersTable.id, userId));
-    return true;
+    return "free";
   });
 }
+
+/** 403 payload when a trial user has used all free Auto-syncs. */
+const TRIAL_ALIGN_LOCKED = {
+  error: `You've used your ${TRIAL_FREE_ALIGNS} free Auto-syncs. Auto-sync unlocks again when you subscribe — you can still type or paste lyrics (including LRC timestamps) for free.`,
+  code: "TRIAL_ALIGN_EXHAUSTED",
+  trialAlignLimit: TRIAL_FREE_ALIGNS,
+};
 
 /** Give back a free trial slot when the alignment itself failed. */
 async function releaseTrialAlign(userId: string): Promise<void> {
@@ -136,7 +152,12 @@ router.post("/lyrics/align", async (req, res) => {
       res.status(404).json({ error: "Video not found" });
       return;
     }
-    const freeTrialSlot = await consumeTrialAlign(userId);
+    const trialSlot = await consumeTrialAlign(userId);
+    if (trialSlot === "exhausted") {
+      res.status(403).json(TRIAL_ALIGN_LOCKED);
+      return;
+    }
+    const freeTrialSlot = trialSlot === "free";
     let charge: ChargeResult | null = null;
     if (!freeTrialSlot) {
       charge = await chargeCredits(userId, LYRIC_ALIGN_COST);
@@ -198,8 +219,14 @@ router.post("/lyrics/align", async (req, res) => {
   }
 
   // Alignment always runs the paid AssemblyAI API, so it costs credits —
-  // except for the small free trial allowance.
-  const freeTrialSlot = await consumeTrialAlign(userId);
+  // except for the small free trial allowance. Trial users who've used their
+  // allowance are locked out until they subscribe.
+  const trialSlot = await consumeTrialAlign(userId);
+  if (trialSlot === "exhausted") {
+    res.status(403).json(TRIAL_ALIGN_LOCKED);
+    return;
+  }
+  const freeTrialSlot = trialSlot === "free";
   let charge: ChargeResult | null = null;
   if (!freeTrialSlot) {
     charge = await chargeCredits(userId, LYRIC_ALIGN_COST);

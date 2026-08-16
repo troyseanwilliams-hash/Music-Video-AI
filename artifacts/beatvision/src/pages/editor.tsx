@@ -1482,10 +1482,14 @@ export default function Editor() {
                     <strong className="text-foreground">
                       {quota.trial.alignRemaining} of {quota.trial.alignFree} free
                     </strong>{" "}
-                    during your trial, then {quota.trial.alignCost} credits each.
+                    during your trial, then it unlocks with a subscription.
                   </>
                 ) : (
-                  <>Free trial Auto-syncs used — each Auto-sync now costs {quota.trial.alignCost} credits.</>
+                  <>
+                    Free trial Auto-syncs used — Auto-sync unlocks when you{" "}
+                    <Link href="/pricing" className="text-primary underline">subscribe</Link>. Typed or
+                    pasted lyrics still work.
+                  </>
                 )}
               </p>
             )}
