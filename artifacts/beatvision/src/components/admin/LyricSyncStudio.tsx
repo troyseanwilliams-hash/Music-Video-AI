@@ -8,14 +8,78 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import {
-  calculateLipsyncCost, LIPSYNC_MAX_SECONDS, LIPSYNC_CREDITS_PER_SECOND, LYRIC_ALIGN_COST,
+  calculateLipsyncCost, LIPSYNC_MAX_SECONDS, LIPSYNC_CREDITS_PER_SECOND, LYRIC_ALIGN_COST, LYRIC_OVERLAY_COST,
 } from "@/lib/creditPricing";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { LYRICSYNC_PUBLIC } from "@/lib/featureFlags";
 import { SoundtrackPickerDialog, type PickedSoundtrack } from "@/components/SoundtrackPickerDialog";
 import {
   Mic2, Music2, Wand2, Play, Pause, Upload, Smile, Copy, Type, Clock,
-  ChevronLeft, ChevronRight, Info, AlertTriangle, Loader2,
+  ChevronLeft, ChevronRight, Info, AlertTriangle, Loader2, Film,
 } from "lucide-react";
+
+type PickedVideo = { id: string; title: string; url: string; durationSeconds: number | null };
+
+/** Minimal "pick one of my videos" dialog (thumbnail grid from /api/videos). */
+function VideoPickerDialog({ children, onSelect }: { children: React.ReactNode; onSelect: (v: PickedVideo) => void }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [videos, setVideos] = useState<Array<{
+    id: string; title: string | null; thumbnailObjectPath: string | null;
+    videoObjectPath: string; durationSeconds: number | null;
+  }>>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    fetch("/api/videos?limit=30", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("load failed"))))
+      .then((d) => setVideos(d.videos ?? []))
+      .catch(() => setVideos([]))
+      .finally(() => setLoading(false));
+  }, [open]);
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>{children}</DialogTrigger>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>Pick a video</DialogTitle></DialogHeader>
+        {loading ? (
+          <div className="flex items-center justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+        ) : videos.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">No videos in your library yet.</p>
+        ) : (
+          <div className="grid grid-cols-3 gap-2 max-h-[50vh] overflow-auto pr-1">
+            {videos.map((v) => (
+              <button
+                key={v.id}
+                className="group relative aspect-[9/16] overflow-hidden rounded-lg border border-border bg-background/50 hover:border-primary"
+                onClick={() => {
+                  onSelect({
+                    id: v.id,
+                    title: v.title ?? "Untitled video",
+                    url: `/api/storage${v.videoObjectPath}`,
+                    durationSeconds: v.durationSeconds,
+                  });
+                  setOpen(false);
+                }}
+              >
+                {v.thumbnailObjectPath ? (
+                  <img src={`/api/storage${v.thumbnailObjectPath}`} alt={v.title ?? "Video"} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-muted-foreground"><Film className="h-6 w-6" /></div>
+                )}
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-1.5">
+                  <div className="truncate text-[11px] font-medium text-white">{v.title ?? "Untitled"}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 /**
  * AILyricSync — Lyric + Lip Sync Studio (Beta · Admin-only)
@@ -172,7 +236,10 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
   const audioFileRef = useRef<HTMLInputElement | null>(null);
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [libObjectPath, setLibObjectPath] = useState<string | null>(null); // set when picked from library
+  const [pickedVideo, setPickedVideo] = useState<PickedVideo | null>(null); // set when syncing to a finished video
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [burning, setBurning] = useState(false);
 
   // ── Lyrics + timing ──
   const [lyrics, setLyrics] = useState(SAMPLE);
@@ -200,17 +267,29 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
   const [lipSeconds, setLipSeconds] = useState(15);
   const faceInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Any source change: stop whatever was playing and rewind the clock, so the
+  // new source never appears "playing" while the old one keeps going.
+  const resetPlayback = useCallback(() => {
+    audioRef.current?.pause();
+    videoRef.current?.pause();
+    setPlaying(false);
+    simClock.current = 0;
+    setNow(0);
+  }, []);
+
   const lrc = useMemo(() => toLrc(lines), [lines]);
   const lipCost = calculateLipsyncCost(lipSeconds); // same 1.5× margin as everything else
   const jobCost = LYRIC_ALIGN_COST + (lipEnabled ? lipCost : 0); // add-ons this studio controls
 
   // Load audio file → object URL + duration + waveform peaks.
   const onAudioFile = useCallback(async (file: File) => {
+    resetPlayback();
     const url = URL.createObjectURL(file);
     setAudioUrl(url);
     setAudioName(file.name);
     setAudioFile(file);
     setLibObjectPath(null); // uploading replaces any library selection
+    setPickedVideo(null);
     setSynced(false);
     setLines([]);
     // Try to decode real peaks; fall back to a synthetic waveform.
@@ -240,12 +319,29 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
   // Pick a song from the user's own library — already in object storage, so we
   // align it directly (no upload). Duration comes from the <audio> metadata.
   const onPickLibrary = useCallback((t: PickedSoundtrack) => {
+    resetPlayback();
     setAudioUrl(t.url);
     setAudioName(t.title);
     setAudioFile(null);
     setLibObjectPath(t.objectPath);
+    setPickedVideo(null);
     setSynced(false);
     setLines([]);
+    setPeaks(Array.from({ length: 120 }, (_, i) => 0.25 + Math.abs(Math.sin(i * 0.5)) * 0.6));
+  }, []);
+
+  // Pick one of the user's finished videos — its audio drives alignment, the
+  // video itself plays behind the karaoke preview, and Burn writes onto it.
+  const onPickVideo = useCallback((v: PickedVideo) => {
+    resetPlayback();
+    setPickedVideo(v);
+    setAudioUrl(null);
+    setAudioName(v.title);
+    setAudioFile(null);
+    setLibObjectPath(null);
+    setSynced(false);
+    setLines([]);
+    if (v.durationSeconds) setDuration(v.durationSeconds);
     setPeaks(Array.from({ length: 120 }, (_, i) => 0.25 + Math.abs(Math.sin(i * 0.5)) * 0.6));
   }, []);
 
@@ -268,15 +364,17 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
   // /api/lyrics/align (AssemblyAI). Falls back to estimateSync on any error,
   // low confidence, or when no audio file is loaded.
   const runSync = useCallback(async () => {
-    if (!audioFile && !libObjectPath) { estimateSync(); return; }
+    if (!audioFile && !libObjectPath && !pickedVideo) { estimateSync(); return; }
     setSyncing(true);
     try {
-      const objectPath = libObjectPath ?? (await presignAndUpload(audioFile!));
+      const body: Record<string, unknown> = { lyricsText: lyrics.trim() || null };
+      if (pickedVideo) body.videoId = pickedVideo.id;
+      else body.audioObjectPath = libObjectPath ?? (await presignAndUpload(audioFile!));
       const res = await fetch("/api/lyrics/align", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ audioObjectPath: objectPath, lyricsText: lyrics.trim() || null }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Alignment failed");
@@ -304,7 +402,7 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
     } finally {
       setSyncing(false);
     }
-  }, [audioFile, libObjectPath, lyrics, estimateSync, toast]);
+  }, [audioFile, libObjectPath, pickedVideo, lyrics, estimateSync, toast]);
 
   // Unified playback clock (real audio when present, else a sim clock).
   useEffect(() => {
@@ -317,39 +415,43 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
       const dt = (ts - lastTs.current) / 1000;
       lastTs.current = ts;
       let t: number;
-      if (audioRef.current && audioUrl) {
+      if (pickedVideo && videoRef.current) {
+        t = videoRef.current.currentTime;
+      } else if (audioRef.current && audioUrl) {
         t = audioRef.current.currentTime;
       } else {
         simClock.current = Math.min(duration, simClock.current + dt);
         t = simClock.current;
       }
       setNow(t);
-      if (t >= duration - 0.05 && !audioUrl) { setPlaying(false); return; }
+      if (t >= duration - 0.05 && !audioUrl && !pickedVideo) { setPlaying(false); return; }
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, [playing, audioUrl, duration]);
+  }, [playing, audioUrl, pickedVideo, duration]);
 
   const togglePlay = useCallback(() => {
     // Play never triggers the paid alignment API — if nothing is synced yet,
     // spread the lines for free so the preview still shows something.
     if (!synced) estimateSync();
-    if (audioRef.current && audioUrl) {
-      if (playing) audioRef.current.pause();
-      else audioRef.current.play().catch(() => {});
+    const media = pickedVideo ? videoRef.current : (audioUrl ? audioRef.current : null);
+    if (media) {
+      if (playing) media.pause();
+      else media.play().catch(() => {});
     } else if (!playing) {
       if (simClock.current >= duration - 0.05) simClock.current = 0;
     }
     setPlaying((p) => !p);
-  }, [synced, estimateSync, playing, audioUrl, duration]);
+  }, [synced, estimateSync, playing, audioUrl, pickedVideo, duration]);
 
   const seek = useCallback((t: number) => {
     t = Math.max(0, Math.min(duration, t));
-    if (audioRef.current && audioUrl) audioRef.current.currentTime = t;
+    const media = pickedVideo ? videoRef.current : (audioUrl ? audioRef.current : null);
+    if (media) media.currentTime = t;
     simClock.current = t;
     setNow(t);
-  }, [duration, audioUrl]);
+  }, [duration, audioUrl, pickedVideo]);
 
   const nudge = useCallback((idx: number, delta: number) => {
     setLines((prev) => prev.map((ln, i) => {
@@ -376,13 +478,39 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
     );
   };
 
+  // Burn the synced lyrics onto the picked video — the server renders a NEW
+  // video (original untouched) and saves it to the user's library.
+  const burnOnVideo = useCallback(async () => {
+    if (!pickedVideo || !lrc) return;
+    setBurning(true);
+    try {
+      const res = await fetch(`/api/videos/${pickedVideo.id}/lyrics`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lyricsText: lrc }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Burn failed");
+      toast({
+        title: "Lyrics burned onto the video",
+        description: `Saved to your library as a new video (${data.charged} credits). The original is untouched.`,
+      });
+    } catch (err) {
+      toast({
+        title: "Burn failed",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setBurning(false);
+    }
+  }, [pickedVideo, lrc, toast]);
+
   const stubRender = () => {
-    const lip = lipEnabled
-      ? ` Lip-sync add-on: +${lipCost} credits (runs via /api/videos/:id/lipsync on the rendered video).`
-      : "";
     toast({
-      title: "POC — render is stubbed",
-      description: `Wiring: submit lyricsText (LRC) to the Generate job pipeline; karaoke burns in server-side.${lip}`,
+      title: "Pick a video first",
+      description: "Choose one of your videos (My Videos) to burn these lyrics onto, or copy the LRC into Generate.",
     });
   };
 
@@ -452,6 +580,9 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
                     <div className="text-xs text-muted-foreground">{audioName ? `${fmtClock(duration)} · ready` : "Upload a file or pick from your library"}</div>
                   </div>
                   <div className="ml-auto flex items-center gap-2 shrink-0">
+                    <VideoPickerDialog onSelect={onPickVideo}>
+                      <Button variant="outline" size="sm"><Film className="mr-1.5 h-3.5 w-3.5" /> My Videos</Button>
+                    </VideoPickerDialog>
                     <SoundtrackPickerDialog onSelect={onPickLibrary}>
                       <Button variant="outline" size="sm"><Music2 className="mr-1.5 h-3.5 w-3.5" /> Library</Button>
                     </SoundtrackPickerDialog>
@@ -539,6 +670,16 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
               <div>
                 <Label className="mb-1.5">Preview</Label>
                 <div className="relative mx-auto aspect-[9/16] max-h-[440px] w-full overflow-hidden rounded-2xl border border-border bg-[radial-gradient(120%_80%_at_50%_0%,hsl(var(--primary)/0.18),#0a0c12)] flex flex-col items-center justify-end">
+                  {pickedVideo && (
+                    <video
+                      ref={videoRef}
+                      src={pickedVideo.url}
+                      playsInline
+                      onLoadedMetadata={(e) => { if (isFinite(e.currentTarget.duration)) setDuration(e.currentTarget.duration); }}
+                      onEnded={() => setPlaying(false)}
+                      className="absolute inset-0 h-full w-full object-cover"
+                    />
+                  )}
                   <div className="absolute top-2 right-3 text-[10px] text-white/50">AIBeatSync</div>
                   {lipEnabled && (
                     <div className="absolute top-2 left-3 text-[10px] text-amber-400/80">Lip sync renders at export · no live preview</div>
@@ -692,8 +833,16 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
             </div>
             <Textarea readOnly value={lrc || "// Auto-sync to generate LRC…"} className="min-h-[110px] font-mono text-xs bg-background/60" />
             <div className="flex flex-wrap items-center gap-2 pt-1">
-              <Button onClick={stubRender} disabled={!lines.length} className="gap-1.5"><Wand2 className="h-4 w-4" /> Send to render (POC)</Button>
-              <span className="flex items-center gap-1 text-[11px] text-muted-foreground"><Info className="h-3.5 w-3.5" /> Copy LRC → Generate → “Lyric video · karaoke captions” works end-to-end today.</span>
+              {pickedVideo ? (
+                <Button onClick={burnOnVideo} disabled={!lines.length || burning} className="gap-1.5">
+                  {burning
+                    ? <><Loader2 className="h-4 w-4 animate-spin" /> Burning lyrics…</>
+                    : <><Film className="h-4 w-4" /> Burn onto “{pickedVideo.title}” · {LYRIC_OVERLAY_COST} credits</>}
+                </Button>
+              ) : (
+                <Button onClick={stubRender} disabled={!lines.length} className="gap-1.5"><Wand2 className="h-4 w-4" /> Burn onto a video…</Button>
+              )}
+              <span className="flex items-center gap-1 text-[11px] text-muted-foreground"><Info className="h-3.5 w-3.5" /> {pickedVideo ? "Renders a new video in your library — the original stays untouched." : "Pick a video (My Videos) to burn onto, or copy the LRC into Generate."}</span>
             </div>
           </div>
         </CardContent>

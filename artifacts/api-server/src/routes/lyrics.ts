@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
 import { alignLyrics, lyricAlignAvailable } from "../lib/lyricAlign.js";
-import { db, creditsTable, soundtracksTable } from "@workspace/db";
+import { db, creditsTable, soundtracksTable, videosTable } from "@workspace/db";
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { LYRIC_ALIGN_COST } from "../lib/creditCost.js";
@@ -55,7 +55,9 @@ function lrcUsable(lrc: unknown): boolean {
 /**
  * POST /lyrics/align
  * Transcribe / align a loaded song into enhanced LRC for karaoke.
- * Body: { audioObjectPath: string, lyricsText?: string }
+ * Body: { audioObjectPath?: string, videoId?: string, lyricsText?: string }
+ * (exactly one of audioObjectPath / videoId — videoId reads the audio track of
+ * one of the user's own finished videos)
  * Returns: { lrc, confidence, source, wordCount, lowConfidence, charged }
  * Costs LYRIC_ALIGN_COST credits; refunded if alignment fails.
  */
@@ -75,12 +77,52 @@ router.post("/lyrics/align", async (req, res) => {
   const body = (req.body ?? {}) as Record<string, unknown>;
   const audioObjectPath = typeof body.audioObjectPath === "string" ? body.audioObjectPath.trim() : "";
   const lyricsText = typeof body.lyricsText === "string" ? body.lyricsText : null;
-  if (!audioObjectPath) {
-    res.status(400).json({ error: "audioObjectPath is required" });
+  const videoId = typeof body.videoId === "string" ? body.videoId.trim() : "";
+  if (!audioObjectPath && !videoId) {
+    res.status(400).json({ error: "audioObjectPath or videoId is required" });
+    return;
+  }
+  if (audioObjectPath && videoId) {
+    res.status(400).json({ error: "Provide exactly one of audioObjectPath or videoId" });
     return;
   }
 
   const userId = (req.user as { id: string }).id;
+
+  // Video source: align against the audio track of one of the user's own
+  // videos (AssemblyAI transcribes the audio of a video URL directly).
+  if (videoId) {
+    const [video] = await db
+      .select({ videoObjectPath: videosTable.videoObjectPath })
+      .from(videosTable)
+      .where(and(eq(videosTable.id, videoId), eq(videosTable.userId, userId), isNull(videosTable.deletedAt)))
+      .limit(1);
+    if (!video?.videoObjectPath) {
+      res.status(404).json({ error: "Video not found" });
+      return;
+    }
+    const charge = await chargeCredits(userId, LYRIC_ALIGN_COST);
+    if (!charge.ok) {
+      res.status(402).json({
+        error: `Vocal alignment costs ${LYRIC_ALIGN_COST} credits but you only have ${charge.remaining}.`,
+        code: "INSUFFICIENT_CREDITS",
+        creditsRequired: LYRIC_ALIGN_COST,
+        creditsRemaining: charge.remaining,
+      });
+      return;
+    }
+    try {
+      const audioUrl = await storageService.getObjectEntitySignedUrl(video.videoObjectPath, 3600);
+      const result = await alignLyrics({ audioUrl, lyricsText });
+      if (!lrcUsable(result.lrc)) throw new Error("Alignment produced no usable timing");
+      res.json({ ...result, charged: LYRIC_ALIGN_COST });
+    } catch (err) {
+      await refundCredits(userId, charge.subDebit, charge.topDebit);
+      req.log.warn({ err, videoId }, "Lyric alignment from video failed (credits refunded)");
+      res.status(502).json({ error: err instanceof Error ? err.message : "Lyric alignment failed" });
+    }
+    return;
+  }
 
   // Ownership check: only sign objects this user is allowed to read.
   // Audio objects in this app don't carry storage-level ACL metadata, so

@@ -63,33 +63,42 @@ async function loadOwnedVideo(userId: string, videoId: string) {
   return video ?? null;
 }
 
-async function chargeCredits(userId: string, cost: number): Promise<{ ok: boolean; remaining: number }> {
-  let [credits] = await db
-    .select()
-    .from(creditsTable)
-    .where(eq(creditsTable.userId, userId))
-    .limit(1);
-  if (!credits) {
-    [credits] = await db
-      .insert(creditsTable)
-      .values({ id: randomUUID(), userId })
-      .returning();
-  }
-  if (credits!.creditsRemaining < cost) {
-    return { ok: false, remaining: credits!.creditsRemaining };
-  }
-  // Subscription bucket first, then top-up — same split as other renders.
-  await db
-    .update(creditsTable)
-    .set({
-      subscriptionCredits: sql`GREATEST(subscription_credits - ${cost}, 0)`,
-      topupCredits: sql`GREATEST(topup_credits - GREATEST(${cost} - subscription_credits, 0), 0)`,
-      creditsRemaining: sql`GREATEST(credits_remaining - ${cost}, 0)`,
+type ChargeResult =
+  | { ok: true; remaining: number; subDebit: number; topDebit: number }
+  | { ok: false; remaining: number };
+
+/**
+ * Atomically debit credits. Row-locked (SELECT ... FOR UPDATE) so concurrent
+ * exports can't both pass the balance check, and the exact subscription/top-up
+ * split is recorded so a refund restores the same buckets.
+ */
+async function chargeCredits(userId: string, cost: number): Promise<ChargeResult> {
+  return db.transaction(async (tx) => {
+    let [c] = await tx.select().from(creditsTable).where(eq(creditsTable.userId, userId)).limit(1).for("update");
+    if (!c) [c] = await tx.insert(creditsTable).values({ id: randomUUID(), userId }).returning();
+    if (c!.creditsRemaining < cost) return { ok: false as const, remaining: c!.creditsRemaining };
+    const subDebit = Math.min(c!.subscriptionCredits, cost);
+    const topDebit = cost - subDebit;
+    await tx.update(creditsTable).set({
+      subscriptionCredits: sql`subscription_credits - ${subDebit}`,
+      topupCredits: sql`topup_credits - ${topDebit}`,
+      creditsRemaining: sql`credits_remaining - ${cost}`,
       creditsUsed: sql`credits_used + ${cost}`,
       updatedAt: new Date(),
-    })
-    .where(eq(creditsTable.userId, userId));
-  return { ok: true, remaining: credits!.creditsRemaining - cost };
+    }).where(eq(creditsTable.userId, userId));
+    return { ok: true as const, remaining: c!.creditsRemaining - cost, subDebit, topDebit };
+  });
+}
+
+/** Refund exactly the buckets that were debited. */
+async function refundCredits(userId: string, subDebit: number, topDebit: number): Promise<void> {
+  await db.update(creditsTable).set({
+    subscriptionCredits: sql`subscription_credits + ${subDebit}`,
+    topupCredits: sql`topup_credits + ${topDebit}`,
+    creditsRemaining: sql`credits_remaining + ${subDebit + topDebit}`,
+    creditsUsed: sql`GREATEST(credits_used - ${subDebit + topDebit}, 0)`,
+    updatedAt: new Date(),
+  }).where(eq(creditsTable.userId, userId));
 }
 
 async function withSignedUrls(metas: TeaserMetaRow[]) {
@@ -205,15 +214,7 @@ function makeHandler(kind: "teaser" | "canvas") {
       res.json({ teasers: await withSignedUrls(metas), charged: cost });
     } catch (err) {
       // Refund on failure so users aren't charged for nothing.
-      await db
-        .update(creditsTable)
-        .set({
-          topupCredits: sql`topup_credits + ${cost}`,
-          creditsRemaining: sql`credits_remaining + ${cost}`,
-          creditsUsed: sql`GREATEST(credits_used - ${cost}, 0)`,
-          updatedAt: new Date(),
-        })
-        .where(eq(creditsTable.userId, req.user.id));
+      await refundCredits(req.user.id, charge.subDebit, charge.topDebit);
       req.log.error({ err, videoId: video.id, kind }, "Social export failed (refunded)");
       res.status(500).json({ error: "Export failed — credits refunded. Please try again." });
     }
@@ -283,18 +284,16 @@ router.post("/videos/:id/lyrics", async (req: Request<{ id: string }>, res: Resp
       shareToken: randomUUID().replace(/-/g, "").slice(0, 16),
     });
 
-    const url = await storageService.getObjectEntitySignedUrl(videoObjectPath, 3600);
-    res.json({ videoId: newVideoId, url, charged: LYRIC_OVERLAY_COST });
+    // Work is durably delivered (video row inserted) — signing failures after
+    // this point must NOT trigger a refund.
+    try {
+      const url = await storageService.getObjectEntitySignedUrl(videoObjectPath, 3600);
+      res.json({ videoId: newVideoId, url, charged: LYRIC_OVERLAY_COST });
+    } catch {
+      res.json({ videoId: newVideoId, url: null, charged: LYRIC_OVERLAY_COST });
+    }
   } catch (err) {
-    await db
-      .update(creditsTable)
-      .set({
-        topupCredits: sql`topup_credits + ${LYRIC_OVERLAY_COST}`,
-        creditsRemaining: sql`credits_remaining + ${LYRIC_OVERLAY_COST}`,
-        creditsUsed: sql`GREATEST(credits_used - ${LYRIC_OVERLAY_COST}, 0)`,
-        updatedAt: new Date(),
-      })
-      .where(eq(creditsTable.userId, req.user.id));
+    await refundCredits(req.user.id, charge.subDebit, charge.topDebit);
     req.log.error({ err, videoId: video.id }, "Lyric overlay failed (refunded)");
     res.status(500).json({ error: "Lyric burn failed — credits refunded. Please try again." });
   }
@@ -336,6 +335,7 @@ router.post("/videos/:id/release-kit", async (req: Request<{ id: string }>, res:
   const lyricsCost = lyricsText ? LYRIC_OVERLAY_COST : 0;
   const totalCost = socialCost + lyricsCost;
 
+  let debit: { subDebit: number; topDebit: number } | null = null;
   if (totalCost > 0) {
     const charge = await chargeCredits(req.user.id, totalCost);
     if (!charge.ok) {
@@ -347,19 +347,12 @@ router.post("/videos/:id/release-kit", async (req: Request<{ id: string }>, res:
       });
       return;
     }
+    debit = { subDebit: charge.subDebit, topDebit: charge.topDebit };
   }
 
   const refund = async () => {
-    if (totalCost <= 0) return;
-    await db
-      .update(creditsTable)
-      .set({
-        topupCredits: sql`topup_credits + ${totalCost}`,
-        creditsRemaining: sql`credits_remaining + ${totalCost}`,
-        creditsUsed: sql`GREATEST(credits_used - ${totalCost}, 0)`,
-        updatedAt: new Date(),
-      })
-      .where(eq(creditsTable.userId, req.user.id));
+    if (!debit) return;
+    await refundCredits(req.user.id, debit.subDebit, debit.topDebit);
   };
 
   try {
