@@ -8,8 +8,8 @@
 //     user's text and only borrow the timing.
 //   • no lyricsText → use the transcription itself, grouped into lines ("asr").
 //
-// Env: ASSEMBLYAI_API_KEY. Cheapest async tier is Universal-2 (speech_model
-// "universal"). AssemblyAI fetches the (signed) audio URL directly.
+// Env: ASSEMBLYAI_API_KEY. Keep Universal-2 as the cost-conscious async tier.
+// AssemblyAI fetches the (signed) audio URL directly.
 
 const AAI_BASE = "https://api.assemblyai.com/v2";
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -103,7 +103,7 @@ export async function alignLyrics(params: { audioUrl: string; lyricsText?: strin
     headers: { authorization: key, "content-type": "application/json" },
     body: JSON.stringify({
       audio_url: params.audioUrl,
-      speech_model: "universal", // Universal-2 — cheapest async tier
+      speech_models: ["universal-2"], // Current API field; keep the cost-conscious tier
       punctuate: true,
       format_text: false,
     }),
