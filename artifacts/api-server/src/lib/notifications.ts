@@ -158,9 +158,16 @@ export function notifyNewUser(user: { id: string; email?: string | null; name?: 
 export function sendWelcomeEmail(user: { id: string; email?: string | null; name?: string | null }): void {
   const resend = getResend();
   if (!resend || !user.email) return;
-  const firstName = (user.name ?? "").trim().split(/\s+/)[0] || null;
+  const firstName = escapeHtml((user.name ?? "").trim().split(/\s+/)[0] || "") || null;
   const appUrl = process.env.APP_URL ?? "https://aibeatsync.com";
-  const unsub = unsubscribeUrl(appUrl, user.id);
+  let unsub: string;
+  let unsubHeaders: Record<string, string> | undefined;
+  try {
+    unsub = unsubscribeUrl(appUrl, user.id);
+    unsubHeaders = unsubscribeHeaders(unsub);
+  } catch {
+    unsub = `${appUrl}/dashboard`; // SESSION_SECRET missing — degrade gracefully, never block signup
+  }
   const feature = (title: string, desc: string) => `
     <tr>
       <td style="padding:10px 0;vertical-align:top;width:8px">
@@ -176,7 +183,7 @@ export function sendWelcomeEmail(user: { id: string; email?: string | null; name
       from: "AIBeatSync <notifications@aibeatsync.com>",
       to: user.email,
       subject: "Welcome to AIBeatSync 🎬 — turn your songs into music videos",
-      headers: unsubscribeHeaders(unsub),
+      ...(unsubHeaders ? { headers: unsubHeaders } : {}),
       html: `
         <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;padding:32px 24px;color:#111">
           <div style="text-align:center;margin-bottom:24px">

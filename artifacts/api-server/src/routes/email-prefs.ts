@@ -34,41 +34,66 @@ async function setNotify(uid: string, token: string, value: boolean): Promise<"o
   return updated.length ? "ok" : "not-found";
 }
 
-async function handleUnsubscribe(req: Request, res: Response, respondHtml: boolean): Promise<void> {
-  const uid = String(req.query.uid ?? "");
-  const token = String(req.query.token ?? "");
-  const result = await setNotify(uid, token, false);
-  if (result !== "ok") {
-    if (respondHtml) {
-      res.status(400).send(page("Link not valid", "This unsubscribe link is invalid or out of date. You can manage email notifications from your dashboard instead."));
-    } else {
-      res.status(400).json({ error: "Invalid unsubscribe link" });
-    }
-    return;
-  }
-  if (respondHtml) {
-    const resubUrl = `/api/email/resubscribe?uid=${encodeURIComponent(uid)}&token=${encodeURIComponent(token)}`;
-    res.send(page(
-      "You're unsubscribed",
-      `You won't receive video notification emails anymore. Security emails (like password resets) still send.<br><br>
-       Changed your mind? <a href="${resubUrl}" style="color:#7c3aed;font-weight:600;text-decoration:none">Resubscribe with one click</a>.`,
-    ));
-  } else {
-    res.json({ ok: true });
-  }
+function creds(req: Request): { uid: string; token: string } {
+  return { uid: String(req.query.uid ?? ""), token: String(req.query.token ?? "") };
 }
 
-// Browser click → confirmation page.
-router.get("/email/unsubscribe", (req, res) => void handleUnsubscribe(req, res, true));
-// RFC 8058 one-click (mail clients POST to the same URL).
-router.post("/email/unsubscribe", (req, res) => void handleUnsubscribe(req, res, false));
+function confirmForm(action: string, uid: string, token: string, label: string): string {
+  return `<form method="POST" action="${action}?uid=${encodeURIComponent(uid)}&token=${encodeURIComponent(token)}" style="margin-top:20px">
+    <button type="submit" style="background:linear-gradient(90deg,#7c3aed,#2563eb);color:#fff;font-weight:600;font-size:15px;border:0;cursor:pointer;padding:14px 32px;border-radius:10px">${label}</button>
+  </form>`;
+}
 
-router.get("/email/resubscribe", async (req: Request, res: Response) => {
-  const uid = String(req.query.uid ?? "");
-  const token = String(req.query.token ?? "");
+const BAD_LINK = page("Link not valid", "This link is invalid or out of date. You can manage email notifications from your dashboard instead.");
+
+// Browser click → non-mutating confirmation page (email scanners follow GET
+// links, so state only changes on POST).
+router.get("/email/unsubscribe", (req: Request, res: Response) => {
+  const { uid, token } = creds(req);
+  if (!uid || !token || !verifyUnsubscribeToken(uid, token)) {
+    res.status(400).send(BAD_LINK);
+    return;
+  }
+  res.send(page(
+    "Unsubscribe from notifications?",
+    `You'll stop receiving video notification emails. Security emails (like password resets) still send.
+     ${confirmForm("/api/email/unsubscribe", uid, token, "Yes, unsubscribe me")}`,
+  ));
+});
+
+// Mutation: used by the confirmation form AND by RFC 8058 one-click mail clients.
+router.post("/email/unsubscribe", async (req: Request, res: Response) => {
+  const { uid, token } = creds(req);
+  const result = await setNotify(uid, token, false);
+  if (result !== "ok") {
+    res.status(400).send(BAD_LINK);
+    return;
+  }
+  const resub = confirmForm("/api/email/resubscribe", uid, token, "Resubscribe");
+  res.send(page(
+    "You're unsubscribed",
+    `You won't receive video notification emails anymore. Changed your mind?${resub}`,
+  ));
+});
+
+router.get("/email/resubscribe", (req: Request, res: Response) => {
+  const { uid, token } = creds(req);
+  if (!uid || !token || !verifyUnsubscribeToken(uid, token)) {
+    res.status(400).send(BAD_LINK);
+    return;
+  }
+  res.send(page(
+    "Turn notifications back on?",
+    `You'll get an email whenever one of your videos finishes rendering.
+     ${confirmForm("/api/email/resubscribe", uid, token, "Yes, resubscribe me")}`,
+  ));
+});
+
+router.post("/email/resubscribe", async (req: Request, res: Response) => {
+  const { uid, token } = creds(req);
   const result = await setNotify(uid, token, true);
   if (result !== "ok") {
-    res.status(400).send(page("Link not valid", "This link is invalid or out of date. You can manage email notifications from your dashboard instead."));
+    res.status(400).send(BAD_LINK);
     return;
   }
   res.send(page("Welcome back 🎬", "You'll get an email whenever one of your videos finishes rendering."));

@@ -15,11 +15,13 @@ const GRADIENT = "linear-gradient(90deg,#7c3aed,#2563eb)";
 // ---------------------------------------------------------------------------
 
 export function unsubscribeToken(userId: string): string {
-  const secret = process.env.SESSION_SECRET ?? "aibeatsync-unsub";
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) throw new Error("SESSION_SECRET is required to build unsubscribe tokens");
   return crypto.createHmac("sha256", secret).update(`unsub:${userId}`).digest("hex").slice(0, 32);
 }
 
 export function verifyUnsubscribeToken(userId: string, token: string): boolean {
+  if (!process.env.SESSION_SECRET) return false;
   const expected = unsubscribeToken(userId);
   if (token.length !== expected.length) return false;
   return crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expected));
