@@ -15,7 +15,7 @@ import {
   VideoStyle,
   type CreateJobRequest,
 } from "@workspace/api-client-react";
-import { estimateCreditCost, canAffordCredits, PROVIDER_LABELS, type AiProvider } from "@/lib/creditPricing";
+import { estimateCreditCost, canAffordCredits, LYRIC_OVERLAY_COST, PROVIDER_LABELS, type AiProvider } from "@/lib/creditPricing";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -536,7 +536,11 @@ export default function Generate() {
   // Cost + affordability for the current selection — computed once here so
   // both the pre-submit guard in handleGenerate and the render below share
   // the exact same numbers (no duplicated inline logic).
-  const cost = estimateCreditCost(requestedDuration, aiProvider, resolution, songDurationSec);
+  // Karaoke lyric burn is a paid add-on — mirror of the server-side charge
+  // (jobs.ts adds LYRIC_OVERLAY_COST when lyrics are present).
+  const cost =
+    estimateCreditCost(requestedDuration, aiProvider, resolution, songDurationSec) +
+    (lyricsText.trim() ? LYRIC_OVERLAY_COST : 0);
   const balance = statsData?.creditsRemaining ?? null;
   const canAfford = canAffordCredits(cost, balance, isAdmin);
 

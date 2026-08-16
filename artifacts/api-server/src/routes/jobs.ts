@@ -12,7 +12,7 @@ import {
   ListJobsQueryParams,
   GetJobParams,
 } from "@workspace/api-zod";
-import { calculateCreditCost, calculateRemixCost } from "../lib/creditCost.js";
+import { calculateCreditCost, calculateRemixCost, LYRIC_OVERLAY_COST } from "../lib/creditCost.js";
 import { getUserTier, canRender4k } from "../lib/tier.js";
 import { planShots } from "../lib/shotPlan.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
@@ -259,7 +259,11 @@ router.post("/jobs", async (req, res) => {
   // Kling (via Pixazo) is cheaper than Runway, so the charge scales with the
   // chosen engine. Only "kling" is offered as an alternative for now.
   const engine = String(aiProvider ?? "").toLowerCase() === "kling" ? "kling" : "runway";
-  const creditCost = calculateCreditCost(requestedDuration, resolution, songDurationSec, engine);
+  // Karaoke lyric burn is a paid add-on: generating with lyrics costs the same
+  // LYRIC_OVERLAY_COST as burning lyrics onto a finished video, so there's no
+  // free path to the same output. Mirror in creditPricing.ts (generate page).
+  const lyricAddon = lyricsText?.trim() ? LYRIC_OVERLAY_COST : 0;
+  const creditCost = calculateCreditCost(requestedDuration, resolution, songDurationSec, engine) + lyricAddon;
 
   // Ensure a credits row exists for everyone — admins are metered too (their
   // balance floors at 0 but creditsUsed still tracks the spend).
