@@ -98,11 +98,17 @@ export function renderReadyEmailHtml(p: { title: string; jobUrl: string }): stri
         ${featureRow("Remix Lab", "not feeling a shot? regenerate just that clip — you only pay for what you redo.")}
       </table>
     `,
-    { footerNote: "You can turn these emails off from your dashboard. Questions? Just reply. — The AIBeatSync team" },
+    { footerNote: notifyFooter(p.jobUrl) },
   );
 }
 
-/** "Your render didn't finish" — honest, calm, with a retry path. */
+/** Footer for notification emails: working opt-out link (CAN-SPAM / deliverability best practice). */
+function notifyFooter(anyAppUrl: string): string {
+  const origin = anyAppUrl.replace(/^(https?:\/\/[^/]+).*$/, "$1");
+  return `<a href="${origin}/dashboard" style="color:#7c3aed;text-decoration:none">Turn off these notifications</a> from your dashboard. Questions? Just reply. — The AIBeatSync team`;
+}
+
+/** "Your render didn't finish" — honest, calm, with a support-ticket path. */
 export function renderFailedEmailHtml(p: { title: string; reason: string; jobUrl: string; supportUrl: string }): string {
   const title = escapeHtml(p.title);
   const reason = escapeHtml(p.reason.slice(0, 200));
@@ -122,7 +128,7 @@ export function renderFailedEmailHtml(p: { title: string; reason: string; jobUrl
         <a href="${p.jobUrl}" style="color:#7c3aed;text-decoration:none;font-weight:600">here</a>.
       </p>
     `,
-    { footerNote: "You can turn these emails off from your dashboard. Questions? Just reply. — The AIBeatSync team" },
+    { footerNote: notifyFooter(p.jobUrl) },
   );
 }
 

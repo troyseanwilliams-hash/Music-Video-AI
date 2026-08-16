@@ -201,7 +201,8 @@ export function sendWelcomeEmail(user: { id: string; email?: string | null; name
             which turns a written script into a professional, narrated podcast. Same idea, different craft.
           </p>
           <p style="font-size:12px;color:#999;margin:16px 0 0">
-            Questions? Just reply to this email. — The AIBeatSync team
+            Questions? Just reply to this email. You can manage email notifications from your
+            <a href="${appUrl}/dashboard" style="color:#7c3aed;text-decoration:none">dashboard</a>. — The AIBeatSync team
           </p>
         </div>
       `,
