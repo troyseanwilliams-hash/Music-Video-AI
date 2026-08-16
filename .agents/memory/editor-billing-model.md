@@ -22,3 +22,5 @@ either charges trial/admin users or lets post-trial users render free.
 durations to pass the precheck; deduction floors at 0 (`GREATEST(remaining-cost,0)`), so true cost can
 exceed balance. Fix would require server-side duration probing or credit reservation at enqueue. This
 predates the trial model (the old watermark model trusted client durations too).
+
+- Trial karaoke cap: trial users get TRIAL_LYRIC_EXPORTS free lyric-burn editor exports (editorCost.ts), then pay LYRIC_OVERLAY_COST via manifest.chargeCredits. Quota checks + job insert run in ONE tx serialized by pg_advisory_xact_lock(hashtext(userId)) — keep any new editor quota logic inside that tx or concurrent submits bypass limits.
