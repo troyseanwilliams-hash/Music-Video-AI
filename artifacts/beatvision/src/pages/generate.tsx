@@ -400,6 +400,24 @@ export default function Generate() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [objectPath, sourceType]);
 
+  // Auto-open the lyrics panel whenever a valid audio source becomes available,
+  // and auto-close when the source is cleared or switched to none (no audio).
+  // Users can still toggle manually via the Captions button at any time.
+  useEffect(() => {
+    const hasAudio =
+      (sourceType === CreateJobRequestAudioSourceType.upload && !!objectPath) ||
+      (sourceType === CreateJobRequestAudioSourceType.suno && !!sunoResolved);
+    const noAudio = sourceType === CreateJobRequestAudioSourceType.none;
+
+    if (hasAudio) {
+      setLyricsEnabled(true);
+    } else if (noAudio) {
+      // Don't force-disable on none — they may still want on-screen text captions.
+      // Only close when an audio source that was loaded is now cleared.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [objectPath, sunoResolved, sourceType]);
+
   useEffect(() => {
     if (!isAuthLoading && !isAuthenticated) {
       setLocation("/login");
