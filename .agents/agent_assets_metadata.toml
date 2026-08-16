@@ -1,0 +1,9 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "APqSsTwcCpUQKj2Bfprtl"
+uri = "file://attached_assets/welcome-email-preview.html"
+type = "text"
+title = "Welcome email preview"
+description = "What new users receive right after signing up — features highlight plus a light AIPodSync mention."

@@ -167,6 +167,63 @@ export function notifyNewUser(user: { id: string; email?: string | null; name?: 
   }
 }
 
+// Welcome email to the new user themselves — features highlight plus a light
+// AIPodSync (sister product) mention. Best-effort, never blocks signup.
+export function sendWelcomeEmail(user: { id: string; email?: string | null; name?: string | null }): void {
+  const resend = getResend();
+  if (!resend || !user.email) return;
+  const firstName = (user.name ?? "").trim().split(/\s+/)[0] || null;
+  const appUrl = process.env.APP_URL ?? "https://aibeatsync.com";
+  const feature = (title: string, desc: string) => `
+    <tr>
+      <td style="padding:10px 0;vertical-align:top;width:8px">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#a855f7;margin-top:6px"></span>
+      </td>
+      <td style="padding:10px 0 10px 12px">
+        <span style="font-weight:600;color:#111">${title}</span>
+        <span style="color:#555"> — ${desc}</span>
+      </td>
+    </tr>`;
+  resend.emails
+    .send({
+      from: "AIBeatSync <notifications@aibeatsync.com>",
+      to: user.email,
+      subject: "Welcome to AIBeatSync 🎬 — turn your songs into music videos",
+      html: `
+        <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;padding:32px 24px;color:#111">
+          <div style="text-align:center;margin-bottom:24px">
+            <span style="display:inline-block;background:linear-gradient(90deg,#7c3aed,#2563eb);color:#fff;font-weight:700;font-size:20px;padding:10px 22px;border-radius:12px">AIBeatSync</span>
+          </div>
+          <h1 style="font-size:22px;margin:0 0 12px">Welcome${firstName ? `, ${firstName}` : ""}! 👋</h1>
+          <p style="font-size:15px;line-height:1.6;color:#333;margin:0 0 20px">
+            You're in. AIBeatSync turns any song into a ready-to-post AI music video — the visuals
+            are generated shot by shot and cut to the beat of your track. Your account starts with a
+            <strong>7-day full-access trial</strong>, so dive right in.
+          </p>
+          <p style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;color:#888;margin:0 0 4px">What you can do</p>
+          <table style="width:100%;border-collapse:collapse;font-size:14px;line-height:1.5">
+            ${feature("Generate", "describe a vibe, pick a style, upload or create a song — get a beat-synced music video.")}
+            ${feature("Lyric Sync", "karaoke-style captions synced word-by-word to the vocal, burned right onto your video.")}
+            ${feature("Remix Lab & Prompt Studio", "reimagine finished videos and let AI polish your prompts and lyrics.")}
+            ${feature("Release Kit", "one click turns a finished video into TikTok/Shorts teasers, a Spotify Canvas loop, and more.")}
+          </table>
+          <div style="text-align:center;margin:28px 0">
+            <a href="${appUrl}/generate" style="display:inline-block;background:linear-gradient(90deg,#7c3aed,#2563eb);color:#fff;font-weight:600;font-size:15px;text-decoration:none;padding:14px 32px;border-radius:10px">Create your first video</a>
+          </div>
+          <p style="font-size:13px;line-height:1.6;color:#666;border-top:1px solid #eee;padding-top:16px;margin:0 0 8px">
+            P.S. — AIBeatSync has a sister studio: <a href="https://aipodsync.com" style="color:#7c3aed;text-decoration:none;font-weight:600">AIPodSync</a>,
+            which turns a written script into a professional, narrated podcast. Same idea, different craft.
+          </p>
+          <p style="font-size:12px;color:#999;margin:16px 0 0">
+            Questions? Just reply to this email. — The AIBeatSync team
+          </p>
+        </div>
+      `,
+    })
+    .then(() => logger.info({ userId: user.id }, "Welcome email sent"))
+    .catch((err: unknown) => logger.error({ err, userId: user.id }, "Failed to send welcome email"));
+}
+
 // Notify admin(s) when money is spent (subscription payment or credit top-up).
 export function notifyPayment(p: {
   email?: string | null;
