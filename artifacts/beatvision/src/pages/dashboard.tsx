@@ -3,6 +3,7 @@ import { useLocation, Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useGetDashboardStats, getGetDashboardStatsQueryKey } from "@workspace/api-client-react";
+import { LYRIC_OVERLAY_COST } from "@/lib/creditPricing";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Plus, Film, CheckCircle2, Clock, AlertCircle, Crown, Play, Coins, Trash2, Zap, Mail, X, Wand2, Music2, Sparkles, Smile, Quote, Lightbulb, type LucideIcon } from "lucide-react";
@@ -430,6 +431,7 @@ export default function Dashboard() {
                       jobType?: string | null;
                       requestedDuration?: string | null;
                       durationSeconds?: number | null;
+                      lyricsText?: string | null;
                       manifest?: { chargeCredits?: boolean; chargeAmount?: number } | null;
                     };
                     // Remix Lab (editor_render) is pure ffmpeg — show the ACTUAL
@@ -437,7 +439,8 @@ export default function Dashboard() {
                     // free allotment, else the flat overage), never the AI estimate.
                     const cost = j.jobType === "editor_render"
                       ? (j.manifest?.chargeCredits ? (j.manifest?.chargeAmount ?? 0) : 0)
-                      : estimateCreditCost(j.requestedDuration, j.durationSeconds);
+                      : estimateCreditCost(j.requestedDuration, j.durationSeconds) +
+                        (j.lyricsText?.trim() ? LYRIC_OVERLAY_COST : 0);
                     const videoId = (job as { videoId?: string | null }).videoId ?? null;
                     const isReady = job.status === 'ready';
                     const isFailed = job.status === 'failed';

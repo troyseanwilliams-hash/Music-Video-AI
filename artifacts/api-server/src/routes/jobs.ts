@@ -842,7 +842,12 @@ router.post("/jobs/:id/remix", async (req, res) => {
     return;
   }
 
-  const remixCost = calculateRemixCost(job.requestedDuration, clips.length, validIndexes.length, job.resolution);
+  // Lyric burn is a paid add-on here too: a remix whose output carries burned
+  // karaoke captions (entered OR inherited from the original job) is charged
+  // LYRIC_OVERLAY_COST on top, so remixing isn't a free path to a lyric burn.
+  const remixLyricAddon = effectiveLyrics?.trim() ? LYRIC_OVERLAY_COST : 0;
+  const remixCost =
+    calculateRemixCost(job.requestedDuration, clips.length, validIndexes.length, job.resolution) + remixLyricAddon;
   const chargeCredits = !isAdmin;
 
   if (chargeCredits) {

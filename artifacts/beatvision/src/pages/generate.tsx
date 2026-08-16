@@ -537,10 +537,10 @@ export default function Generate() {
   // both the pre-submit guard in handleGenerate and the render below share
   // the exact same numbers (no duplicated inline logic).
   // Karaoke lyric burn is a paid add-on — mirror of the server-side charge
-  // (jobs.ts adds LYRIC_OVERLAY_COST when lyrics are present).
-  const cost =
-    estimateCreditCost(requestedDuration, aiProvider, resolution, songDurationSec) +
-    (lyricsText.trim() ? LYRIC_OVERLAY_COST : 0);
+  // (jobs.ts adds LYRIC_OVERLAY_COST when lyrics are present). Every price
+  // surface on this page must include it so the shown cost equals the charge.
+  const lyricAddon = lyricsText.trim() ? LYRIC_OVERLAY_COST : 0;
+  const cost = estimateCreditCost(requestedDuration, aiProvider, resolution, songDurationSec) + lyricAddon;
   const balance = statsData?.creditsRemaining ?? null;
   const canAfford = canAffordCredits(cost, balance, isAdmin);
 
@@ -900,7 +900,7 @@ export default function Generate() {
                         {PROVIDER_LABELS[p]}
                         <span className="text-muted-foreground"> · {p === "runway" ? "premium quality" : "value price"}</span>
                       </span>
-                      <span className="text-xs text-muted-foreground shrink-0">{estimateCreditCost(requestedDuration, p, resolution, songDurationSec)} cr</span>
+                      <span className="text-xs text-muted-foreground shrink-0">{estimateCreditCost(requestedDuration, p, resolution, songDurationSec) + lyricAddon} cr</span>
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
@@ -934,7 +934,7 @@ export default function Generate() {
                     { value: CreateJobRequestRequestedDuration.NUMBER_300, label: "5 minutes" },
                     { value: CreateJobRequestRequestedDuration.NUMBER_600, label: "10 minutes" },
                   ] as const).map(({ value, label }) => {
-                    const base = estimateCreditCost(value, aiProvider, resolution, songDurationSec);
+                    const base = estimateCreditCost(value, aiProvider, resolution, songDurationSec) + lyricAddon;
                     return (
                       <DropdownMenuItem
                         key={value}
@@ -1750,7 +1750,7 @@ export default function Generate() {
         : Math.min(20, Math.ceil((durSec as number) / 10));
       const estimatedMin = durSec === 90 ? "~15 minutes" : durSec === 120 ? "~20 minutes" : durSec === 300 ? "~25 minutes" : "~45 minutes";
       const durLabel = durSec === 300 ? "5-minute" : durSec === 600 ? "10-minute" : `${durSec}-second`;
-      const creditCost = estimateCreditCost(requestedDuration, aiProvider, resolution, songDurationSec);
+      const creditCost = estimateCreditCost(requestedDuration, aiProvider, resolution, songDurationSec) + lyricAddon;
       return (
         <Dialog open={durationWarningOpen} onOpenChange={setDurationWarningOpen}>
           <DialogContent className="sm:max-w-md">
@@ -1858,7 +1858,7 @@ export default function Generate() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Credit cost</span>
-                  <span className="font-medium">{estimateCreditCost(requestedDuration, aiProvider, resolution, songDurationSec)} credits</span>
+                  <span className="font-medium">{cost} credits</span>
                 </div>
               </div>
 

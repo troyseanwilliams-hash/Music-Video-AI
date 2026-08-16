@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRoute, useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { SAMPLE_LYRICS } from "@/lib/sampleLyrics";
+import { LYRIC_OVERLAY_COST } from "@/lib/creditPricing";
 import { useGetJob, getGetJobQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -1221,7 +1222,11 @@ function RemixPanel({
     });
   };
 
-  const cost = estimateRemixCost(requestedDuration, clips?.length ?? 0, selected.size);
+  // Mirror the server: a remix whose output carries burned lyrics (entered or
+  // inherited) is charged the lyric-overlay add-on on top of the clip cost.
+  const cost =
+    estimateRemixCost(requestedDuration, clips?.length ?? 0, selected.size) +
+    (selected.size > 0 && lyricsEnabled && lyricsText.trim() ? LYRIC_OVERLAY_COST : 0);
 
   const regenerate = async () => {
     if (selected.size === 0) return;
