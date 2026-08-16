@@ -12,6 +12,7 @@ import TopUpRequiredDialog from "@/components/TopUpRequiredDialog";
 import { TutorialTip } from "@/components/TutorialTip";
 import { useGetDashboardStats } from "@workspace/api-client-react";
 import { canAffordCredits } from "@/lib/creditPricing";
+import { SAMPLE_LYRICS } from "@/lib/sampleLyrics";
 import {
   Select,
   SelectContent,
@@ -283,6 +284,8 @@ export default function Editor() {
   const [orientation, setOrientation] = useState<"landscape" | "portrait">("landscape");
   const [videoName, setVideoName] = useState("");
   const [lyricsText, setLyricsText] = useState("");
+  const [lyricsSyncing, setLyricsSyncing] = useState(false);
+  const [lyricsSyncNote, setLyricsSyncNote] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   // Beat sync: detected from the added music track (BPM + beat times).
   const [beatInfo, setBeatInfo] = useState<{ bpm: number; beats: number[] } | null>(null);
@@ -668,6 +671,45 @@ export default function Editor() {
       toast({ title: "Music upload failed", description: String((err as Error).message), variant: "destructive" });
     }
   }
+
+  // Auto-sync lyrics against the added music track (2 credits). Mirrors the
+  // Generate page — only a track with a stored object path can be analyzed.
+  const autoSyncLyrics = async () => {
+    if (!music?.objectPath || !acceptedCopyright || lyricsSyncing) return;
+    setLyricsSyncing(true);
+    setLyricsSyncNote(null);
+    try {
+      const res = await fetch(`/api/lyrics/align`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          audioObjectPath: music.objectPath,
+          lyricsText: lyricsText.trim() || undefined,
+          acceptCopyright: true,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setLyricsSyncNote(data?.error || "Auto-sync failed. Please try again.");
+        return;
+      }
+      if (typeof data?.lrc === "string" && data.lrc.trim()) {
+        setLyricsText(data.lrc);
+        setLyricsSyncNote(
+          data?.source === "asr"
+            ? "Lyrics transcribed from the track and timed word-by-word — review below."
+            : "Your lyrics are now timed word-by-word to the vocals.",
+        );
+      } else {
+        setLyricsSyncNote("Auto-sync couldn't detect vocals in this track.");
+      }
+    } catch {
+      setLyricsSyncNote("Network error — please try again.");
+    } finally {
+      setLyricsSyncing(false);
+    }
+  };
 
   // Import a track from a Suno link into the timeline as the music.
   async function addMusicFromLink() {
@@ -1319,20 +1361,59 @@ export default function Editor() {
               </Popover>
             </div>
             <Textarea
-              placeholder="Optional — paste lyrics (plain or .lrc) to burn karaoke captions into the export..."
+              placeholder="Optional — paste lyrics here, or leave empty and hit Auto-sync to transcribe them from the track. LRC with [mm:ss] timestamps works too…"
               className="min-h-[90px] resize-none text-sm"
               value={lyricsText}
               onChange={(e) => setLyricsText(e.target.value)}
               maxLength={5000}
               data-testid="textarea-editor-lyrics"
             />
-            {lyricsText.trim() && (
-              <p className="mt-1 text-xs text-muted-foreground">
+            <div className="flex items-center justify-between gap-3 mt-1.5">
+              <p className="text-xs text-muted-foreground">
+                {lyricsText.length}/5000 characters
                 {/\[\d{1,2}:\d{2}/.test(lyricsText)
-                  ? "LRC timestamps detected — exact sync"
-                  : "No timestamps — lines will be spread evenly"}
+                  ? " · LRC timestamps detected — exact sync"
+                  : lyricsText.trim()
+                    ? " · no timestamps — lines will be spread evenly (paste LRC for exact sync)"
+                    : ""}
               </p>
-            )}
+              {!lyricsText.trim() && (
+                <button
+                  type="button"
+                  onClick={() => setLyricsText(SAMPLE_LYRICS)}
+                  className="text-xs text-primary hover:underline shrink-0"
+                  data-testid="button-editor-lyrics-sample"
+                >
+                  Try a sample
+                </button>
+              )}
+            </div>
+
+            {/* Auto-sync to vocals — mirrors Generate/Remix; needs an uploaded music track */}
+            <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
+              <span className="text-xs text-muted-foreground">
+                {lyricsSyncNote ??
+                  (!music?.objectPath
+                    ? "Add a music track above, then Auto-sync can time each word to the vocals (2 credits)."
+                    : !acceptedCopyright
+                      ? "Tick the rights box below to enable Auto-sync (2 credits)."
+                      : /\[\d{1,2}:\d{2}/.test(lyricsText)
+                        ? "Timestamps detected — already synced."
+                        : "Auto-sync listens to the track and times each word (2 credits). Leave the box empty to transcribe the lyrics too.")}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={autoSyncLyrics}
+                disabled={lyricsSyncing || !music?.objectPath || !acceptedCopyright}
+                className="gap-2 shrink-0"
+                data-testid="button-editor-autosync"
+              >
+                {lyricsSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                {lyricsSyncing ? "Listening to the track…" : "Auto-sync to vocals"}
+              </Button>
+            </div>
           </div>
         </Card>
       </div>
