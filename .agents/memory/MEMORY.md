@@ -10,3 +10,4 @@
 - [Finalize-partial jobs](finalize-partial-jobs.md) — finalizeWithPartial runs must be free everywhere (retry + watchdog cost 0), flag is one-shot, re-spread runtime across salvaged clips.
 - [Stale lib tsbuildinfo](stale-tsbuildinfo.md) — phantom "no exported member"/missing-column TS errors: delete lib/*/tsconfig.tsbuildinfo and rebuild before debugging.
 - [Pixazo slug validation](pixazo-slug-validation.md) — probe gateway keyless: 401=valid slug, 404=dead; verify secrets slugs before render failures.
+- [Credit charge/refund pattern](credit-charge-pattern.md) — paid API routes must debit atomically (row-locked, balance-checked) and refund the exact sub/topup split; never clamp-with-GREATEST check-then-update.
