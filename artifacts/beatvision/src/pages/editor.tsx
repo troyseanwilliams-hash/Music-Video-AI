@@ -713,8 +713,13 @@ export default function Editor() {
 
   // Auto-sync lyrics (2 credits). The user can choose either source whenever
   // both are available; a single available source is selected automatically.
+  // Video audio comes from a Gallery video (sourceVideoId) or, failing that,
+  // the first uploaded video clip in the timeline — its uploaded object path
+  // is transcribed directly (AssemblyAI reads a video file's audio track).
+  const uploadedVideoPath =
+    segments.find((s) => s.kind === "video" && s.objectPath)?.objectPath ?? null;
   const musicSyncAvailable = !!music?.objectPath;
-  const videoSyncAvailable = !!sourceVideoId;
+  const videoSyncAvailable = !!sourceVideoId || !!uploadedVideoPath;
   const syncFromMusic = lyricsSyncSource === "music" && musicSyncAvailable;
   const syncFromVideo = lyricsSyncSource === "video" && videoSyncAvailable;
   const effectiveSyncSource = syncFromMusic || !videoSyncAvailable ? "music" : "video";
@@ -732,8 +737,10 @@ export default function Editor() {
         body.audioObjectPath = music.objectPath;
       } else if (sourceVideoId) {
         body.videoId = sourceVideoId!;
+      } else if (uploadedVideoPath) {
+        body.audioObjectPath = uploadedVideoPath;
       } else {
-        setLyricsSyncNote("Add a music track or open a video from Gallery first.");
+        setLyricsSyncNote("Add a music track or a video clip first.");
         return;
       }
       const res = await fetch(`/api/lyrics/align`, {
@@ -1487,7 +1494,7 @@ export default function Editor() {
                 <span className="text-xs text-muted-foreground">
                   {lyricsSyncNote ??
                     (!canAutoSync
-                      ? "Add a music track above (or open from Gallery) so Auto-sync can time each word to the vocals (2 credits)."
+                      ? "Add a music track or a video clip above so Auto-sync can time each word to the vocals (2 credits)."
                       : !acceptedCopyright
                         ? "Tick the rights box below to enable Auto-sync (2 credits)."
                         : /\[\d{1,2}:\d{2}/.test(lyricsText)
