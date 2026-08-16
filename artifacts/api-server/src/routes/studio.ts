@@ -5,7 +5,7 @@ import { eq, and, gte, ne, count, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import { FREE_EDITOR_EXPORTS_PER_MONTH, EDITOR_OVERAGE_COST, TRIAL_LYRIC_EXPORTS } from "../lib/editorCost.js";
-import { LYRIC_OVERLAY_COST } from "../lib/creditCost.js";
+import { LYRIC_OVERLAY_COST, LYRIC_ALIGN_COST, TRIAL_FREE_ALIGNS } from "../lib/creditCost.js";
 
 const router = Router();
 
@@ -111,6 +111,10 @@ router.get("/studio/quota", async (req, res) => {
           lyricFree: TRIAL_LYRIC_EXPORTS,
           lyricRemaining: Math.max(0, TRIAL_LYRIC_EXPORTS - lyricUsed),
           lyricOverageCost: LYRIC_OVERLAY_COST,
+          alignUsed: quotaUser?.trialAlignsUsed ?? 0,
+          alignFree: TRIAL_FREE_ALIGNS,
+          alignRemaining: Math.max(0, TRIAL_FREE_ALIGNS - (quotaUser?.trialAlignsUsed ?? 0)),
+          alignCost: LYRIC_ALIGN_COST,
         }
       : null,
   });

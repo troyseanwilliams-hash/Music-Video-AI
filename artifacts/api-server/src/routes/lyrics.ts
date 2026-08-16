@@ -1,10 +1,10 @@
 import { Router } from "express";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
 import { alignLyrics, lyricAlignAvailable } from "../lib/lyricAlign.js";
-import { db, creditsTable, soundtracksTable, videosTable } from "@workspace/db";
+import { db, creditsTable, soundtracksTable, usersTable, videosTable } from "@workspace/db";
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { LYRIC_ALIGN_COST } from "../lib/creditCost.js";
+import { LYRIC_ALIGN_COST, TRIAL_FREE_ALIGNS } from "../lib/creditCost.js";
 
 const router = Router();
 const storageService = new ObjectStorageService();
@@ -45,6 +45,32 @@ async function refundCredits(userId: string, subDebit: number, topDebit: number)
     creditsUsed: sql`GREATEST(credits_used - ${subDebit + topDebit}, 0)`,
     updatedAt: new Date(),
   }).where(eq(creditsTable.userId, userId));
+}
+
+/**
+ * Trial allowance: consume one of the user's TRIAL_FREE_ALIGNS free auto-sync
+ * runs. Row-locked so concurrent aligns can't both grab the last free slot.
+ * Returns true when a free slot was consumed (no credit charge needed).
+ */
+async function consumeTrialAlign(userId: string): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [u] = await tx.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1).for("update");
+    if (!u) return false;
+    const trialActive =
+      !!u.trialEndsAt && new Date(u.trialEndsAt).getTime() > Date.now() && u.subscriptionStatus !== "active";
+    if (!trialActive || u.trialAlignsUsed >= TRIAL_FREE_ALIGNS) return false;
+    await tx.update(usersTable)
+      .set({ trialAlignsUsed: sql`trial_aligns_used + 1` })
+      .where(eq(usersTable.id, userId));
+    return true;
+  });
+}
+
+/** Give back a free trial slot when the alignment itself failed. */
+async function releaseTrialAlign(userId: string): Promise<void> {
+  await db.update(usersTable)
+    .set({ trialAlignsUsed: sql`GREATEST(trial_aligns_used - 1, 0)` })
+    .where(eq(usersTable.id, userId));
 }
 
 /** An LRC is usable when it has at least one timestamped line. */
@@ -110,24 +136,29 @@ router.post("/lyrics/align", async (req, res) => {
       res.status(404).json({ error: "Video not found" });
       return;
     }
-    const charge = await chargeCredits(userId, LYRIC_ALIGN_COST);
-    if (!charge.ok) {
-      res.status(402).json({
-        error: `Vocal alignment costs ${LYRIC_ALIGN_COST} credits but you only have ${charge.remaining}.`,
-        code: "INSUFFICIENT_CREDITS",
-        creditsRequired: LYRIC_ALIGN_COST,
-        creditsRemaining: charge.remaining,
-      });
-      return;
+    const freeTrialSlot = await consumeTrialAlign(userId);
+    let charge: ChargeResult | null = null;
+    if (!freeTrialSlot) {
+      charge = await chargeCredits(userId, LYRIC_ALIGN_COST);
+      if (!charge.ok) {
+        res.status(402).json({
+          error: `Vocal alignment costs ${LYRIC_ALIGN_COST} credits but you only have ${charge.remaining}.`,
+          code: "INSUFFICIENT_CREDITS",
+          creditsRequired: LYRIC_ALIGN_COST,
+          creditsRemaining: charge.remaining,
+        });
+        return;
+      }
     }
     try {
       const audioUrl = await storageService.getObjectEntitySignedUrl(video.videoObjectPath, 3600);
       const result = await alignLyrics({ audioUrl, lyricsText });
       if (!lrcUsable(result.lrc)) throw new Error("Alignment produced no usable timing");
-      res.json({ ...result, charged: LYRIC_ALIGN_COST });
+      res.json({ ...result, charged: freeTrialSlot ? 0 : LYRIC_ALIGN_COST, trialFree: freeTrialSlot });
     } catch (err) {
-      await refundCredits(userId, charge.subDebit, charge.topDebit);
-      req.log.warn({ err, videoId }, "Lyric alignment from video failed (credits refunded)");
+      if (freeTrialSlot) await releaseTrialAlign(userId);
+      else if (charge?.ok) await refundCredits(userId, charge.subDebit, charge.topDebit);
+      req.log.warn({ err, videoId }, "Lyric alignment from video failed (charge released)");
       res.status(502).json({ error: err instanceof Error ? err.message : "Lyric alignment failed" });
     }
     return;
@@ -166,25 +197,31 @@ router.post("/lyrics/align", async (req, res) => {
     throw err;
   }
 
-  // Alignment always runs the paid AssemblyAI API, so it costs credits.
-  const charge = await chargeCredits(userId, LYRIC_ALIGN_COST);
-  if (!charge.ok) {
-    res.status(402).json({
-      error: `Vocal alignment costs ${LYRIC_ALIGN_COST} credits but you only have ${charge.remaining}.`,
-      code: "INSUFFICIENT_CREDITS",
-      creditsRequired: LYRIC_ALIGN_COST,
-      creditsRemaining: charge.remaining,
-    });
-    return;
+  // Alignment always runs the paid AssemblyAI API, so it costs credits —
+  // except for the small free trial allowance.
+  const freeTrialSlot = await consumeTrialAlign(userId);
+  let charge: ChargeResult | null = null;
+  if (!freeTrialSlot) {
+    charge = await chargeCredits(userId, LYRIC_ALIGN_COST);
+    if (!charge.ok) {
+      res.status(402).json({
+        error: `Vocal alignment costs ${LYRIC_ALIGN_COST} credits but you only have ${charge.remaining}.`,
+        code: "INSUFFICIENT_CREDITS",
+        creditsRequired: LYRIC_ALIGN_COST,
+        creditsRemaining: charge.remaining,
+      });
+      return;
+    }
   }
 
   try {
     const result = await alignLyrics({ audioUrl, lyricsText });
     if (!lrcUsable(result.lrc)) throw new Error("Alignment produced no usable timing");
-    res.json({ ...result, charged: LYRIC_ALIGN_COST });
+    res.json({ ...result, charged: freeTrialSlot ? 0 : LYRIC_ALIGN_COST, trialFree: freeTrialSlot });
   } catch (err) {
-    await refundCredits(userId, charge.subDebit, charge.topDebit);
-    req.log.warn({ err, audioObjectPath }, "Lyric alignment failed (credits refunded)");
+    if (freeTrialSlot) await releaseTrialAlign(userId);
+    else if (charge?.ok) await refundCredits(userId, charge.subDebit, charge.topDebit);
+    req.log.warn({ err, audioObjectPath }, "Lyric alignment failed (charge released)");
     res.status(502).json({ error: err instanceof Error ? err.message : "Lyric alignment failed" });
   }
 });

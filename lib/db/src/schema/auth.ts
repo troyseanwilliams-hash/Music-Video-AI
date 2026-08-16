@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, index, jsonb, pgTable, timestamp, varchar } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, timestamp, varchar } from "drizzle-orm/pg-core";
 
 // (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
 export const sessionsTable = pgTable(
@@ -36,6 +36,9 @@ export const usersTable = pgTable("users", {
   // Password reset: sha256 hash of the emailed token + its expiry.
   passwordResetToken: varchar("password_reset_token"),
   passwordResetExpires: timestamp("password_reset_expires", { withTimezone: true }),
+  // Free AssemblyAI auto-sync alignments consumed during the 7-day trial
+  // (trial users get a small free allowance; see lyrics.ts).
+  trialAlignsUsed: integer("trial_aligns_used").notNull().default(0),
   // Render-finished email notifications (opt-out).
   notifyOnComplete: boolean("notify_on_complete").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

@@ -411,7 +411,16 @@ export default function Editor() {
     free: number;
     remaining: number;
     overageCost: number;
-    trial: { lyricUsed: number; lyricFree: number; lyricRemaining: number; lyricOverageCost: number } | null;
+    trial: {
+      lyricUsed: number;
+      lyricFree: number;
+      lyricRemaining: number;
+      lyricOverageCost: number;
+      alignUsed: number;
+      alignFree: number;
+      alignRemaining: number;
+      alignCost: number;
+    } | null;
   } | null>(null);
   useEffect(() => {
     // Subscribers/admins are unlimited; trial users still need the quota for
@@ -1466,6 +1475,17 @@ export default function Editor() {
                     exports cost {quota.trial.lyricOverageCost} credits, or{" "}
                     <Link href="/pricing" className="text-primary underline">subscribe for unlimited</Link>.
                   </>
+                )}{" "}
+                {quota.trial.alignRemaining > 0 ? (
+                  <>
+                    Auto-sync:{" "}
+                    <strong className="text-foreground">
+                      {quota.trial.alignRemaining} of {quota.trial.alignFree} free
+                    </strong>{" "}
+                    during your trial, then {quota.trial.alignCost} credits each.
+                  </>
+                ) : (
+                  <>Free trial Auto-syncs used — each Auto-sync now costs {quota.trial.alignCost} credits.</>
                 )}
               </p>
             )}

@@ -192,6 +192,11 @@ export function calculateLipsyncCost(seconds: number | null | undefined): number
 // Mirror in artifacts/beatvision/src/lib/creditPricing.ts.
 export const LYRIC_ALIGN_COST = 2;
 
+// Free AssemblyAI auto-sync alignments included in the 7-day trial. Alignment
+// hits a paid API on every run, so the trial allowance is deliberately small;
+// beyond it, trial users pay LYRIC_ALIGN_COST like everyone else.
+export const TRIAL_FREE_ALIGNS = 3;
+
 // Cost to remix (regenerate) a subset of an existing video's clips. Charged
 // proportionally to the number of clips regenerated — never the full job. We
 // divide the original job's full cost across its clips and bill only for the

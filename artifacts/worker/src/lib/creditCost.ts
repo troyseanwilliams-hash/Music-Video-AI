@@ -2,18 +2,18 @@
 // every duration is profitable. Cost tracks how many provider clips a job
 // actually generates (see getClipPlan) × the provider per-second rate. Runway
 // The Freeway rate ($1.40 per 10s clip = $0.14/s) is the (most expensive)
-// basis, so cheaper providers only widen the margin. Markup is tiered: single-clip (short) videos at 2× (100%
-// margin), multi-clip (longer) videos at 1.5× (50% margin) to stay competitive.
+// basis, so cheaper providers only widen the margin. Markup is tiered:
+// single-clip (short) videos at 2× (100% margin), multi-clip (longer) videos
+// at 1.5× (50% margin) to stay competitive.
 //
-// Scale (Runway basis, ~$0.015/credit):
-//   5s   → 80 credits    (1 clip × 5s  = $0.60 → ×2   = $1.20)
-//   10s  → 160 credits   (1 clip × 10s = $1.20 → ×2   = $2.40)
-//   30s  → 360 credits   (3 clips×10s  = $3.60 → ×1.5 = $5.40)
-//   60s  → 720 credits   (6 clips×10s  = $7.20 → ×1.5 = $10.80)
-//   300s → 1800 credits  (explicit "5 min": 15 clips, Runway 720p basis)
-//   600s → 3600 credits  (explicit "10 min": 30 clips — ~2× the 5-min)
-//   full → 360–2400      (3–20 clips scaled by song length, capped at 10 min)
-//          e.g. 2min→480, 5min→1200, 10min→2400 credits (720p Runway basis)
+// Scale (Freeway basis, ~$0.015/credit):
+//   5s   → ~94 credits   (1 clip × 5s  = $0.70 → ×2   = $1.40)
+//   10s  → ~187 credits  (1 clip × 10s = $1.40 → ×2   = $2.80)
+//   30s  → 420 credits   (3 clips×10s  = $4.20 → ×1.5 = $6.30)
+//   60s  → 840 credits   (6 clips×10s  = $8.40 → ×1.5 = $12.60)
+//   300s → 2100 credits  (explicit "5 min": 15 clips, 720p basis)
+//   600s → 4200 credits  (explicit "10 min": 30 clips — 2× the 5-min)
+//   full → 420–2800      (3–20 clips scaled by song length, capped at 10 min)
 // Resolution scales the charge on top: 720p ×1, 1080p ×1.25, 4K ×5.0 (4K is a
 // premium tier — genuinely ~3× the provider compute).
 
@@ -127,6 +127,76 @@ export function calculateCreditCost(
   );
 }
 
+// Free monthly "Soundtracks" (instrumental) allowance by subscription tier —
+// a bonus that upsells higher plans. Beyond it, tracks cost credits.
+// Provider cost is fixed at ~$0.0217/track, so a generous allowance stays cheap:
+// Starter 25 ≈ $0.54/mo, Pro 100 ≈ $2.17/mo, Studio 300 ≈ $6.51/mo — small
+// fractions of each plan. Competitive with the music-gen market as a bonus.
+export const FREE_SOUNDTRACKS_BY_TIER: Record<string, number> = {
+  starter: 25,
+  pro: 100,
+  studio: 300,
+};
+// One-time signup bonus: brand-new (non-subscriber) users get this many free
+// Soundtracks to try the feature before subscribing. Lifetime, not monthly.
+export const NEW_USER_FREE_SOUNDTRACKS = 3;
+export function freeSoundtracksFor(tier?: string | null): number {
+  if (!tier) return 0;
+  const t = tier.toLowerCase();
+  for (const [prefix, n] of Object.entries(FREE_SOUNDTRACKS_BY_TIER)) {
+    if (t.startsWith(prefix)) return n;
+  }
+  return 0;
+}
+
+// Cost to generate a Soundtrack. The provider cost is FIXED per file (Stable
+// Audio 3 Small ≈ $0.0217, any length), so the charge is a small band: it
+// scales a little by length but is capped at 10 credits for a full 2-min track
+// to keep it cheap and predictable. Range: 5 credits (short) → 10 credits (2 min).
+const SONG_USD_PER_SECOND = 0.002;
+const SONG_MIN_CREDITS = 5;
+const SONG_MAX_CREDITS = 10;
+const SONG_MIN_SECONDS = 5;
+const SONG_MAX_SECONDS = 120;
+// Music generation is priced at a 1.5× markup on the real provider cost.
+const MUSIC_GEN_MARKUP = 1.5;
+// Full VOCAL songs run on MiniMax Music, a flat ~$0.15/generation model (≈7×
+// the instrumental Stable Audio cost). Charged as a flat credit price (never
+// part of the free monthly allowance). Derived: ceil($0.15 × 1.5 / $/credit) = 15.
+const VOCAL_SONG_USD = 0.15;
+export const SONG_VOCAL_CREDITS = Math.ceil((VOCAL_SONG_USD * MUSIC_GEN_MARKUP) / USD_PER_CREDIT);
+export function calculateSongCost(
+  durationSeconds: number | null | undefined,
+  withVocals = false,
+): number {
+  if (withVocals) return SONG_VOCAL_CREDITS;
+  const secs = Math.min(Math.max(durationSeconds || 30, SONG_MIN_SECONDS), SONG_MAX_SECONDS);
+  const scaled = Math.ceil((secs * SONG_USD_PER_SECOND * MUSIC_GEN_MARKUP) / USD_PER_CREDIT);
+  return Math.min(SONG_MAX_CREDITS, Math.max(SONG_MIN_CREDITS, scaled));
+}
+
+// Lip Sync (OmniHuman) is a video model billed per second of output (~$0.16/s).
+// Capped to a short clip and priced at the same 1.5× markup:
+//   ceil(seconds × $0.16 × 1.5 / $0.015) = 16 credits/second (15s = 240, 30s = 480).
+const LIPSYNC_USD_PER_SECOND = 0.16;
+export const LIPSYNC_MIN_SECONDS = 5;
+export const LIPSYNC_MAX_SECONDS = 30;
+export function calculateLipsyncCost(seconds: number | null | undefined): number {
+  const s = Math.min(Math.max(Math.round(seconds || 15), LIPSYNC_MIN_SECONDS), LIPSYNC_MAX_SECONDS);
+  return Math.ceil((s * LIPSYNC_USD_PER_SECOND * MUSIC_GEN_MARKUP) / USD_PER_CREDIT);
+}
+
+// Lyric alignment (AssemblyAI Universal-2 ≈ $0.15/hr → ~$0.01 for a 4-min song).
+// Standard 1.5× markup with a small floor for overhead:
+//   ceil($0.01 × 1.5 / $0.015) = 1 → floored to 2 credits.
+// Mirror in artifacts/beatvision/src/lib/creditPricing.ts.
+export const LYRIC_ALIGN_COST = 2;
+
+// Free AssemblyAI auto-sync alignments included in the 7-day trial. Alignment
+// hits a paid API on every run, so the trial allowance is deliberately small;
+// beyond it, trial users pay LYRIC_ALIGN_COST like everyone else.
+export const TRIAL_FREE_ALIGNS = 3;
+
 // Cost to remix (regenerate) a subset of an existing video's clips. Charged
 // proportionally to the number of clips regenerated — never the full job. We
 // divide the original job's full cost across its clips and bill only for the
@@ -156,3 +226,13 @@ export const CANVAS_EXPORT_COST = 10 * PRICE_MULTIPLIER;
 // Flat cost to burn karaoke lyrics onto an existing finished video (pure
 // ffmpeg re-encode). Mirror in artifacts/beatvision/src/lib/creditPricing.ts.
 export const LYRIC_OVERLAY_COST = 10 * PRICE_MULTIPLIER;
+
+// Bundled "Release Kit": teaser pack + Canvas loop generated together, ~20% off
+// vs buying them separately (the full video + thumbnail are already free). Lyrics
+// burn, when included, is charged separately at LYRIC_OVERLAY_COST.
+export const RELEASE_KIT_COST = TEASER_PACK_COST + CANVAS_EXPORT_COST - 10;
+
+// Cost to generate a full set of lyrics in Prompt Studio. Real LLM cost is tiny
+// (Claude Sonnet 5 ≈ $0.006–0.009 ≈ ~0.6 credits), so 2 credits covers it with a
+// healthy margin. Not charged when the no-key template fallback is used.
+export const LYRICS_BUILD_COST = 3;
