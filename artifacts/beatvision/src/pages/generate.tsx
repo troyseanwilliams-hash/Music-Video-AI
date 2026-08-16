@@ -580,8 +580,12 @@ export default function Generate() {
             return;
           }
           audioObjectPath = impData.objectPath as string;
-          // Cache so the next Auto-sync click skips the import.
-          setSunoResolved((prev) => prev ? { ...prev, objectPath: audioObjectPath! } : prev);
+          // Cache so the next Auto-sync click skips the import — but only if
+          // the resolved track hasn't been swapped while the import ran.
+          const importedFor = sunoResolved.audioUrl;
+          setSunoResolved((prev) =>
+            prev && prev.audioUrl === importedFor ? { ...prev, objectPath: audioObjectPath! } : prev,
+          );
         }
         setLyricsSyncNote(null);
       }
