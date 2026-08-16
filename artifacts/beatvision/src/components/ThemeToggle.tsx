@@ -29,7 +29,6 @@ export function ThemeToggle() {
       variant="ghost"
       size="icon"
       onClick={toggle}
-      title={isDark ? "Switch to light mode" : "Switch to dark mode"}
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
       data-testid="button-theme-toggle"
     >
