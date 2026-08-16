@@ -1,6 +1,7 @@
 import { Resend } from "resend";
 import twilio from "twilio";
 import { logger } from "./logger.js";
+import { adminEmailHtml, detailRow, escapeHtml } from "./emailTemplates.js";
 
 function getSmsClient(): ReturnType<typeof twilio> | null {
   const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN } = process.env;
@@ -36,23 +37,17 @@ export function notifyJobPendingApproval(job: JobInfo): void {
         from: "AIBeatSync <notifications@aibeatsync.com>",
         to: adminEmail,
         subject: `New job awaiting approval — ${job.id.slice(0, 8)}`,
-        html: `
-          <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
-            <h2 style="margin:0 0 16px">New job awaiting approval</h2>
-            <table style="width:100%;border-collapse:collapse">
-              <tr><td style="padding:8px 0;color:#666;width:140px">Job ID</td><td style="padding:8px 0;font-family:monospace">${job.id}</td></tr>
-              <tr><td style="padding:8px 0;color:#666">User</td><td style="padding:8px 0">${job.userEmail ?? "unknown"}</td></tr>
-              <tr><td style="padding:8px 0;color:#666">Style</td><td style="padding:8px 0;text-transform:capitalize">${job.style ?? "—"}</td></tr>
-              <tr><td style="padding:8px 0;color:#666">Duration</td><td style="padding:8px 0">${durationLabel}</td></tr>
-              <tr><td style="padding:8px 0;color:#666;vertical-align:top">Prompt</td><td style="padding:8px 0">${job.prompt ?? "—"}</td></tr>
-            </table>
-            <p style="margin:24px 0 0">
-              <a href="https://aibeatsync.com/admin" style="background:#7c3aed;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">
-                Review in Admin Panel →
-              </a>
-            </p>
-          </div>
-        `,
+        html: adminEmailHtml({
+          heading: "New job awaiting approval",
+          rows:
+            detailRow("Job ID", escapeHtml(job.id), { mono: true }) +
+            detailRow("User", escapeHtml(job.userEmail ?? "unknown")) +
+            detailRow("Style", escapeHtml(job.style ?? "—")) +
+            detailRow("Duration", escapeHtml(durationLabel)) +
+            detailRow("Prompt", escapeHtml(job.prompt ?? "—")),
+          ctaHref: "https://aibeatsync.com/admin",
+          ctaLabel: "Review in Admin Panel →",
+        }),
       })
       .then(() => logger.info({ jobId: job.id }, "Approval email sent"))
       .catch((err: unknown) => logger.error({ err, jobId: job.id }, "Failed to send approval email"));
@@ -92,22 +87,16 @@ export function notifyNewSupportTicket(ticket: SupportTicketInfo): void {
         from: "AIBeatSync <notifications@aibeatsync.com>",
         to: adminEmail,
         subject: `[Support] ${ticket.subject}`,
-        html: `
-          <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
-            <h2 style="margin:0 0 16px">New support ticket</h2>
-            <table style="width:100%;border-collapse:collapse">
-              <tr><td style="padding:8px 0;color:#666;width:120px">From</td><td style="padding:8px 0">${ticket.userEmail ?? "unknown"}</td></tr>
-              <tr><td style="padding:8px 0;color:#666">Category</td><td style="padding:8px 0;text-transform:capitalize">${ticket.category}</td></tr>
-              <tr><td style="padding:8px 0;color:#666">Subject</td><td style="padding:8px 0;font-weight:600">${ticket.subject}</td></tr>
-              <tr><td style="padding:8px 0;color:#666;vertical-align:top">Message</td><td style="padding:8px 0;white-space:pre-wrap">${ticket.message}</td></tr>
-            </table>
-            <p style="margin:24px 0 0">
-              <a href="https://aibeatsync.com/admin" style="background:#7c3aed;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">
-                View in Admin Panel →
-              </a>
-            </p>
-          </div>
-        `,
+        html: adminEmailHtml({
+          heading: "New support ticket",
+          rows:
+            detailRow("From", escapeHtml(ticket.userEmail ?? "unknown")) +
+            detailRow("Category", escapeHtml(ticket.category)) +
+            detailRow("Subject", escapeHtml(ticket.subject), { strong: true }) +
+            detailRow("Message", `<span style="white-space:pre-wrap">${escapeHtml(ticket.message)}</span>`),
+          ctaHref: "https://aibeatsync.com/admin",
+          ctaLabel: "View in Admin Panel →",
+        }),
       })
       .then(() => logger.info({ ticketId: ticket.id }, "Support ticket email sent"))
       .catch((err: unknown) => logger.error({ err, ticketId: ticket.id }, "Failed to send support ticket email"));
@@ -140,17 +129,14 @@ export function notifyNewUser(user: { id: string; email?: string | null; name?: 
         from: "AIBeatSync <notifications@aibeatsync.com>",
         to: adminEmail,
         subject: `🎉 New signup — ${user.email ?? user.id.slice(0, 8)}`,
-        html: `
-          <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
-            <h2 style="margin:0 0 16px">New user signed up</h2>
-            <table style="width:100%;border-collapse:collapse">
-              <tr><td style="padding:8px 0;color:#666;width:120px">Email</td><td style="padding:8px 0;font-weight:600">${user.email ?? "—"}</td></tr>
-              ${user.name ? `<tr><td style="padding:8px 0;color:#666">Name</td><td style="padding:8px 0">${user.name}</td></tr>` : ""}
-              <tr><td style="padding:8px 0;color:#666">User ID</td><td style="padding:8px 0;font-family:monospace">${user.id}</td></tr>
-              <tr><td style="padding:8px 0;color:#666">When</td><td style="padding:8px 0">${new Date().toLocaleString()}</td></tr>
-            </table>
-          </div>
-        `,
+        html: adminEmailHtml({
+          heading: "New user signed up 🎉",
+          rows:
+            detailRow("Email", escapeHtml(user.email ?? "—"), { strong: true }) +
+            (user.name ? detailRow("Name", escapeHtml(user.name)) : "") +
+            detailRow("User ID", escapeHtml(user.id), { mono: true }) +
+            detailRow("When", new Date().toLocaleString()),
+        }),
       })
       .then(() => logger.info({ userId: user.id }, "New-user email sent"))
       .catch((err: unknown) => logger.error({ err, userId: user.id }, "Failed to send new-user email"));
@@ -241,18 +227,15 @@ export function notifyPayment(p: {
         from: "AIBeatSync <notifications@aibeatsync.com>",
         to: adminEmail,
         subject: `💰 ${amount} — ${kindLabel} from ${p.email ?? "a customer"}`,
-        html: `
-          <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
-            <h2 style="margin:0 0 16px">${kindLabel} received</h2>
-            <table style="width:100%;border-collapse:collapse">
-              <tr><td style="padding:8px 0;color:#666;width:120px">Amount</td><td style="padding:8px 0;font-weight:700;font-size:18px">${amount}</td></tr>
-              <tr><td style="padding:8px 0;color:#666">Customer</td><td style="padding:8px 0">${p.email ?? "—"}</td></tr>
-              <tr><td style="padding:8px 0;color:#666">Type</td><td style="padding:8px 0">${kindLabel}</td></tr>
-              ${p.detail ? `<tr><td style="padding:8px 0;color:#666">Detail</td><td style="padding:8px 0">${p.detail}</td></tr>` : ""}
-              <tr><td style="padding:8px 0;color:#666">When</td><td style="padding:8px 0">${new Date().toLocaleString()}</td></tr>
-            </table>
-          </div>
-        `,
+        html: adminEmailHtml({
+          heading: `${kindLabel} received 💰`,
+          rows:
+            detailRow("Amount", `<span style="font-weight:700;font-size:18px">${escapeHtml(amount)}</span>`) +
+            detailRow("Customer", escapeHtml(p.email ?? "—")) +
+            detailRow("Type", kindLabel) +
+            (p.detail ? detailRow("Detail", escapeHtml(p.detail)) : "") +
+            detailRow("When", new Date().toLocaleString()),
+        }),
       })
       .then(() => logger.info({ email: p.email, amount }, "Payment email sent"))
       .catch((err: unknown) => logger.error({ err }, "Failed to send payment email"));
@@ -279,16 +262,13 @@ export function notifyFeatureRequest(p: { email?: string | null; feature: string
         from: "AIBeatSync <notifications@aibeatsync.com>",
         to: adminEmail,
         subject: `👋 Feature request: ${p.feature} — ${p.email ?? "a user"}`,
-        html: `
-          <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
-            <h2 style="margin:0 0 16px">Someone wants: ${p.feature}</h2>
-            <table style="width:100%;border-collapse:collapse">
-              <tr><td style="padding:8px 0;color:#666;width:120px">Feature</td><td style="padding:8px 0;font-weight:600">${p.feature}</td></tr>
-              <tr><td style="padding:8px 0;color:#666">From</td><td style="padding:8px 0">${p.email ?? "—"}</td></tr>
-              <tr><td style="padding:8px 0;color:#666">When</td><td style="padding:8px 0">${new Date().toLocaleString()}</td></tr>
-            </table>
-          </div>
-        `,
+        html: adminEmailHtml({
+          heading: `Someone wants: ${escapeHtml(p.feature)}`,
+          rows:
+            detailRow("Feature", escapeHtml(p.feature), { strong: true }) +
+            detailRow("From", escapeHtml(p.email ?? "—")) +
+            detailRow("When", new Date().toLocaleString()),
+        }),
       })
       .then(() => logger.info({ feature: p.feature }, "Feature-request email sent"))
       .catch((err: unknown) => logger.error({ err }, "Failed to send feature-request email"));

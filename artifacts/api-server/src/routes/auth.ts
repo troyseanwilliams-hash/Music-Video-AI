@@ -23,6 +23,7 @@ function buildUserPayload(user: typeof usersTable.$inferSelect) {
 }
 import { processReferralSignup } from "../lib/referrals.js";
 import { notifyNewUser, sendWelcomeEmail } from "../lib/notifications.js";
+import { emailShell, ctaButton } from "../lib/emailTemplates.js";
 import { z } from "zod";
 import { Resend } from "resend";
 import { and, gt } from "drizzle-orm";
@@ -235,18 +236,18 @@ router.post("/auth/forgot-password", async (req: Request, res: Response) => {
       from: "AIBeatSync <notifications@aibeatsync.com>",
       to: user.email!,
       subject: "Reset your AIBeatSync password",
-      html: `
-        <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
-          <h2 style="margin:0 0 16px">Reset your password</h2>
-          <p>We received a request to reset your AIBeatSync password. This link expires in 1 hour.</p>
-          <p style="margin:24px 0">
-            <a href="${resetUrl}" style="background:#7c3aed;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">
-              Choose a new password →
-            </a>
+      html: emailShell(
+        `
+          <h1 style="font-size:22px;margin:0 0 12px">Reset your password 🔐</h1>
+          <p style="font-size:15px;line-height:1.6;color:#333;margin:0 0 8px">
+            We received a request to reset your AIBeatSync password. This link expires in <strong>1 hour</strong>.
           </p>
-          <p style="color:#666;font-size:13px">If you didn't request this, you can safely ignore this email — your password won't change.</p>
-        </div>
-      `,
+          ${ctaButton(resetUrl, "Choose a new password →")}
+          <p style="font-size:13px;line-height:1.6;color:#666;margin:0">
+            If you didn't request this, you can safely ignore this email — your password won't change.
+          </p>
+        `,
+      ),
     });
     req.log.info({ userId: user.id }, "Password reset email sent");
   } catch (err) {

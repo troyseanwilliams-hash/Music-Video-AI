@@ -9,6 +9,7 @@
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger.js";
+import { renderReadyEmailHtml, renderFailedEmailHtml, adminEmailHtml, detailRow, escapeHtml } from "./emailTemplates.js";
 
 const APP_URL = process.env.APP_URL ?? "https://aibeatsync.com";
 const FROM = "AIBeatSync <notifications@aibeatsync.com>";
@@ -49,18 +50,7 @@ export async function notifyRenderReady(job: RenderEmailJob): Promise<void> {
     await sendViaResend(
       user.email,
       "Your video is ready 🎬",
-      `
-      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
-        <h2 style="margin:0 0 12px">Your video is ready</h2>
-        <p style="color:#444">"${title}" just finished rendering.</p>
-        <p style="margin:24px 0">
-          <a href="${APP_URL}/jobs/${job.id}" style="background:#7c3aed;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">
-            Watch it now →
-          </a>
-        </p>
-        <p style="color:#888;font-size:12px">You can turn these emails off from your dashboard.</p>
-      </div>
-      `,
+      renderReadyEmailHtml({ title, jobUrl: `${APP_URL}/jobs/${job.id}` }),
     );
     logger.info({ jobId: job.id }, "Render-ready email sent");
   } catch (err) {
@@ -97,23 +87,18 @@ export async function notifyAdminRenderFailed(job: RenderEmailJob, reason: strin
     await sendViaResend(
       adminEmail,
       `⚠️ Render failed — needs a fix (${job.id.slice(0, 8)})`,
-      `
-      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
-        <h2 style="margin:0 0 12px">A video render failed — credits were NOT refunded</h2>
-        <p style="color:#444">This job needs your attention. Try recovering it (re-run failed clips / finalize from partial clips) before deciding whether to refund the user manually.</p>
-        <table style="width:100%;border-collapse:collapse;margin-top:8px">
-          <tr><td style="padding:6px 0;color:#666;width:120px">Job ID</td><td style="padding:6px 0;font-family:monospace">${job.id}</td></tr>
-          <tr><td style="padding:6px 0;color:#666">User</td><td style="padding:6px 0">${userEmail ?? "unknown"}</td></tr>
-          <tr><td style="padding:6px 0;color:#666;vertical-align:top">Prompt</td><td style="padding:6px 0">${title}</td></tr>
-          <tr><td style="padding:6px 0;color:#666;vertical-align:top">Reason</td><td style="padding:6px 0;color:#b91c1c">${reason.slice(0, 300)}</td></tr>
-        </table>
-        <p style="margin:24px 0">
-          <a href="${APP_URL}/admin" style="background:#7c3aed;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">
-            Open Admin — recover this job →
-          </a>
-        </p>
-      </div>
-      `,
+      adminEmailHtml({
+        heading: "A render failed — credits were NOT refunded",
+        intro:
+          "This job needs your attention. Try recovering it (re-run failed clips / finalize from partial clips) before deciding whether to refund the user manually.",
+        rows:
+          detailRow("Job ID", escapeHtml(job.id), { mono: true }) +
+          detailRow("User", escapeHtml(userEmail ?? "unknown")) +
+          detailRow("Prompt", escapeHtml(title)) +
+          detailRow("Reason", escapeHtml(reason.slice(0, 300)), { color: "#b91c1c" }),
+        ctaHref: `${APP_URL}/admin`,
+        ctaLabel: "Open Admin — recover this job →",
+      }),
     );
     logger.info({ jobId: job.id }, "Admin render-failure alert sent");
   } catch (err) {
@@ -135,18 +120,7 @@ export async function notifyRenderFailed(job: RenderEmailJob, reason: string): P
     await sendViaResend(
       user.email,
       "Your render didn't finish",
-      `
-      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
-        <h2 style="margin:0 0 12px">Your render didn't finish</h2>
-        <p style="color:#444">"${title}" failed: ${reason.slice(0, 200)}</p>
-        <p style="margin:24px 0">
-          <a href="${APP_URL}/jobs/${job.id}" style="background:#7c3aed;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">
-            View details & retry →
-          </a>
-        </p>
-        <p style="color:#888;font-size:12px">You can turn these emails off from your dashboard.</p>
-      </div>
-      `,
+      renderFailedEmailHtml({ title, reason, jobUrl: `${APP_URL}/jobs/${job.id}` }),
     );
     logger.info({ jobId: job.id }, "Render-failed email sent");
   } catch (err) {
