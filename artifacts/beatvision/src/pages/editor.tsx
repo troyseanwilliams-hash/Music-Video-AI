@@ -462,9 +462,18 @@ export default function Editor() {
   // Remix Lab is pure ffmpeg (no AI cost), so the real charge is the flat
   // freemium overage (studio.ts): free on trial/subscription and within the
   // monthly free allotment, otherwise a small flat fee per export — never
-  // size-scaled. Mirror the server's quota.overageCost so the shown estimate
-  // matches what's actually charged.
-  const estimatedCost = quota?.overageCost ?? 15;
+  // size-scaled. Trial exception: karaoke lyric burns beyond the trial
+  // allowance cost the standard lyric add-on. Mirror the server's quota so the
+  // shown estimate matches what's actually charged.
+  const trialLyricCost =
+    trialActive && quota?.trial && lyricsText.trim() && quota.trial.lyricRemaining <= 0
+      ? quota.trial.lyricOverageCost
+      : 0;
+  const estimatedCost = trialActive
+    ? trialLyricCost
+    : quota && quota.remaining <= 0
+      ? quota.overageCost
+      : 0;
 
   function patchSegment(id: string, patch: Partial<Segment>) {
     setSegments((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
@@ -968,9 +977,12 @@ export default function Editor() {
         <Card className="border-primary/30 bg-primary/5 mb-6 p-4 text-sm">
           Free trial — {trialDaysLeft} day{trialDaysLeft === 1 ? "" : "s"} left. The full Remix Lab is unlocked: 1080p,
           no watermark, smooth transitions.{" "}
-          {segments.length > 0 && (
-            <>This export would use <strong>~{estimatedCost} credits</strong>, free while you're on the trial.{" "}</>
-          )}
+          {segments.length > 0 &&
+            (estimatedCost > 0 ? (
+              <>This export includes a karaoke lyric burn beyond your trial allowance, so it costs <strong>{estimatedCost} credits</strong>.{" "}</>
+            ) : (
+              <>Exports are <strong>free</strong> while you're on the trial.{" "}</>
+            ))}
           <button className="text-primary font-medium underline" onClick={() => setLocation("/pricing")}>
             Subscribe
           </button>{" "}
@@ -1586,7 +1598,11 @@ export default function Editor() {
         {!uploadsPending && segments.length > 0 && (trialActive || !fullAccess) && (
           <span className="text-muted-foreground text-sm tabular-nums">
             {trialActive ? (
-              <>Would use {estimatedCost} credits · <span className="text-primary">free during trial</span></>
+              estimatedCost > 0 ? (
+                <>Est. cost: {estimatedCost} credits (lyric add-on)</>
+              ) : (
+                <span className="text-primary">Free during trial</span>
+              )
             ) : quota && quota.remaining > 0 ? (
               <span className="text-primary">Free · {quota.remaining} of {quota.free} left this month</span>
             ) : quota ? (
