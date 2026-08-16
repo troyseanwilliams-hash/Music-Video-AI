@@ -8,8 +8,13 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import {
+  calculateLipsyncCost, LIPSYNC_MAX_SECONDS, LIPSYNC_CREDITS_PER_SECOND, LYRIC_ALIGN_COST,
+} from "@/lib/creditPricing";
+import { LYRICSYNC_PUBLIC } from "@/lib/featureFlags";
+import { SoundtrackPickerDialog, type PickedSoundtrack } from "@/components/SoundtrackPickerDialog";
+import {
   Mic2, Music2, Wand2, Play, Pause, Upload, Smile, Copy, Type, Clock,
-  ChevronLeft, ChevronRight, Info,
+  ChevronLeft, ChevronRight, Info, AlertTriangle, Loader2,
 } from "lucide-react";
 
 /**
@@ -28,9 +33,6 @@ import {
  *   4. Configure an optional lip-synced performer (reuses the OmniHuman concept).
  *   5. Copy the generated LRC straight into Generate, or (stub) send to render.
  */
-
-// One switch to promote this out of admin-only later. Kept false = admin-only.
-const LYRICSYNC_PUBLIC = false;
 
 type Word = { w: string; t: number };
 type Line = { start: number; words: Word[] };
@@ -116,7 +118,49 @@ function toLrc(lines: Line[]): string {
     .join("\n");
 }
 
-export default function LyricSyncStudio() {
+/** Parse enhanced LRC ([mm:ss.xx]<mm:ss.xx>word) back into the editor's Line[]. */
+function parseLrcToLines(lrc: string): Line[] {
+  const toSec = (m: string, s: string, c?: string) =>
+    parseInt(m, 10) * 60 + parseInt(s, 10) + (c ? parseInt(c.padEnd(2, "0").slice(0, 2), 10) / 100 : 0);
+  const out: Line[] = [];
+  for (const raw of lrc.split(/\r?\n/)) {
+    const head = raw.match(/\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]/);
+    if (!head) continue;
+    const start = toSec(head[1], head[2], head[3]);
+    const words: Word[] = [];
+    const re = /<(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?>([^<]+)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(raw)) !== null) {
+      const t = toSec(m[1], m[2], m[3]);
+      const w = m[4].trim();
+      if (w) words.push({ w, t });
+    }
+    if (words.length === 0) {
+      const body = raw.replace(/\[[^\]]*\]/g, "").replace(/<[^>]*>/g, "").trim();
+      body.split(/\s+/).filter(Boolean).forEach((w, i) => words.push({ w, t: start + i * 0.35 }));
+    }
+    if (words.length) out.push({ start, words });
+  }
+  return out;
+}
+
+/** Upload the local audio to object storage → objectPath, so the server can
+ *  hand a signed URL to the alignment engine. Mirrors LipSyncPanel. */
+async function presignAndUpload(file: File): Promise<string> {
+  const res = await fetch("/api/storage/uploads/request-url", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+  });
+  if (!res.ok) throw new Error("Could not get an upload URL");
+  const { uploadURL, objectPath } = (await res.json()) as { uploadURL: string; objectPath: string };
+  const put = await fetch(uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+  if (!put.ok) throw new Error(`Upload failed (${put.status})`);
+  return objectPath;
+}
+
+export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admin" | "public" }) {
   const { toast } = useToast();
 
   // ── Source audio ──
@@ -126,6 +170,9 @@ export default function LyricSyncStudio() {
   const [peaks, setPeaks] = useState<number[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioFileRef = useRef<HTMLInputElement | null>(null);
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [libObjectPath, setLibObjectPath] = useState<string | null>(null); // set when picked from library
+  const [syncing, setSyncing] = useState(false);
 
   // ── Lyrics + timing ──
   const [lyrics, setLyrics] = useState(SAMPLE);
@@ -140,25 +187,30 @@ export default function LyricSyncStudio() {
   const lastTs = useRef(0);
 
   // ── Style ──
-  const [mode, setMode] = useState<"lyric" | "lip">("lyric");
+  const [lipEnabled, setLipEnabled] = useState(false);
   const [preset, setPreset] = useState<Preset>("karaoke");
   const [position, setPosition] = useState<Position>("center");
   const [color, setColor] = useState(COLORS[0].key);
   const [size, setSize] = useState(30);
 
-  // ── Lip sync ──
+  // ── Lip sync (premium add-on) — only the two values the API actually accepts:
+  //    a face image + a clip length (5–30s). No strength/placement (OmniHuman
+  //    takes image + audio only). Runs at export via POST /api/videos/:id/lipsync.
   const [facePreview, setFacePreview] = useState<string | null>(null);
-  const [lipStrength, setLipStrength] = useState(80);
-  const [placement, setPlacement] = useState<"full" | "scene">("full");
+  const [lipSeconds, setLipSeconds] = useState(15);
   const faceInputRef = useRef<HTMLInputElement | null>(null);
 
   const lrc = useMemo(() => toLrc(lines), [lines]);
+  const lipCost = calculateLipsyncCost(lipSeconds); // same 1.5× margin as everything else
+  const jobCost = LYRIC_ALIGN_COST + (lipEnabled ? lipCost : 0); // add-ons this studio controls
 
   // Load audio file → object URL + duration + waveform peaks.
   const onAudioFile = useCallback(async (file: File) => {
     const url = URL.createObjectURL(file);
     setAudioUrl(url);
     setAudioName(file.name);
+    setAudioFile(file);
+    setLibObjectPath(null); // uploading replaces any library selection
     setSynced(false);
     setLines([]);
     // Try to decode real peaks; fall back to a synthetic waveform.
@@ -185,8 +237,20 @@ export default function LyricSyncStudio() {
     }
   }, []);
 
-  // Auto-sync
-  const runSync = useCallback(() => {
+  // Pick a song from the user's own library — already in object storage, so we
+  // align it directly (no upload). Duration comes from the <audio> metadata.
+  const onPickLibrary = useCallback((t: PickedSoundtrack) => {
+    setAudioUrl(t.url);
+    setAudioName(t.title);
+    setAudioFile(null);
+    setLibObjectPath(t.objectPath);
+    setSynced(false);
+    setLines([]);
+    setPeaks(Array.from({ length: 120 }, (_, i) => 0.25 + Math.abs(Math.sin(i * 0.5)) * 0.6));
+  }, []);
+
+  // Client-side fallback: spread lines evenly across the track (no vocal read).
+  const estimateSync = useCallback(() => {
     const d = audioRef.current?.duration && isFinite(audioRef.current.duration)
       ? audioRef.current.duration
       : duration;
@@ -197,8 +261,45 @@ export default function LyricSyncStudio() {
     }
     setLines(result);
     setSynced(true);
-    toast({ title: "Synced", description: `${result.length} lines aligned to ${fmtClock(d)}. Nudge any line to fine-tune.` });
+    toast({ title: "Estimated timing", description: `${result.length} lines spread across ${fmtClock(d)}. Nudge to fine-tune.` });
   }, [lyrics, duration, toast]);
+
+  // Real sync: read the loaded song's vocal and align word-by-word via
+  // /api/lyrics/align (AssemblyAI). Falls back to estimateSync on any error,
+  // low confidence, or when no audio file is loaded.
+  const runSync = useCallback(async () => {
+    if (!audioFile && !libObjectPath) { estimateSync(); return; }
+    setSyncing(true);
+    try {
+      const objectPath = libObjectPath ?? (await presignAndUpload(audioFile!));
+      const res = await fetch("/api/lyrics/align", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ audioObjectPath: objectPath, lyricsText: lyrics.trim() || null }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Alignment failed");
+      const parsed = parseLrcToLines(data.lrc || "");
+      if (parsed.length === 0) throw new Error("No timing returned");
+      setLines(parsed);
+      setSynced(true);
+      toast({
+        title: data.lowConfidence ? "Synced — low confidence" : "Synced to vocal",
+        description: data.lowConfidence
+          ? `${parsed.length} lines aligned, but confidence was low — check the timing.`
+          : `${parsed.length} lines aligned to the vocal. Nudge any line to fine-tune.`,
+      });
+    } catch (err) {
+      toast({
+        title: "Using estimated timing",
+        description: err instanceof Error ? err.message : "Alignment unavailable — spread evenly instead.",
+      });
+      estimateSync();
+    } finally {
+      setSyncing(false);
+    }
+  }, [audioFile, libObjectPath, lyrics, estimateSync, toast]);
 
   // Unified playback clock (real audio when present, else a sim clock).
   useEffect(() => {
@@ -269,26 +370,30 @@ export default function LyricSyncStudio() {
   };
 
   const stubRender = () => {
+    const lip = lipEnabled
+      ? ` Lip-sync add-on: +${lipCost} credits (runs via /api/videos/:id/lipsync on the rendered video).`
+      : "";
     toast({
       title: "POC — render is stubbed",
-      description: "Wiring: submit lyricsText (LRC) + face + style to the Generate job pipeline. Alignment & lip-sync run server-side at render.",
+      description: `Wiring: submit lyricsText (LRC) to the Generate job pipeline; karaoke burns in server-side.${lip}`,
     });
   };
 
   return (
     <div className="space-y-4">
-      {/* Internal banner */}
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/25 bg-primary/5 px-4 py-3">
-        <span className="h-2 w-2 rounded-full bg-amber-400 shrink-0" />
-        <p className="text-sm">
-          <span className="font-semibold">Internal build · Admin only.</span>{" "}
-          <span className="text-muted-foreground">
-            AILyricSync is not public — it lives behind the <code className="text-xs bg-muted/40 px-1 rounded">/admin</code> gate.
-            Flip <code className="text-xs bg-muted/40 px-1 rounded">LYRICSYNC_PUBLIC</code> to promote it. Currently{" "}
-            <span className={LYRICSYNC_PUBLIC ? "text-emerald-500" : "text-amber-500"}>{LYRICSYNC_PUBLIC ? "PUBLIC" : "ADMIN-ONLY"}</span>.
-          </span>
-        </p>
-      </div>
+      {/* Internal banner — admin view only */}
+      {variant === "admin" && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/25 bg-primary/5 px-4 py-3">
+          <span className="h-2 w-2 rounded-full bg-amber-400 shrink-0" />
+          <p className="text-sm">
+            <span className="font-semibold">Admin preview.</span>{" "}
+            <span className="text-muted-foreground">
+              Public rollout is gated by <code className="text-xs bg-muted/40 px-1 rounded">VITE_LYRICSYNC_PUBLIC</code>. Currently{" "}
+              <span className={LYRICSYNC_PUBLIC ? "text-emerald-500" : "text-amber-500"}>{LYRICSYNC_PUBLIC ? "PUBLIC" : "ADMIN-ONLY"}</span>.
+            </span>
+          </p>
+        </div>
+      )}
 
       <Card className="bg-card/50 border-card-border overflow-hidden">
         <div className="h-1 w-full bg-gradient-electric" />
@@ -298,9 +403,9 @@ export default function LyricSyncStudio() {
               <Mic2 className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <CardTitle className="text-lg leading-tight">Lyric + Lip Sync Studio</CardTitle>
+              <CardTitle className="text-lg leading-tight">Lyric Sync</CardTitle>
               <div className="flex items-center gap-1.5 mt-0.5">
-                <Badge variant="outline" className="text-[10px]">Beta · Admin</Badge>
+                <Badge variant="outline" className="text-[10px]">{variant === "admin" ? "Beta · Admin" : "Beta"}</Badge>
                 <span className="text-[10px] text-muted-foreground">AILyricSync</span>
               </div>
             </div>
@@ -312,16 +417,17 @@ export default function LyricSyncStudio() {
         </CardHeader>
 
         <CardContent className="space-y-5">
-          {/* Mode selector */}
-          <div className="inline-flex gap-1 rounded-lg border border-border bg-background/40 p-1">
-            <button
-              onClick={() => setMode("lyric")}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === "lyric" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-            >Lyric Sync</button>
-            <button
-              onClick={() => setMode("lip")}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === "lip" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-            >Lyric + Lip Sync</button>
+          {/* Lip Sync is an optional setting on Lyric Sync */}
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-background/40 px-3 py-2.5">
+            <div className="flex items-center gap-2 text-sm">
+              <Smile className="h-4 w-4 text-primary" />
+              <span className="font-medium">Add a lip-synced performer</span>
+              <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-500">Premium add-on</Badge>
+            </div>
+            <div className="flex items-center gap-2.5">
+              {lipEnabled && <span className="text-xs font-semibold text-amber-500">+{lipCost} credits</span>}
+              <Switch checked={lipEnabled} onCheckedChange={setLipEnabled} aria-label="Add a lip-synced performer" />
+            </div>
           </div>
 
           <div className="grid gap-5 lg:grid-cols-2">
@@ -336,11 +442,16 @@ export default function LyricSyncStudio() {
                   <div className="h-11 w-11 rounded-md bg-primary/10 flex items-center justify-center text-primary">♫</div>
                   <div className="min-w-0">
                     <div className="font-medium truncate">{audioName ?? "No song loaded"}</div>
-                    <div className="text-xs text-muted-foreground">{audioName ? `${fmtClock(duration)} · ready` : "Upload an audio file to sync against"}</div>
+                    <div className="text-xs text-muted-foreground">{audioName ? `${fmtClock(duration)} · ready` : "Upload a file or pick from your library"}</div>
                   </div>
-                  <Button variant="outline" size="sm" className="ml-auto" onClick={() => audioFileRef.current?.click()}>
-                    <Upload className="mr-1.5 h-3.5 w-3.5" /> {audioName ? "Change" : "Upload"}
-                  </Button>
+                  <div className="ml-auto flex items-center gap-2 shrink-0">
+                    <SoundtrackPickerDialog onSelect={onPickLibrary}>
+                      <Button variant="outline" size="sm"><Music2 className="mr-1.5 h-3.5 w-3.5" /> Library</Button>
+                    </SoundtrackPickerDialog>
+                    <Button variant="outline" size="sm" onClick={() => audioFileRef.current?.click()}>
+                      <Upload className="mr-1.5 h-3.5 w-3.5" /> {audioName ? "Change" : "Upload"}
+                    </Button>
+                  </div>
                 </div>
                 {audioUrl && (
                   <audio
@@ -364,8 +475,14 @@ export default function LyricSyncStudio() {
                   placeholder="Paste plain lyrics — one line each. Section tags like [Chorus] are ignored for timing."
                 />
                 <div className="flex items-center gap-2 mt-2">
-                  <Button onClick={runSync} className="gap-1.5"><Wand2 className="h-4 w-4" /> Auto-sync timing</Button>
-                  <span className="text-xs text-muted-foreground">{synced ? `${lines.length} lines synced` : "not synced yet"}</span>
+                  <Button onClick={runSync} disabled={syncing} className="gap-1.5">
+                    {syncing
+                      ? <><Loader2 className="h-4 w-4 animate-spin" /> Reading vocal…</>
+                      : <><Wand2 className="h-4 w-4" /> Auto-sync timing</>}
+                  </Button>
+                  <span className="text-xs text-muted-foreground">
+                    {syncing ? "aligning to the song…" : synced ? `${lines.length} lines synced` : "not synced yet"}
+                  </span>
                 </div>
               </div>
 
@@ -412,18 +529,10 @@ export default function LyricSyncStudio() {
               <div>
                 <Label className="mb-1.5">Preview</Label>
                 <div className="relative mx-auto aspect-[9/16] max-h-[440px] w-full overflow-hidden rounded-2xl border border-border bg-[radial-gradient(120%_80%_at_50%_0%,hsl(var(--primary)/0.18),#0a0c12)] flex flex-col items-center justify-end">
-                  {mode === "lip" && (
-                    <svg viewBox="0 0 120 130" className="absolute top-[16%] left-1/2 -translate-x-1/2 w-28 opacity-95">
-                      <ellipse cx="60" cy="60" rx="42" ry="48" fill="#e9c9a8" />
-                      <circle cx="45" cy="52" r="5" fill="#26202a" /><circle cx="75" cy="52" r="5" fill="#26202a" />
-                      <path d="M30 30 Q60 6 90 30 L86 40 Q60 24 34 40 Z" fill="#2a2230" />
-                      <ellipse cx="60" cy="86"
-                        rx="14"
-                        ry={playing ? 4 + Math.abs(Math.sin(now * 14)) * (10 * (lipStrength / 100)) : 4}
-                        fill="#7a2b2b" />
-                    </svg>
-                  )}
                   <div className="absolute top-2 right-3 text-[10px] text-white/50">AIBeatSync</div>
+                  {lipEnabled && (
+                    <div className="absolute top-2 left-3 text-[10px] text-amber-400/80">Lip sync renders at export · no live preview</div>
+                  )}
                   <div
                     className={`relative z-10 w-full px-5 text-center ${position === "lower" ? "pb-12" : position === "full" ? "pb-0 mb-auto mt-auto" : "pb-0 my-auto"}`}
                     style={{ transform: preset === "kinetic" && playing ? `scale(${1 + 0.04 * Math.sin(now * 6)})` : "none" }}
@@ -481,35 +590,88 @@ export default function LyricSyncStudio() {
                 </div>
               </div>
 
-              {/* Lip sync config */}
-              {mode === "lip" && (
-                <div className="rounded-xl border border-border bg-background/30 p-4 space-y-3">
-                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    <Smile className="h-4 w-4 text-primary" /> Lip-sync performer
+              {/* Lip sync — premium add-on. Only the values the API accepts. */}
+              {lipEnabled && (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-sm font-semibold">
+                      <Smile className="h-4 w-4 text-primary" /> Lip-sync performer
+                    </div>
+                    <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-500">Premium add-on</Badge>
                   </div>
+                  <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                    <AlertTriangle className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
+                    <span>
+                      Animates a face to sing your track with OmniHuman — an expensive video model, so it's an{" "}
+                      <span className="text-amber-500 font-medium">upcharge</span>, billed per second at the standard margin.
+                      It renders at export on the video's own audio (<code className="bg-muted/40 px-1 rounded">POST /api/videos/:id/lipsync</code>).
+                    </span>
+                  </p>
+
+                  {/* Face image (real API input: imageObjectPath) */}
                   <input ref={faceInputRef} type="file" accept="image/*" className="hidden"
                     onChange={(e) => { const f = e.target.files?.[0]; if (f) setFacePreview(URL.createObjectURL(f)); e.target.value = ""; }} />
-                  <div className="flex items-center gap-3">
-                    <Button variant="outline" size="sm" onClick={() => faceInputRef.current?.click()}>
-                      <Upload className="mr-1.5 h-3.5 w-3.5" /> Upload face
-                    </Button>
-                    {facePreview && <img src={facePreview} alt="face" className="h-12 w-12 rounded-md border border-border object-cover" />}
-                    <span className="text-[11px] text-muted-foreground">Renders via OmniHuman at export (~16 cr/s).</span>
-                  </div>
-                  <div className="flex gap-1.5">
-                    {(["full", "scene"] as const).map((p) => (
-                      <button key={p} onClick={() => setPlacement(p)}
-                        className={`rounded-md border px-2.5 py-1.5 text-xs font-medium ${placement === p ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/50"}`}>
-                        {p === "full" ? "Full-frame singer" : "Performer in scene"}</button>
-                    ))}
-                  </div>
                   <div>
-                    <Label className="text-xs text-muted-foreground">Lip-sync strength · {lipStrength}%</Label>
-                    <Slider className="mt-2" value={[lipStrength]} min={0} max={100} step={5} onValueChange={([v]) => setLipStrength(v)} />
+                    <Label className="text-xs text-muted-foreground">Face image</Label>
+                    <div className="mt-1.5 flex items-center gap-3">
+                      <Button variant="outline" size="sm" onClick={() => faceInputRef.current?.click()}>
+                        <Upload className="mr-1.5 h-3.5 w-3.5" /> {facePreview ? "Change face" : "Upload face"}
+                      </Button>
+                      {facePreview
+                        ? <img src={facePreview} alt="Uploaded performer face" className="h-12 w-12 rounded-md border border-border object-cover" />
+                        : <span className="text-[11px] text-muted-foreground">Front-facing, well-lit, one person.</span>}
+                    </div>
+                  </div>
+
+                  {/* Clip length (real API input: lipsyncSeconds) */}
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Clip length · {lipSeconds}s (max {LIPSYNC_MAX_SECONDS}s)</Label>
+                    <div className="mt-1.5 grid grid-cols-5 gap-2">
+                      {[5, 10, 15, 20, 30].map((s) => (
+                        <button key={s} onClick={() => setLipSeconds(s)}
+                          className={`rounded-lg border px-2 py-2 text-xs font-medium transition-colors ${lipSeconds === s ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/50"}`}>{s}s</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Upcharge summary */}
+                  <div className="flex items-center justify-between rounded-lg border border-amber-500/30 bg-background/40 px-3 py-2">
+                    <span className="text-xs text-muted-foreground">Upcharge · {LIPSYNC_CREDITS_PER_SECOND} credits/sec</span>
+                    <span className="text-sm font-semibold text-amber-500">
+                      +{lipCost} credits{" "}
+                      <span className="text-xs font-normal text-muted-foreground">(~${(lipCost * 0.015).toFixed(2)})</span>
+                    </span>
                   </div>
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Job cost — itemized, all margins included, updates as features toggle */}
+          <div className="rounded-xl border border-primary/25 bg-primary/5 p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">This job</div>
+              <div className="text-base font-bold">
+                {jobCost} credits{" "}
+                <span className="text-xs font-normal text-muted-foreground">(~${(jobCost * 0.015).toFixed(2)})</span>
+              </div>
+            </div>
+            <div className="mt-2 space-y-1 text-xs">
+              <div className="flex justify-between text-muted-foreground">
+                <span>Lyric alignment (sync to vocal)</span><span>{LYRIC_ALIGN_COST} cr</span>
+              </div>
+              {lipEnabled && (
+                <div className="flex justify-between text-amber-600 dark:text-amber-500">
+                  <span>Lip-sync performer · {lipSeconds}s</span><span>+{lipCost} cr</span>
+                </div>
+              )}
+              <div className="flex justify-between text-muted-foreground/70">
+                <span>Video render</span><span>added at Generate</span>
+              </div>
+            </div>
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              All prices include margin. You'll see the final total — including your video render — before you confirm at Generate.
+            </p>
           </div>
 
           {/* Output */}
