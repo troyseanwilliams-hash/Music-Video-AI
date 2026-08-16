@@ -287,6 +287,7 @@ export default function Editor() {
   // for Auto-sync when no separate music file has been added.
   const [sourceVideoId, setSourceVideoId] = useState<string | null>(null);
   const [lyricsText, setLyricsText] = useState("");
+  const [lyricsSyncSource, setLyricsSyncSource] = useState<"music" | "video">("music");
   const [lyricsSyncing, setLyricsSyncing] = useState(false);
   const [lyricsSyncNote, setLyricsSyncNote] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -431,6 +432,7 @@ export default function Editor() {
       }
       if (typeof init?.videoId === "string" && init.videoId) {
         setSourceVideoId(init.videoId);
+        setLyricsSyncSource("video");
       }
     } catch {
       /* ignore */
@@ -678,24 +680,30 @@ export default function Editor() {
     }
   }
 
-  // Auto-sync lyrics (2 credits).
-  // Priority: uploaded music track → source video audio (loaded from Gallery).
-  // Returns true when at least one audio source is available.
-  const canAutoSync = !!(music?.objectPath || sourceVideoId);
+  // Auto-sync lyrics (2 credits). The user can choose either source whenever
+  // both are available; a single available source is selected automatically.
+  const musicSyncAvailable = !!music?.objectPath;
+  const videoSyncAvailable = !!sourceVideoId;
+  const syncFromMusic = lyricsSyncSource === "music" && musicSyncAvailable;
+  const syncFromVideo = lyricsSyncSource === "video" && videoSyncAvailable;
+  const effectiveSyncSource = syncFromMusic || !videoSyncAvailable ? "music" : "video";
+  const canAutoSync = musicSyncAvailable || videoSyncAvailable;
   const autoSyncLyrics = async () => {
     if (!canAutoSync || !acceptedCopyright || lyricsSyncing) return;
     setLyricsSyncing(true);
     setLyricsSyncNote(null);
     try {
-      // Prefer the added music file; fall back to the Gallery video's own audio.
       const body: Record<string, string | undefined> = {
         lyricsText: lyricsText.trim() || undefined,
         acceptCopyright: "true",
       };
-      if (music?.objectPath) {
+      if (effectiveSyncSource === "music" && music?.objectPath) {
         body.audioObjectPath = music.objectPath;
-      } else {
+      } else if (sourceVideoId) {
         body.videoId = sourceVideoId!;
+      } else {
+        setLyricsSyncNote("Add a music track or open a video from Gallery first.");
+        return;
       }
       const res = await fetch(`/api/lyrics/align`, {
         method: "POST",
@@ -1403,32 +1411,65 @@ export default function Editor() {
               )}
             </div>
 
-            {/* Auto-sync to vocals — music track preferred; falls back to the video's own audio */}
-            <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
-              <span className="text-xs text-muted-foreground">
-                {lyricsSyncNote ??
-                  (!canAutoSync
-                    ? "Add a music track above (or open from Gallery) so Auto-sync can time each word to the vocals (2 credits)."
-                    : !acceptedCopyright
-                      ? "Tick the rights box below to enable Auto-sync (2 credits)."
-                      : /\[\d{1,2}:\d{2}/.test(lyricsText)
-                        ? "Timestamps detected — already synced."
-                        : music?.objectPath
-                          ? "Auto-sync times each word to your music track (2 credits). Leave the box empty to transcribe the lyrics too."
-                          : "Auto-sync times each word to the video's own audio (2 credits). Leave the box empty to transcribe the lyrics too.")}
-              </span>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={autoSyncLyrics}
-                disabled={lyricsSyncing || !canAutoSync || !acceptedCopyright}
-                className="gap-2 shrink-0"
-                data-testid="button-editor-autosync"
-              >
-                {lyricsSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                {lyricsSyncing ? "Listening to the track…" : "Auto-sync to vocals"}
-              </Button>
+            {/* Auto-sync to vocals — user can pick the source when both are available */}
+            <div className="mt-3 space-y-2">
+              {/* Source selector — only shown when both music and video are available */}
+              {musicSyncAvailable && videoSyncAvailable && (
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-muted-foreground shrink-0">Sync from:</span>
+                  <button
+                    type="button"
+                    onClick={() => { setLyricsSyncSource("music"); setLyricsSyncNote(null); }}
+                    className={`px-2.5 py-0.5 rounded-full border transition-colors ${
+                      lyricsSyncSource === "music"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:border-primary/50"
+                    }`}
+                    data-testid="button-sync-source-music"
+                  >
+                    Music track
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setLyricsSyncSource("video"); setLyricsSyncNote(null); }}
+                    className={`px-2.5 py-0.5 rounded-full border transition-colors ${
+                      lyricsSyncSource === "video"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:border-primary/50"
+                    }`}
+                    data-testid="button-sync-source-video"
+                  >
+                    Video audio
+                  </button>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <span className="text-xs text-muted-foreground">
+                  {lyricsSyncNote ??
+                    (!canAutoSync
+                      ? "Add a music track above (or open from Gallery) so Auto-sync can time each word to the vocals (2 credits)."
+                      : !acceptedCopyright
+                        ? "Tick the rights box below to enable Auto-sync (2 credits)."
+                        : /\[\d{1,2}:\d{2}/.test(lyricsText)
+                          ? "Timestamps detected — already synced."
+                          : effectiveSyncSource === "music"
+                            ? "Auto-sync times each word to your music track (2 credits). Leave the box empty to transcribe the lyrics too."
+                            : "Auto-sync times each word to the video's own audio (2 credits). Leave the box empty to transcribe the lyrics too.")}
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={autoSyncLyrics}
+                  disabled={lyricsSyncing || !canAutoSync || !acceptedCopyright}
+                  className="gap-2 shrink-0"
+                  data-testid="button-editor-autosync"
+                >
+                  {lyricsSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  {lyricsSyncing ? "Listening to the track…" : "Auto-sync to vocals"}
+                </Button>
+              </div>
             </div>
           </div>
         </Card>
