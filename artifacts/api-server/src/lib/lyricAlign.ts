@@ -115,7 +115,8 @@ export async function alignLyrics(params: { audioUrl: string; lyricsText?: strin
   if (!id) throw new Error("AssemblyAI: no transcript id returned");
 
   // 2. Poll — songs are short, allow ~3 min.
-  let data: { status?: string; error?: string; words?: AaiWord[]; confidence?: number; text?: string } | null = null;
+  type AaiTranscript = { status?: string; error?: string; words?: AaiWord[]; confidence?: number; text?: string };
+  let data: AaiTranscript | null = null;
   for (let i = 0; i < 60; i++) {
     await delay(3000);
     const res = await fetch(`${AAI_BASE}/transcript/${id}`, {
@@ -123,7 +124,7 @@ export async function alignLyrics(params: { audioUrl: string; lyricsText?: strin
       signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) continue;
-    data = (await res.json()) as typeof data;
+    data = (await res.json()) as AaiTranscript;
     if (data?.status === "completed") break;
     if (data?.status === "error") throw new Error(`AssemblyAI: ${data.error ?? "transcription failed"}`);
   }
