@@ -725,7 +725,7 @@ export default function Editor() {
   const effectiveSyncSource = syncFromMusic || !videoSyncAvailable ? "music" : "video";
   const canAutoSync = musicSyncAvailable || videoSyncAvailable;
   const autoSyncLyrics = async () => {
-    if (!canAutoSync || !acceptedCopyright || lyricsSyncing) return;
+    if (!canAutoSync || lyricsSyncing) return;
     setLyricsSyncing(true);
     setLyricsSyncNote(null);
     try {
@@ -1497,9 +1497,7 @@ export default function Editor() {
                   {lyricsSyncNote ??
                     (!canAutoSync
                       ? "Add a music track or a video clip above so Auto-sync can time each word to the vocals (2 credits)."
-                      : !acceptedCopyright
-                        ? "Tick the rights box below to enable Auto-sync (2 credits)."
-                        : /\[\d{1,2}:\d{2}/.test(lyricsText)
+                      : /\[\d{1,2}:\d{2}/.test(lyricsText)
                           ? "Timestamps detected — already synced."
                           : effectiveSyncSource === "music"
                             ? "Auto-sync times each word to your music track (2 credits). Leave the box empty to transcribe the lyrics too."
@@ -1510,7 +1508,7 @@ export default function Editor() {
                   size="sm"
                   variant="outline"
                   onClick={autoSyncLyrics}
-                  disabled={lyricsSyncing || !canAutoSync || !acceptedCopyright}
+                  disabled={lyricsSyncing || !canAutoSync}
                   className="gap-2 shrink-0"
                   data-testid="button-editor-autosync"
                 >

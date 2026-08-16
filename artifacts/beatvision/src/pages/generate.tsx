@@ -554,7 +554,7 @@ export default function Generate() {
         : false;
 
   const autoSyncLyrics = async () => {
-    if (!canAutoSync || !copyrightAcknowledged || lyricsSyncing) return;
+    if (!canAutoSync || lyricsSyncing) return;
     setLyricsSyncing(true);
     setLyricsSyncNote(null);
     try {
@@ -1602,9 +1602,7 @@ export default function Generate() {
                           ? sourceType === CreateJobRequestAudioSourceType.upload
                             ? "Upload your track above, then Auto-sync can time each word to the vocals (2 credits)."
                             : "Load a Suno track above, then Auto-sync can time each word to the vocals (2 credits)."
-                          : !copyrightAcknowledged
-                            ? "Tick the rights box below the summary to enable Auto-sync (2 credits)."
-                            : /\[\d{1,2}:\d{2}/.test(lyricsText)
+                          : /\[\d{1,2}:\d{2}/.test(lyricsText)
                               ? "Timestamps detected — already synced."
                               : sourceType === CreateJobRequestAudioSourceType.suno
                                 ? "Auto-sync imports your Suno track and times each word (2 credits). Leave the box empty to transcribe too."
@@ -1615,7 +1613,7 @@ export default function Generate() {
                       size="sm"
                       variant="outline"
                       onClick={autoSyncLyrics}
-                      disabled={lyricsSyncing || !canAutoSync || !copyrightAcknowledged}
+                      disabled={lyricsSyncing || !canAutoSync}
                       className="gap-2 shrink-0"
                       data-testid="button-generate-autosync"
                     >
