@@ -547,13 +547,15 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
             </div>
           </div>
           <CardDescription className="mt-2">
-            Sync words to the vocal and (optionally) drive a lip-synced performer. Outputs the app's native LRC karaoke
-            format, ready for the Generate pipeline.
+            Sync words to the vocal{variant === "admin" ? " and (optionally) drive a lip-synced performer" : ""}. Outputs
+            the app's native LRC karaoke format, ready for the Generate pipeline.
           </CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-5">
-          {/* Lip Sync is an optional setting on Lyric Sync */}
+          {/* Lip Sync is an optional setting on Lyric Sync — admin-only while the
+              feature is pulled from public surfaces. */}
+          {variant === "admin" && (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-background/40 px-3 py-2.5">
             <div className="flex items-center gap-2 text-sm">
               <Smile className="h-4 w-4 text-primary" />
@@ -565,6 +567,7 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
               <Switch checked={lipEnabled} onCheckedChange={setLipEnabled} aria-label="Add a lip-synced performer" />
             </div>
           </div>
+          )}
 
           <div className="grid gap-5 lg:grid-cols-2">
             {/* LEFT: inputs */}

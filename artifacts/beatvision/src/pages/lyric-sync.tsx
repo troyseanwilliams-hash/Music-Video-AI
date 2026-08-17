@@ -10,7 +10,7 @@ export default function LyricSyncPage() {
   useSEO({
     title: "Lyric Sync — Karaoke Music Videos",
     description:
-      "Turn your song and lyrics into a word-synced karaoke video. Optionally add a lip-synced performer. Fast, in your browser.",
+      "Turn your song and lyrics into a word-synced karaoke video. Fast, in your browser.",
     canonical: "/lyric-sync",
   });
 
@@ -19,7 +19,7 @@ export default function LyricSyncPage() {
       <div className="mb-6">
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Lyric Sync</h1>
         <p className="text-sm text-muted-foreground">
-          Sync your lyrics to the vocal for a karaoke-style video. Add a lip-synced performer as an optional premium add-on.
+          Sync your lyrics to the vocal for a karaoke-style video.
         </p>
       </div>
       <LyricSyncStudio variant="public" />

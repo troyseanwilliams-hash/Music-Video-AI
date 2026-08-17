@@ -1538,7 +1538,7 @@ export default function AdminPage() {
           }`}
         >
           <Mic2 className="h-4 w-4" />
-          Lyric + Lip Sync
+          Lyric Sync
           <span className="ml-1 px-1.5 py-0.5 rounded-full bg-primary/20 text-primary text-[10px] font-mono leading-none">Beta</span>
         </button>
       </div>
