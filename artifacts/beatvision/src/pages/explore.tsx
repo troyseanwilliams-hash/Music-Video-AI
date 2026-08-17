@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { useSEO } from "@/hooks/useSEO";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Heart, Play, Loader2, Globe, EyeOff, Music2, Download, Scissors, Video } from "lucide-react";
 
 interface PublicSoundtrack {
@@ -38,12 +39,14 @@ function VideoCard({
   isAdmin,
   onLikeToggle,
   onUnpublish,
+  onOpen,
 }: {
   video: GalleryVideo;
   isAuthed: boolean;
   isAdmin: boolean;
   onLikeToggle: (v: GalleryVideo) => void;
   onUnpublish: (v: GalleryVideo) => void;
+  onOpen: (v: GalleryVideo) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [hovering, setHovering] = useState(false);
@@ -52,7 +55,10 @@ function VideoCard({
   return (
     <div className="group mb-4 break-inside-avoid overflow-hidden rounded-xl border border-card-border bg-card shadow-lg transition-all hover:border-primary/50">
       <div
-        className="relative aspect-video bg-muted"
+        className="relative aspect-video cursor-pointer bg-muted"
+        role="button"
+        aria-label={`Play ${video.title || "video"} with sound`}
+        onClick={() => onOpen(video)}
         onMouseEnter={() => {
           setHovering(true);
           videoRef.current?.play().catch(() => {});
@@ -93,7 +99,10 @@ function VideoCard({
         {isAdmin && (
           <button
             title="Unpublish"
-            onClick={() => onUnpublish(video)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onUnpublish(video);
+            }}
             className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white hover:bg-destructive"
           >
             <EyeOff className="h-3.5 w-3.5" />
@@ -129,6 +138,7 @@ export default function Explore() {
   const { isAuthenticated, user } = useAuth();
   const [, setLocation] = useLocation();
   const [videos, setVideos] = useState<GalleryVideo[]>([]);
+  const [activeVideo, setActiveVideo] = useState<GalleryVideo | null>(null);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -328,9 +338,28 @@ export default function Explore() {
                 isAdmin={isAdmin}
                 onLikeToggle={onLikeToggle}
                 onUnpublish={onUnpublish}
+                onOpen={setActiveVideo}
               />
             ))}
           </div>
+          {/* Full player with sound — opened by clicking a card. */}
+          <Dialog open={!!activeVideo} onOpenChange={(open) => !open && setActiveVideo(null)}>
+            <DialogContent className="max-w-4xl border-card-border bg-black p-0 sm:rounded-xl overflow-hidden">
+              <DialogTitle className="sr-only">
+                {activeVideo?.title || "AI music video"}
+              </DialogTitle>
+              {activeVideo && (
+                <video
+                  key={activeVideo.id}
+                  src={`/api/storage${activeVideo.videoObjectPath}`}
+                  controls
+                  autoPlay
+                  playsInline
+                  className="max-h-[80vh] w-full bg-black"
+                />
+              )}
+            </DialogContent>
+          </Dialog>
           {hasMore && (
             <div className="mt-8 flex justify-center">
               <Button
