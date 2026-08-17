@@ -54,11 +54,19 @@ function VideoCard({
 
   return (
     <div className="group mb-4 break-inside-avoid overflow-hidden rounded-xl border border-card-border bg-card shadow-lg transition-all hover:border-primary/50">
+      <div className="relative">
       <div
-        className="relative aspect-video cursor-pointer bg-muted"
+        className="relative aspect-video cursor-pointer bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
         role="button"
+        tabIndex={0}
         aria-label={`Play ${video.title || "video"} with sound`}
         onClick={() => onOpen(video)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onOpen(video);
+          }
+        }}
         onMouseEnter={() => {
           setHovering(true);
           videoRef.current?.play().catch(() => {});
@@ -96,18 +104,17 @@ function VideoCard({
             </div>
           </div>
         )}
-        {isAdmin && (
-          <button
-            title="Unpublish"
-            onClick={(e) => {
-              e.stopPropagation();
-              onUnpublish(video);
-            }}
-            className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white hover:bg-destructive"
-          >
-            <EyeOff className="h-3.5 w-3.5" />
-          </button>
-        )}
+      </div>
+      {/* Sibling of the card play button so interactive controls aren't nested. */}
+      {isAdmin && (
+        <button
+          title="Unpublish"
+          onClick={() => onUnpublish(video)}
+          className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white hover:bg-destructive"
+        >
+          <EyeOff className="h-3.5 w-3.5" />
+        </button>
+      )}
       </div>
 
       <div className="flex items-center justify-between gap-2 p-3">
