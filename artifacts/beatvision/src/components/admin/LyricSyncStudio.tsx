@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -162,6 +163,7 @@ async function presignAndUpload(file: File): Promise<string> {
 
 export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admin" | "public" }) {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
 
   // ── Source audio ──
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -172,7 +174,10 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
   const audioFileRef = useRef<HTMLInputElement | null>(null);
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [libObjectPath, setLibObjectPath] = useState<string | null>(null); // set when picked from library
+  const [audioObjectPath, setAudioObjectPath] = useState<string | null>(null); // storage path once uploaded/picked
   const [syncing, setSyncing] = useState(false);
+  const [rendering, setRendering] = useState(false);
+  const [renderMsg, setRenderMsg] = useState("");
 
   // ── Lyrics + timing ──
   const [lyrics, setLyrics] = useState(SAMPLE);
@@ -197,12 +202,14 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
   //    a face image + a clip length (5–30s). No strength/placement (OmniHuman
   //    takes image + audio only). Runs at export via POST /api/videos/:id/lipsync.
   const [facePreview, setFacePreview] = useState<string | null>(null);
+  const [faceObjectPath, setFaceObjectPath] = useState<string | null>(null); // uploaded face in storage
+  const [faceUploading, setFaceUploading] = useState(false);
   const [lipSeconds, setLipSeconds] = useState(15);
   const faceInputRef = useRef<HTMLInputElement | null>(null);
 
   const lrc = useMemo(() => toLrc(lines), [lines]);
   const lipCost = calculateLipsyncCost(lipSeconds); // same 1.5× margin as everything else
-  const jobCost = LYRIC_ALIGN_COST + (lipEnabled ? lipCost : 0); // add-ons this studio controls
+  const jobCost = (lines.length ? LYRIC_ALIGN_COST : 0) + (lipEnabled ? lipCost : 0); // karaoke optional
 
   // Load audio file → object URL + duration + waveform peaks.
   const onAudioFile = useCallback(async (file: File) => {
@@ -211,6 +218,7 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
     setAudioName(file.name);
     setAudioFile(file);
     setLibObjectPath(null); // uploading replaces any library selection
+    setAudioObjectPath(null); // will be set when we upload for alignment
     setSynced(false);
     setLines([]);
     // Try to decode real peaks; fall back to a synthetic waveform.
@@ -244,6 +252,7 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
     setAudioName(t.title);
     setAudioFile(null);
     setLibObjectPath(t.objectPath);
+    setAudioObjectPath(t.objectPath); // library tracks are already in storage
     setSynced(false);
     setLines([]);
     setPeaks(Array.from({ length: 120 }, (_, i) => 0.25 + Math.abs(Math.sin(i * 0.5)) * 0.6));
@@ -272,6 +281,7 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
     setSyncing(true);
     try {
       const objectPath = libObjectPath ?? (await presignAndUpload(audioFile!));
+      setAudioObjectPath(objectPath);
       const res = await fetch("/api/lyrics/align", {
         method: "POST",
         credentials: "include",
@@ -369,15 +379,79 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
     );
   };
 
-  const stubRender = () => {
-    const lip = lipEnabled
-      ? ` Lip-sync add-on: +${lipCost} credits (runs via /api/videos/:id/lipsync on the rendered video).`
-      : "";
-    toast({
-      title: "POC — render is stubbed",
-      description: `Wiring: submit lyricsText (LRC) to the Generate job pipeline; karaoke burns in server-side.${lip}`,
-    });
-  };
+  // Full pipeline: create the karaoke video job (LRC burned in), then — if the
+  // lip-sync add-on is on — poll until the render is ready and run OmniHuman on
+  // the resulting video with the uploaded face. Ends on the job page.
+  const generateVideo = useCallback(async () => {
+    const withKaraoke = lines.length > 0;
+    if (!withKaraoke && !lipEnabled) { toast({ title: "Nothing to generate", description: "Auto-sync lyrics, or turn on lip sync.", variant: "destructive" }); return; }
+    if (lipEnabled && !faceObjectPath) { toast({ title: "Upload a performer face", description: "Lip sync needs a face image.", variant: "destructive" }); return; }
+
+    setRendering(true);
+    try {
+      // Ensure the song is in storage (uploads only get a path once synced).
+      let objectPath = audioObjectPath;
+      if (!objectPath && audioFile) { setRenderMsg("Uploading song…"); objectPath = await presignAndUpload(audioFile); setAudioObjectPath(objectPath); }
+      if (!objectPath) { throw new Error("Load a song first."); }
+
+      setRenderMsg(withKaraoke ? "Creating your karaoke video…" : "Creating your video…");
+      const jobRes = await fetch("/api/jobs", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: "cinematic music video visuals, atmospheric lighting, synced to the song",
+          style: "cinematic",
+          audioSourceType: "upload",
+          audioObjectPath: objectPath,
+          lyricsText: withKaraoke ? lrc : null, // karaoke is optional — lip sync works without it
+          aspectRatio: "9:16",
+          resolution: "720p",
+          requestedDuration: "full",
+        }),
+      });
+      const job = await jobRes.json();
+      if (!jobRes.ok) throw new Error(job.error || "Couldn't start the video");
+      const jobId: string = job.id;
+
+      if (!lipEnabled) {
+        toast({ title: "Karaoke video started", description: "Opening its progress page…" });
+        setLocation(`/jobs/${jobId}`);
+        return;
+      }
+
+      // Wait for the render, then apply lip sync to the finished video.
+      setRenderMsg("Rendering karaoke — this can take a few minutes…");
+      let videoId: string | null = null;
+      for (let i = 0; i < 180; i++) {
+        await new Promise((r) => setTimeout(r, 5000));
+        const s = await fetch(`/api/jobs/${jobId}`, { credentials: "include" });
+        if (!s.ok) continue;
+        const jd = await s.json();
+        if (jd.status === "ready" && jd.videoId) { videoId = jd.videoId; break; }
+        if (jd.status === "failed" || jd.status === "error") throw new Error("Video render failed");
+      }
+      if (!videoId) throw new Error("Render timed out — check the job page.");
+
+      setRenderMsg("Adding the lip-synced performer…");
+      const lipRes = await fetch(`/api/videos/${videoId}/lipsync`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageObjectPath: faceObjectPath, lipsyncSeconds: lipSeconds }),
+      });
+      const lip = await lipRes.json();
+      if (!lipRes.ok) throw new Error(lip.error || "Lip sync failed");
+
+      toast({ title: "Done — karaoke + lip sync complete", description: "Opening your video…" });
+      setLocation(`/jobs/${jobId}`);
+    } catch (err) {
+      toast({ title: "Generation failed", description: err instanceof Error ? err.message : "Please try again.", variant: "destructive" });
+    } finally {
+      setRendering(false);
+      setRenderMsg("");
+    }
+  }, [audioObjectPath, audioFile, lines.length, lipEnabled, faceObjectPath, lrc, lipSeconds, setLocation, toast]);
 
   return (
     <div className="space-y-4">
@@ -610,12 +684,22 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
 
                   {/* Face image (real API input: imageObjectPath) */}
                   <input ref={faceInputRef} type="file" accept="image/*" className="hidden"
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) setFacePreview(URL.createObjectURL(f)); e.target.value = ""; }} />
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0]; e.target.value = "";
+                      if (!f) return;
+                      setFacePreview(URL.createObjectURL(f));
+                      setFaceUploading(true);
+                      try { setFaceObjectPath(await presignAndUpload(f)); }
+                      catch { setFaceObjectPath(null); toast({ title: "Face upload failed", variant: "destructive" }); }
+                      finally { setFaceUploading(false); }
+                    }} />
                   <div>
                     <Label className="text-xs text-muted-foreground">Face image</Label>
                     <div className="mt-1.5 flex items-center gap-3">
-                      <Button variant="outline" size="sm" onClick={() => faceInputRef.current?.click()}>
-                        <Upload className="mr-1.5 h-3.5 w-3.5" /> {facePreview ? "Change face" : "Upload face"}
+                      <Button variant="outline" size="sm" disabled={faceUploading} onClick={() => faceInputRef.current?.click()}>
+                        {faceUploading
+                          ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Uploading…</>
+                          : <><Upload className="mr-1.5 h-3.5 w-3.5" /> {facePreview ? "Change face" : "Upload face"}</>}
                       </Button>
                       {facePreview
                         ? <img src={facePreview} alt="Uploaded performer face" className="h-12 w-12 rounded-md border border-border object-cover" />
@@ -657,9 +741,11 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
               </div>
             </div>
             <div className="mt-2 space-y-1 text-xs">
-              <div className="flex justify-between text-muted-foreground">
-                <span>Lyric alignment (sync to vocal)</span><span>{LYRIC_ALIGN_COST} cr</span>
-              </div>
+              {lines.length > 0 && (
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Lyric alignment (sync to vocal)</span><span>{LYRIC_ALIGN_COST} cr</span>
+                </div>
+              )}
               {lipEnabled && (
                 <div className="flex justify-between text-amber-600 dark:text-amber-500">
                   <span>Lip-sync performer · {lipSeconds}s</span><span>+{lipCost} cr</span>
@@ -682,8 +768,12 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
             </div>
             <Textarea readOnly value={lrc || "// Auto-sync to generate LRC…"} className="min-h-[110px] font-mono text-xs bg-background/60" />
             <div className="flex flex-wrap items-center gap-2 pt-1">
-              <Button onClick={stubRender} disabled={!lines.length} className="gap-1.5"><Wand2 className="h-4 w-4" /> Send to render (POC)</Button>
-              <span className="flex items-center gap-1 text-[11px] text-muted-foreground"><Info className="h-3.5 w-3.5" /> Copy LRC → Generate → “Lyric video · karaoke captions” works end-to-end today.</span>
+              <Button onClick={generateVideo} disabled={rendering || (!lines.length && !lipEnabled)} className="gap-1.5">
+                {rendering
+                  ? <><Loader2 className="h-4 w-4 animate-spin" /> {renderMsg || "Working…"}</>
+                  : <><Wand2 className="h-4 w-4" /> {lines.length ? (lipEnabled ? "Generate lyric video + lip sync" : "Generate lyric video") : "Generate lip-sync video"}</>}
+              </Button>
+              <span className="flex items-center gap-1 text-[11px] text-muted-foreground"><Info className="h-3.5 w-3.5" /> {lipEnabled && !lines.length ? "Renders a video from your song, then lip-syncs your performer via OmniHuman." : lipEnabled ? "Renders karaoke, then lip-syncs your performer via OmniHuman." : "Renders a karaoke video from your synced lyrics."}</span>
             </div>
           </div>
         </CardContent>
