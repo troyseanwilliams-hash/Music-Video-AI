@@ -32,27 +32,27 @@ export function Navbar() {
 
   const processingCount = ((stats as unknown as { activeJobs?: unknown[] })?.activeJobs?.length) ?? 0;
 
-  // Flat top bar links; Gallery lives only in the account dropdown + mobile panel.
+  // Flat top bar links; Gallery sits next to Dashboard.
   const memberLinks = [
     { href: "/generate", label: "Generate", icon: Wand2 },
     { href: "/editor", label: "Remix", icon: Video },
     { href: "/prompt-studio", label: "Prompt Studio", icon: Sparkles },
     { href: "/soundtracks", label: "Soundtracks", icon: Music2 },
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/gallery", label: "Gallery", icon: Film },
   ];
-  const galleryLink = { href: "/gallery", label: "Gallery", icon: Film };
   const publicLinks = [
     { href: "/explore", label: "Explore", icon: Compass },
     { href: "/pricing", label: "Pricing", icon: CreditCard },
   ];
-  // Top bar: flat member links + public links (no Gallery).
+  // Top bar: flat member links + public links.
   const topBarLinks = [
     ...(isAuthenticated ? memberLinks : []),
     ...publicLinks,
   ];
-  // Account dropdown + mobile panel: everything, including Gallery.
+  // Account dropdown + mobile panel: everything.
   const navLinks = [
-    ...(isAuthenticated ? [...memberLinks, galleryLink] : []),
+    ...(isAuthenticated ? memberLinks : []),
     ...publicLinks,
   ];
 
