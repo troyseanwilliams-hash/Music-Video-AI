@@ -255,12 +255,15 @@ export async function loopAudioToLength(
   }
 }
 
-// Trim audio to the first `seconds` (pure ffmpeg, no AI). Used to cap the audio
-// fed to the per-second Lip Sync model so cost stays bounded.
+// Trim audio to `seconds` starting at `startSeconds` (pure ffmpeg, no AI). Used
+// to cap the audio fed to the per-second Lip Sync model so cost stays bounded.
+// startSeconds lets the caller pick WHICH window of the song to sync to,
+// instead of always taking the first `seconds` from 0:00.
 export async function trimAudioToLength(
   buffer: Buffer,
   ext: string,
   seconds: number,
+  startSeconds = 0,
 ): Promise<{ buffer: Buffer; ext: string }> {
   const { exec } = await import("node:child_process");
   const { promisify } = await import("node:util");
@@ -273,10 +276,13 @@ export async function trimAudioToLength(
   const inPath = join(tmpdir(), `bv_trimin_${id}.${ext || "mp3"}`);
   const outPath = join(tmpdir(), `bv_trimout_${id}.mp3`);
   const secs = Math.min(Math.max(Math.round(seconds), 1), 60);
+  const start = Math.max(Math.round(startSeconds || 0), 0);
   try {
     await writeFile(inPath, buffer);
+    // -ss before -i for a fast (keyframe-independent, since this is audio-only)
+    // seek to the requested start offset, then -t caps the output length.
     await execAsync(
-      `ffmpeg -y -t ${secs} -i "${inPath}" -c:a libmp3lame -b:a 192k "${outPath}"`,
+      `ffmpeg -y -ss ${start} -t ${secs} -i "${inPath}" -c:a libmp3lame -b:a 192k "${outPath}"`,
       { timeout: 60_000 },
     );
     return { buffer: await readFile(outPath), ext: "mp3" };

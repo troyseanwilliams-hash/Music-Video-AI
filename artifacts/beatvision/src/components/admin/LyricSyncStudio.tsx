@@ -267,6 +267,9 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
   const [facePreview, setFacePreview] = useState<string | null>(null);
   const [faceFile, setFaceFile] = useState<File | null>(null);
   const [lipSeconds, setLipSeconds] = useState(15);
+  // Which part of the song/video to sync to — defaults to the very start, but
+  // the range control below lets the admin pick any lipSeconds-wide window.
+  const [lipStartTime, setLipStartTime] = useState(0);
   const faceInputRef = useRef<HTMLInputElement | null>(null);
   const [lipResult, setLipResult] = useState<{ videoId: string; url: string } | null>(null);
 
@@ -283,6 +286,15 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
   const lrc = useMemo(() => toLrc(lines), [lines]);
   const lipCost = calculateLipsyncCost(lipSeconds); // same 1.5× margin as everything else
   const jobCost = LYRIC_ALIGN_COST + (lipEnabled ? lipCost : 0); // add-ons this studio controls
+  // The latest a lipSeconds-wide window can start without running past the
+  // end of the loaded song/video.
+  const lipStartMax = Math.max(0, duration - lipSeconds);
+  // Keep the window in range as lipSeconds or the source (with its own
+  // duration) changes — e.g. picking a longer clip length after already
+  // scrubbing near the end of a short song.
+  useEffect(() => {
+    setLipStartTime((t) => Math.min(t, lipStartMax));
+  }, [lipStartMax]);
 
   // Load audio file → object URL + duration + waveform peaks.
   const onAudioFile = useCallback(async (file: File) => {
@@ -524,7 +536,7 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ imageObjectPath, lipsyncSeconds: lipSeconds }),
+          body: JSON.stringify({ imageObjectPath, lipsyncSeconds: lipSeconds, lipsyncStartTime: lipStartTime }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Lip sync failed");
@@ -543,7 +555,7 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
     } finally {
       setBurning(false);
     }
-  }, [pickedVideo, lrc, lipEnabled, faceFile, lipSeconds, rightsAcknowledged, toast]);
+  }, [pickedVideo, lrc, lipEnabled, faceFile, lipSeconds, lipStartTime, rightsAcknowledged, toast]);
 
   const stubRender = () => {
     toast({
@@ -853,6 +865,47 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
                           className={`rounded-lg border px-2 py-2 text-xs font-medium transition-colors ${lipSeconds === s ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/50"}`}>{s}s</button>
                       ))}
                     </div>
+                  </div>
+
+                  {/* Where in the song (real API input: lipsyncStartTime) — the
+                      slider picks the window's start; the video/audio has no
+                      local File to hand a waveform selector here, so this scrubs
+                      the same play/seek clock the karaoke preview already uses. */}
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs text-muted-foreground">
+                        Song section · {fmtClock(lipStartTime)}–{fmtClock(Math.min(duration, lipStartTime + lipSeconds))}
+                      </Label>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-[11px] text-primary"
+                        disabled={!pickedVideo && !audioUrl}
+                        onClick={() => { const t = Math.min(now, lipStartMax); setLipStartTime(t); seek(t); }}
+                      >
+                        Use playhead
+                      </Button>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={Math.max(0, Math.round(lipStartMax * 10))}
+                      step={1}
+                      value={Math.round(lipStartTime * 10)}
+                      disabled={lipStartMax <= 0}
+                      onChange={(e) => {
+                        const t = Number(e.target.value) / 10;
+                        setLipStartTime(t);
+                        seek(t);
+                      }}
+                      className="mt-2 w-full accent-primary disabled:opacity-40"
+                      aria-label="Lip sync window start time"
+                    />
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      {lipStartMax <= 0
+                        ? "Song is too short to move the window — it already covers the whole track."
+                        : "Drag to pick which part of the song plays under the performer, or play the preview and hit “Use playhead.”"}
+                    </p>
                   </div>
 
                   {/* Upcharge summary */}

@@ -443,6 +443,11 @@ router.post("/videos/:id/release-kit", async (req: Request<{ id: string }>, res:
 const LipsyncBody = z.object({
   imageObjectPath: z.string().min(1),
   lipsyncSeconds: z.number().int().min(LIPSYNC_MIN_SECONDS).max(LIPSYNC_MAX_SECONDS).default(15),
+  // Admin-only segment picker (LyricSyncStudio): which part of the song to
+  // sync to, instead of always the first lipsyncSeconds from 0:00. Ignored
+  // (stays 0) for the regular user-facing LipSyncPanel, which doesn't expose
+  // this control yet.
+  lipsyncStartTime: z.number().min(0).max(3600).default(0),
 });
 
 router.post("/videos/:id/lipsync", async (req: Request<{ id: string }>, res: Response) => {
@@ -464,6 +469,7 @@ router.post("/videos/:id/lipsync", async (req: Request<{ id: string }>, res: Res
 
   const admin = isAdminEmail(req.user.email);
   const lipsyncSeconds = parsed.data.lipsyncSeconds;
+  const lipsyncStartTime = parsed.data.lipsyncStartTime;
   const cost = calculateLipsyncCost(lipsyncSeconds);
 
   // Reserve credits up front (non-admins). Refunded below if anything fails.
@@ -506,7 +512,7 @@ router.post("/videos/:id/lipsync", async (req: Request<{ id: string }>, res: Res
 
     const audioResp = await fetch(audioUrl, { signal: AbortSignal.timeout(60_000) });
     if (!audioResp.ok) throw new Error("Could not read the source audio.");
-    const trimmed = await trimAudioToLength(Buffer.from(await audioResp.arrayBuffer()), "mp3", lipsyncSeconds);
+    const trimmed = await trimAudioToLength(Buffer.from(await audioResp.arrayBuffer()), "mp3", lipsyncSeconds, lipsyncStartTime);
     const trimmedPath = await storageService.uploadAudioBuffer(trimmed.buffer, randomUUID(), trimmed.ext);
     const trimmedAudioUrl = await storageService.getObjectEntitySignedUrl(trimmedPath, 3600);
 
