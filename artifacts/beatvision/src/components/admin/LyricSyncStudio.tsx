@@ -224,6 +224,115 @@ async function presignAndUpload(file: File): Promise<string> {
   return objectPath;
 }
 
+/**
+ * Draggable lip-sync window over the song's waveform. Grab the highlighted
+ * region and drag it anywhere along the bar (mouse or touch); clicking
+ * outside the region jumps it there. Width is fixed at `windowSeconds`
+ * (5-30s, set by the Clip length buttons) — this only moves WHERE that
+ * window starts. Live-seeks the preview during drag via onScrub so you can
+ * hear/see the spot before letting go.
+ */
+function LipWindowScrubber({
+  duration,
+  peaks,
+  windowStart,
+  windowSeconds,
+  now,
+  disabled,
+  onChange,
+  onScrub,
+}: {
+  duration: number;
+  peaks: number[];
+  windowStart: number;
+  windowSeconds: number;
+  now: number;
+  disabled: boolean;
+  onChange: (start: number) => void;
+  onScrub: (start: number) => void;
+}) {
+  const barRef = useRef<HTMLDivElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const dragOffsetRef = useRef(0); // time between the grabbed point and windowStart
+
+  const maxStart = Math.max(0, duration - windowSeconds);
+  const clamp = (t: number) => Math.min(Math.max(0, t), maxStart);
+
+  const timeAtClientX = useCallback((clientX: number) => {
+    const bar = barRef.current;
+    if (!bar || duration <= 0) return 0;
+    const r = bar.getBoundingClientRect();
+    const frac = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
+    return frac * duration;
+  }, [duration]);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (disabled || duration <= 0) return;
+    const clickT = timeAtClientX(e.clientX);
+    const insideWindow = clickT >= windowStart && clickT <= windowStart + windowSeconds;
+    // Grabbing inside the highlighted region drags from that exact point;
+    // clicking outside it snaps the window to be centered under the cursor.
+    dragOffsetRef.current = insideWindow ? clickT - windowStart : windowSeconds / 2;
+    const start = clamp(clickT - dragOffsetRef.current);
+    setDragging(true);
+    onChange(start);
+    onScrub(start);
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }, [disabled, duration, windowStart, windowSeconds, timeAtClientX, onChange, onScrub]);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragging) return;
+    const t = timeAtClientX(e.clientX);
+    const start = clamp(t - dragOffsetRef.current);
+    onChange(start);
+    onScrub(start);
+  }, [dragging, timeAtClientX, onChange, onScrub]);
+
+  const endDrag = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragging) return;
+    setDragging(false);
+    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+  }, [dragging]);
+
+  const bars = peaks.length ? peaks : Array.from({ length: 120 }, () => 0.3);
+  const selStartPct = duration > 0 ? (windowStart / duration) * 100 : 0;
+  const selWidthPct = duration > 0 ? (Math.min(windowSeconds, duration - windowStart) / duration) * 100 : 0;
+  const playheadPct = duration > 0 ? (now / duration) * 100 : 0;
+
+  return (
+    <div
+      ref={barRef}
+      className={`relative flex items-end gap-[2px] h-14 rounded-lg bg-background/50 border border-border p-2 overflow-hidden touch-none select-none ${disabled ? "opacity-40" : "cursor-grab active:cursor-grabbing"}`}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+      role="slider"
+      aria-label="Lip sync window position"
+      aria-valuemin={0}
+      aria-valuemax={maxStart}
+      aria-valuenow={windowStart}
+    >
+      {bars.map((p, i) => {
+        const barT = (i / bars.length) * duration;
+        const inSel = barT >= windowStart && barT <= windowStart + windowSeconds;
+        return (
+          <div
+            key={i}
+            className={`flex-1 min-w-[2px] rounded-sm pointer-events-none ${inSel ? "bg-amber-500" : "bg-muted-foreground/30"}`}
+            style={{ height: `${Math.max(8, p * 100)}%` }}
+          />
+        );
+      })}
+      <div
+        className="absolute top-0 bottom-0 rounded-md border-2 border-amber-400 bg-amber-400/10 pointer-events-none"
+        style={{ left: `${selStartPct}%`, width: `${selWidthPct}%` }}
+      />
+      <div className="absolute top-0 bottom-0 w-0.5 bg-foreground/70 pointer-events-none" style={{ left: `${playheadPct}%` }} />
+    </div>
+  );
+}
+
 export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admin" | "public" }) {
   const { toast } = useToast();
 
@@ -901,10 +1010,14 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
                     </div>
                   </div>
 
-                  {/* Where in the song (real API input: lipsyncStartTime) — the
-                      slider picks the window's start; the video/audio has no
-                      local File to hand a waveform selector here, so this scrubs
-                      the same play/seek clock the karaoke preview already uses. */}
+                  {/* Where in the song (real API input: lipsyncStartTime) —
+                      drag the highlighted window along the waveform, or click
+                      elsewhere on the bar to jump it there. Width tracks the
+                      Clip length buttons above (5-30s); this only moves the
+                      start. No local File to hand a canvas waveform selector
+                      here (the source is often a picked video's URL), so this
+                      is a lighter div-based scrubber over the same peaks data
+                      the Lyric timeline uses, wired to the shared seek/now clock. */}
                   <div>
                     <div className="flex items-center justify-between">
                       <Label className="text-xs text-muted-foreground">
@@ -920,25 +1033,22 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
                         Use playhead
                       </Button>
                     </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={Math.max(0, Math.round(lipStartMax * 10))}
-                      step={1}
-                      value={Math.round(lipStartTime * 10)}
-                      disabled={lipStartMax <= 0}
-                      onChange={(e) => {
-                        const t = Number(e.target.value) / 10;
-                        setLipStartTime(t);
-                        seek(t);
-                      }}
-                      className="mt-2 w-full accent-primary disabled:opacity-40"
-                      aria-label="Lip sync window start time"
-                    />
+                    <div className="mt-1.5">
+                      <LipWindowScrubber
+                        duration={duration}
+                        peaks={peaks}
+                        windowStart={lipStartTime}
+                        windowSeconds={lipSeconds}
+                        now={now}
+                        disabled={lipStartMax <= 0}
+                        onChange={setLipStartTime}
+                        onScrub={seek}
+                      />
+                    </div>
                     <p className="mt-1 text-[11px] text-muted-foreground">
                       {lipStartMax <= 0
                         ? "Song is too short to move the window — it already covers the whole track."
-                        : "Drag to pick which part of the song plays under the performer, or play the preview and hit “Use playhead.”"}
+                        : "Drag the amber window along the waveform, or click elsewhere on it to jump there."}
                     </p>
                   </div>
 
