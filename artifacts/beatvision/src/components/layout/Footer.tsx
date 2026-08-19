@@ -8,7 +8,7 @@ const COLUMNS: { title: string; links: { label: string; href: string; external?:
       { label: "Generate", href: "/generate" },
       { label: "Soundtracks", href: "/soundtracks" },
       { label: "Remix Lab", href: "/editor" },
-      { label: "Community", href: "/explore" },
+      { label: "Explore", href: "/explore" },
     ],
   },
   {

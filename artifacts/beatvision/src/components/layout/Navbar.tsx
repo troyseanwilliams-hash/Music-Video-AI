@@ -42,7 +42,7 @@ export function Navbar() {
     { href: "/gallery", label: "Gallery", icon: Film },
   ];
   const publicLinks = [
-    { href: "/explore", label: "Community", icon: Compass },
+    { href: "/explore", label: "Explore", icon: Compass },
     { href: "/pricing", label: "Pricing", icon: CreditCard },
   ];
   // Top bar: flat member links + public links.
