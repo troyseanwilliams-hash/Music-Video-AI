@@ -112,6 +112,9 @@ export const videosTable = pgTable("videos", {
   hasAudio: boolean("has_audio").notNull().default(true),
   // Public gallery: opt-in visibility + denormalized like count for fast sorting.
   isPublic: boolean("is_public").notNull().default(false),
+  // Per-post privacy control. When true, public feeds must never expose the
+  // owner's stored profile name.
+  isCreatorAnonymous: boolean("is_creator_anonymous").notNull().default(false),
   likeCount: integer("like_count").notNull().default(0),
   // Soft delete: when set, the user has deleted this video. It's hidden from all
   // user-facing views but remains visible to admins until permanently purged

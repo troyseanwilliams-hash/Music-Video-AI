@@ -122,9 +122,14 @@ function VideoCard({
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-medium text-primary">
             {initial}
           </div>
-          <span className="truncate text-sm font-medium" title={video.title || "Untitled"}>
-            {video.title || "Untitled"}
-          </span>
+          <div className="min-w-0">
+            <div className="truncate text-sm font-medium" title={video.title || "Untitled"}>
+              {video.title || "Untitled"}
+            </div>
+            {video.creatorName === "Anonymous" && (
+              <div className="text-xs text-muted-foreground">by Anonymous</div>
+            )}
+          </div>
         </div>
         <button
           onClick={() => onLikeToggle(video)}

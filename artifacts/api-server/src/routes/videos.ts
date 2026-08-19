@@ -141,7 +141,10 @@ router.get("/gallery", async (req, res) => {
         style: videosTable.style,
         likeCount: videosTable.likeCount,
         createdAt: videosTable.createdAt,
-        creatorName: usersTable.firstName,
+        creatorName: sql<string | null>`CASE
+          WHEN ${videosTable.isCreatorAnonymous} THEN 'Anonymous'
+          ELSE ${usersTable.firstName}
+        END`,
       })
       .from(videosTable)
       .leftJoin(usersTable, eq(usersTable.id, videosTable.userId))
@@ -181,9 +184,15 @@ router.patch("/videos/:id/visibility", async (req, res) => {
     return;
   }
   const id = String(req.params.id || "");
-  const isPublic = (req.body as { isPublic?: unknown })?.isPublic;
+  const body = req.body as { isPublic?: unknown; isCreatorAnonymous?: unknown };
+  const isPublic = body?.isPublic;
+  const isCreatorAnonymous = body?.isCreatorAnonymous;
   if (typeof isPublic !== "boolean") {
     res.status(400).json({ error: "isPublic (boolean) is required" });
+    return;
+  }
+  if (isCreatorAnonymous !== undefined && typeof isCreatorAnonymous !== "boolean") {
+    res.status(400).json({ error: "isCreatorAnonymous must be a boolean" });
     return;
   }
 
@@ -201,8 +210,23 @@ router.patch("/videos/:id/visibility", async (req, res) => {
     }
   }
 
-  await db.update(videosTable).set({ isPublic }).where(eq(videosTable.id, id));
-  res.json({ id, isPublic });
+  const privacyUpdate =
+    typeof isCreatorAnonymous === "boolean"
+      ? { isPublic, isCreatorAnonymous }
+      : { isPublic };
+  const [updated] = await db
+    .update(videosTable)
+    .set(privacyUpdate)
+    .where(eq(videosTable.id, id))
+    .returning({
+      isPublic: videosTable.isPublic,
+      isCreatorAnonymous: videosTable.isCreatorAnonymous,
+    });
+  res.json({
+    id,
+    isPublic: updated?.isPublic ?? isPublic,
+    isCreatorAnonymous: updated?.isCreatorAnonymous ?? video.isCreatorAnonymous,
+  });
 });
 
 // ── Rename a video (owner or admin). Powers inline rename in the gallery

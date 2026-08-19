@@ -24,6 +24,8 @@ export interface Video {
   /** @nullable */
   shareToken?: string | null;
   isPublic?: boolean;
+  /** When true, the creator's profile name is hidden on public Explore surfaces. */
+  isCreatorAnonymous?: boolean;
   likeCount?: number;
   /** False for silent videos rendered via the "no audio" Generate option, meant to have a soundtrack added later in the Editor. */
   hasAudio?: boolean;

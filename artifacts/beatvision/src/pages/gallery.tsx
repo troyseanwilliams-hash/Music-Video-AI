@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useListVideos, useDeleteVideo, getListVideosQueryKey, getGetDashboardStatsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Loader2, Trash2, Play, Film, Download, Scissors, Globe, Pencil, X, Music } from "lucide-react";
+import { Loader2, Trash2, Play, Film, Download, Scissors, Globe, Pencil, X, Music, UserRound } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -74,15 +74,23 @@ export default function Gallery() {
     }
   }
 
-  async function toggleVisibility(videoId: string, makePublic: boolean) {
+  async function updateExploreSettings(
+    videoId: string,
+    makePublic: boolean,
+    isCreatorAnonymous?: boolean,
+  ) {
     setTogglingId(videoId);
     try {
-      await fetch(`/api/videos/${videoId}/visibility`, {
+      const response = await fetch(`/api/videos/${videoId}/visibility`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isPublic: makePublic }),
+        body: JSON.stringify({
+          isPublic: makePublic,
+          ...(isCreatorAnonymous === undefined ? {} : { isCreatorAnonymous }),
+        }),
       });
+      if (!response.ok) throw new Error("Unable to update Explore settings");
       queryClient.invalidateQueries({ queryKey: getListVideosQueryKey() });
     } catch {
       /* ignore */
@@ -254,23 +262,45 @@ export default function Gallery() {
                     {new Date(video.createdAt).toLocaleDateString()}
                   </span>
                   {(() => {
-                    const isPublic = (video as unknown as Record<string, unknown>).isPublic as boolean | undefined;
+                    const isPublic = video.isPublic;
+                    const isCreatorAnonymous = video.isCreatorAnonymous ?? false;
                     return (
-                      <button
-                        onClick={() => toggleVisibility(video.id, !isPublic)}
-                        disabled={togglingId === video.id}
-                        title={isPublic ? "Make private" : "Make public"}
-                        className={`text-xs font-medium px-2 py-1 rounded-md inline-flex items-center gap-1 ${
-                          isPublic ? "bg-primary/15 text-primary" : "bg-secondary text-secondary-foreground hover:text-foreground"
-                        }`}
-                      >
-                        {togglingId === video.id ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <Globe className="h-3 w-3" />
-                        )}
-                        {isPublic ? "Public" : "Make public"}
-                      </button>
+                      <>
+                        <button
+                          onClick={() => updateExploreSettings(video.id, !isPublic)}
+                          disabled={togglingId === video.id}
+                          title={isPublic ? "Remove from Explore" : "Post to Explore"}
+                          className={`text-xs font-medium px-2 py-1 rounded-md inline-flex items-center gap-1 ${
+                            isPublic ? "bg-primary/15 text-primary" : "bg-secondary text-secondary-foreground hover:text-foreground"
+                          }`}
+                        >
+                          {togglingId === video.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Globe className="h-3 w-3" />
+                          )}
+                          {isPublic ? "On Explore" : "Post to Explore"}
+                        </button>
+                        <button
+                          onClick={() =>
+                            updateExploreSettings(video.id, !!isPublic, !isCreatorAnonymous)
+                          }
+                          disabled={togglingId === video.id}
+                          title={
+                            isCreatorAnonymous
+                              ? "This post does not expose your profile name. Click to turn anonymity off."
+                              : "Post this video anonymously on Explore"
+                          }
+                          className={`text-xs font-medium px-2 py-1 rounded-md inline-flex items-center gap-1 ${
+                            isCreatorAnonymous
+                              ? "bg-primary/15 text-primary"
+                              : "bg-secondary text-secondary-foreground hover:text-foreground"
+                          }`}
+                        >
+                          <UserRound className="h-3 w-3" />
+                          {isCreatorAnonymous ? "Anonymous" : "Post anonymously"}
+                        </button>
+                      </>
                     );
                   })()}
                 </div>

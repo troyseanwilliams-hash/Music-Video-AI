@@ -8,4 +8,6 @@
 
 export interface UpdateVisibilityRequest {
   isPublic: boolean;
+  /** Per-post setting that hides the creator's profile name on Explore. */
+  isCreatorAnonymous?: boolean;
 }

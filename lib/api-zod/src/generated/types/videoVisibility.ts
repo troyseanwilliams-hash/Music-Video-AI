@@ -9,4 +9,5 @@
 export interface VideoVisibility {
   id: string;
   isPublic: boolean;
+  isCreatorAnonymous: boolean;
 }

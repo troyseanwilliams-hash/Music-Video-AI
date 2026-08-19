@@ -672,6 +672,12 @@ export const ListVideosResponse = zod.object({
       prompt: zod.string().nullish(),
       shareToken: zod.string().nullish(),
       isPublic: zod.boolean().optional(),
+      isCreatorAnonymous: zod
+        .boolean()
+        .optional()
+        .describe(
+          "When true, the creator's profile name is hidden on public Explore surfaces.",
+        ),
       likeCount: zod.number().optional(),
       hasAudio: zod
         .boolean()
@@ -713,6 +719,12 @@ export const GetVideoResponse = zod.object({
   prompt: zod.string().nullish(),
   shareToken: zod.string().nullish(),
   isPublic: zod.boolean().optional(),
+  isCreatorAnonymous: zod
+    .boolean()
+    .optional()
+    .describe(
+      "When true, the creator's profile name is hidden on public Explore surfaces.",
+    ),
   likeCount: zod.number().optional(),
   hasAudio: zod
     .boolean()
@@ -788,11 +800,18 @@ export const UpdateVideoVisibilityHeader = zod.object({
 
 export const UpdateVideoVisibilityBody = zod.object({
   isPublic: zod.boolean(),
+  isCreatorAnonymous: zod
+    .boolean()
+    .optional()
+    .describe(
+      "Per-post setting that hides the creator's profile name on Explore.",
+    ),
 });
 
 export const UpdateVideoVisibilityResponse = zod.object({
   id: zod.string(),
   isPublic: zod.boolean(),
+  isCreatorAnonymous: zod.boolean(),
 });
 
 /**

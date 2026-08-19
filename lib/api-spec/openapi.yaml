@@ -1241,6 +1241,9 @@ components:
           type: [string, 'null']
         isPublic:
           type: boolean
+        isCreatorAnonymous:
+          type: boolean
+          description: When true, the creator's profile name is hidden on public Explore surfaces.
         likeCount:
           type: integer
         hasAudio:
@@ -1312,14 +1315,19 @@ components:
       properties:
         isPublic:
           type: boolean
+        isCreatorAnonymous:
+          type: boolean
+          description: Per-post setting that hides the creator's profile name on Explore.
 
     VideoVisibility:
       type: object
-      required: [id, isPublic]
+      required: [id, isPublic, isCreatorAnonymous]
       properties:
         id:
           type: string
         isPublic:
+          type: boolean
+        isCreatorAnonymous:
           type: boolean
 
     LikeResponse:
