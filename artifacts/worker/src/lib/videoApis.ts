@@ -338,13 +338,20 @@ async function callProvider(provider: Provider, req: ClipRequest): Promise<strin
   switch (provider) {
     case "runway":
       // TEMPORARY, admin-only: real Runway API instead of Pixazo's Runway
-      // routing. See ClipRequest.preferDirectRunway.
-      if (req.preferDirectRunway && process.env.RUNWAY_API_KEY) {
+      // routing. See ClipRequest.preferDirectRunway. Pixazo is intentionally
+      // NOT used as a fallback here — preferDirectRunway means "Runway only,
+      // no Pixazo," so a missing key or a failed call surfaces as a real
+      // error instead of silently billing through Pixazo.
+      if (req.preferDirectRunway) {
+        if (!process.env.RUNWAY_API_KEY) {
+          throw new Error(
+            "Direct Runway is enabled for this admin request (preferDirectRunway) but RUNWAY_API_KEY is not set — not falling back to Pixazo.",
+          );
+        }
         return generateWithRunwayDirect(req);
       }
-      // Everyone else (and admins without RUNWAY_API_KEY set) still runs
-      // through the Pixazo gateway. PIXAZO_RUNWAY_MODEL / PIXAZO_RUNWAY_I2V_MODEL
-      // choose the slugs.
+      // Everyone else still runs through the Pixazo gateway.
+      // PIXAZO_RUNWAY_MODEL / PIXAZO_RUNWAY_I2V_MODEL choose the slugs.
       return generateWithPixazo(
         req,
         process.env.PIXAZO_RUNWAY_MODEL!.trim(),
@@ -367,10 +374,17 @@ export async function generateClip(req: ClipRequest): Promise<ClipResult | null>
   let chain = getProviderChain();
   if (chain.length === 0) return null;
 
-  // Honor a user-chosen engine: pin it first, keeping the rest as fallback.
-  const pinned = req.provider?.toLowerCase() as Provider | undefined;
-  if (pinned && providerAvailable(pinned)) {
-    chain = [pinned, ...chain.filter((p) => p !== pinned)];
+  // TEMPORARY, admin-only: preferDirectRunway means Runway ONLY — no
+  // fallback to kling/pixazo/luma (kling and pixazo both bill through the
+  // same Pixazo gateway this flag exists to avoid). See ClipRequest.preferDirectRunway.
+  if (req.preferDirectRunway) {
+    chain = ["runway"];
+  } else {
+    // Honor a user-chosen engine: pin it first, keeping the rest as fallback.
+    const pinned = req.provider?.toLowerCase() as Provider | undefined;
+    if (pinned && providerAvailable(pinned)) {
+      chain = [pinned, ...chain.filter((p) => p !== pinned)];
+    }
   }
 
   let lastErr: unknown;

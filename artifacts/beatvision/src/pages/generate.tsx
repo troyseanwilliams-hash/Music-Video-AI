@@ -900,11 +900,14 @@ export default function Generate() {
                       <span>
                         {PROVIDER_LABELS[p]}
                         <span className="text-muted-foreground"> · {p === "runway" ? "premium quality" : "value price"}</span>
-                        {/* TEMPORARY: admins picking Runway hit the real Runway API
-                            directly instead of Pixazo's Runway route — see
-                            routes/jobs.ts preferDirectRunway. */}
+                        {/* TEMPORARY, admin-only: picking Runway here hits the real
+                            Runway API directly, with Pixazo disabled as a fallback
+                            entirely — see routes/jobs.ts preferDirectRunway. Public
+                            Generate (non-admins) is unaffected either way. */}
                         {isAdmin && p === "runway" && (
-                          <span className="ml-1.5 text-[10px] font-medium text-amber-400/90">· direct API</span>
+                          <span className="ml-1.5 text-[10px] font-medium text-amber-400/90" title="Admin-only: renders via the real Runway API. Pixazo is not used as a fallback — if Runway fails, this fails.">
+                            · direct API, no fallback
+                          </span>
                         )}
                       </span>
                       <span className="text-xs text-muted-foreground shrink-0">{estimateCreditCost(requestedDuration, p, resolution, songDurationSec) + lyricAddon} cr</span>
