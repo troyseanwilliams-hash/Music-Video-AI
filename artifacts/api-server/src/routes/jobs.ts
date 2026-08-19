@@ -337,7 +337,13 @@ router.post("/jobs", async (req, res) => {
       watermark,
       // AI jobs stash billing + clip-salvage state in the (otherwise unused)
       // manifest jsonb: reservedCredits is refunded by the worker on failure.
-      manifest: { reservedCredits: creditCost } as unknown as Record<string, unknown>,
+      // preferDirectRunway is a TEMPORARY, admin-only flag (see
+      // videoApis.ts ClipRequest.preferDirectRunway) so admins previewing the
+      // Runway engine hit the real Runway API instead of Pixazo's Runway route.
+      manifest: {
+        reservedCredits: creditCost,
+        ...(isAdmin && engine === "runway" ? { preferDirectRunway: true } : {}),
+      } as unknown as Record<string, unknown>,
       prompt,
       style: style as
         | "realistic"

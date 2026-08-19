@@ -900,6 +900,12 @@ export default function Generate() {
                       <span>
                         {PROVIDER_LABELS[p]}
                         <span className="text-muted-foreground"> · {p === "runway" ? "premium quality" : "value price"}</span>
+                        {/* TEMPORARY: admins picking Runway hit the real Runway API
+                            directly instead of Pixazo's Runway route — see
+                            routes/jobs.ts preferDirectRunway. */}
+                        {isAdmin && p === "runway" && (
+                          <span className="ml-1.5 text-[10px] font-medium text-amber-400/90">· direct API</span>
+                        )}
                       </span>
                       <span className="text-xs text-muted-foreground shrink-0">{estimateCreditCost(requestedDuration, p, resolution, songDurationSec) + lyricAddon} cr</span>
                     </DropdownMenuItem>

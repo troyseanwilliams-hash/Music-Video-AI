@@ -108,6 +108,10 @@ type AiJobMeta = {
   pendingRequests?: Record<string, string>; // clip index -> provider poll URL (submitted, not yet downloaded)
   retryAfter?: number; // epoch ms — queued job must not be claimed before this
   finalizeWithPartial?: boolean; // admin: stitch whatever clips exist, never call the provider
+  // TEMPORARY, admin-only: call the real Runway API directly instead of via
+  // Pixazo. Set by routes/jobs.ts at job creation. See
+  // videoApis.ts ClipRequest.preferDirectRunway.
+  preferDirectRunway?: boolean;
 };
 
 function aiMetaOf(job: JobRow): AiJobMeta {
@@ -594,6 +598,8 @@ async function generateClips(
           // and pass resolution so Kling selects the right model tier / output.
           provider,
           resolution: job.resolution,
+          // TEMPORARY, admin-only — see AiJobMeta.preferDirectRunway.
+          preferDirectRunway: aiMetaOf(job).preferDirectRunway === true,
           // Persist the provider request id before polling starts so this clip
           // is recoverable if the server dies mid-poll.
           onSubmit: (info) => persistPendingRequest(job.id, i, info.pollUrl),
