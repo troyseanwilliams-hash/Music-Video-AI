@@ -20,6 +20,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 
 import { motion, AnimatePresence } from "framer-motion";
 import { Switch } from "@/components/ui/switch";
 import SocialExportsPanel from "@/components/SocialExportsPanel";
+import LipSyncPanel from "@/components/LipSyncPanel";
 import ReferEarnCard from "@/components/ReferEarnCard";
 import GenerationFiller from "@/components/GenerationFiller";
 
@@ -797,6 +798,11 @@ export default function JobStatus() {
         {/* ── Social exports (TikTok/Shorts teasers + Spotify Canvas) ── */}
         {isComplete && job.videoId && (
           <SocialExportsPanel videoId={job.videoId} />
+        )}
+
+        {/* ── Lip sync: animate a face photo singing this video's song ── */}
+        {isComplete && job.videoId && !noAudioJob && (
+          <LipSyncPanel videoId={job.videoId} />
         )}
 
         {/* ── Refer & earn — surfaced right when they've got something to share ── */}

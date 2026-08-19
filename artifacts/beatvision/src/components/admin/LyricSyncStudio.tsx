@@ -265,8 +265,10 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
   //    a face image + a clip length (5–30s). No strength/placement (OmniHuman
   //    takes image + audio only). Runs at export via POST /api/videos/:id/lipsync.
   const [facePreview, setFacePreview] = useState<string | null>(null);
+  const [faceFile, setFaceFile] = useState<File | null>(null);
   const [lipSeconds, setLipSeconds] = useState(15);
   const faceInputRef = useRef<HTMLInputElement | null>(null);
+  const [lipResult, setLipResult] = useState<{ videoId: string; url: string } | null>(null);
 
   // Any source change: stop whatever was playing and rewind the clock, so the
   // new source never appears "playing" while the old one keeps going.
@@ -479,34 +481,69 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
     );
   };
 
-  // Burn the synced lyrics onto the picked video — the server renders a NEW
-  // video (original untouched) and saves it to the user's library.
+  // Burn the synced lyrics onto the picked video, then (if the lip-sync
+  // add-on is on) run the lip-sync performer on top of THAT result — so the
+  // final video carries both. Either step can run alone: lyrics-only if
+  // lipEnabled is off, lip-sync-only if there are no synced lines yet. As an
+  // admin, both legs of this run through the same routes real users hit
+  // (POST /api/videos/:id/lyrics, POST /api/videos/:id/lipsync) — the server
+  // already waives credits for admins (see isAdminEmail in routes/teasers.ts
+  // and routes/videos.ts), so this studio gives full, unmetered access to
+  // both pipelines for testing.
   const burnOnVideo = useCallback(async () => {
-    if (!pickedVideo || !lrc) return;
+    if (!pickedVideo) return;
+    if (!lrc && !(lipEnabled && faceFile)) return;
     setBurning(true);
+    setLipResult(null);
     try {
-      const res = await fetch(`/api/videos/${pickedVideo.id}/lyrics`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lyricsText: lrc, acceptCopyright: rightsAcknowledged }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Burn failed");
-      toast({
-        title: "Lyrics burned onto the video",
-        description: `Saved to your library as a new video (${data.charged} credits). The original is untouched.`,
-      });
+      let targetVideoId = pickedVideo.id;
+      let targetTitle = pickedVideo.title;
+
+      if (lrc) {
+        const res = await fetch(`/api/videos/${targetVideoId}/lyrics`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lyricsText: lrc, acceptCopyright: rightsAcknowledged }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Lyric burn failed");
+        toast({
+          title: "Lyrics burned onto the video",
+          description: `Saved to your library as a new video (${data.charged} credits). The original is untouched.`,
+        });
+        if (data.videoId) {
+          targetVideoId = data.videoId;
+          targetTitle = `${targetTitle ?? "Video"} — lyrics`;
+        }
+      }
+
+      if (lipEnabled && faceFile) {
+        const imageObjectPath = await presignAndUpload(faceFile);
+        const res = await fetch(`/api/videos/${targetVideoId}/lipsync`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ imageObjectPath, lipsyncSeconds: lipSeconds }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Lip sync failed");
+        setLipResult({ videoId: data.videoId, url: data.url });
+        toast({
+          title: "Lip sync rendered",
+          description: `Saved to your library as “${targetTitle} — lip sync” (${data.creditsCharged} credits).`,
+        });
+      }
     } catch (err) {
       toast({
-        title: "Burn failed",
+        title: lipEnabled && faceFile ? "Lip sync failed" : "Burn failed",
         description: err instanceof Error ? err.message : "Please try again.",
         variant: "destructive",
       });
     } finally {
       setBurning(false);
     }
-  }, [pickedVideo, lrc, toast]);
+  }, [pickedVideo, lrc, lipEnabled, faceFile, lipSeconds, rightsAcknowledged, toast]);
 
   const stubRender = () => {
     toast({
@@ -790,7 +827,11 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
 
                   {/* Face image (real API input: imageObjectPath) */}
                   <input ref={faceInputRef} type="file" accept="image/*" className="hidden"
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) setFacePreview(URL.createObjectURL(f)); e.target.value = ""; }} />
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) { setFaceFile(f); setFacePreview(URL.createObjectURL(f)); setLipResult(null); }
+                      e.target.value = "";
+                    }} />
                   <div>
                     <Label className="text-xs text-muted-foreground">Face image</Label>
                     <div className="mt-1.5 flex items-center gap-3">
@@ -863,16 +904,33 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
             <Textarea readOnly value={lrc || "// Auto-sync to generate LRC…"} className="min-h-[110px] font-mono text-xs bg-background/60" />
             <div className="flex flex-wrap items-center gap-2 pt-1">
               {pickedVideo ? (
-                <Button onClick={burnOnVideo} disabled={!lines.length || burning || !rightsAcknowledged} className="gap-1.5">
-                  {burning
-                    ? <><Loader2 className="h-4 w-4 animate-spin" /> Burning lyrics…</>
-                    : <><Film className="h-4 w-4" /> Burn onto “{pickedVideo.title}” · {LYRIC_OVERLAY_COST} credits</>}
+                <Button
+                  onClick={burnOnVideo}
+                  disabled={(!lines.length && !(lipEnabled && faceFile)) || burning || !rightsAcknowledged}
+                  className="gap-1.5"
+                >
+                  {burning ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" /> {lrc ? "Burning lyrics…" : "Syncing lips…"}</>
+                  ) : lrc && lipEnabled && faceFile ? (
+                    <><Film className="h-4 w-4" /> Burn lyrics + lip sync onto “{pickedVideo.title}” · {jobCost} credits</>
+                  ) : lrc ? (
+                    <><Film className="h-4 w-4" /> Burn onto “{pickedVideo.title}” · {LYRIC_OVERLAY_COST} credits</>
+                  ) : (
+                    <><Smile className="h-4 w-4" /> Lip sync “{pickedVideo.title}” · {lipCost} credits</>
+                  )}
                 </Button>
               ) : (
-                <Button onClick={stubRender} disabled={!lines.length} className="gap-1.5"><Wand2 className="h-4 w-4" /> Burn onto a video…</Button>
+                <Button onClick={stubRender} disabled={!lines.length && !(lipEnabled && faceFile)} className="gap-1.5"><Wand2 className="h-4 w-4" /> Burn onto a video…</Button>
               )}
               <span className="flex items-center gap-1 text-[11px] text-muted-foreground"><Info className="h-3.5 w-3.5" /> {pickedVideo ? "Renders a new video in your library — the original stays untouched." : "Pick a video (My Videos) to burn onto, or copy the LRC into Generate."}</span>
             </div>
+            {lipResult && (
+              <div className="mt-3 space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/[0.06] p-3">
+                <div className="text-xs font-semibold text-amber-500">Lip-sync result</div>
+                <video src={lipResult.url} controls playsInline className="w-full max-w-xs rounded-lg border border-border bg-black" />
+                <p className="text-[11px] text-muted-foreground">Saved to your library as a new video.</p>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

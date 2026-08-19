@@ -3,12 +3,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Smile, Upload } from "lucide-react";
 import { useGetDashboardStats } from "@workspace/api-client-react";
-import { canAffordCredits } from "@/lib/creditPricing";
+import { canAffordCredits, calculateLipsyncCost, LIPSYNC_MIN_SECONDS, LIPSYNC_MAX_SECONDS } from "@/lib/creditPricing";
 import TopUpRequiredDialog from "@/components/TopUpRequiredDialog";
 
-// Lip sync is billed per second (OmniHuman ~$0.16/s at 1.5× = 16 credits/s).
-const LIP_OPTIONS = [5, 10, 15, 20, 30];
-const CREDITS_PER_SEC = 16;
+// Lip sync is billed per second (OmniHuman ~$0.16/s at 1.5x markup). Mirrors
+// the server's calculateLipsyncCost() in lib/creditCost.ts exactly, so the
+// price shown here never drifts from what's actually charged.
+const LIP_OPTIONS = [5, 10, 15, 20, 30].filter((s) => s >= LIPSYNC_MIN_SECONDS && s <= LIPSYNC_MAX_SECONDS);
 
 async function presignAndUpload(file: File): Promise<string> {
   const res = await fetch("/api/storage/uploads/request-url", {
@@ -35,7 +36,7 @@ export default function LipSyncPanel({ videoId }: { videoId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ videoId: string; url: string } | null>(null);
   const [facePreview, setFacePreview] = useState<string | null>(null);
-  const cost = seconds * CREDITS_PER_SEC;
+  const cost = calculateLipsyncCost(seconds);
   const { data: statsData } = useGetDashboardStats({});
   const balance = statsData?.creditsRemaining ?? null;
   const [topUpOpen, setTopUpOpen] = useState(false);
