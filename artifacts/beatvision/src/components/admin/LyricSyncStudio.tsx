@@ -272,6 +272,12 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
   const [lipStartTime, setLipStartTime] = useState(0);
   const faceInputRef = useRef<HTMLInputElement | null>(null);
   const [lipResult, setLipResult] = useState<{ videoId: string; url: string } | null>(null);
+  // Set only when the real, paid vocal-read alignment (runSync) fails — kept
+  // separate from toasts (which are easy to miss) so the studio makes it
+  // unmistakable that what's in the Lyrics box, if anything, is NOT actually
+  // read from the song, and lets the admin explicitly opt into the free
+  // even-spread fallback instead of it happening silently.
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   // Any source change: stop whatever was playing and rewind the clock, so the
   // new source never appears "playing" while the old one keeps going.
@@ -307,6 +313,7 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
     setPickedVideo(null);
     setSynced(false);
     setLines([]);
+    setSyncError(null);
     // Try to decode real peaks; fall back to a synthetic waveform.
     try {
       const buf = await file.arrayBuffer();
@@ -342,6 +349,7 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
     setPickedVideo(null);
     setSynced(false);
     setLines([]);
+    setSyncError(null);
     setPeaks(Array.from({ length: 120 }, (_, i) => 0.25 + Math.abs(Math.sin(i * 0.5)) * 0.6));
   }, []);
 
@@ -356,6 +364,7 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
     setLibObjectPath(null);
     setSynced(false);
     setLines([]);
+    setSyncError(null);
     if (v.durationSeconds) setDuration(v.durationSeconds);
     setPeaks(Array.from({ length: 120 }, (_, i) => 0.25 + Math.abs(Math.sin(i * 0.5)) * 0.6));
   }, []);
@@ -376,10 +385,17 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
   }, [lyrics, duration, toast]);
 
   // Real sync: read the loaded song's vocal and align word-by-word via
-  // /api/lyrics/align (AssemblyAI). Falls back to estimateSync on any error,
-  // low confidence, or when no audio file is loaded.
+  // /api/lyrics/align (AssemblyAI). This is the ONLY path that actually
+  // listens to the track — on failure it surfaces a clear, sticky error
+  // instead of silently swapping in the free even-spread estimate, which
+  // used to look like a successful real sync when it wasn't. The admin
+  // explicitly clicks "Estimate (free)" if they want that fallback instead.
   const runSync = useCallback(async () => {
-    if (!audioFile && !libObjectPath && !pickedVideo) { estimateSync(); return; }
+    setSyncError(null);
+    if (!audioFile && !libObjectPath && !pickedVideo) {
+      setSyncError("Load a song first — upload a file, pick one from your Library, or pick a video — then Auto-sync can read its vocal.");
+      return;
+    }
     setSyncing(true);
     try {
       const body: Record<string, unknown> = { lyricsText: lyrics.trim() || null, acceptCopyright: rightsAcknowledged };
@@ -409,15 +425,13 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
           : `${parsed.length} lines aligned to the vocal. Nudge any line to fine-tune.`,
       });
     } catch (err) {
-      toast({
-        title: "Using estimated timing",
-        description: err instanceof Error ? err.message : "Alignment unavailable — spread evenly instead.",
-      });
-      estimateSync();
+      const message = err instanceof Error ? err.message : "Vocal alignment failed.";
+      setSyncError(message);
+      toast({ title: "Vocal read failed — nothing was synced", description: message, variant: "destructive" });
     } finally {
       setSyncing(false);
     }
-  }, [audioFile, libObjectPath, pickedVideo, lyrics, estimateSync, toast]);
+  }, [audioFile, libObjectPath, pickedVideo, lyrics, rightsAcknowledged, toast]);
 
   // Unified playback clock (real audio when present, else a sim clock).
   useEffect(() => {
@@ -660,7 +674,7 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
                 <Label className="mb-1.5 flex items-center gap-1.5"><Type className="h-4 w-4 text-primary" /> Lyrics</Label>
                 <Textarea
                   value={lyrics}
-                  onChange={(e) => { setLyrics(e.target.value); setSynced(false); }}
+                  onChange={(e) => { setLyrics(e.target.value); setSynced(false); setSyncError(null); }}
                   className="min-h-[150px] resize-none bg-background/50"
                   maxLength={5000}
                   placeholder="Paste plain lyrics — one line each. Section tags like [Chorus] are ignored for timing."
@@ -678,6 +692,26 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
                     {syncing ? "aligning to the song…" : synced ? `${lines.length} lines synced` : "not synced yet"}
                   </span>
                 </div>
+                {syncError && (
+                  <div className="mt-2 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2">
+                    <AlertTriangle className="h-3.5 w-3.5 text-destructive mt-0.5 shrink-0" />
+                    <div className="flex-1 space-y-1.5">
+                      <p className="text-xs text-destructive">{syncError}</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Nothing was synced and no credits were charged (refunded automatically on failure).{" "}
+                        {lyrics.trim() && (
+                          <button
+                            type="button"
+                            onClick={() => { estimateSync(); setSyncError(null); }}
+                            className="font-medium text-primary hover:underline"
+                          >
+                            Use estimated timing instead (free)
+                          </button>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Rights disclaimer — lyrics are copyrighted separately from the
