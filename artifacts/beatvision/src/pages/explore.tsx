@@ -266,8 +266,7 @@ export default function Explore() {
       <header className="mb-10 text-center">
         <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Explore the community</h1>
         <p className="text-muted-foreground mx-auto mt-3 max-w-2xl">
-          Videos and royalty-free soundtracks made by the AIBeatSync community. Watch, listen, get inspired, and
-          reuse your favorites.
+          Videos and soundtracks made by the AIBeatSync community. Watch, listen, and get inspired.
         </p>
       </header>
 
