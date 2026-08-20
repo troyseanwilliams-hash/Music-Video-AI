@@ -202,6 +202,12 @@ export const ListJobsResponse = zod.object({
     zod.object({
       id: zod.string(),
       userId: zod.string(),
+      jobType: zod
+        .string()
+        .nullish()
+        .describe(
+          "Processing flow used for this job, such as editor_render for a Remix Lab export",
+        ),
       status: zod.enum([
         "pending_approval",
         "queued",
@@ -469,6 +475,12 @@ export const getJobResponseClipStartTimeMin = 0;
 export const GetJobResponse = zod.object({
   id: zod.string(),
   userId: zod.string(),
+  jobType: zod
+    .string()
+    .nullish()
+    .describe(
+      "Processing flow used for this job, such as editor_render for a Remix Lab export",
+    ),
   status: zod.enum([
     "pending_approval",
     "queued",
@@ -1120,6 +1132,12 @@ export const GetDashboardStatsResponse = zod.object({
       zod.object({
         id: zod.string(),
         userId: zod.string(),
+        jobType: zod
+          .string()
+          .nullish()
+          .describe(
+            "Processing flow used for this job, such as editor_render for a Remix Lab export",
+          ),
         status: zod.enum([
           "pending_approval",
           "queued",

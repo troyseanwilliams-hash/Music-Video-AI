@@ -395,14 +395,16 @@ export default function JobStatus() {
     !jobAudio.audioSourceUrl;
   const errInfo = categoriseError(job.errorMessage);
 
+  // Remix Lab renders one final output video regardless of its timeline size.
+  const isRemixJob = job.jobType === "editor_render";
   // Authoritative scene count from the server (jobs.ts resolveScenePlan --
   // the SAME formula used for billing/generation, getClipPlan), not a guess.
   // Falls back to the old rough heuristic only for job types that don't get
   // a scenePlan (e.g. remix/editor renders, which don't use this grid the
   // same way) so nothing regresses for those.
   const serverScenePlan = (job as { scenePlan?: { numClips?: number } } | undefined)?.scenePlan;
-  let numClips = serverScenePlan?.numClips ?? 3;
-  if (!serverScenePlan && durVal && durVal !== "full") {
+  let numClips = isRemixJob ? 1 : (serverScenePlan?.numClips ?? 3);
+  if (!isRemixJob && !serverScenePlan && durVal && durVal !== "full") {
     const d = parseInt(durVal, 10);
     const clipSec = d <= 5 ? 5 : 10;
     numClips = Math.max(1, Math.ceil(d / clipSec));
@@ -606,7 +608,7 @@ export default function JobStatus() {
                     <div className="space-y-2">
                       <div className="flex items-center gap-1.5 text-xs font-mono uppercase tracking-wide text-muted-foreground">
                         <Clapperboard className="h-3.5 w-3.5" />
-                        Storyboard
+                        {isRemixJob ? "Final video" : "Storyboard"}
                         <span className="text-muted-foreground/60">
                           {Object.keys(previewClips).length}/{gridSlots}
                         </span>

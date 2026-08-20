@@ -1033,6 +1033,9 @@ components:
           type: string
         userId:
           type: string
+        jobType:
+          type: [string, 'null']
+          description: Processing flow used for this job, such as editor_render for a Remix Lab export
         status:
           $ref: '#/components/schemas/JobStatus'
         audioSourceType:

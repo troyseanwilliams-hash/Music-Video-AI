@@ -39,9 +39,11 @@ import {
   Info,
   Link2,
   Scissors,
+  Check,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
 import {
   buildHybridTimeline,
   isValidHybridHandoff,
@@ -69,14 +71,6 @@ interface Segment {
   trimStart?: number; // seconds trimmed off the front (video only)
   trimEnd?: number; // seconds trimmed off the back (video only)
   sourceVideoId?: string; // owned Gallery video used for audio/lyrics lookup
-}
-
-interface GalleryMediaVideo {
-  id: string;
-  title?: string | null;
-  videoObjectPath?: string | null;
-  thumbnailObjectPath?: string | null;
-  durationSeconds?: number | null;
 }
 
 interface MusicTrack {
@@ -312,6 +306,9 @@ export default function Editor() {
   // The ID of the source video loaded from Gallery — used as the audio source
   // for Auto-sync when no separate music file has been added.
   const [sourceVideoId, setSourceVideoId] = useState<string | null>(null);
+  // Karaoke is paid/optional. Keep it opt-in and do not infer it from an
+  // uploaded or selected music source.
+  const [karaokeEnabled, setKaraokeEnabled] = useState(false);
   const [lyricsText, setLyricsText] = useState("");
   const [lyricsSyncSource, setLyricsSyncSource] = useState<"music" | "video">("music");
   const [lyricsSyncing, setLyricsSyncing] = useState(false);
@@ -330,6 +327,7 @@ export default function Editor() {
   const balance = statsData?.creditsRemaining ?? null;
   const [topUpOpen, setTopUpOpen] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
+  const [selectedGalleryVideoIds, setSelectedGalleryVideoIds] = useState<string[]>([]);
   const { data: galleryData, isLoading: galleryLoading } = useListVideos(
     { limit: 50 },
     {
@@ -581,7 +579,7 @@ export default function Editor() {
   // allowance cost the standard lyric add-on. Mirror the server's quota so the
   // shown estimate matches what's actually charged.
   const trialLyricCost =
-    trialActive && quota?.trial && lyricsText.trim() && quota.trial.lyricRemaining <= 0
+    karaokeEnabled && trialActive && quota?.trial && lyricsText.trim() && quota.trial.lyricRemaining <= 0
       ? quota.trial.lyricOverageCost
       : 0;
   const estimatedCost = trialActive
@@ -822,36 +820,55 @@ export default function Editor() {
     }
   }
 
-  function addGalleryVideo(video: GalleryMediaVideo) {
-    if (!video.videoObjectPath) {
+  function toggleGalleryVideo(videoId: string) {
+    setSelectedGalleryVideoIds((selected) =>
+      selected.includes(videoId)
+        ? selected.filter((id) => id !== videoId)
+        : [...selected, videoId],
+    );
+  }
+
+  function addSelectedGalleryVideos() {
+    const newSegments: Segment[] = [];
+    let firstVideoId: string | null = null;
+    for (const id of selectedGalleryVideoIds) {
+      const video = galleryData?.videos.find((candidate) => candidate.id === id);
+      if (!video?.videoObjectPath) continue;
+      if (!firstVideoId) firstVideoId = video.id;
+      newSegments.push({
+        id: uid(),
+        name: video.title?.trim() || "Gallery video",
+        kind: "video",
+        localUrl: `/api/storage${video.videoObjectPath}`,
+        objectPath: video.videoObjectPath,
+        durationSec:
+          typeof video.durationSeconds === "number" && video.durationSeconds > 0
+            ? video.durationSeconds
+            : 8,
+        thumb: video.thumbnailObjectPath ? `/api/storage${video.thumbnailObjectPath}` : null,
+        uploading: false,
+        sourceVideoId: video.id,
+      });
+    }
+    if (newSegments.length === 0) {
       toast({
-        title: "Video unavailable",
-        description: "This Gallery video does not have a usable media file.",
+        title: "No videos selected",
+        description: "Select one or more available Gallery videos to add them.",
         variant: "destructive",
       });
       return;
     }
-    const seg: Segment = {
-      id: uid(),
-      name: video.title?.trim() || "Gallery video",
-      kind: "video",
-      localUrl: `/api/storage${video.videoObjectPath}`,
-      objectPath: video.videoObjectPath,
-      durationSec:
-        typeof video.durationSeconds === "number" && video.durationSeconds > 0
-          ? video.durationSeconds
-          : 8,
-      thumb: video.thumbnailObjectPath ? `/api/storage${video.thumbnailObjectPath}` : null,
-      uploading: false,
-      sourceVideoId: video.id,
-    };
-    setSegments((prev) => [...prev, seg]);
-    if (!sourceVideoId && !music) {
-      setSourceVideoId(video.id);
+    setSegments((prev) => [...prev, ...newSegments]);
+    if (!sourceVideoId && !music && firstVideoId) {
+      setSourceVideoId(firstVideoId);
       setLyricsSyncSource("video");
     }
     setGalleryOpen(false);
-    toast({ title: "Added from Gallery", description: `${seg.name} was added to the timeline.` });
+    setSelectedGalleryVideoIds([]);
+    toast({
+      title: "Added from Gallery",
+      description: `${newSegments.length} ${newSegments.length === 1 ? "video was" : "videos were"} added to the timeline.`,
+    });
   }
 
   async function addMusic(files: FileList | null) {
@@ -890,14 +907,14 @@ export default function Editor() {
   const effectiveSyncSource = syncFromMusic || !videoSyncAvailable ? "music" : "video";
   const canAutoSync = musicSyncAvailable || videoSyncAvailable;
   const autoSyncLyrics = async () => {
-    if (!canAutoSync || lyricsSyncing) return;
+    if (!karaokeEnabled || !canAutoSync || lyricsSyncing) return;
     setLyricsSyncing(true);
     setLyricsSyncNote(null);
     try {
       // acceptCopyright must be a real boolean — the API rejects the string
       // "true" with a 400 (strict `!== true` check server-side).
       const body: Record<string, string | boolean | undefined> = {
-        lyricsText: lyricsText.trim() || undefined,
+        lyricsText: karaokeEnabled ? lyricsText.trim() || undefined : undefined,
         acceptCopyright: true,
       };
       if (effectiveSyncSource === "music" && music?.objectPath) {
@@ -1045,7 +1062,7 @@ export default function Editor() {
         resolution,
         orientation,
         acceptCopyright: true,
-        lyricsText: lyricsText.trim() || undefined,
+        lyricsText: karaokeEnabled ? lyricsText.trim() || undefined : undefined,
       };
       const res = await fetch("/api/studio/render", {
         method: "POST",
@@ -1233,7 +1250,14 @@ export default function Editor() {
         <Button onClick={() => mediaInputRef.current?.click()}>
           <Upload className="mr-2 h-4 w-4" /> Add media
         </Button>
-        <Button variant="outline" onClick={() => setGalleryOpen(true)} data-testid="add-media-from-gallery">
+        <Button
+          variant="outline"
+          onClick={() => {
+            setSelectedGalleryVideoIds([]);
+            setGalleryOpen(true);
+          }}
+          data-testid="add-media-from-gallery"
+        >
           <Film className="mr-2 h-4 w-4 text-primary" /> From Gallery
         </Button>
         <input ref={musicInputRef} type="file" accept="audio/*" hidden onChange={(e) => addMusic(e.target.files)} />
@@ -1257,12 +1281,18 @@ export default function Editor() {
         </SoundtrackPickerDialog>
       </div>
 
-      <Dialog open={galleryOpen} onOpenChange={setGalleryOpen}>
+      <Dialog
+        open={galleryOpen}
+        onOpenChange={(open) => {
+          setGalleryOpen(open);
+          if (!open) setSelectedGalleryVideoIds([]);
+        }}
+      >
         <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle>Choose from Gallery</DialogTitle>
             <DialogDescription>
-              Add one of your finished videos directly to the timeline without uploading it again.
+              Select one or more finished videos to add them directly to the timeline without uploading again.
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-[65vh] overflow-y-auto pr-1">
@@ -1272,13 +1302,26 @@ export default function Editor() {
               </div>
             ) : galleryData?.videos?.length ? (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {galleryData.videos.map((video) => (
-                  <button
-                    key={video.id}
-                    type="button"
-                    onClick={() => addGalleryVideo(video)}
-                    className="group overflow-hidden rounded-xl border border-border bg-card text-left transition-colors hover:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  >
+                {galleryData.videos.map((video) => {
+                  const selected = selectedGalleryVideoIds.includes(video.id);
+                  return (
+                    <button
+                      key={video.id}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => toggleGalleryVideo(video.id)}
+                      className={`group relative overflow-hidden rounded-xl border bg-card text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                        selected
+                          ? "border-primary ring-2 ring-primary/30"
+                          : "border-border hover:border-primary/60"
+                      }`}
+                    >
+                      {selected && (
+                        <span className="absolute right-2 top-2 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
+                          <Check className="h-4 w-4" aria-hidden="true" />
+                          <span className="sr-only">Selected</span>
+                        </span>
+                      )}
                     <div className="relative aspect-video overflow-hidden bg-muted">
                       {video.thumbnailObjectPath ? (
                         <img
@@ -1302,10 +1345,13 @@ export default function Editor() {
                       <p className="line-clamp-2 text-sm font-medium">
                         {video.title?.trim() || "Untitled video"}
                       </p>
-                      <p className="mt-1 text-xs text-muted-foreground">Add to timeline</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {selected ? "Selected" : "Select for timeline"}
+                      </p>
                     </div>
-                  </button>
-                ))}
+                    </button>
+                  );
+                })}
               </div>
             ) : (
               <div className="flex min-h-48 flex-col items-center justify-center rounded-xl border border-dashed border-border px-6 text-center">
@@ -1316,6 +1362,31 @@ export default function Editor() {
                 </p>
               </div>
             )}
+          </div>
+          <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">
+              {selectedGalleryVideoIds.length === 0
+                ? "No videos selected"
+                : `${selectedGalleryVideoIds.length} ${selectedGalleryVideoIds.length === 1 ? "video" : "videos"} selected`}
+            </p>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setSelectedGalleryVideoIds([])}
+                disabled={selectedGalleryVideoIds.length === 0}
+              >
+                Clear selection
+              </Button>
+              <Button
+                type="button"
+                onClick={addSelectedGalleryVideos}
+                disabled={selectedGalleryVideoIds.length === 0}
+                data-testid="add-selected-gallery-videos"
+              >
+                Add selected{selectedGalleryVideoIds.length > 0 ? ` (${selectedGalleryVideoIds.length})` : ""}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -1695,7 +1766,23 @@ export default function Editor() {
                   </p>
                 </PopoverContent>
               </Popover>
+              <div className="ml-auto flex items-center gap-2">
+                <span className="text-xs font-normal text-muted-foreground">
+                  {karaokeEnabled ? "On" : "Off"}
+                </span>
+                <Switch
+                  checked={karaokeEnabled}
+                  onCheckedChange={(enabled) => {
+                    setKaraokeEnabled(enabled);
+                    if (!enabled) setLyricsSyncNote(null);
+                  }}
+                  aria-label="Enable karaoke lyrics"
+                  data-testid="toggle-editor-karaoke"
+                />
+              </div>
             </div>
+            {karaokeEnabled ? (
+              <>
             {trialActive && quota?.trial && (
               <p className="mb-2 text-xs text-muted-foreground" data-testid="text-trial-lyric-allowance">
                 {quota.trial.lyricRemaining > 0 ? (
@@ -1828,6 +1915,12 @@ export default function Editor() {
                 </Tooltip>
               </div>
             </div>
+              </>
+            ) : (
+              <p className="rounded-lg border border-dashed border-border/70 bg-muted/20 px-3 py-2.5 text-xs text-muted-foreground">
+                Karaoke is off. Turn it on to add timed lyrics or captions to this Remix export.
+              </p>
+            )}
           </div>
         </Card>
       </div>

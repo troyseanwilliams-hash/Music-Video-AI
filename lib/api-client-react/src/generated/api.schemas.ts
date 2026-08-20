@@ -210,6 +210,11 @@ export interface VideoClip {
 export interface Job {
   id: string;
   userId: string;
+  /**
+   * Processing flow used for this job, such as editor_render for a Remix Lab export
+   * @nullable
+   */
+  jobType?: string | null;
   status: JobStatus;
   /** @nullable */
   audioSourceType?: JobAudioSourceType;
