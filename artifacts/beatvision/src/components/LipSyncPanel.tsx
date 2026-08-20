@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Smile, Upload } from "lucide-react";
@@ -29,10 +29,33 @@ async function presignAndUpload(file: File): Promise<string> {
  * Lip Sync: upload a face photo and turn it into a singing avatar synced to a
  * short clip of this video's song, via the Pixazo OmniHuman lipsync API.
  */
-export default function LipSyncPanel({ videoId }: { videoId: string }) {
+function formatTime(seconds: number): string {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  return `${Math.floor(safeSeconds / 60)}:${String(safeSeconds % 60).padStart(2, "0")}`;
+}
+
+function clampStartTime(startTime: number, totalDuration: number | null, clipDuration: number): number {
+  if (totalDuration === null) return Math.max(0, startTime);
+  return Math.max(0, Math.min(startTime, Math.max(0, totalDuration - clipDuration)));
+}
+
+export default function LipSyncPanel({
+  videoId,
+  audioDurationSeconds,
+  initialStartTime = 0,
+}: {
+  videoId: string;
+  audioDurationSeconds?: number | null;
+  initialStartTime?: number | null;
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [seconds, setSeconds] = useState(15);
+  const totalDuration =
+    typeof audioDurationSeconds === "number" && Number.isFinite(audioDurationSeconds) && audioDurationSeconds > 0
+      ? audioDurationSeconds
+      : null;
+  const [startTime, setStartTime] = useState(() => clampStartTime(initialStartTime ?? 0, totalDuration, 15));
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ videoId: string; url: string } | null>(null);
   const [facePreview, setFacePreview] = useState<string | null>(null);
@@ -40,6 +63,16 @@ export default function LipSyncPanel({ videoId }: { videoId: string }) {
   const { data: statsData } = useGetDashboardStats({});
   const balance = statsData?.creditsRemaining ?? null;
   const [topUpOpen, setTopUpOpen] = useState(false);
+  const maxStartTime = totalDuration === null ? 0 : Math.max(0, Math.floor(totalDuration - seconds));
+  const canChooseRange = totalDuration !== null && totalDuration > seconds;
+  const rangeEndTime = startTime + seconds;
+  const rangeLabel = `${formatTime(startTime)}–${formatTime(rangeEndTime)}`;
+
+  // Keep an inherited start point and any user-selected duration inside the
+  // source song. This prevents an out-of-range request before upload/charge.
+  useEffect(() => {
+    setStartTime((current) => clampStartTime(current, totalDuration, seconds));
+  }, [totalDuration, seconds]);
 
   async function run(file: File) {
     // Proactive credit check — show the top-up modal instead of letting the
@@ -58,7 +91,11 @@ export default function LipSyncPanel({ videoId }: { videoId: string }) {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageObjectPath, lipsyncSeconds: seconds }),
+        body: JSON.stringify({
+          imageObjectPath,
+          lipsyncSeconds: seconds,
+          lipsyncStartTime: startTime,
+        }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error ?? "Lip sync failed");
@@ -101,9 +138,31 @@ export default function LipSyncPanel({ videoId }: { videoId: string }) {
             ))}
           </div>
           <p className="text-[11px] text-muted-foreground mt-1.5">
-            <strong>{cost} credits</strong> — billed per second, synced to the first {seconds}s of the song.
+            <strong>{cost} credits</strong> — billed per second, synced to {startTime > 0 ? rangeLabel : `the first ${seconds}s`} of the song.
           </p>
         </div>
+        {canChooseRange && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <label htmlFor={`lipsync-range-${videoId}`} className="text-sm font-medium">Song range</label>
+              <span className="text-xs font-medium tabular-nums text-primary">{rangeLabel}</span>
+            </div>
+            <input
+              id={`lipsync-range-${videoId}`}
+              type="range"
+              min={0}
+              max={maxStartTime}
+              step={1}
+              value={Math.min(startTime, maxStartTime)}
+              disabled={busy}
+              onChange={(event) => setStartTime(Number(event.target.value))}
+              className="w-full accent-primary disabled:opacity-50"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Choose the section of your song the avatar should perform. Your video remains the full track.
+            </p>
+          </div>
+        )}
 
         <input
           ref={inputRef}

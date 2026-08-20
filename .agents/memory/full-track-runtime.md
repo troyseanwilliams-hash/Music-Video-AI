@@ -8,3 +8,5 @@ Full-track videos require analysis of the currently selected uploaded audio. The
 **Why:** Users expect a Full-track render to finish with their music, and an unannounced cap can create a charged video that does not match the source track.
 
 **How to apply:** When changing Full-track durations, pricing, audio analysis, or processing paths, retain the analysis gate and validate both worker and API-server execution routes against the same bounded duration.
+
+For Full-track renders, an audio-range choice is a preferred Lip Sync segment, not an instruction to trim the main music video. Preserve that start time for the completed-video Lip Sync control, which may change its short clip length and range but must remain inside the finished video.

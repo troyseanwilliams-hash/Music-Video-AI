@@ -364,6 +364,7 @@ export default function Generate() {
   const fullTrackLabel = songDurationSec
     ? `Full track · ${formatDuration(songDurationSec)}`
     : "Full track";
+  const fullTrackSelected = String(requestedDuration) === "full";
 
   // Fetch the storyboard preview whenever the confirm dialog opens (free, no render).
   useEffect(() => {
@@ -670,7 +671,6 @@ export default function Generate() {
           requestedDuration,
           aiProvider,
           clipStartTime:
-            requestedDuration !== CreateJobRequestRequestedDuration.full &&
             sourceType === CreateJobRequestAudioSourceType.upload &&
             clipStartTime > 0
               ? clipStartTime
@@ -1265,22 +1265,31 @@ export default function Generate() {
                 </div>
               )}
 
-              {/* ── Waveform Clip Selector — shown as soon as a file is chosen ── */}
-               {uploadedFile && requestedDuration !== CreateJobRequestRequestedDuration.full && (
+               {/* ── Waveform Clip Selector — Full track retains this as the
+                   preferred starting point for a later Lip Sync pass. ── */}
+                {uploadedFile && (
                 <div className="rounded-xl border border-primary/30 bg-background/40 p-4 space-y-2">
                   <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-primary mb-3">
                     <Clock className="h-4 w-4 shrink-0" />
-                    <span>Select clip section</span>
+                     <span>{fullTrackSelected ? "Choose lip sync range" : "Select clip section"}</span>
                     <span className="text-muted-foreground font-normal text-xs sm:ml-auto">
-                      Drag to choose your {durationToSeconds(requestedDuration) ?? 10}s window
+                       {fullTrackSelected
+                         ? "Drag to choose a 15s lip-sync window"
+                         : `Drag to choose your ${durationToSeconds(requestedDuration) ?? 10}s window`}
                     </span>
                   </div>
                   <AudioWaveformSelector
                     file={uploadedFile}
-                    clipDurationSec={durationToSeconds(requestedDuration) ?? 10}
+                     clipDurationSec={fullTrackSelected ? 15 : (durationToSeconds(requestedDuration) ?? 10)}
                     clipStartTime={clipStartTime}
                     onClipStartTimeChange={setClipStartTime}
                   />
+                   {fullTrackSelected && (
+                     <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+                       <span className="font-medium text-primary">Full track stays intact.</span>{" "}
+                       This range is saved as the starting point for Lip Sync after your video is ready; you can still change it then.
+                     </div>
+                   )}
 
                   {/* ── Audio Analysis Badges ── */}
                   <div className="pt-3 border-t border-border/30 mt-1">
@@ -1297,7 +1306,7 @@ export default function Generate() {
                         ))}
                       </div>
                     )}
-               {uploadedFile && String(requestedDuration) === "full" && (
+                {uploadedFile && fullTrackSelected && (
                  <div className="rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 text-sm">
                    <div className="flex items-center gap-2 font-medium text-primary">
                      <Clock className="h-4 w-4 shrink-0" />

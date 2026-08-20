@@ -802,7 +802,11 @@ export default function JobStatus() {
 
         {/* ── Lip sync: animate a face photo singing this video's song ── */}
         {isComplete && job.videoId && !noAudioJob && (
-          <LipSyncPanel videoId={job.videoId} />
+          <LipSyncPanel
+            videoId={job.videoId}
+            audioDurationSeconds={typeof analysis?.durationSeconds === "number" ? analysis.durationSeconds : undefined}
+            initialStartTime={typeof job.clipStartTime === "number" ? job.clipStartTime : 0}
+          />
         )}
 
         {/* ── Refer & earn — surfaced right when they've got something to share ── */}

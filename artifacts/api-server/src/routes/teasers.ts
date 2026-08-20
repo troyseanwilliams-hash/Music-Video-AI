@@ -443,10 +443,8 @@ router.post("/videos/:id/release-kit", async (req: Request<{ id: string }>, res:
 const LipsyncBody = z.object({
   imageObjectPath: z.string().min(1),
   lipsyncSeconds: z.number().int().min(LIPSYNC_MIN_SECONDS).max(LIPSYNC_MAX_SECONDS).default(15),
-  // Admin-only segment picker (LyricSyncStudio): which part of the song to
-  // sync to, instead of always the first lipsyncSeconds from 0:00. Ignored
-  // (stays 0) for the regular user-facing LipSyncPanel, which doesn't expose
-  // this control yet.
+  // Which portion of the song to sync to. Both the public Lip Sync panel and
+  // the admin studio can set this, while the default preserves the first clip.
   lipsyncStartTime: z.number().min(0).max(3600).default(0),
 });
 
@@ -471,6 +469,18 @@ router.post("/videos/:id/lipsync", async (req: Request<{ id: string }>, res: Res
   const lipsyncSeconds = parsed.data.lipsyncSeconds;
   const lipsyncStartTime = parsed.data.lipsyncStartTime;
   const cost = calculateLipsyncCost(lipsyncSeconds);
+  const videoDuration = Number(video.durationSeconds);
+  if (
+    Number.isFinite(videoDuration) &&
+    videoDuration > 0 &&
+    lipsyncStartTime + lipsyncSeconds > videoDuration + 0.01
+  ) {
+    res.status(422).json({
+      error: `Choose a range that ends within the video. This clip would end at ${Math.ceil(lipsyncStartTime + lipsyncSeconds)}s, but the video is ${Math.floor(videoDuration)}s long.`,
+      code: "LIPSYNC_RANGE_OUT_OF_BOUNDS",
+    });
+    return;
+  }
 
   // Reserve credits up front (non-admins). Refunded below if anything fails.
   let charged = false;
