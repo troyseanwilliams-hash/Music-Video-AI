@@ -845,6 +845,22 @@ export default function JobStatus() {
             audioDurationSeconds={typeof analysis?.durationSeconds === "number" ? analysis.durationSeconds : undefined}
             initialStartTime={typeof job.clipStartTime === "number" ? job.clipStartTime : 0}
             initialSeconds={typeof analysis?.lipSyncDurationSeconds === "number" ? analysis.lipSyncDurationSeconds : undefined}
+            sourcePriceBasis={
+              // Only "ai" and "remix" jobs have well-defined generation
+              // inputs (provider/duration/resolution from a real provider
+              // call) to price Lip Sync from -- mirrors the exact check the
+              // server makes in routes/teasers.ts. Anything else (e.g. a
+              // Studio editor_render export) falls back to the
+              // duration-based rate inside LipSyncPanel.
+              (job as { jobType?: string | null }).jobType === "ai" ||
+              (job as { jobType?: string | null }).jobType === "remix"
+                ? {
+                    requestedDuration: job.requestedDuration ?? null,
+                    resolution: (job as { resolution?: string | null }).resolution ?? null,
+                    provider: (job as { aiProvider?: string | null }).aiProvider ?? null,
+                  }
+                : null
+            }
           />
         )}
 

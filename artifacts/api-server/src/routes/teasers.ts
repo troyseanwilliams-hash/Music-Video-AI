@@ -22,6 +22,7 @@ import {
   LYRIC_OVERLAY_COST,
   RELEASE_KIT_COST,
   calculateLipsyncCost,
+  calculateLipsyncCostFromSourceVideo,
   LIPSYNC_MIN_SECONDS,
   LIPSYNC_MAX_SECONDS,
 } from "../lib/creditCost.js";
@@ -468,7 +469,25 @@ router.post("/videos/:id/lipsync", async (req: Request<{ id: string }>, res: Res
   const admin = isAdminEmail(req.user.email);
   const lipsyncSeconds = parsed.data.lipsyncSeconds;
   const lipsyncStartTime = parsed.data.lipsyncStartTime;
-  const cost = calculateLipsyncCost(lipsyncSeconds);
+
+  // Price from the source video's own real provider cost (not the credits it
+  // was originally charged, which already carry its own markup) whenever that
+  // video has well-defined generation inputs. A Studio "editor_render" export
+  // stitches pre-existing clips via ffmpeg with no AI provider call of its
+  // own, so it has no real cost to price from -- fall back to the
+  // duration-based rate (same one the standalone Lip Sync Generator uses).
+  const [sourceJob] = await db.select().from(jobsTable).where(eq(jobsTable.id, video.jobId)).limit(1);
+  const sourceSongDurationSec = (sourceJob?.audioAnalysis as { durationSeconds?: number } | null | undefined)
+    ?.durationSeconds;
+  const cost =
+    sourceJob && (sourceJob.jobType === "ai" || sourceJob.jobType === "remix")
+      ? calculateLipsyncCostFromSourceVideo(
+          sourceJob.requestedDuration,
+          sourceJob.resolution,
+          sourceSongDurationSec,
+          sourceJob.aiProvider,
+        )
+      : calculateLipsyncCost(lipsyncSeconds);
   const videoDuration = Number(video.durationSeconds);
   if (
     Number.isFinite(videoDuration) &&
@@ -514,7 +533,7 @@ router.post("/videos/:id/lipsync", async (req: Request<{ id: string }>, res: Res
   try {
     // Audio to sync to = the original job's song, trimmed to the chosen short
     // clip so the per-second lip sync cost stays bounded.
-    const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, video.jobId)).limit(1);
+    const job = sourceJob;
     let audioUrl: string | null = null;
     if (job?.audioObjectPath) audioUrl = await storageService.getObjectEntitySignedUrl(job.audioObjectPath, 3600);
     else if (job?.audioSourceUrl) audioUrl = job.audioSourceUrl;

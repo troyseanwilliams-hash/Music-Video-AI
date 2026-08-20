@@ -8,6 +8,7 @@ import { useGetDashboardStats } from "@workspace/api-client-react";
 import {
   canAffordCredits,
   calculateLipsyncCost,
+  calculateLipsyncCostFromSourceVideo,
   LIPSYNC_DEFAULT_SECONDS,
   LIPSYNC_MAX_SECONDS,
   LIPSYNC_MIN_SECONDS,
@@ -59,11 +60,22 @@ export default function LipSyncPanel({
   audioDurationSeconds,
   initialStartTime = 0,
   initialSeconds = LIPSYNC_DEFAULT_SECONDS,
+  sourcePriceBasis = null,
 }: {
   videoId: string;
   audioDurationSeconds?: number | null;
   initialStartTime?: number | null;
   initialSeconds?: number | null;
+  // The source video's own generation inputs, when it was AI-generated (or a
+  // remix of one) -- lets this panel price from that video's real provider
+  // cost instead of the lipsync clip's own duration. Pass null/omit for a
+  // source video with no such well-defined cost (e.g. a Studio editor_render
+  // export), which falls back to the duration-based rate.
+  sourcePriceBasis?: {
+    requestedDuration: string | null;
+    resolution: string | null;
+    provider: string | null;
+  } | null;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -77,7 +89,19 @@ export default function LipSyncPanel({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ videoId: string; url: string } | null>(null);
   const [facePreview, setFacePreview] = useState<string | null>(null);
-  const cost = calculateLipsyncCost(seconds);
+  // When we know the source video's own generation inputs, price is fixed
+  // from that video's real cost (see calculateLipsyncCostFromSourceVideo) --
+  // it does NOT change as the user adjusts the clip length below. Otherwise
+  // fall back to the duration-based rate, exactly like the standalone/admin
+  // Lip Sync Generator.
+  const cost = sourcePriceBasis
+    ? calculateLipsyncCostFromSourceVideo(
+        sourcePriceBasis.requestedDuration,
+        sourcePriceBasis.resolution,
+        totalDuration,
+        sourcePriceBasis.provider,
+      )
+    : calculateLipsyncCost(seconds);
   const { data: statsData } = useGetDashboardStats({});
   const balance = statsData?.creditsRemaining ?? null;
   const [topUpOpen, setTopUpOpen] = useState(false);
@@ -200,7 +224,12 @@ export default function LipSyncPanel({
                 ))}
               </div>
               <p className="text-[11px] text-muted-foreground">
-                Choose any whole-second length from {LIPSYNC_MIN_SECONDS}–{LIPSYNC_MAX_SECONDS} seconds. <strong>{cost} credits</strong> — billed per second.
+                Choose any whole-second length from {LIPSYNC_MIN_SECONDS}–{LIPSYNC_MAX_SECONDS} seconds.{" "}
+                {sourcePriceBasis ? (
+                  <><strong>{cost} credits</strong> — priced from this video's own generation cost, not clip length.</>
+                ) : (
+                  <><strong>{cost} credits</strong> — billed per second.</>
+                )}
               </p>
             </div>
             {canChooseRange && (

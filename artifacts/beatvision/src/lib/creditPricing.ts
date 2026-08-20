@@ -37,6 +37,31 @@ export function calculateLipsyncCost(seconds: number | null | undefined): number
   return Math.ceil((s * LIPSYNC_USD_PER_SECOND * LIPSYNC_MARKUP) / USD_PER_CREDIT);
 }
 
+// Lip Sync applied to an EXISTING finished video is priced from that video's
+// own real (pre-markup) provider cost, not the credits already charged for
+// it — same LIPSYNC_MARKUP (1.5×) as above, but computed from the source
+// job's generation inputs (provider, clip plan, resolution) instead of the
+// lipsync clip's own duration, so the panel always shows exactly what the
+// server reserves/charges/refunds. Mirror of
+// artifacts/api-server/src/lib/creditCost.ts:calculateLipsyncCostFromSourceVideo.
+//   e.g. a 60s Runway video (6 clips × 10s × $0.14/s = $8.40 real cost) →
+//   1.5× = $12.60 → 840 credits.
+//
+// Only meaningful for a source job with well-defined generation inputs
+// (jobType "ai" or "remix"). For anything else (e.g. a Studio editor_render
+// export, which stitches pre-existing clips via ffmpeg with no AI provider
+// call of its own), fall back to calculateLipsyncCost(seconds) instead.
+export function calculateLipsyncCostFromSourceVideo(
+  requestedDuration: string | null | undefined,
+  resolution?: string | null,
+  songDurationSec?: number | null,
+  provider?: AiProvider | string | null,
+): number {
+  const { numClips, clipDurationSec } = getClipPlan(requestedDuration, songDurationSec);
+  const costCredits = (numClips * clipDurationSec * usdPerSecondFor(provider as AiProvider | undefined)) / USD_PER_CREDIT;
+  return Math.ceil(costCredits * resolutionMultiplier(resolution) * LIPSYNC_MARKUP);
+}
+
 // Lyric alignment (AssemblyAI) — small fixed add-on at the standard margin.
 // Mirror of artifacts/api-server/src/lib/creditCost.ts.
 export const LYRIC_ALIGN_COST = 2;

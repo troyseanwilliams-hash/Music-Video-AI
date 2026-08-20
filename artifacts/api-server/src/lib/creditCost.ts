@@ -175,15 +175,57 @@ export function calculateSongCost(
   return Math.min(SONG_MAX_CREDITS, Math.max(SONG_MIN_CREDITS, scaled));
 }
 
+// Lip Sync (OmniHuman) markup: at least 1.5× the real provider cost, whether
+// that cost comes from the requested clip's own duration (standalone/admin —
+// no source video to price from) or from an existing finished video's real
+// generation cost (completed-video Lip Sync — see
+// calculateLipsyncCostFromSourceVideo below). Shared so both paths are
+// provably the same rule, not just coincidentally equal numbers.
+const LIPSYNC_MARKUP = 1.5;
+
 // Lip Sync (OmniHuman) is a video model billed per second of output (~$0.16/s).
-// Capped to a short clip and priced at the same 1.5× markup:
+// Used only for the standalone/admin Lip Sync Generator, which drives a fresh
+// audio-driven avatar render rather than enhancing an existing video, so
+// there's no source video to derive a real cost from — priced from the
+// requested clip's own duration instead, at the same LIPSYNC_MARKUP:
 //   ceil(seconds × $0.16 × 1.5 / $0.015) = 16 credits/second (15s = 240, 30s = 480).
 const LIPSYNC_USD_PER_SECOND = 0.16;
 export const LIPSYNC_MIN_SECONDS = 5;
 export const LIPSYNC_MAX_SECONDS = 30;
 export function calculateLipsyncCost(seconds: number | null | undefined): number {
   const s = Math.min(Math.max(Math.round(seconds || 15), LIPSYNC_MIN_SECONDS), LIPSYNC_MAX_SECONDS);
-  return Math.ceil((s * LIPSYNC_USD_PER_SECOND * MUSIC_GEN_MARKUP) / USD_PER_CREDIT);
+  return Math.ceil((s * LIPSYNC_USD_PER_SECOND * LIPSYNC_MARKUP) / USD_PER_CREDIT);
+}
+
+// Lip Sync applied to an EXISTING finished video is priced from that video's
+// own real (pre-markup) provider cost — not from the credits the customer was
+// already charged for it (which already include that video's own markup) —
+// so the add-on's premium tracks real compute spent generating the video,
+// always at least LIPSYNC_MARKUP (1.5×) that real cost. Uses the exact same
+// inputs and formula the original generation was billed from (getClipPlan ×
+// per-second provider rate × resolution multiplier via providerCostCredits),
+// so it's exactly reproducible from the source job's immutable fields —
+// never from job.manifest.reservedCredits or any other post-markup figure.
+//   e.g. a 60s Runway video (6 clips × 10s × $0.14/s = $8.40 real cost) →
+//   1.5× = $12.60 → ceil($12.60 / $0.015) = 840 credits.
+//
+// Only meaningful for a job with well-defined generation inputs (jobType
+// "ai" or "remix", both of which set requestedDuration/resolution/aiProvider
+// from a real provider call). A Studio "editor_render" export stitches
+// pre-existing clips via ffmpeg with no AI provider call of its own — callers
+// should fall back to calculateLipsyncCost(seconds) for those instead of
+// calling this function.
+export function calculateLipsyncCostFromSourceVideo(
+  requestedDuration: string | null | undefined,
+  resolution?: string | null,
+  songDurationSec?: number | null,
+  provider?: string | null,
+): number {
+  return Math.ceil(
+    providerCostCredits(requestedDuration, songDurationSec, provider) *
+      resolutionMultiplier(resolution) *
+      LIPSYNC_MARKUP,
+  );
 }
 
 // Lyric alignment (AssemblyAI Universal-2 ≈ $0.15/hr → ~$0.01 for a 4-min song).
