@@ -2,7 +2,7 @@ import { db } from "@workspace/db";
 import { jobsTable, videosTable, creditsTable } from "@workspace/db";
 import type { VideoClipMeta } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
-import { getClipPlan } from "./creditCost.js";
+import { getClipPlan, MAX_FULL_SECONDS } from "./creditCost.js";
 import { randomUUID } from "crypto";
 import { exec } from "child_process";
 import { promisify } from "util";
@@ -24,6 +24,17 @@ const POLL_INTERVAL_MS = 5000;
 
 const storageService = new ObjectStorageService();
 type JobRow = typeof jobsTable.$inferSelect;
+
+function targetOutputDuration(
+  requestedDuration: string | null | undefined,
+  audioDurationSeconds: number,
+): number {
+  if (!requestedDuration || requestedDuration === "full") {
+    return Math.min(Math.max(audioDurationSeconds, 1), MAX_FULL_SECONDS);
+  }
+  const requested = parseInt(requestedDuration, 10);
+  return Number.isFinite(requested) && requested > 0 ? requested : 10;
+}
 
 // Trim an audio buffer to [startSec, startSec + durationSec) via ffmpeg
 // stream copy (fast, no re-encode). Used by the admin Pixazo Lip Sync
@@ -475,10 +486,7 @@ async function generateClips(
   // Do NOT use section.endTime - section.startTime: when audio clipping fails
   // or MP3 headers report the wrong total length, section timestamps reflect
   // the full audio file and each clip gets looped for the entire song duration.
-  const totalOutputDuration =
-    !requestedDur || requestedDur === "full"
-      ? Math.min(analysis.durationSeconds, 600) // full videos cap at 10 minutes
-      : parseInt(requestedDur, 10);
+  const totalOutputDuration = targetOutputDuration(requestedDur, analysis.durationSeconds);
   const perClipTargetDuration = Math.max(1, totalOutputDuration / sections.length);
 
   const clips: { buffer: Buffer; targetDuration: number; prompt: string }[] = new Array(sections.length);
@@ -1508,17 +1516,14 @@ async function processJob(job: JobRow): Promise<void> {
     let videoBuffer: Buffer;
     let thumbnailBuffer: Buffer;
 
+    const reqDur = (job as JobRow & { requestedDuration?: string | null }).requestedDuration;
+    const outputDuration = targetOutputDuration(reqDur, analysis.durationSeconds);
     if (audioData) {
-      const reqDur = (job as JobRow & { requestedDuration?: string | null }).requestedDuration;
-      const stitchDuration =
-        !reqDur || reqDur === "full"
-          ? analysis.durationSeconds
-          : parseInt(reqDur, 10);
       const stitchResult = await stitchVideoClips({
         clips,
         audioBuffer: audioData.buffer,
         audioExt: audioData.ext,
-        totalDuration: stitchDuration,
+        totalDuration: outputDuration,
         lyricsText,
       });
       videoBuffer = stitchResult.videoBuffer;
@@ -1528,11 +1533,9 @@ async function processJob(job: JobRow): Promise<void> {
       // video meant to get a soundtrack added later in the Editor), or audio
       // couldn't be loaded. Either way, stitch every generated clip into one
       // silent video rather than discarding all but the first clip.
-      const reqDur = (job as JobRow & { requestedDuration?: string | null }).requestedDuration;
       const stitchResult = await stitchVideoClips({
         clips,
-        totalDuration:
-          !reqDur || reqDur === "full" ? analysis.durationSeconds : parseInt(reqDur, 10),
+        totalDuration: outputDuration,
         lyricsText, // captions burn onto silent videos too
       });
       videoBuffer = stitchResult.videoBuffer;
@@ -1564,7 +1567,7 @@ async function processJob(job: JobRow): Promise<void> {
       videoObjectPath,
       thumbnailObjectPath,
       title: job.prompt ? job.prompt.slice(0, 100) : "Generated Video",
-      durationSeconds: analysis.durationSeconds,
+      durationSeconds: outputDuration,
       style: job.style,
       prompt: job.prompt,
       clips: clipMetas as unknown as Record<string, unknown>,

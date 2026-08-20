@@ -20,7 +20,7 @@ import { stitchEditorTimeline } from "./editorStitcher.js";
 const execAsync = promisify(exec);
 const MAX_RETRIES = 3;
 const POLL_INTERVAL_MS = 5000;
-// "Full" videos are capped at 5 minutes and scale unique clips with (capped)
+// "Full" videos are capped at 10 minutes and scale unique clips with (capped)
 // song length: ~1 clip per 30s, min 3, max 20. Numeric durations derive their
 // clip count dynamically via Math.ceil(durSec / clipDurationSec).
 const MAX_FULL_SECONDS = 600;
@@ -1595,7 +1595,7 @@ async function processJob(job: JobRow): Promise<void> {
       videoObjectPath,
       thumbnailObjectPath,
       title: job.prompt ? job.prompt.slice(0, 100) : "Generated Video",
-      durationSeconds: analysis.durationSeconds,
+      durationSeconds: plan.targetOutputDuration,
       style: job.style,
       prompt: job.prompt,
       clips: clipMetas as unknown as Record<string, unknown>,

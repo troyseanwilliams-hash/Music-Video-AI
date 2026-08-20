@@ -15,7 +15,7 @@ import {
   VideoStyle,
   type CreateJobRequest,
 } from "@workspace/api-client-react";
-import { estimateCreditCost, canAffordCredits, LYRIC_ALIGN_COST, LYRIC_OVERLAY_COST, PROVIDER_LABELS, type AiProvider } from "@/lib/creditPricing";
+import { estimateCreditCost, canAffordCredits, LYRIC_ALIGN_COST, LYRIC_OVERLAY_COST, MAX_FULL_SECONDS, PROVIDER_LABELS, type AiProvider } from "@/lib/creditPricing";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -147,6 +147,12 @@ function renderTimeEstimate(dur: CreateJobRequestRequestedDuration): string {
   if (s <= 90) return "~15 min";
   if (s <= 120) return "~20 min";
   return "~30 min";
+}
+
+function formatDuration(seconds: number | null | undefined): string {
+  const safeSeconds = Math.max(0, Math.round(seconds ?? 0));
+  const minutes = Math.floor(safeSeconds / 60);
+  return `${minutes}:${String(safeSeconds % 60).padStart(2, "0")}`;
 }
 
 // estimateCreditCost + provider pricing now live in "@/lib/creditPricing"
@@ -339,8 +345,25 @@ export default function Generate() {
   const createJob = useCreateJob();
   const { data: statsData } = useGetDashboardStats({});
   const analyzeAudio = useAnalyzeAudio();
-  // Analyzed song length — sizes/prices "full" videos (clips scale with length).
-  const songDurationSec = (analyzeAudio.data as { durationSeconds?: number } | undefined)?.durationSeconds;
+  // Track which objectPath the current analysis result belongs to. This prevents
+  // an old upload's duration from sizing or billing a newly uploaded track.
+  const [analysisForPath, setAnalysisForPath] = useState<string | null>(null);
+  const analyzedDurationSec = (analyzeAudio.data as { durationSeconds?: number | null } | undefined)?.durationSeconds;
+  const hasCurrentUploadAnalysis =
+    sourceType === CreateJobRequestAudioSourceType.upload &&
+    !!objectPath &&
+    analysisForPath === objectPath &&
+    analyzeAudio.isSuccess &&
+    typeof analyzedDurationSec === "number" &&
+    Number.isFinite(analyzedDurationSec) &&
+    analyzedDurationSec > 0;
+  // Analyzed song length is the authoritative Full track target shown to the
+  // user and sent with the job. Never reuse a stale analysis from another file.
+  const songDurationSec = hasCurrentUploadAnalysis ? analyzedDurationSec : undefined;
+  const fullTrackOverLimit = !!songDurationSec && songDurationSec > MAX_FULL_SECONDS;
+  const fullTrackLabel = songDurationSec
+    ? `Full track · ${formatDuration(songDurationSec)}`
+    : "Full track";
 
   // Fetch the storyboard preview whenever the confirm dialog opens (free, no render).
   useEffect(() => {
@@ -367,10 +390,6 @@ export default function Generate() {
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [confirmOpen]);
-  // Track which objectPath the current analysis result belongs to.
-  // This prevents stale results from a previous upload being submitted with a new job.
-  const [analysisForPath, setAnalysisForPath] = useState<string | null>(null);
-
   // Quick-start: apply a template's prompt/style/aspect/duration in one click.
   function applyTemplate(t: (typeof TEMPLATES)[number]) {
     setPrompt(t.prompt);
@@ -727,6 +746,16 @@ export default function Generate() {
     if (sourceType === CreateJobRequestAudioSourceType.none && requestedDuration === CreateJobRequestRequestedDuration.full) {
       errors.audio = "Choose a specific length for a no-audio video.";
     }
+    if (
+      requestedDuration === CreateJobRequestRequestedDuration.full &&
+      sourceType === CreateJobRequestAudioSourceType.upload &&
+      !hasCurrentUploadAnalysis
+    ) {
+      errors.audio = "Wait for audio analysis to finish before creating a full-track video.";
+    }
+    if (requestedDuration === CreateJobRequestRequestedDuration.full && fullTrackOverLimit) {
+      errors.audio = `Full-track videos support audio up to ${Math.floor(MAX_FULL_SECONDS / 60)} minutes. Choose a shorter track or a specific duration.`;
+    }
 
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
@@ -924,7 +953,7 @@ export default function Generate() {
                   <button className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 px-3 py-1.5 text-sm font-medium transition-colors">
                     <Clock className="h-3.5 w-3.5 text-muted-foreground" />
                     <span>{
-                      requestedDuration === CreateJobRequestRequestedDuration.full ? "full"
+                      requestedDuration === CreateJobRequestRequestedDuration.full ? fullTrackLabel
                         : (requestedDuration as string) === "300" ? "5 min"
                         : (requestedDuration as string) === "600" ? "10 min"
                         : `${durationToSeconds(requestedDuration)}s`
@@ -933,6 +962,23 @@ export default function Generate() {
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-64">
+                  <DropdownMenuItem
+                    disabled={
+                      sourceType === CreateJobRequestAudioSourceType.none ||
+                      !hasCurrentUploadAnalysis ||
+                      fullTrackOverLimit
+                    }
+                    onClick={() => handleDurationChange(CreateJobRequestRequestedDuration.full)}
+                    className={`flex items-center justify-between gap-3 ${
+                      requestedDuration === CreateJobRequestRequestedDuration.full ? "text-primary font-medium" : ""
+                    }`}
+                    data-testid="duration-full-track"
+                  >
+                    <span>{fullTrackLabel}</span>
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {estimateCreditCost(CreateJobRequestRequestedDuration.full, aiProvider, resolution, songDurationSec) + lyricAddon} cr
+                    </span>
+                  </DropdownMenuItem>
                   {([
                     { value: CreateJobRequestRequestedDuration.NUMBER_5, label: "5 seconds" },
                     { value: CreateJobRequestRequestedDuration.NUMBER_10, label: "10 seconds" },
@@ -960,7 +1006,7 @@ export default function Generate() {
                   })}
                   <div className="px-2 pt-1 pb-1.5">
                     <p className="text-[10px] text-muted-foreground/60 leading-tight">
-                      Longer videos use more clips and take more time to generate.
+                      Full track matches your analyzed audio exactly (up to 10 minutes). Longer videos use more clips and take more time to generate.
                     </p>
                   </div>
                 </DropdownMenuContent>
@@ -1220,7 +1266,7 @@ export default function Generate() {
               )}
 
               {/* ── Waveform Clip Selector — shown as soon as a file is chosen ── */}
-              {uploadedFile && (
+               {uploadedFile && requestedDuration !== CreateJobRequestRequestedDuration.full && (
                 <div className="rounded-xl border border-primary/30 bg-background/40 p-4 space-y-2">
                   <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-primary mb-3">
                     <Clock className="h-4 w-4 shrink-0" />
@@ -1251,6 +1297,19 @@ export default function Generate() {
                         ))}
                       </div>
                     )}
+               {uploadedFile && String(requestedDuration) === "full" && (
+                 <div className="rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 text-sm">
+                   <div className="flex items-center gap-2 font-medium text-primary">
+                     <Clock className="h-4 w-4 shrink-0" />
+                     {songDurationSec
+                       ? `Full track selected · final video will match ${formatDuration(songDurationSec)}`
+                       : "Full track selected · analysing audio duration…"}
+                   </div>
+                   <p className="mt-1 text-xs text-muted-foreground">
+                     Visual clips are arranged across the complete song and the finished video ends with your audio.
+                   </p>
+                 </div>
+               )}
 
                     {analyzeAudio.isSuccess && analysisForPath === objectPath && analyzeAudio.data && (() => {
                       const r = analyzeAudio.data;
@@ -1271,6 +1330,12 @@ export default function Generate() {
                             <Music className="h-3 w-3 text-muted-foreground" />
                             {Math.round(r.bpm ?? 0)} BPM
                           </span>
+                           {typeof r.durationSeconds === "number" && r.durationSeconds > 0 && (
+                             <span className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-secondary/40 px-2.5 py-0.5 text-xs font-medium tabular-nums">
+                               <Clock className="h-3 w-3 text-muted-foreground" />
+                               {formatDuration(r.durationSeconds)} track
+                             </span>
+                           )}
                           <span className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-secondary/40 px-2.5 py-0.5 text-xs font-medium capitalize">
                             <Sparkles className="h-3 w-3 text-muted-foreground" />
                             {r.mood ?? "—"}
@@ -1654,7 +1719,7 @@ export default function Generate() {
           <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
             <span className="rounded-full border border-border/40 bg-secondary/30 px-2.5 py-1">
               {aspectRatio} · {resolution} · {
-                requestedDuration === CreateJobRequestRequestedDuration.full ? "full"
+                requestedDuration === CreateJobRequestRequestedDuration.full ? fullTrackLabel
                   : (requestedDuration as string) === "300" ? "5 min"
                   : (requestedDuration as string) === "600" ? "10 min"
                   : `${durationToSeconds(requestedDuration)}s`
@@ -1676,6 +1741,14 @@ export default function Generate() {
               </span>
             )}
           </div>
+          {fullTrackOverLimit && (
+            <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span>
+                This track is {formatDuration(songDurationSec)}. Full-track videos currently support audio up to {Math.floor(MAX_FULL_SECONDS / 60)} minutes; choose a shorter track or a specific duration.
+              </span>
+            </div>
+          )}
 
           {/* ── Copyright Acknowledgment (not applicable to a silent "no audio" render) ── */}
           {sourceType !== CreateJobRequestAudioSourceType.none && (
@@ -1699,6 +1772,10 @@ export default function Generate() {
               objectPath !== null &&
               analysisForPath === objectPath &&
               analyzeAudio.isPending;
+             const fullTrackNeedsAnalysis =
+               requestedDuration === CreateJobRequestRequestedDuration.full &&
+               sourceType === CreateJobRequestAudioSourceType.upload &&
+               !hasCurrentUploadAnalysis;
             return (
               <div className="space-y-2">
                 <Button
@@ -1707,6 +1784,8 @@ export default function Generate() {
                   disabled={
                     createJob.isPending ||
                     isAnalyzingAudio ||
+                     fullTrackNeedsAnalysis ||
+                     fullTrackOverLimit ||
                     (sourceType !== CreateJobRequestAudioSourceType.none && !copyrightAcknowledged)
                   }
                   onClick={handleGenerate}
@@ -1872,7 +1951,7 @@ export default function Generate() {
                   <span className="text-muted-foreground">Duration</span>
                   <span className="font-medium">
                     {requestedDuration === CreateJobRequestRequestedDuration.full
-                      ? "Full track"
+                      ? `${fullTrackLabel} · exact audio length`
                       : `${requestedDuration}s`}
                   </span>
                 </div>

@@ -14,3 +14,4 @@
 - [Email system conventions](email-system.md) — shared branded templates copied byte-identical to worker; unsubscribe GET must never mutate; failed-render email says "open a ticket", not retry.
 - [Async audio-load staleness guards](async-audio-load-races.md) — music selection state set by async uploads/imports needs monotonic load tokens; stale completions clobbered newer tracks and disabled Auto-sync.
 - [Runway Avatar billing safety](runway-avatar-billing-safety.md) — never retry Avatar Video creation blindly; wait for provider readiness, persist state, and validate billing before enabling paid submits.
+- [Full-track runtime contract](full-track-runtime.md) — Full track is analysis-gated, limited to 600 seconds, and billed, rendered, and recorded against one target runtime.

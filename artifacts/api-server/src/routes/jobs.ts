@@ -12,7 +12,7 @@ import {
   ListJobsQueryParams,
   GetJobParams,
 } from "@workspace/api-zod";
-import { calculateCreditCost, calculateRemixCost, LYRIC_OVERLAY_COST } from "../lib/creditCost.js";
+import { calculateCreditCost, calculateRemixCost, LYRIC_OVERLAY_COST, MAX_FULL_SECONDS } from "../lib/creditCost.js";
 import { getUserTier, canRender4k } from "../lib/tier.js";
 import { planShots } from "../lib/shotPlan.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
@@ -207,6 +207,35 @@ router.post("/jobs", async (req, res) => {
   if (noAudio && (!requestedDuration || requestedDuration === "full")) {
     res.status(400).json({
       error: "Choose a specific length for a no-audio video — there's no song to derive a \"full length\" from.",
+    });
+    return;
+  }
+
+  // A Full track job must be priced and planned from the analysis of the exact
+  // uploaded file. This prevents a stale client-side duration from becoming a
+  // paid render with an unexpected runtime.
+  const submittedDuration = (audioAnalysis as { durationSeconds?: number | null } | null | undefined)?.durationSeconds;
+  if (
+    audioSourceType === "upload" &&
+    (!requestedDuration || requestedDuration === "full") &&
+    (!Number.isFinite(submittedDuration) || !submittedDuration || submittedDuration <= 0)
+  ) {
+    res.status(422).json({
+      error: "Audio analysis must finish before creating a full-track video.",
+      code: "AUDIO_ANALYSIS_REQUIRED",
+    });
+    return;
+  }
+  if (
+    audioSourceType === "upload" &&
+    (!requestedDuration || requestedDuration === "full") &&
+    typeof submittedDuration === "number" &&
+    submittedDuration > MAX_FULL_SECONDS
+  ) {
+    res.status(422).json({
+      error: `Full-track videos support audio up to ${Math.floor(MAX_FULL_SECONDS / 60)} minutes. Choose a shorter track or a specific duration.`,
+      code: "AUDIO_DURATION_LIMIT_EXCEEDED",
+      maxDurationSeconds: MAX_FULL_SECONDS,
     });
     return;
   }

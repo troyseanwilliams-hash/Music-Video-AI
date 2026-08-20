@@ -52,7 +52,7 @@ const USD_PER_CREDIT = 0.015;
 const SHORT_MARKUP = 2;
 const LONG_MARKUP = 1.5;
 const KLING_LONG_MARKUP = 1.75; // Kling multi-clip markup (Runway stays 1.5×)
-const MAX_FULL_SECONDS = 600;
+export const MAX_FULL_SECONDS = 600;
 
 function fullClipCount(songDurationSec?: number | null): number {
   const secs = songDurationSec && songDurationSec > 0 ? songDurationSec : MAX_FULL_SECONDS;
