@@ -86,7 +86,7 @@ interface MusicTrack {
   mode: "mix" | "replace";
   volume: number;
   uploading: boolean;
-  loop?: boolean; // repeat the track to fill the video (undefined = true)
+  loop?: boolean; // repeat a mixed track to fill the video (undefined = true)
   fade?: boolean; // fade in at the start, out at the end (undefined = false)
 }
 
@@ -1031,7 +1031,15 @@ export default function Editor() {
             : {}),
         })),
         music: music?.objectPath
-          ? { objectPath: music.objectPath, mode: music.mode, volume: music.volume, loop: music.loop !== false, fade: !!music.fade }
+          ? {
+              objectPath: music.objectPath,
+              mode: music.mode,
+              volume: music.volume,
+              // Replacing the clip soundtrack always plays the selected track
+              // once. The rest of a longer video intentionally stays silent.
+              loop: music.mode === "mix" && music.loop !== false,
+              fade: !!music.fade,
+            }
           : undefined,
         transition: transition === "none" ? undefined : { type: transition, durationSec: transitionDuration },
         resolution,
@@ -1541,7 +1549,20 @@ export default function Editor() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <div className="text-muted-foreground mb-1 text-xs">Audio</div>
-                  <Select value={music.mode} onValueChange={(v) => setMusic((m) => (m ? { ...m, mode: v as "mix" | "replace" } : m))}>
+                  <Select
+                    value={music.mode}
+                    onValueChange={(v) =>
+                      setMusic((m) =>
+                        m
+                          ? {
+                              ...m,
+                              mode: v as "mix" | "replace",
+                              ...(v === "replace" ? { loop: false } : {}),
+                            }
+                          : m,
+                      )
+                    }
+                  >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -1568,13 +1589,15 @@ export default function Editor() {
               </div>
 
               <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => setMusic((m) => (m ? { ...m, loop: m.loop === false } : m))}
-                  className={`rounded-full border px-3 py-1 text-xs transition-colors ${music.loop === false ? "border-border/60 text-muted-foreground hover:text-foreground" : "border-primary/40 bg-primary/10 text-primary"}`}
-                >
-                  {music.loop === false ? "Play once" : "Loop to fill ✓"}
-                </button>
+                {music.mode === "mix" && (
+                  <button
+                    type="button"
+                    onClick={() => setMusic((m) => (m ? { ...m, loop: m.loop === false } : m))}
+                    className={`rounded-full border px-3 py-1 text-xs transition-colors ${music.loop === false ? "border-border/60 text-muted-foreground hover:text-foreground" : "border-primary/40 bg-primary/10 text-primary"}`}
+                  >
+                    {music.loop === false ? "Play once" : "Loop to fill ✓"}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setMusic((m) => (m ? { ...m, fade: !m.fade } : m))}
@@ -1584,7 +1607,9 @@ export default function Editor() {
                 </button>
               </div>
               <p className="mt-1.5 text-[11px] text-muted-foreground">
-                {music.loop === false
+                {music.mode === "replace"
+                  ? "Plays once — the video is silent after the track ends."
+                  : music.loop === false
                   ? "Plays once — the video is silent after the track ends."
                   : "Repeats to fill the whole video."}
               </p>

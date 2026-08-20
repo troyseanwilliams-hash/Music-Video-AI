@@ -956,7 +956,13 @@ function extFromObjectPath(objectPath: string, fallback: string): string {
 // Studio (editor) render manifest stored on the job row.
 interface EditorManifest {
   segments: { objectPath: string; kind: "video" | "photo"; durationSec: number }[];
-  music?: { objectPath: string; mode: "mix" | "replace"; volume: number };
+  music?: {
+    objectPath: string;
+    mode: "mix" | "replace";
+    volume: number;
+    loop?: boolean;
+    fade?: boolean;
+  };
   transition?: { type: string; durationSec: number };
   resolution?: string;
   orientation?: "landscape" | "portrait"; // 16:9 (default) or 9:16 mobile
@@ -1014,7 +1020,14 @@ async function processEditorJob(job: JobRow): Promise<void> {
         const file = await storageService.getObjectEntityFile(manifest.music.objectPath);
         const [buf] = await file.download();
         const ext = extFromObjectPath(manifest.music.objectPath, "mp3");
-        music = { buffer: buf, ext, mode: manifest.music.mode, volume: manifest.music.volume };
+        music = {
+          buffer: buf,
+          ext,
+          mode: manifest.music.mode,
+          volume: manifest.music.volume,
+          loop: manifest.music.loop,
+          fade: manifest.music.fade,
+        };
       } catch (err) {
         logger.warn(
           { err, jobId: job.id },

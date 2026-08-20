@@ -35,7 +35,7 @@ export interface EditorMusicInput {
   ext: string;
   mode: "mix" | "replace";
   volume: number; // 0..1
-  loop?: boolean; // repeat the track to fill the video (default true)
+  loop?: boolean; // repeat a mixed track to fill the video (default true)
   fade?: boolean; // fade the music in at the start and out at the end
 }
 
@@ -433,18 +433,16 @@ export async function stitchEditorTimeline(
 
     let current = joined;
 
-    // 3. Music (mix with or replace clip audio). The track loops for the full
-    // length of the video and is cut exactly at the video's end: if the song
-    // is shorter it replays until the video finishes; if it's longer it stops
-    // when the video does. We hard-cap the output to the probed video duration
-    // rather than relying on `-shortest`, which is unreliable with an
-    // infinitely looped input.
+    // 3. Music. Mixed music can loop to fill the video. Replacement music is
+    // always single-play: when it ends, the remaining footage intentionally
+    // stays silent instead of repeating the selected track or restoring clip
+    // audio. We hard-cap output to the probed video duration.
     if (input.music) {
       const videoDuration = await probeDuration(current);
       const musicPath = join(dir, `music.${input.music.ext || "mp3"}`);
       await writeFile(musicPath, input.music.buffer);
       const vol = Math.max(0, Math.min(2, input.music.volume || 0.6));
-      const loop = input.music.loop !== false; // default: loop to fill the video
+      const loop = input.music.mode === "mix" && input.music.loop !== false;
       const withMusic = join(dir, "music.mp4");
 
       // Optional fade in/out on the music (scaled down for very short videos so
