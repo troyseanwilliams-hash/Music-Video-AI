@@ -1036,6 +1036,12 @@ components:
         jobType:
           type: [string, 'null']
           description: Processing flow used for this job, such as editor_render for a Remix Lab export
+        aiProvider:
+          type: [string, 'null']
+          enum: [runway, kling, luma, null]
+        resolution:
+          type: [string, 'null']
+          enum: ['720p', '1080p', '4k', null]
         status:
           $ref: '#/components/schemas/JobStatus'
         audioSourceType:
@@ -1077,12 +1083,67 @@ components:
           type: [number, 'null']
           minimum: 0
           description: Audio clip start time in seconds; null means start from the beginning
+        claimedAt:
+          type: [string, 'null']
+          format: date-time
+          description: Time a worker claimed the job; null while the job is queued
+        manifest:
+          oneOf:
+            - $ref: '#/components/schemas/JobManifest'
+            - type: 'null'
+        previewClips:
+          type: object
+          description: Completed scene index to preview URL, present while scenes are generated
+          additionalProperties:
+            type: string
+        videoUrl:
+          type: string
+          description: Signed or proxied playback URL, present when the finished video is available
+        hasAudio:
+          type: boolean
+          description: Whether the finished render contains a soundtrack
         createdAt:
           type: string
           format: date-time
         updatedAt:
           type: string
           format: date-time
+
+    JobManifest:
+      type: object
+      additionalProperties: true
+      properties:
+        segments:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+            properties:
+              kind:
+                type: string
+                enum: [video, photo]
+              durationSec:
+                type: number
+              trimStart:
+                type: number
+              trimEnd:
+                type: number
+        transition:
+          type: object
+          additionalProperties: true
+          properties:
+            type:
+              type: string
+            durationSec:
+              type: number
+        resolution:
+          type: string
+        lyricsText:
+          type: [string, 'null']
+        clipIndexes:
+          type: array
+          items:
+            type: integer
 
     CreateJobRequest:
       type: object

@@ -6,8 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { AudioAnalysis } from "./audioAnalysis";
+import type { JobAiProvider } from "./jobAiProvider";
 import type { JobAudioSourceType } from "./jobAudioSourceType";
+import type { JobManifest } from "./jobManifest";
+import type { JobPreviewClips } from "./jobPreviewClips";
 import type { JobRequestedDuration } from "./jobRequestedDuration";
+import type { JobResolution } from "./jobResolution";
 import type { JobStatus } from "./jobStatus";
 import type { VideoClip } from "./videoClip";
 
@@ -19,6 +23,10 @@ export interface Job {
    * @nullable
    */
   jobType?: string | null;
+  /** @nullable */
+  aiProvider?: JobAiProvider;
+  /** @nullable */
+  resolution?: JobResolution;
   status: JobStatus;
   /** @nullable */
   audioSourceType?: JobAudioSourceType;
@@ -57,6 +65,18 @@ export interface Job {
    * @nullable
    */
   clipStartTime?: number | null;
+  /**
+   * Time a worker claimed the job; null while the job is queued
+   * @nullable
+   */
+  claimedAt?: Date | null;
+  manifest?: JobManifest | null;
+  /** Completed scene index to preview URL, present while scenes are generated */
+  previewClips?: JobPreviewClips;
+  /** Signed or proxied playback URL, present when the finished video is available */
+  videoUrl?: string;
+  /** Whether the finished render contains a soundtrack */
+  hasAudio?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

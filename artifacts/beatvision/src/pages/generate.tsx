@@ -27,6 +27,7 @@ import {
   PROVIDER_LABELS,
   type AiProvider,
 } from "@/lib/creditPricing";
+import { getGenerationTimeEstimate } from "@/lib/jobEstimates";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -148,17 +149,6 @@ const CHARACTERS = [
   { value: "an animal", label: "Animal" },
 ] as const;
 type CharacterValue = (typeof CHARACTERS)[number]["value"];
-
-// Rough queue/render-time estimate shown on the page for the chosen duration —
-// longer videos use more clips and take longer to generate.
-function renderTimeEstimate(dur: CreateJobRequestRequestedDuration): string {
-  if (dur === CreateJobRequestRequestedDuration.full) return "~10–30 min";
-  const s = parseInt(dur as string, 10);
-  if (!Number.isFinite(s) || s <= 60) return "~2–5 min";
-  if (s <= 90) return "~15 min";
-  if (s <= 120) return "~20 min";
-  return "~30 min";
-}
 
 function formatDuration(seconds: number | null | undefined): string {
   const safeSeconds = Math.max(0, Math.round(seconds ?? 0));
@@ -560,6 +550,12 @@ export default function Generate() {
   // surface on this page must include it so the shown cost equals the charge.
   const lyricAddon = lyricsText.trim() ? LYRIC_OVERLAY_COST : 0;
   const cost = estimateCreditCost(requestedDuration, aiProvider, resolution, songDurationSec) + lyricAddon;
+  const generationEstimate = getGenerationTimeEstimate(
+    requestedDuration,
+    aiProvider,
+    resolution,
+    songDurationSec,
+  );
   const balance = statsData?.creditsRemaining ?? null;
   const canAfford = canAffordCredits(cost, balance, isAdmin);
 
@@ -1899,8 +1895,9 @@ export default function Generate() {
                 <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
                   <Clock className="h-3.5 w-3.5" />
                   <span>
-                    Estimated render time <strong>{renderTimeEstimate(requestedDuration)}</strong>
-                    {" · "}charged only when it finishes
+                     Typically <strong>{generationEstimate.label}</strong>
+                     {" · "}{generationEstimate.unitCount} AI {generationEstimate.unitCount === 1 ? "clip" : "clips"}
+                     {" · "}credits reserved when the job starts
                   </span>
                 </div>
               </div>
@@ -1917,10 +1914,8 @@ export default function Generate() {
         : parseInt(requestedDuration as string, 10);
       const isLong = durSec !== null && durSec >= 90;
       if (!isLong) return null;
-      const numClips = (durSec as number) > 120
-        ? Math.min(30, Math.ceil((durSec as number) / 20))
-        : Math.min(20, Math.ceil((durSec as number) / 10));
-      const estimatedMin = durSec === 90 ? "~15 minutes" : durSec === 120 ? "~20 minutes" : durSec === 300 ? "~25 minutes" : "~45 minutes";
+      const numClips = generationEstimate.unitCount;
+      const estimatedMin = generationEstimate.label;
       const durLabel = durSec === 300 ? "5-minute" : durSec === 600 ? "10-minute" : `${durSec}-second`;
       const creditCost = estimateCreditCost(requestedDuration, aiProvider, resolution, songDurationSec) + lyricAddon;
       return (

@@ -208,6 +208,22 @@ export const ListJobsResponse = zod.object({
         .describe(
           "Processing flow used for this job, such as editor_render for a Remix Lab export",
         ),
+      aiProvider: zod
+        .union([
+          zod.literal("runway"),
+          zod.literal("kling"),
+          zod.literal("luma"),
+          zod.literal(null),
+        ])
+        .nullish(),
+      resolution: zod
+        .union([
+          zod.literal("720p"),
+          zod.literal("1080p"),
+          zod.literal("4k"),
+          zod.literal(null),
+        ])
+        .nullish(),
       status: zod.enum([
         "pending_approval",
         "queued",
@@ -313,6 +329,54 @@ export const ListJobsResponse = zod.object({
         .describe(
           "Audio clip start time in seconds; null means start from the beginning",
         ),
+      claimedAt: zod.coerce
+        .date()
+        .nullish()
+        .describe(
+          "Time a worker claimed the job; null while the job is queued",
+        ),
+      manifest: zod
+        .union([
+          zod.object({
+            segments: zod
+              .array(
+                zod.object({
+                  kind: zod.enum(["video", "photo"]).optional(),
+                  durationSec: zod.number().optional(),
+                  trimStart: zod.number().optional(),
+                  trimEnd: zod.number().optional(),
+                }),
+              )
+              .optional(),
+            transition: zod
+              .object({
+                type: zod.string().optional(),
+                durationSec: zod.number().optional(),
+              })
+              .optional(),
+            resolution: zod.string().optional(),
+            lyricsText: zod.string().nullish(),
+            clipIndexes: zod.array(zod.number()).optional(),
+          }),
+          zod.null(),
+        ])
+        .optional(),
+      previewClips: zod
+        .record(zod.string(), zod.string())
+        .optional()
+        .describe(
+          "Completed scene index to preview URL, present while scenes are generated",
+        ),
+      videoUrl: zod
+        .string()
+        .optional()
+        .describe(
+          "Signed or proxied playback URL, present when the finished video is available",
+        ),
+      hasAudio: zod
+        .boolean()
+        .optional()
+        .describe("Whether the finished render contains a soundtrack"),
       createdAt: zod.coerce.date(),
       updatedAt: zod.coerce.date(),
     }),
@@ -481,6 +545,22 @@ export const GetJobResponse = zod.object({
     .describe(
       "Processing flow used for this job, such as editor_render for a Remix Lab export",
     ),
+  aiProvider: zod
+    .union([
+      zod.literal("runway"),
+      zod.literal("kling"),
+      zod.literal("luma"),
+      zod.literal(null),
+    ])
+    .nullish(),
+  resolution: zod
+    .union([
+      zod.literal("720p"),
+      zod.literal("1080p"),
+      zod.literal("4k"),
+      zod.literal(null),
+    ])
+    .nullish(),
   status: zod.enum([
     "pending_approval",
     "queued",
@@ -582,6 +662,52 @@ export const GetJobResponse = zod.object({
     .describe(
       "Audio clip start time in seconds; null means start from the beginning",
     ),
+  claimedAt: zod.coerce
+    .date()
+    .nullish()
+    .describe("Time a worker claimed the job; null while the job is queued"),
+  manifest: zod
+    .union([
+      zod.object({
+        segments: zod
+          .array(
+            zod.object({
+              kind: zod.enum(["video", "photo"]).optional(),
+              durationSec: zod.number().optional(),
+              trimStart: zod.number().optional(),
+              trimEnd: zod.number().optional(),
+            }),
+          )
+          .optional(),
+        transition: zod
+          .object({
+            type: zod.string().optional(),
+            durationSec: zod.number().optional(),
+          })
+          .optional(),
+        resolution: zod.string().optional(),
+        lyricsText: zod.string().nullish(),
+        clipIndexes: zod.array(zod.number()).optional(),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+  previewClips: zod
+    .record(zod.string(), zod.string())
+    .optional()
+    .describe(
+      "Completed scene index to preview URL, present while scenes are generated",
+    ),
+  videoUrl: zod
+    .string()
+    .optional()
+    .describe(
+      "Signed or proxied playback URL, present when the finished video is available",
+    ),
+  hasAudio: zod
+    .boolean()
+    .optional()
+    .describe("Whether the finished render contains a soundtrack"),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -1138,6 +1264,22 @@ export const GetDashboardStatsResponse = zod.object({
           .describe(
             "Processing flow used for this job, such as editor_render for a Remix Lab export",
           ),
+        aiProvider: zod
+          .union([
+            zod.literal("runway"),
+            zod.literal("kling"),
+            zod.literal("luma"),
+            zod.literal(null),
+          ])
+          .nullish(),
+        resolution: zod
+          .union([
+            zod.literal("720p"),
+            zod.literal("1080p"),
+            zod.literal("4k"),
+            zod.literal(null),
+          ])
+          .nullish(),
         status: zod.enum([
           "pending_approval",
           "queued",
@@ -1245,6 +1387,54 @@ export const GetDashboardStatsResponse = zod.object({
           .describe(
             "Audio clip start time in seconds; null means start from the beginning",
           ),
+        claimedAt: zod.coerce
+          .date()
+          .nullish()
+          .describe(
+            "Time a worker claimed the job; null while the job is queued",
+          ),
+        manifest: zod
+          .union([
+            zod.object({
+              segments: zod
+                .array(
+                  zod.object({
+                    kind: zod.enum(["video", "photo"]).optional(),
+                    durationSec: zod.number().optional(),
+                    trimStart: zod.number().optional(),
+                    trimEnd: zod.number().optional(),
+                  }),
+                )
+                .optional(),
+              transition: zod
+                .object({
+                  type: zod.string().optional(),
+                  durationSec: zod.number().optional(),
+                })
+                .optional(),
+              resolution: zod.string().optional(),
+              lyricsText: zod.string().nullish(),
+              clipIndexes: zod.array(zod.number()).optional(),
+            }),
+            zod.null(),
+          ])
+          .optional(),
+        previewClips: zod
+          .record(zod.string(), zod.string())
+          .optional()
+          .describe(
+            "Completed scene index to preview URL, present while scenes are generated",
+          ),
+        videoUrl: zod
+          .string()
+          .optional()
+          .describe(
+            "Signed or proxied playback URL, present when the finished video is available",
+          ),
+        hasAudio: zod
+          .boolean()
+          .optional()
+          .describe("Whether the finished render contains a soundtrack"),
         createdAt: zod.coerce.date(),
         updatedAt: zod.coerce.date(),
       }),

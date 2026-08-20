@@ -3,8 +3,14 @@ import { useRoute, useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { SAMPLE_LYRICS } from "@/lib/sampleLyrics";
 import { LYRIC_ALIGN_COST, LYRIC_OVERLAY_COST } from "@/lib/creditPricing";
+import {
+  getGenerationTimeEstimate,
+  getRemainingEstimate,
+  getRemixTimeEstimate,
+  type JobTimeEstimate,
+} from "@/lib/jobEstimates";
 import { Tooltip as UiTooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useGetJob, getGetJobQueryKey } from "@workspace/api-client-react";
+import { useGetJob, getGetJobQueryKey, type Job } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -69,14 +75,31 @@ const STAGES = [
 function inferClipProgress(
   status: string,
   pct: number,
-  plan?: { numClips?: number },
+  plan: {
+    jobType?: string | null;
+    numClips: number;
+    completedClips?: number;
+    timelineItems?: number;
+  },
 ): string | null {
+  if (plan.jobType === "editor_render") {
+    if (status !== "generating" && status !== "stitching") return null;
+    if ((plan.timelineItems ?? 0) <= 1) return "Rendering final video…";
+    const completed = Math.min(
+      plan.timelineItems ?? 1,
+      Math.max(0, Math.floor(((pct - 25) / 55) * (plan.timelineItems ?? 1))),
+    );
+    return `Rendering timeline item ${Math.min((plan.timelineItems ?? 1), completed + 1)} of ${plan.timelineItems}…`;
+  }
   if (status !== "generating") return null;
-  const n = plan?.numClips ?? 3;
-  // Worker: pct goes from 30 to 30+(i/n)*40 per clip
-  if (pct < 30) return `Starting clip generation…`;
-  const clipIdx = Math.min(n - 1, Math.floor(((pct - 30) / 40) * n));
-  return `Generating clip ${clipIdx + 1} of ${n}…`;
+  const n = Math.max(1, plan.numClips);
+  if (plan.jobType === "remix") {
+    const processed = Math.min(n - 1, Math.max(0, Math.floor(((pct - 10) / 60) * n)));
+    return `Regenerating clip ${processed + 1} of ${n}…`;
+  }
+  const completed = Math.min(n, Math.max(0, plan.completedClips ?? 0));
+  if (completed >= n) return "All scenes generated — preparing the final video…";
+  return `Generating scene ${completed + 1} of ${n}…`;
 }
 
 // Categorise error messages into user-friendly buckets
@@ -188,66 +211,52 @@ function useWallElapsedMs(startIso: string | null | undefined, active: boolean):
   return ms;
 }
 
-/** Format a seconds count as a compact remaining-time string (e.g. "45s", "2m 10s", "1h 5m"). */
-function fmtRemaining(secs: number): string {
-  if (secs < 60) return `${secs}s`;
-  const m = Math.floor(secs / 60);
-  const s = secs % 60;
-  if (m < 60) return s ? `${m}m ${s}s` : `${m}m`;
-  const h = Math.floor(m / 60);
-  const mm = m % 60;
-  return mm ? `${h}h ${mm}m` : `${h}h`;
+function finiteNumber(value: unknown): number {
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? number : 0;
 }
 
-/**
- * Estimates seconds remaining from the rate of progressPercent change over a
- * recent sliding window: rate = Δpercent/Δtime, eta = (100 − percent) / rate.
- * Returns null until there's enough signal (or when the estimate is wildly
- * uncertain). General across job types — and accurate for editor renders, which
- * now report smooth per-segment progress.
- */
-function useEtaSeconds(percent: number, active: boolean): number | null {
-  const samplesRef = useRef<{ t: number; p: number }[]>([]);
-  const [, setTick] = useState(0);
+function estimateForJob(job: Job): JobTimeEstimate {
+  const manifest = job.manifest ?? {};
+  const jobType = job.jobType ?? "ai_video";
+  if (jobType === "editor_render") {
+    const segments = Array.isArray(manifest.segments) ? manifest.segments : [];
+    const durationSeconds = segments.reduce((sum, segment) => {
+      const duration = Math.max(0, finiteNumber(segment.durationSec));
+      if (segment.kind !== "video") return sum + duration;
+      const minimumKept = Math.min(0.3, duration);
+      const maximumTrim = Math.max(0, duration - minimumKept);
+      const front = Math.min(Math.max(0, finiteNumber(segment.trimStart)), maximumTrim);
+      const back = Math.min(Math.max(0, finiteNumber(segment.trimEnd)), Math.max(0, maximumTrim - front));
+      return sum + Math.max(minimumKept, duration - front - back);
+    }, 0);
+    const transition = manifest.transition;
+    return getRemixTimeEstimate({
+      durationSeconds,
+      segmentCount: segments.length,
+      resolution: manifest.resolution ?? job.resolution,
+      hasTransition: transition?.type != null && transition.type !== "none",
+      hasKaraoke: typeof manifest.lyricsText === "string" && manifest.lyricsText.trim().length > 0,
+    });
+  }
 
-  useEffect(() => {
-    if (!active) {
-      samplesRef.current = [];
-      return;
-    }
-    const now = Date.now();
-    const arr = samplesRef.current;
-    const last = arr[arr.length - 1];
-    if (!last || last.p !== percent) {
-      arr.push({ t: now, p: percent });
-      const cutoff = now - 120_000; // keep ~2 min of history
-      samplesRef.current = arr.filter((s) => s.t >= cutoff).slice(-30);
-    }
-  }, [percent, active]);
+  if (jobType === "remix") {
+    const clipIndexes = Array.isArray(manifest.clipIndexes) ? manifest.clipIndexes : [];
+    const selectedClips = Math.max(1, clipIndexes.length);
+    const estimate = getGenerationTimeEstimate(
+      String(selectedClips * 10),
+      job.aiProvider,
+      job.resolution,
+    );
+    return { ...estimate, unitCount: selectedClips };
+  }
 
-  // Tick every second so the estimate refreshes and counts down between updates.
-  useEffect(() => {
-    if (!active) return;
-    const id = setInterval(() => setTick((x) => x + 1), 1000);
-    return () => clearInterval(id);
-  }, [active]);
-
-  if (!active) return null;
-  const arr = samplesRef.current;
-  if (arr.length < 2) return null;
-  const first = arr[0]!;
-  const last = arr[arr.length - 1]!;
-  const dt = (last.t - first.t) / 1000;
-  const dp = last.p - first.p;
-  if (dt <= 0 || dp <= 0) return null; // no forward progress yet
-  const rate = dp / dt; // percent per second
-  const remaining = Math.max(0, 100 - last.p);
-  const sinceLast = (Date.now() - last.t) / 1000;
-  const eta = remaining / rate - sinceLast;
-  if (!isFinite(eta)) return null;
-  const secs = Math.max(0, Math.round(eta));
-  if (secs > 3 * 3600) return null; // too uncertain to show
-  return secs;
+  return getGenerationTimeEstimate(
+    job.requestedDuration,
+    job.aiProvider,
+    job.resolution,
+    finiteNumber(job.audioAnalysis?.durationSeconds) || null,
+  );
 }
 
 /**
@@ -332,24 +341,34 @@ export default function JobStatus() {
     } catch {}
   };
 
-  const elapsed = useElapsed(
-    (job as { createdAt?: string | null } | undefined)?.createdAt,
-    !!(job && !TERMINAL_STATUSES.has(job.status ?? "")),
-  );
-
-  const durVal = (job as { requestedDuration?: string | null } | undefined)?.requestedDuration;
+  const durVal = job?.requestedDuration;
   const jobIsActive = !!(job && !TERMINAL_STATUSES.has(job.status ?? ""));
+  const activeStartedAt =
+    job?.status === "queued"
+      ? job.createdAt
+      : job?.claimedAt ?? job?.createdAt;
+  const elapsed = useElapsed(activeStartedAt, jobIsActive);
   const wallElapsedMs = useWallElapsedMs(
-    (job as { createdAt?: string | null } | undefined)?.createdAt,
+    activeStartedAt,
     jobIsActive,
   );
-  const thresholdMs = getThresholdMs(durVal);
-  const showSlowWarning = jobIsActive && !warningDismissed && wallElapsedMs >= thresholdMs;
-
-  const etaSeconds = useEtaSeconds(
-    Math.max(0, Math.min(100, (job as { progressPercent?: number | null } | undefined)?.progressPercent ?? 0)),
-    jobIsActive,
+  const staleElapsedMs = useWallElapsedMs(job?.updatedAt, jobIsActive);
+  const jobEstimate = job
+    ? estimateForJob(job)
+    : getGenerationTimeEstimate("10");
+  const thresholdMs = Math.max(
+    getThresholdMs(durVal),
+    Math.round(jobEstimate.maximumSeconds * 1.15 * 1000),
   );
+  const staleThresholdMs = Math.min(
+    5 * 60 * 1000,
+    Math.max(2 * 60 * 1000, Math.round(jobEstimate.maximumSeconds * 0.15 * 1000)),
+  );
+  const showSlowWarning =
+    jobIsActive &&
+    !warningDismissed &&
+    wallElapsedMs >= thresholdMs &&
+    staleElapsedMs >= staleThresholdMs;
 
   if (isAuthLoading || !isAuthenticated || !id) return null;
 
@@ -377,6 +396,10 @@ export default function JobStatus() {
   const autoRetrying = isFailed && isAutoRetrying(job.errorMessage);
   const isActive = !isComplete && !isFailed;
   const displayPercent = isComplete ? 100 : Math.max(0, Math.min(100, job.progressPercent ?? 0));
+  const remainingEstimate =
+    isActive && job.status !== "queued"
+      ? getRemainingEstimate(jobEstimate, displayPercent)
+      : null;
 
   const currentStageIdx = STAGES.findIndex((s) => s.key === job.status);
   const currentStage = STAGES[currentStageIdx] ?? STAGES[0];
@@ -397,26 +420,31 @@ export default function JobStatus() {
 
   // Remix Lab renders one final output video regardless of its timeline size.
   const isRemixJob = job.jobType === "editor_render";
-  // Authoritative scene count from the server (jobs.ts resolveScenePlan --
-  // the SAME formula used for billing/generation, getClipPlan), not a guess.
-  // Falls back to the old rough heuristic only for job types that don't get
-  // a scenePlan (e.g. remix/editor renders, which don't use this grid the
-  // same way) so nothing regresses for those.
-  const serverScenePlan = (job as { scenePlan?: { numClips?: number } } | undefined)?.scenePlan;
-  let numClips = isRemixJob ? 1 : (serverScenePlan?.numClips ?? 3);
-  if (!isRemixJob && !serverScenePlan && durVal && durVal !== "full") {
-    const d = parseInt(durVal, 10);
-    const clipSec = d <= 5 ? 5 : 10;
-    numClips = Math.max(1, Math.ceil(d / clipSec));
-  }
-  const clipHint = inferClipProgress(job.status ?? "", displayPercent, { numClips });
-  const previewClips =
-    (job as { previewClips?: Record<string, string> } | undefined)?.previewClips ?? {};
-  // Defensive floor: never render fewer slots than scenes we've actually
-  // received, even if the plan estimate is somehow stale (e.g. requested
-  // before audio analysis finished) -- a completed scene must never be
-  // silently dropped from the grid.
-  const knownClipIndexes = Object.keys(previewClips).map((k) => parseInt(k, 10)).filter((n) => !Number.isNaN(n));
+  const isClipRemixJob = job.jobType === "remix";
+  const manifest = job.manifest ?? {};
+  const timelineItems = Array.isArray(manifest.segments) ? manifest.segments.length : 0;
+  const selectedRemixClips = Array.isArray(manifest.clipIndexes) ? manifest.clipIndexes.length : 0;
+  const previewClips = job.previewClips ?? {};
+  const completedClips = Object.keys(previewClips).length;
+  // AI jobs use the server's authoritative scene plan. Other job types fall
+  // back to the duration-aware estimate used by the progress model.
+  const serverScenePlan = (job as { scenePlan?: { numClips?: number } }).scenePlan;
+  const numClips = isRemixJob
+    ? 1
+    : isClipRemixJob
+      ? Math.max(1, selectedRemixClips)
+      : Math.max(1, serverScenePlan?.numClips ?? jobEstimate.unitCount);
+  const clipHint = inferClipProgress(job.status ?? "", displayPercent, {
+    jobType: job.jobType,
+    numClips,
+    completedClips,
+    timelineItems,
+  });
+  // Never render fewer slots than scenes already received, even if an older
+  // estimate or plan was stale.
+  const knownClipIndexes = Object.keys(previewClips)
+    .map((key) => Number.parseInt(key, 10))
+    .filter((index) => !Number.isNaN(index));
   const highestKnownIndex = knownClipIndexes.length ? Math.max(...knownClipIndexes) : -1;
   const gridSlots = Math.max(numClips, highestKnownIndex + 1);
   const showScenePreviews =
@@ -459,12 +487,12 @@ export default function JobStatus() {
                 sseConnected ? (
                   <span className="inline-flex items-center gap-1.5 text-xs font-mono text-green-400">
                     <Wifi className="h-3 w-3 shrink-0" />
-                    Live · {elapsed}
+                     {job.status === "queued" ? "Queued" : "Processing"} · {elapsed}
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 text-xs font-mono text-muted-foreground">
                     <WifiOff className="h-3 w-3 shrink-0" />
-                    {elapsed}
+                     {job.status === "queued" ? "Queued" : "Processing"} · {elapsed}
                   </span>
                 )
               )}
@@ -525,11 +553,15 @@ export default function JobStatus() {
                         transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut", repeatDelay: 0.5 }}
                       />
                     </div>
-                    {etaSeconds != null && (
+                    {job.status === "queued" ? (
                       <div className="text-muted-foreground text-right text-xs tabular-nums">
-                        about {fmtRemaining(etaSeconds)} remaining
+                        Typical total time {jobEstimate.label} once processing starts
                       </div>
-                    )}
+                    ) : remainingEstimate ? (
+                      <div className="text-muted-foreground text-right text-xs tabular-nums">
+                        Typically {remainingEstimate.label} remaining · estimate updates as stages finish
+                      </div>
+                    ) : null}
                   </div>
 
                   {/* Stage timeline */}
@@ -685,8 +717,8 @@ export default function JobStatus() {
                             Taking longer than expected
                           </p>
                           <p className="text-xs text-yellow-400/80 mt-0.5 leading-relaxed">
-                            This is taking longer than usual. Generation occasionally stalls — if it
-                            hasn't moved in a while,{" "}
+                            This has exceeded the usual range and hasn't reported fresh progress
+                            recently. It may still finish, but if it remains stuck,{" "}
                             <a
                               href="mailto:support@aibeatSync.com"
                               className="underline underline-offset-2 hover:text-yellow-300 transition-colors"
@@ -776,7 +808,7 @@ export default function JobStatus() {
               animate={{ opacity: 1, scale: 1 }}
               className="rounded-2xl border border-primary/30 bg-black overflow-hidden shadow-2xl shadow-primary/10"
             >
-              <VideoPlayer jobId={job.id} videoId={job.videoId} videoUrl={(job as unknown as Record<string, unknown>).videoUrl as string | undefined} />
+              <VideoPlayer jobId={job.id} videoId={job.videoId} videoUrl={job.videoUrl} />
               <DownloadBar jobId={job.id} prompt={job.prompt} />
 
             </motion.div>
@@ -785,13 +817,13 @@ export default function JobStatus() {
 
         {isComplete && job.videoId && (
           <div className="flex flex-col items-center gap-2">
-            {(job as unknown as { hasAudio?: boolean }).hasAudio === false && (
+            {job.hasAudio === false && (
               <p className="text-sm text-muted-foreground text-center max-w-sm">
                 This video was rendered without a soundtrack — add one in the Editor whenever you're ready.
               </p>
             )}
             <Button
-              variant={(job as unknown as { hasAudio?: boolean }).hasAudio === false ? "default" : "outline"}
+              variant={job.hasAudio === false ? "default" : "outline"}
               className="gap-2"
               onClick={async () => {
                 const vid = job.videoId!;
@@ -822,7 +854,7 @@ export default function JobStatus() {
                 setLocation("/editor");
               }}
             >
-              {(job as unknown as { hasAudio?: boolean }).hasAudio === false ? (
+              {job.hasAudio === false ? (
                 <><Music className="h-4 w-4" /> Add Music</>
               ) : (
                 <><Scissors className="h-4 w-4" /> Open in Remix Lab</>

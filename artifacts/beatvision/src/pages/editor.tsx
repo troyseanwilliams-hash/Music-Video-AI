@@ -16,6 +16,7 @@ import {
   useListVideos,
 } from "@workspace/api-client-react";
 import { canAffordCredits, LYRIC_ALIGN_COST } from "@/lib/creditPricing";
+import { getRemixTimeEstimate } from "@/lib/jobEstimates";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SAMPLE_LYRICS } from "@/lib/sampleLyrics";
 import {
@@ -40,6 +41,7 @@ import {
   Link2,
   Scissors,
   Check,
+  Clock,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -603,6 +605,13 @@ export default function Editor() {
   }, []);
 
   const totalDuration = segments.reduce((sum, segment) => sum + timelineSegmentDuration(segment), 0);
+  const remixEstimate = getRemixTimeEstimate({
+    durationSeconds: totalDuration,
+    segmentCount: segments.length,
+    resolution,
+    hasTransition: transition !== "none",
+    hasKaraoke: karaokeEnabled && !!lyricsText.trim(),
+  });
   const uploadsPending = segments.some((s) => s.uploading) || music?.uploading;
 
   // Remix Lab is pure ffmpeg (no AI cost), so the real charge is the flat
@@ -2131,7 +2140,7 @@ export default function Editor() {
       </label>
 
       {/* Export */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Button
           size="lg"
           onClick={exportVideo}
@@ -2154,6 +2163,13 @@ export default function Editor() {
             ) : quota ? (
               <>Est. cost: {quota.overageCost} credits</>
             ) : null}
+          </span>
+        )}
+        {!uploadsPending && segments.length > 0 && (
+          <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground tabular-nums">
+            <Clock className="h-3.5 w-3.5" />
+            Typically {remixEstimate.label} · {segments.length} {segments.length === 1 ? "item" : "items"} ·{" "}
+            {totalDuration.toFixed(1)}s timeline
           </span>
         )}
       </div>

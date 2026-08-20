@@ -95,16 +95,37 @@ export function resolutionMultiplier(resolution?: string | null): number {
   return 1;
 }
 
-function getClipPlan(requestedDuration: string | null | undefined, songDurationSec?: number | null): { numClips: number; clipDurationSec: 5 | 10 } {
+export interface GenerationClipPlan {
+  numClips: number;
+  clipDurationSec: 5 | 10;
+  targetDurationSec: number;
+}
+
+export function getGenerationClipPlan(
+  requestedDuration: string | null | undefined,
+  songDurationSec?: number | null,
+): GenerationClipPlan {
   const dur = requestedDuration ?? "full";
-  if (dur === "full") return { numClips: fullClipCount(songDurationSec), clipDurationSec: 10 };
+  if (dur === "full") {
+    const targetDurationSec = Math.min(
+      songDurationSec && songDurationSec > 0 ? songDurationSec : MAX_FULL_SECONDS,
+      MAX_FULL_SECONDS,
+    );
+    return { numClips: fullClipCount(songDurationSec), clipDurationSec: 10, targetDurationSec };
+  }
   const durSec = parseInt(dur, 10);
-  if (isNaN(durSec) || durSec <= 0) return { numClips: fullClipCount(songDurationSec), clipDurationSec: 10 };
+  if (isNaN(durSec) || durSec <= 0) {
+    const targetDurationSec = Math.min(
+      songDurationSec && songDurationSec > 0 ? songDurationSec : MAX_FULL_SECONDS,
+      MAX_FULL_SECONDS,
+    );
+    return { numClips: fullClipCount(songDurationSec), clipDurationSec: 10, targetDurationSec };
+  }
   const clipDurationSec: 5 | 10 = durSec <= 5 ? 5 : 10;
   // Explicit >2min scale by length so 10 min ≈ 2× 5 min: ~1 clip/20s, cap 30
   // (5 min = 15 clips, 10 min = 30). Shorter durations keep 1 clip/10s.
   const numClips = durSec > 120 ? Math.min(30, Math.ceil(durSec / 20)) : Math.max(1, Math.ceil(durSec / clipDurationSec));
-  return { numClips, clipDurationSec };
+  return { numClips, clipDurationSec, targetDurationSec: durSec };
 }
 
 // Priced on real clip cost × tiered markup × resolution multiplier (mirror
@@ -116,7 +137,7 @@ export function estimateCreditCost(
   resolution?: string | null,
   songDurationSec?: number | null,
 ): number {
-  const { numClips, clipDurationSec } = getClipPlan((requestedDuration ?? "full") as string, songDurationSec);
+  const { numClips, clipDurationSec } = getGenerationClipPlan((requestedDuration ?? "full") as string, songDurationSec);
   const costCredits = (numClips * clipDurationSec * usdPerSecondFor(provider)) / USD_PER_CREDIT;
   const markup = numClips <= 1 ? SHORT_MARKUP : provider === "kling" ? KLING_LONG_MARKUP : LONG_MARKUP;
   return Math.ceil(costCredits * markup * resolutionMultiplier(resolution));

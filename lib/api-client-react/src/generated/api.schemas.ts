@@ -158,6 +158,32 @@ export interface AudioAnalysis {
 /**
  * @nullable
  */
+export type JobAiProvider =
+  | (typeof JobAiProvider)[keyof typeof JobAiProvider]
+  | null;
+
+export const JobAiProvider = {
+  runway: "runway",
+  kling: "kling",
+  luma: "luma",
+} as const;
+
+/**
+ * @nullable
+ */
+export type JobResolution =
+  | (typeof JobResolution)[keyof typeof JobResolution]
+  | null;
+
+export const JobResolution = {
+  "720p": "720p",
+  "1080p": "1080p",
+  "4k": "4k",
+} as const;
+
+/**
+ * @nullable
+ */
 export type JobAudioSourceType =
   | (typeof JobAudioSourceType)[keyof typeof JobAudioSourceType]
   | null;
@@ -191,6 +217,11 @@ export const JobRequestedDuration = {
   full: "full",
 } as const;
 
+/**
+ * Completed scene index to preview URL, present while scenes are generated
+ */
+export type JobPreviewClips = { [key: string]: string };
+
 export interface VideoClip {
   /** Zero-based position of this clip in the timeline */
   index: number;
@@ -207,6 +238,38 @@ export interface VideoClip {
   objectPath: string;
 }
 
+export type JobManifestSegmentsItemKind =
+  (typeof JobManifestSegmentsItemKind)[keyof typeof JobManifestSegmentsItemKind];
+
+export const JobManifestSegmentsItemKind = {
+  video: "video",
+  photo: "photo",
+} as const;
+
+export type JobManifestSegmentsItem = {
+  kind?: JobManifestSegmentsItemKind;
+  durationSec?: number;
+  trimStart?: number;
+  trimEnd?: number;
+  [key: string]: unknown;
+};
+
+export type JobManifestTransition = {
+  type?: string;
+  durationSec?: number;
+  [key: string]: unknown;
+};
+
+export interface JobManifest {
+  segments?: JobManifestSegmentsItem[];
+  transition?: JobManifestTransition;
+  resolution?: string;
+  /** @nullable */
+  lyricsText?: string | null;
+  clipIndexes?: number[];
+  [key: string]: unknown;
+}
+
 export interface Job {
   id: string;
   userId: string;
@@ -215,6 +278,10 @@ export interface Job {
    * @nullable
    */
   jobType?: string | null;
+  /** @nullable */
+  aiProvider?: JobAiProvider;
+  /** @nullable */
+  resolution?: JobResolution;
   status: JobStatus;
   /** @nullable */
   audioSourceType?: JobAudioSourceType;
@@ -253,6 +320,18 @@ export interface Job {
    * @nullable
    */
   clipStartTime?: number | null;
+  /**
+   * Time a worker claimed the job; null while the job is queued
+   * @nullable
+   */
+  claimedAt?: string | null;
+  manifest?: JobManifest | null;
+  /** Completed scene index to preview URL, present while scenes are generated */
+  previewClips?: JobPreviewClips;
+  /** Signed or proxied playback URL, present when the finished video is available */
+  videoUrl?: string;
+  /** Whether the finished render contains a soundtrack */
+  hasAudio?: boolean;
   createdAt: string;
   updatedAt: string;
 }
