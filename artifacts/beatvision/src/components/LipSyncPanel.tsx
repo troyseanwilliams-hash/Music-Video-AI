@@ -104,6 +104,7 @@ export default function LipSyncPanel({
   initialStartTime = 0,
   initialSeconds = LIPSYNC_DEFAULT_SECONDS,
   sourcePriceBasis = null,
+  onCreated,
 }: {
   videoId: string;
   audioDurationSeconds?: number | null;
@@ -122,6 +123,7 @@ export default function LipSyncPanel({
     resolution: string | null;
     provider: string | null;
   } | null;
+  onCreated?: (result: { videoId: string; url: string }) => void;
 }) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -200,7 +202,9 @@ export default function LipSyncPanel({
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error ?? "Lip sync failed");
-      setResult(data);
+      const created = { videoId: data.videoId as string, url: data.url as string };
+      setResult(created);
+      onCreated?.(created);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Lip sync failed");
     } finally {

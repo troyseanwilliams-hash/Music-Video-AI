@@ -4,7 +4,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { useListVideos, useDeleteVideo, getListVideosQueryKey, getGetDashboardStatsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Loader2, Trash2, Play, Film, Download, Scissors, Globe, Pencil, X, Music, UserRound } from "lucide-react";
+import LipSyncPanel from "@/components/LipSyncPanel";
+import { LIPSYNC_MIN_SECONDS } from "@/lib/creditPricing";
+import { Loader2, Trash2, Play, Film, Download, Scissors, Globe, Pencil, X, Music, UserRound, Smile } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -54,6 +56,11 @@ export default function Gallery() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [player, setPlayer] = useState<{ url: string; title: string } | null>(null);
+  const [lipSyncVideo, setLipSyncVideo] = useState<{
+    id: string;
+    title: string;
+    durationSeconds: number;
+  } | null>(null);
 
   async function saveRename(videoId: string) {
     const title = renameValue.trim();
@@ -179,8 +186,14 @@ export default function Gallery() {
         </div>
       ) : data && data.videos.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {data.videos.map((video, idx) => (
-            <motion.div
+          {data.videos.map((video, idx) => {
+            const canAddLipSync =
+              video.hasAudio !== false &&
+              typeof video.durationSeconds === "number" &&
+              video.durationSeconds >= LIPSYNC_MIN_SECONDS;
+
+            return (
+              <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.05 }}
@@ -356,6 +369,32 @@ export default function Gallery() {
                     {video.hasAudio === false ? <Music className="h-3.5 w-3.5" /> : <Scissors className="h-3.5 w-3.5" />}
                   </Button>
 
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    title={
+                      canAddLipSync
+                        ? "Add Lip Sync"
+                        : `Lip Sync needs at least ${LIPSYNC_MIN_SECONDS} seconds of source audio`
+                    }
+                    aria-label={
+                      canAddLipSync
+                        ? `Add Lip Sync to ${video.title || video.prompt || "video"}`
+                        : "Lip Sync unavailable because this video has no usable source audio"
+                    }
+                    disabled={!canAddLipSync}
+                    onClick={() =>
+                      setLipSyncVideo({
+                        id: video.id,
+                        title: video.title || video.prompt || "Video",
+                        durationSeconds: video.durationSeconds!,
+                      })
+                    }
+                  >
+                    <Smile className="h-3.5 w-3.5" />
+                  </Button>
+
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive" aria-label="Delete video">
@@ -381,9 +420,15 @@ export default function Gallery() {
                     </AlertDialogContent>
                   </AlertDialog>
                 </div>
+                {!canAddLipSync && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Lip Sync needs at least {LIPSYNC_MIN_SECONDS} seconds of source audio.
+                  </p>
+                )}
               </div>
             </motion.div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="text-center py-16 sm:py-32 border border-dashed border-border rounded-2xl bg-card/30">
@@ -415,6 +460,46 @@ export default function Gallery() {
             </div>
             {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
             <video src={player.url} controls autoPlay className="w-full rounded-xl bg-black" />
+          </div>
+        </div>
+      )}
+
+      {/* One panel at a time keeps the gallery light while still making Lip Sync
+          available from every compatible video. */}
+      {lipSyncVideo && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
+          onClick={() => setLipSyncVideo(null)}
+        >
+          <div
+            className="relative max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-background p-1 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute right-3 top-3 z-10 h-8 w-8"
+              aria-label="Close Lip Sync"
+              onClick={() => setLipSyncVideo(null)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+            <div className="px-5 pb-2 pt-5">
+              <h2 className="pr-10 text-lg font-semibold">Add Lip Sync</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Create a separate 5–30 second performance clip from this video&apos;s original song. Your original video stays unchanged.
+              </p>
+              <p className="mt-1 truncate text-xs font-medium text-primary">{lipSyncVideo.title}</p>
+            </div>
+            <div className="p-4 pt-2">
+              <LipSyncPanel
+                videoId={lipSyncVideo.id}
+                audioDurationSeconds={lipSyncVideo.durationSeconds}
+                onCreated={() => {
+                  queryClient.invalidateQueries({ queryKey: getListVideosQueryKey() });
+                }}
+              />
+            </div>
           </div>
         </div>
       )}

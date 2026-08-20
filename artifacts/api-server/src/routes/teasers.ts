@@ -501,33 +501,21 @@ router.post("/videos/:id/lipsync", async (req: Request<{ id: string }>, res: Res
     return;
   }
 
-  // Reserve credits up front (non-admins). Refunded below if anything fails.
-  let charged = false;
+  // Reserve credits up front (non-admins). Keep the exact bucket split so a
+  // provider/storage failure restores precisely what was debited.
+  let charged: { subDebit: number; topDebit: number } | null = null;
   if (!admin) {
-    let [credits] = await db.select().from(creditsTable).where(eq(creditsTable.userId, req.user.id)).limit(1);
-    if (!credits) {
-      [credits] = await db.insert(creditsTable).values({ id: randomUUID(), userId: req.user.id }).returning();
-    }
-    if ((credits?.creditsRemaining ?? 0) < cost) {
+    const charge = await chargeCredits(req.user.id, cost);
+    if (!charge.ok) {
       res.status(402).json({
-        error: `Lip sync costs ${cost} credits but you have ${credits?.creditsRemaining ?? 0}.`,
+        error: `Lip sync costs ${cost} credits but you have ${charge.remaining}.`,
         code: "INSUFFICIENT_CREDITS",
         creditsRequired: cost,
-        creditsRemaining: credits?.creditsRemaining ?? 0,
+        creditsRemaining: charge.remaining,
       });
       return;
     }
-    await db
-      .update(creditsTable)
-      .set({
-        subscriptionCredits: sql`GREATEST(subscription_credits - ${cost}, 0)`,
-        topupCredits: sql`GREATEST(topup_credits - GREATEST(${cost} - subscription_credits, 0), 0)`,
-        creditsRemaining: sql`GREATEST(credits_remaining - ${cost}, 0)`,
-        creditsUsed: sql`credits_used + ${cost}`,
-        updatedAt: new Date(),
-      })
-      .where(eq(creditsTable.userId, req.user.id));
-    charged = true;
+    charged = { subDebit: charge.subDebit, topDebit: charge.topDebit };
   }
 
   try {
@@ -535,13 +523,21 @@ router.post("/videos/:id/lipsync", async (req: Request<{ id: string }>, res: Res
     // clip so the per-second lip sync cost stays bounded.
     const job = sourceJob;
     let audioUrl: string | null = null;
+    let audioExt = "mp3";
     if (job?.audioObjectPath) audioUrl = await storageService.getObjectEntitySignedUrl(job.audioObjectPath, 3600);
     else if (job?.audioSourceUrl) audioUrl = job.audioSourceUrl;
+    else if (video.hasAudio !== false && video.videoObjectPath) {
+      // Editor/Remix and some legacy videos may carry their soundtrack only in
+      // the finished MP4. The video is already owner-scoped by loadOwnedVideo,
+      // so its embedded audio is a safe authoritative fallback.
+      audioUrl = await storageService.getObjectEntitySignedUrl(video.videoObjectPath, 3600);
+      audioExt = "mp4";
+    }
     if (!audioUrl) throw new Error("This video has no source audio to sync to.");
 
     const audioResp = await fetch(audioUrl, { signal: AbortSignal.timeout(60_000) });
     if (!audioResp.ok) throw new Error("Could not read the source audio.");
-    const trimmed = await trimAudioToLength(Buffer.from(await audioResp.arrayBuffer()), "mp3", lipsyncSeconds, lipsyncStartTime);
+    const trimmed = await trimAudioToLength(Buffer.from(await audioResp.arrayBuffer()), audioExt, lipsyncSeconds, lipsyncStartTime);
     const trimmedPath = await storageService.uploadAudioBuffer(trimmed.buffer, randomUUID(), trimmed.ext);
     const trimmedAudioUrl = await storageService.getObjectEntitySignedUrl(trimmedPath, 3600);
 
@@ -600,15 +596,7 @@ router.post("/videos/:id/lipsync", async (req: Request<{ id: string }>, res: Res
   } catch (err) {
     // Refund the reservation on failure.
     if (charged) {
-      await db
-        .update(creditsTable)
-        .set({
-          subscriptionCredits: sql`subscription_credits + ${cost}`,
-          creditsRemaining: sql`credits_remaining + ${cost}`,
-          creditsUsed: sql`GREATEST(credits_used - ${cost}, 0)`,
-          updatedAt: new Date(),
-        })
-        .where(eq(creditsTable.userId, req.user.id));
+      await refundCredits(req.user.id, charged.subDebit, charged.topDebit);
     }
     req.log.error({ err, videoId: video.id }, "Lip sync failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Lip sync failed" });
