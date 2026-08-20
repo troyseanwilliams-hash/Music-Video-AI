@@ -17,6 +17,8 @@ export interface ClipRequest {
   preferDirectRunway?: boolean;
   /** Requested output resolution ("720p" | "1080p" | "4k"). Selects the Kling model tier + gateway hint. */
   resolution?: string | null;
+  /** When true, do not continue to another provider after this provider fails. */
+  providerOnly?: boolean;
   /**
    * Called as soon as the provider accepts the render request, BEFORE polling
    * begins. Lets the caller persist the request id / poll URL so a clip that
@@ -535,6 +537,7 @@ export async function generateClip(req: ClipRequest): Promise<ClipResult | null>
     const pinned = req.provider?.toLowerCase() as Provider | undefined;
     if (pinned && providerAvailable(pinned)) {
       chain = [pinned, ...chain.filter((p) => p !== pinned)];
+      if (req.providerOnly) chain = [pinned];
     }
   }
 

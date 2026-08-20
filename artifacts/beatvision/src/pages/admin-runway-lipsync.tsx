@@ -15,8 +15,8 @@ import {
   Loader2, ImageIcon, Music, Sparkles, ShieldCheck, AlertTriangle, CheckCircle2, XCircle,
 } from "lucide-react";
 
-// Admin-only "Runway Lip Sync Generator" — a dedicated, single-video test tool
-// for one character performing to a chosen segment of a song. Fixed to Runway
+// Admin-only "Pixazo Lip Sync Generator" — a dedicated, single-video test tool
+// for one character performing to a chosen segment of a song. Fixed to Pixazo
 // for every generation stage; never offers or falls back to another provider.
 // See routes/admin-lipsync.ts (server-side gate + job creation) and
 // jobProcessor.ts processRunwayLipSyncJob (the render path this creates a job
@@ -35,8 +35,8 @@ const DURATION_OPTIONS = [5, 10, 15, 20, 30].filter(
 const ASPECT_RATIOS = ["16:9", "9:16", "1:1", "4:3", "21:9"] as const;
 
 interface StatusResponse {
-  engine: "runway";
-  hasRunwayKey: boolean;
+  engine: "pixazo";
+  hasPixazoKey: boolean;
   plainRenderAvailable: boolean;
   lipSyncAvailable: boolean;
   lipSyncUnavailableReason: string | null;
@@ -46,12 +46,12 @@ interface StatusResponse {
 
 async function fetchStatus(): Promise<StatusResponse> {
   const res = await fetch("/api/admin/runway-lipsync/status", { credentials: "include" });
-  if (!res.ok) throw new Error("Could not load Runway status");
+  if (!res.ok) throw new Error("Could not load Pixazo status");
   return res.json();
 }
 
 export default function AdminRunwayLipSync() {
-  useSEO({ title: "Runway Lip Sync Generator (Admin)", noindex: true });
+  useSEO({ title: "Pixazo Lip Sync Generator (Admin)", noindex: true });
   const [, setLocation] = useLocation();
   const { user, isLoading: isAuthLoading } = useAuth();
   const { toast } = useToast();
@@ -221,7 +221,7 @@ export default function AdminRunwayLipSync() {
   }
 
   const unavailable = status && lipSyncEnabled && !status.lipSyncAvailable;
-  const noKey = status && !status.hasRunwayKey;
+  const noKey = status && !status.hasPixazoKey;
 
   return (
     <div className="container mx-auto px-4 py-6 sm:py-10 max-w-3xl">
@@ -230,9 +230,9 @@ export default function AdminRunwayLipSync() {
           <ShieldCheck className="h-4 w-4 text-primary" />
         </div>
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Runway Lip Sync Generator</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Pixazo Lip Sync Generator</h1>
           <p className="text-xs sm:text-sm text-muted-foreground">
-            Admin-only. Renders a single test video via Runway only — never Kling, Pixazo, or Luma.
+            Admin-only. Renders a single test video via Pixazo only — never Runway, Kling, or Luma.
           </p>
         </div>
       </div>
@@ -240,13 +240,13 @@ export default function AdminRunwayLipSync() {
       {/* Engine badge — always visible, never a picker. */}
       <div className="mt-4 mb-6 flex flex-wrap items-center gap-2">
         <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-          <Sparkles className="h-3 w-3" /> Engine: Runway (fixed, no fallback)
+          <Sparkles className="h-3 w-3" /> Engine: Pixazo (fixed, no fallback)
         </span>
         {isStatusLoading ? (
           <span className="text-xs text-muted-foreground">Checking availability…</span>
         ) : noKey ? (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-destructive/30 bg-destructive/10 px-3 py-1 text-xs font-medium text-destructive">
-            <XCircle className="h-3 w-3" /> RUNWAY_API_KEY not configured
+            <XCircle className="h-3 w-3" /> PIXAZO_API_KEY not configured
           </span>
         ) : status?.lipSyncAvailable ? (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-green-500/30 bg-green-500/10 px-3 py-1 text-xs font-medium text-green-500">
@@ -254,15 +254,15 @@ export default function AdminRunwayLipSync() {
           </span>
         ) : (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-500">
-            <AlertTriangle className="h-3 w-3" /> Lip Sync unavailable — plain Runway render still works
+            <AlertTriangle className="h-3 w-3" /> Lip Sync unavailable — plain Pixazo render still works
           </span>
         )}
       </div>
 
       {status && !status.lipSyncAvailable && status.lipSyncUnavailableReason && (
         <div className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-600 dark:text-amber-400">
-          {status.lipSyncUnavailableReason} This never falls back to Pixazo, Kling, or Luma — the request
-          simply won't be sent until it's configured.
+          {status.lipSyncUnavailableReason} This never falls back to Runway, Kling, or Luma — the request
+          simply won't be sent until Pixazo is configured.
         </div>
       )}
 
@@ -500,7 +500,7 @@ export default function AdminRunwayLipSync() {
         )}
         {unavailable && (
           <p className="flex items-center gap-1.5 text-sm font-medium text-amber-500">
-            <AlertTriangle className="h-4 w-4 shrink-0" /> Lip Sync isn't available right now — turn it off to render a plain Runway test, or configure RUNWAY_LIPSYNC_MODEL.
+            <AlertTriangle className="h-4 w-4 shrink-0" /> Lip Sync isn't available right now — turn it off to render a plain Pixazo test, or configure PIXAZO_API_KEY.
           </p>
         )}
 

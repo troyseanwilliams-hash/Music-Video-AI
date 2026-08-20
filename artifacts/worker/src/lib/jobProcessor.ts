@@ -12,7 +12,8 @@ import { logger } from "./logger.js";
 import { notifyRenderReady, notifyRenderFailed, notifyAdminRenderFailed } from "./renderEmail.js";
 import { ObjectStorageService } from "./objectStorage.js";
 import { analyzeAudioBuffer, type AudioAnalysis, type AudioSection } from "./audioAnalysis.js";
-import { generateClip, downloadClip, checkPixazoRequest, getActiveProvider, PROVIDER_API_FAILURE, PROVIDER_OUT_OF_CREDITS, generateRunwayCharacterLipsync, runwayCharacterLipsyncAvailable } from "./videoApis.js";
+import { generateClip, downloadClip, checkPixazoRequest, getActiveProvider, PROVIDER_API_FAILURE, PROVIDER_OUT_OF_CREDITS } from "./videoApis.js";
+import { generateLipsync, lipsyncAvailable } from "./lipsync.js";
 import { stitchVideoClips, extractVideoThumbnail, applyWatermark } from "./videoStitcher.js";
 import { stitchEditorTimeline } from "./editorStitcher.js";
 
@@ -726,6 +727,18 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
 
   logger.error({ err, jobId: job.id, retryCount: job.retryCount }, "Job failed");
 
+  // Pixazo Lip Sync requests may be billable at submission. Never auto-retry
+  // this job type: a second request could create duplicate provider spend
+  // without guaranteeing that the original request cannot still complete.
+  if (job.jobType === "runway_lipsync") {
+    await updateJobStatus(job.id, {
+      status: "failed",
+      errorMessage: `${errMsg} — no automatic retry was attempted to prevent additional Runway charges.`,
+    });
+    void notifyAdminRenderFailed(job, errMsg);
+    return;
+  }
+
   // Moderation / content-policy failures will never succeed on retry — fail fast.
   if (/moderation|content policy|safety system/i.test(errMsg)) {
     logger.warn({ jobId: job.id }, "Permanent failure: content moderation rejection, skipping retries");
@@ -1286,24 +1299,21 @@ async function processRemixJob(job: JobRow): Promise<void> {
   }
 }
 
-// Manifest shape for jobType="runway_lipsync" -- the admin-only Runway Lip
-// Sync Generator. Mirrors AiJobMeta's billing fields (same reserve/refund
-// semantics as the main AI pipeline) plus the Lip Sync ON/OFF toggle.
+// Manifest shape for jobType="runway_lipsync" -- retained for database
+// compatibility; the admin-only generator now runs through Pixazo.
 type RunwayLipsyncMeta = {
   reservedCredits?: number;
   refunded?: boolean;
   lipSyncEnabled?: boolean;
 };
 
-// Single-pass, Runway-only render for the admin Runway Lip Sync Generator.
-// One finished video, never a fallback to Kling/Pixazo/Luma:
-//   - Lip Sync ON: generateRunwayCharacterLipsync (audio-driven performance,
-//     output already has the performance's audio muxed in by Runway).
-//   - Lip Sync OFF: the same direct-Runway path as admin Generate
-//     (preferDirectRunway), then the chosen song segment is muxed on as a
-//     plain soundtrack via stitchVideoClips (Runway's plain render is silent).
+// Single-pass, Pixazo-only render for the admin Lip Sync Generator.
+// One finished video, never a fallback to Runway/Kling/Luma:
+//   - Lip Sync ON: generateLipsync (Pixazo OmniHuman audio-driven performance).
+//   - Lip Sync OFF: a Pixazo image-to-video render, then the chosen song
+//     segment is muxed on as a plain soundtrack.
 async function processRunwayLipSyncJob(job: JobRow): Promise<void> {
-  logger.info({ jobId: job.id }, "Processing admin Runway Lip Sync job");
+  logger.info({ jobId: job.id }, "Processing admin Pixazo Lip Sync job");
   try {
     const meta = (job.manifest as unknown as RunwayLipsyncMeta | null) ?? {};
     const lipSyncEnabled = meta.lipSyncEnabled !== false;
@@ -1312,7 +1322,7 @@ async function processRunwayLipSyncJob(job: JobRow): Promise<void> {
 
     const imageUrl = await loadReferenceImageUrl(job);
     if (!imageUrl) {
-      throw new Error("A character/reference image is required for the Runway Lip Sync Generator.");
+      throw new Error("A character/reference image is required for the Pixazo Lip Sync Generator.");
     }
 
     const durationSeconds = Math.min(
@@ -1332,13 +1342,9 @@ async function processRunwayLipSyncJob(job: JobRow): Promise<void> {
 
     let outputUrl: string;
     if (lipSyncEnabled) {
-      // Critical constraint: never fall back to another provider. The admin
-      // route already verified capability before this job was created and
-      // credits were reserved -- re-check here too in case config changed
-      // mid-flight (e.g. RUNWAY_LIPSYNC_MODEL unset between request and run).
-      if (!runwayCharacterLipsyncAvailable()) {
+      if (!lipsyncAvailable()) {
         throw new Error(
-          `${PROVIDER_API_FAILURE} Runway audio-driven character lip sync is not available (RUNWAY_LIPSYNC_MODEL unset) -- not falling back to another provider.`,
+          `${PROVIDER_API_FAILURE} Pixazo audio-driven character lip sync is not available -- not falling back to another provider.`,
         );
       }
       if (!audioData) {
@@ -1354,12 +1360,9 @@ async function processRunwayLipSyncJob(job: JobRow): Promise<void> {
       );
       const audioUrl = await storageService.getObjectEntitySignedUrl(lipsyncAudioPath, 3600);
       await updateJobStatus(job.id, { progressPercent: 25 });
-      // avatar_videos has no "prompt" concept -- the performance is 100%
-      // audio-driven, not text-directed. job.prompt is unused here.
-      outputUrl = await generateRunwayCharacterLipsync({
+      outputUrl = await generateLipsync({
         imageUrl,
         audioUrl,
-        durationSeconds,
       });
     } else {
       await assertJobOwned(job);
@@ -1369,9 +1372,10 @@ async function processRunwayLipSyncJob(job: JobRow): Promise<void> {
         durationSeconds,
         aspectRatio: job.aspectRatio ?? "16:9",
         imageUrl,
-        preferDirectRunway: true,
+        provider: "pixazo",
+        providerOnly: true,
       });
-      if (!result) throw new Error(`${PROVIDER_API_FAILURE} Runway did not return a video.`);
+      if (!result) throw new Error(`${PROVIDER_API_FAILURE} Pixazo did not return a video.`);
       outputUrl = result.videoUrl;
     }
 
@@ -1381,9 +1385,9 @@ async function processRunwayLipSyncJob(job: JobRow): Promise<void> {
     let videoBuffer: Buffer;
     let thumbnailBuffer: Buffer;
     if (!lipSyncEnabled && audioData) {
-      // Plain Runway render has no audio track -- mux the chosen song segment
+      // Plain Pixazo render has no audio track -- mux the chosen song segment
       // on as the soundtrack. Lip Sync mode's output already has the
-      // performance's audio muxed in by Runway, so it's used as-is.
+      // performance's audio muxed in by Pixazo, so it's used as-is.
       const stitchResult = await stitchVideoClips({
         clips: [{ buffer: rawVideoBuffer, targetDuration: durationSeconds }],
         audioBuffer: audioData.buffer,
@@ -1411,7 +1415,7 @@ async function processRunwayLipSyncJob(job: JobRow): Promise<void> {
       jobId: job.id,
       videoObjectPath,
       thumbnailObjectPath,
-      title: job.prompt?.trim().slice(0, 80) || (lipSyncEnabled ? "Runway Lip Sync test" : "Runway test render"),
+      title: job.prompt?.trim().slice(0, 80) || (lipSyncEnabled ? "Pixazo Lip Sync test" : "Pixazo test render"),
       durationSeconds,
       style: job.style,
       prompt: job.prompt,
@@ -1420,7 +1424,7 @@ async function processRunwayLipSyncJob(job: JobRow): Promise<void> {
 
     await updateJobStatus(job.id, { status: "ready", progressPercent: 100, videoId });
     void notifyRenderReady(job);
-    logger.info({ jobId: job.id, videoId, lipSyncEnabled }, "Admin Runway Lip Sync job completed");
+    logger.info({ jobId: job.id, videoId, lipSyncEnabled }, "Admin Pixazo Lip Sync job completed");
   } catch (err) {
     await retryOrFail(job, err);
   }

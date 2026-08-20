@@ -13,3 +13,4 @@
 - [Credit charge/refund pattern](credit-charge-pattern.md) — paid API routes must debit atomically (row-locked, balance-checked) and refund the exact sub/topup split; never clamp-with-GREATEST check-then-update.
 - [Email system conventions](email-system.md) — shared branded templates copied byte-identical to worker; unsubscribe GET must never mutate; failed-render email says "open a ticket", not retry.
 - [Async audio-load staleness guards](async-audio-load-races.md) — music selection state set by async uploads/imports needs monotonic load tokens; stale completions clobbered newer tracks and disabled Auto-sync.
+- [Runway Avatar billing safety](runway-avatar-billing-safety.md) — never retry Avatar Video creation blindly; wait for provider readiness, persist state, and validate billing before enabling paid submits.
