@@ -210,7 +210,7 @@ function parseLrcToLines(lrc: string): Line[] {
 
 /** Upload the local audio to object storage → objectPath, so the server can
  *  hand a signed URL to the alignment engine. Mirrors LipSyncPanel. */
-async function presignAndUpload(file: File): Promise<string> {
+export async function presignAndUpload(file: File): Promise<string> {
   const res = await fetch("/api/storage/uploads/request-url", {
     method: "POST",
     credentials: "include",
@@ -232,7 +232,7 @@ async function presignAndUpload(file: File): Promise<string> {
  * window starts. Live-seeks the preview during drag via onScrub so you can
  * hear/see the spot before letting go.
  */
-function LipWindowScrubber({
+export function LipWindowScrubber({
   duration,
   peaks,
   windowStart,

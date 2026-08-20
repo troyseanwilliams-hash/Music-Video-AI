@@ -125,6 +125,19 @@ export class ObjectStorageService {
     return this.uploadVideoBuffer(buffer, videoId);
   }
 
+  // Persist a trimmed song segment (e.g. for the admin Runway Lip Sync
+  // Generator) so it can be signed into a URL and handed to a video provider.
+  async uploadAudioBuffer(buffer: Buffer, songId: string, ext = "mp3"): Promise<string> {
+    const privateObjectDir = this.getPrivateObjectDir();
+    const objectEntityPath = `${privateObjectDir}/audio/${songId}.${ext}`;
+    const { bucketName, objectName } = parseObjectPath(objectEntityPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+    const contentType = ext === "wav" ? "audio/wav" : "audio/mpeg";
+    await file.save(buffer, { contentType, resumable: buffer.length > 5 * 1024 * 1024 });
+    return `/objects/audio/${songId}.${ext}`;
+  }
+
   async uploadThumbnailBuffer(buffer: Buffer, videoId: string): Promise<string> {
     const privateObjectDir = this.getPrivateObjectDir();
     const objectEntityPath = `${privateObjectDir}/thumbnails/${videoId}.jpg`;

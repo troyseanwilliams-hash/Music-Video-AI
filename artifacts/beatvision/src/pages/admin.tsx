@@ -1440,14 +1440,24 @@ export default function AdminPage() {
 
   return (
     <div className="container mx-auto px-4 py-6 sm:py-12 max-w-6xl">
-      <div className="flex items-center gap-3 mb-6 sm:mb-8">
-        <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-lg bg-primary/10 shrink-0">
-          <ShieldCheck className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
+      <div className="flex items-center justify-between gap-3 mb-6 sm:mb-8 flex-wrap">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-lg bg-primary/10 shrink-0">
+            <ShieldCheck className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Admin</h1>
+            <p className="text-xs sm:text-sm text-muted-foreground">Manage users, credits, and support tickets</p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Admin</h1>
-          <p className="text-xs sm:text-sm text-muted-foreground">Manage users, credits, and support tickets</p>
-        </div>
+        {/* Separate route (not a tab) — dedicated Runway-only test generator.
+            See App.tsx /admin/runway-lipsync + routes/admin-lipsync.ts. */}
+        <Link href="/admin/runway-lipsync">
+          <Button type="button" variant="outline" size="sm" className="gap-1.5">
+            <Sparkles className="h-3.5 w-3.5" />
+            Runway Lip Sync Generator
+          </Button>
+        </Link>
       </div>
 
       {/* Tab bar — scrollable on mobile */}

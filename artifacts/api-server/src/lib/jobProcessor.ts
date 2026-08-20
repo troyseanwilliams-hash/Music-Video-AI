@@ -13,7 +13,7 @@ import { logger } from "./logger.js";
 import { notifyRenderReady, notifyRenderFailed, notifyAdminRenderFailed } from "./renderEmail.js";
 import { ObjectStorageService } from "./objectStorage.js";
 import { analyzeAudioBuffer, type AudioAnalysis, type AudioSection } from "./audioAnalysis.js";
-import { generateClip, downloadClip, checkPixazoRequest, getActiveProvider, PROVIDER_API_FAILURE, PROVIDER_OUT_OF_CREDITS } from "./videoApis.js";
+import { generateClip, downloadClip, checkPixazoRequest, getActiveProvider, PROVIDER_API_FAILURE, PROVIDER_OUT_OF_CREDITS, generateRunwayCharacterLipsync, runwayCharacterLipsyncAvailable } from "./videoApis.js";
 import { stitchVideoClips, extractVideoThumbnail } from "./videoStitcher.js";
 import { stitchEditorTimeline } from "./editorStitcher.js";
 
@@ -23,6 +23,32 @@ const POLL_INTERVAL_MS = 5000;
 
 const storageService = new ObjectStorageService();
 type JobRow = typeof jobsTable.$inferSelect;
+
+// Trim an audio buffer to [startSec, startSec + durationSec) via ffmpeg
+// stream copy (fast, no re-encode). Used by the admin Runway Lip Sync
+// Generator to cut the selected song segment before it's sent to Runway.
+async function extractAudioClip(
+  audio: { buffer: Buffer; ext: string },
+  startSec: number,
+  durationSec: number,
+): Promise<{ buffer: Buffer; ext: string }> {
+  const id = randomUUID();
+  const inputPath = join(tmpdir(), `bv_in_${id}.${audio.ext}`);
+  const outputPath = join(tmpdir(), `bv_clip_${id}.${audio.ext}`);
+  try {
+    await writeFile(inputPath, audio.buffer);
+    await execAsync(
+      `ffmpeg -y -ss ${startSec.toFixed(3)} -t ${durationSec} -i "${inputPath}" -c copy "${outputPath}"`,
+      { timeout: 30_000 },
+    );
+    const { readFile } = await import("fs/promises");
+    const clipped = await readFile(outputPath);
+    return { buffer: clipped, ext: audio.ext };
+  } finally {
+    await unlink(inputPath).catch(() => {});
+    await unlink(outputPath).catch(() => {});
+  }
+}
 
 // ---- AI-video billing + clip-salvage state ---------------------------------
 // AI jobs stash billing/salvage state in the (otherwise unused for AI jobs)
@@ -1257,6 +1283,145 @@ async function processRemixJob(job: JobRow): Promise<void> {
   }
 }
 
+// Manifest shape for jobType="runway_lipsync" -- the admin-only Runway Lip
+// Sync Generator. Mirrors AiJobMeta's billing fields (same reserve/refund
+// semantics as the main AI pipeline) plus the Lip Sync ON/OFF toggle.
+type RunwayLipsyncMeta = {
+  reservedCredits?: number;
+  refunded?: boolean;
+  lipSyncEnabled?: boolean;
+};
+
+// Single-pass, Runway-only render for the admin Runway Lip Sync Generator.
+// One finished video, never a fallback to Kling/Pixazo/Luma:
+//   - Lip Sync ON: generateRunwayCharacterLipsync (audio-driven performance,
+//     output already has the performance's audio muxed in by Runway).
+//   - Lip Sync OFF: the same direct-Runway path as admin Generate
+//     (preferDirectRunway), then the chosen song segment is muxed on as a
+//     plain soundtrack via stitchVideoClips (Runway's plain render is silent).
+async function processRunwayLipSyncJob(job: JobRow): Promise<void> {
+  logger.info({ jobId: job.id }, "Processing admin Runway Lip Sync job");
+  try {
+    const meta = (job.manifest as unknown as RunwayLipsyncMeta | null) ?? {};
+    const lipSyncEnabled = meta.lipSyncEnabled !== false;
+
+    await updateJobStatus(job.id, { status: "generating", progressPercent: 10 });
+
+    const imageUrl = await loadReferenceImageUrl(job);
+    if (!imageUrl) {
+      throw new Error("A character/reference image is required for the Runway Lip Sync Generator.");
+    }
+
+    const durationSeconds = Math.min(
+      Math.max(parseInt(job.requestedDuration ?? "15", 10) || 15, 5),
+      30,
+    );
+
+    // Pull + trim the selected song segment, if one was provided.
+    let audioData: { buffer: Buffer; ext: string } | null = null;
+    if (job.audioObjectPath) {
+      const raw = await getAudioBuffer(job);
+      if (raw) {
+        const start = job.clipStartTime && job.clipStartTime > 0 ? job.clipStartTime : 0;
+        audioData = await extractAudioClip(raw, start, durationSeconds);
+      }
+    }
+
+    let outputUrl: string;
+    if (lipSyncEnabled) {
+      // Critical constraint: never fall back to another provider. The admin
+      // route already verified capability before this job was created and
+      // credits were reserved -- re-check here too in case config changed
+      // mid-flight (e.g. RUNWAY_LIPSYNC_MODEL unset between request and run).
+      if (!runwayCharacterLipsyncAvailable()) {
+        throw new Error(
+          `${PROVIDER_API_FAILURE} Runway audio-driven character lip sync is not available (RUNWAY_LIPSYNC_MODEL unset) -- not falling back to another provider.`,
+        );
+      }
+      if (!audioData) {
+        throw new Error(
+          `${PROVIDER_API_FAILURE} Lip Sync is enabled but no song segment was available to perform to.`,
+        );
+      }
+      await assertJobOwned(job);
+      const lipsyncAudioPath = await storageService.uploadAudioBuffer(
+        audioData.buffer,
+        `lipsync-${job.id}`,
+        audioData.ext,
+      );
+      const audioUrl = await storageService.getObjectEntitySignedUrl(lipsyncAudioPath, 3600);
+      await updateJobStatus(job.id, { progressPercent: 25 });
+      outputUrl = await generateRunwayCharacterLipsync({
+        imageUrl,
+        audioUrl,
+        prompt: job.prompt ?? "",
+        durationSeconds,
+      });
+    } else {
+      await assertJobOwned(job);
+      await updateJobStatus(job.id, { progressPercent: 25 });
+      const result = await generateClip({
+        prompt: job.prompt ?? "",
+        durationSeconds,
+        aspectRatio: job.aspectRatio ?? "16:9",
+        imageUrl,
+        preferDirectRunway: true,
+      });
+      if (!result) throw new Error(`${PROVIDER_API_FAILURE} Runway did not return a video.`);
+      outputUrl = result.videoUrl;
+    }
+
+    await updateJobStatus(job.id, { status: "stitching", progressPercent: 70 });
+    const rawVideoBuffer = await downloadClip(outputUrl);
+
+    let videoBuffer: Buffer;
+    let thumbnailBuffer: Buffer;
+    if (!lipSyncEnabled && audioData) {
+      // Plain Runway render has no audio track -- mux the chosen song segment
+      // on as the soundtrack. Lip Sync mode's output already has the
+      // performance's audio muxed in by Runway, so it's used as-is.
+      const stitchResult = await stitchVideoClips({
+        clips: [{ buffer: rawVideoBuffer, targetDuration: durationSeconds }],
+        audioBuffer: audioData.buffer,
+        audioExt: audioData.ext,
+        totalDuration: durationSeconds,
+      });
+      videoBuffer = stitchResult.videoBuffer;
+      thumbnailBuffer = stitchResult.thumbnailBuffer;
+    } else {
+      videoBuffer = rawVideoBuffer;
+      thumbnailBuffer = await extractVideoThumbnail(videoBuffer, Math.min(1, durationSeconds / 2));
+    }
+
+    await updateJobStatus(job.id, { progressPercent: 90 });
+
+    const videoId = randomUUID();
+    const [videoObjectPath, thumbnailObjectPath] = await Promise.all([
+      storageService.uploadVideoBuffer(videoBuffer, videoId),
+      storageService.uploadThumbnailBuffer(thumbnailBuffer, videoId),
+    ]);
+
+    await db.insert(videosTable).values({
+      id: videoId,
+      userId: job.userId,
+      jobId: job.id,
+      videoObjectPath,
+      thumbnailObjectPath,
+      title: job.prompt?.trim().slice(0, 80) || (lipSyncEnabled ? "Runway Lip Sync test" : "Runway test render"),
+      durationSeconds,
+      style: job.style,
+      prompt: job.prompt,
+      shareToken: randomUUID().replace(/-/g, "").slice(0, 16),
+    });
+
+    await updateJobStatus(job.id, { status: "ready", progressPercent: 100, videoId });
+    void notifyRenderReady(job);
+    logger.info({ jobId: job.id, videoId, lipSyncEnabled }, "Admin Runway Lip Sync job completed");
+  } catch (err) {
+    await retryOrFail(job, err);
+  }
+}
+
 async function processJob(job: JobRow): Promise<void> {
   if (job.jobType === "editor_render") {
     await processEditorJob(job);
@@ -1264,6 +1429,10 @@ async function processJob(job: JobRow): Promise<void> {
   }
   if (job.jobType === "remix") {
     await processRemixJob(job);
+    return;
+  }
+  if (job.jobType === "runway_lipsync") {
+    await processRunwayLipSyncJob(job);
     return;
   }
 

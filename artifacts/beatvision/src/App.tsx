@@ -22,6 +22,7 @@ import Explore from "@/pages/explore";
 import JobStatus from "@/pages/job-status";
 import Pricing from "@/pages/pricing";
 import Admin from "@/pages/admin";
+import AdminRunwayLipSync from "@/pages/admin-runway-lipsync";
 import Terms from "@/pages/terms";
 import Dmca from "@/pages/dmca";
 import Privacy from "@/pages/privacy";
@@ -88,6 +89,7 @@ function Router() {
           <Route path="/pricing" component={Pricing} />
           <Route path="/redeem" component={Redeem} />
           <Route path="/admin" component={Admin} />
+          <Route path="/admin/runway-lipsync" component={AdminRunwayLipSync} />
           <Route path="/terms" component={Terms} />
           <Route path="/dmca" component={Dmca} />
           <Route path="/privacy" component={Privacy} />

@@ -31,7 +31,10 @@ export const audioSourceTypeEnum = pgEnum("audio_source_type", [
 
 // Distinguishes AI-generated jobs from user-driven Studio (editor) renders and
 // lightweight remix jobs (regenerate a subset of an existing video's clips).
-export const jobTypeEnum = pgEnum("job_type", ["ai", "editor_render", "remix"]);
+// "runway_lipsync" = the admin-only Runway Lip Sync Generator: a single,
+// audio-driven character render, direct-Runway-only, no fallback to any
+// other provider. See jobProcessor.ts processRunwayLipSyncJob.
+export const jobTypeEnum = pgEnum("job_type", ["ai", "editor_render", "remix", "runway_lipsync"]);
 
 export const videoStyleEnum = pgEnum("video_style", [
   "realistic",

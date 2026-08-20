@@ -196,6 +196,96 @@ async function generateWithRunwayDirect(req: ClipRequest): Promise<string> {
   throw new Error("Runway task timed out after 10 minutes");
 }
 
+// --- Direct Runway, audio-driven character render (admin-only Runway Lip
+// Sync Generator) -------------------------------------------------------------
+// IMPORTANT / HONEST STATUS: Runway's public API (Act-Two) performs character
+// PERFORMANCE TRANSFER from a reference VIDEO, not from a raw audio track --
+// as of this build there is no confirmed, documented Runway endpoint that
+// takes (image + audio) and returns a lip-synced character video the way
+// Pixazo's OmniHuman does. So this defaults to UNAVAILABLE (see
+// runwayCharacterLipsyncAvailable below) until an operator sets
+// RUNWAY_LIPSYNC_MODEL to a real, confirmed model/endpoint on their Runway
+// account. The admin-only generator checks availability BEFORE charging
+// credits or submitting anything, and never falls back to Pixazo, Kling, or
+// Luma if this is unavailable or fails -- it just fails cleanly.
+export interface RunwayLipsyncRequest {
+  imageUrl: string;
+  audioUrl: string;
+  prompt?: string;
+  durationSeconds: number;
+}
+
+export function runwayCharacterLipsyncAvailable(): boolean {
+  return !!process.env.RUNWAY_API_KEY && !!process.env.RUNWAY_LIPSYNC_MODEL?.trim();
+}
+
+export async function generateRunwayCharacterLipsync(req: RunwayLipsyncRequest): Promise<string> {
+  if (!runwayCharacterLipsyncAvailable()) {
+    throw new Error(
+      "Runway audio-driven character generation isn't available. Runway's public API doesn't currently document a confirmed image+audio lip-sync endpoint -- set RUNWAY_LIPSYNC_MODEL to a verified model/endpoint on your Runway account to enable this (and RUNWAY_API_KEY, if not already set). This never falls back to another provider.",
+    );
+  }
+  const apiKey = process.env.RUNWAY_API_KEY!;
+  const model = process.env.RUNWAY_LIPSYNC_MODEL!.trim();
+  // Configurable request path -- the exact route depends on what Runway
+  // exposes on the caller's account/model. Defaults to a plausible REST shape
+  // mirroring the rest of this direct-Runway client; override with
+  // RUNWAY_LIPSYNC_ENDPOINT if your account's actual path differs.
+  const endpoint = process.env.RUNWAY_LIPSYNC_ENDPOINT?.trim() || "character_performance";
+  const duration = Math.min(Math.max(Math.ceil(req.durationSeconds), 1), 30);
+
+  const genRes = await fetch(`${RUNWAY_BASE}/${endpoint}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "X-Runway-Version": RUNWAY_VERSION,
+    },
+    body: JSON.stringify({
+      model,
+      characterImage: req.imageUrl,
+      audio: req.audioUrl,
+      promptText: (req.prompt ?? "").slice(0, 1000),
+      duration,
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+
+  if (!genRes.ok)
+    throw new Error(`Runway lip sync ${genRes.status}: ${(await genRes.text()).slice(0, 300)}`);
+  const { id: taskId } = (await genRes.json()) as { id: string };
+  if (!taskId) throw new Error("Runway lip sync: no task id returned");
+
+  // Audio-driven character generation can run long -- allow up to ~15 min.
+  for (let i = 0; i < 180; i++) {
+    await delay(5000);
+    const pollRes = await fetch(`${RUNWAY_BASE}/tasks/${taskId}`, {
+      headers: { Authorization: `Bearer ${apiKey}`, "X-Runway-Version": RUNWAY_VERSION },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!pollRes.ok) continue;
+    const task = (await pollRes.json()) as {
+      status: string;
+      output?: string[];
+      failure?: string | { message?: string; [key: string]: unknown };
+    };
+    if (task.status === "SUCCEEDED" && task.output?.[0]) return task.output[0];
+    if (task.status === "FAILED") {
+      const fail = task.failure;
+      const failMsg =
+        typeof fail === "string"
+          ? fail
+          : fail?.message
+            ? fail.message
+            : fail
+              ? JSON.stringify(fail).slice(0, 300)
+              : "no details provided";
+      throw new Error(`Runway lip sync task failed: ${failMsg}`);
+    }
+  }
+  throw new Error("Runway lip sync task timed out after 15 minutes");
+}
+
 async function generateWithLuma(req: ClipRequest): Promise<string> {
   const apiKey = process.env.LUMA_API_KEY!;
 
