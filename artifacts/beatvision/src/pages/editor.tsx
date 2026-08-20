@@ -10,7 +10,11 @@ import { Slider } from "@/components/ui/slider";
 import { SoundtrackPickerDialog } from "@/components/SoundtrackPickerDialog";
 import TopUpRequiredDialog from "@/components/TopUpRequiredDialog";
 import { TutorialTip } from "@/components/TutorialTip";
-import { useGetDashboardStats } from "@workspace/api-client-react";
+import {
+  getListVideosQueryKey,
+  useGetDashboardStats,
+  useListVideos,
+} from "@workspace/api-client-react";
 import { canAffordCredits, LYRIC_ALIGN_COST } from "@/lib/creditPricing";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SAMPLE_LYRICS } from "@/lib/sampleLyrics";
@@ -43,6 +47,13 @@ import {
   isValidHybridHandoff,
   HYBRID_REMIX_KIND,
 } from "@/lib/hybridRemixHandoff";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type Kind = "video" | "photo";
 
@@ -57,6 +68,15 @@ interface Segment {
   uploading: boolean;
   trimStart?: number; // seconds trimmed off the front (video only)
   trimEnd?: number; // seconds trimmed off the back (video only)
+  sourceVideoId?: string; // owned Gallery video used for audio/lyrics lookup
+}
+
+interface GalleryMediaVideo {
+  id: string;
+  title?: string | null;
+  videoObjectPath?: string | null;
+  thumbnailObjectPath?: string | null;
+  durationSeconds?: number | null;
 }
 
 interface MusicTrack {
@@ -309,6 +329,16 @@ export default function Editor() {
   const { data: statsData } = useGetDashboardStats({});
   const balance = statsData?.creditsRemaining ?? null;
   const [topUpOpen, setTopUpOpen] = useState(false);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const { data: galleryData, isLoading: galleryLoading } = useListVideos(
+    { limit: 50 },
+    {
+      query: {
+        queryKey: getListVideosQueryKey({ limit: 50 }),
+        enabled: isAuthenticated && galleryOpen,
+      },
+    },
+  );
 
   // Preview state
   const [playing, setPlaying] = useState(false);
@@ -524,6 +554,7 @@ export default function Editor() {
             durationSec: init.video.durationSec || 8,
             thumb: init.video.thumbPath ? `/api/storage${init.video.thumbPath}` : null,
             uploading: false,
+            sourceVideoId: typeof init.videoId === "string" ? init.videoId : undefined,
           },
         ]);
       }
@@ -791,6 +822,38 @@ export default function Editor() {
     }
   }
 
+  function addGalleryVideo(video: GalleryMediaVideo) {
+    if (!video.videoObjectPath) {
+      toast({
+        title: "Video unavailable",
+        description: "This Gallery video does not have a usable media file.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const seg: Segment = {
+      id: uid(),
+      name: video.title?.trim() || "Gallery video",
+      kind: "video",
+      localUrl: `/api/storage${video.videoObjectPath}`,
+      objectPath: video.videoObjectPath,
+      durationSec:
+        typeof video.durationSeconds === "number" && video.durationSeconds > 0
+          ? video.durationSeconds
+          : 8,
+      thumb: video.thumbnailObjectPath ? `/api/storage${video.thumbnailObjectPath}` : null,
+      uploading: false,
+      sourceVideoId: video.id,
+    };
+    setSegments((prev) => [...prev, seg]);
+    if (!sourceVideoId && !music) {
+      setSourceVideoId(video.id);
+      setLyricsSyncSource("video");
+    }
+    setGalleryOpen(false);
+    toast({ title: "Added from Gallery", description: `${seg.name} was added to the timeline.` });
+  }
+
   async function addMusic(files: FileList | null) {
     const file = files?.[0];
     if (!file) return;
@@ -911,7 +974,15 @@ export default function Editor() {
     pause();
     idxRef.current = -1;
     setPreviewIndex(-1);
-    setSegments((prev) => prev.filter((s) => s.id !== id));
+    setSegments((prev) => {
+      const removing = prev.find((s) => s.id === id);
+      const remaining = prev.filter((s) => s.id !== id);
+      if (removing?.sourceVideoId && removing.sourceVideoId === sourceVideoId) {
+        const nextGallerySource = remaining.find((s) => s.sourceVideoId)?.sourceVideoId ?? null;
+        setSourceVideoId(nextGallerySource);
+      }
+      return remaining;
+    });
   }
 
   function onDrop(overId: string) {
@@ -1154,6 +1225,9 @@ export default function Editor() {
         <Button onClick={() => mediaInputRef.current?.click()}>
           <Upload className="mr-2 h-4 w-4" /> Add media
         </Button>
+        <Button variant="outline" onClick={() => setGalleryOpen(true)} data-testid="add-media-from-gallery">
+          <Film className="mr-2 h-4 w-4 text-primary" /> From Gallery
+        </Button>
         <input ref={musicInputRef} type="file" accept="audio/*" hidden onChange={(e) => addMusic(e.target.files)} />
         <Button variant="outline" onClick={() => musicInputRef.current?.click()}>
           <Music className="mr-2 h-4 w-4" /> {music ? "Change music" : "Add music"}
@@ -1174,6 +1248,69 @@ export default function Editor() {
           </Button>
         </SoundtrackPickerDialog>
       </div>
+
+      <Dialog open={galleryOpen} onOpenChange={setGalleryOpen}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Choose from Gallery</DialogTitle>
+            <DialogDescription>
+              Add one of your finished videos directly to the timeline without uploading it again.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[65vh] overflow-y-auto pr-1">
+            {galleryLoading ? (
+              <div className="flex min-h-48 items-center justify-center">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            ) : galleryData?.videos?.length ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {galleryData.videos.map((video) => (
+                  <button
+                    key={video.id}
+                    type="button"
+                    onClick={() => addGalleryVideo(video)}
+                    className="group overflow-hidden rounded-xl border border-border bg-card text-left transition-colors hover:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    <div className="relative aspect-video overflow-hidden bg-muted">
+                      {video.thumbnailObjectPath ? (
+                        <img
+                          src={`/api/storage${video.thumbnailObjectPath}`}
+                          alt=""
+                          className="h-full w-full object-cover transition-transform group-hover:scale-[1.02]"
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center">
+                          <Film className="h-8 w-8 text-muted-foreground/60" />
+                        </div>
+                      )}
+                      {typeof video.durationSeconds === "number" && video.durationSeconds > 0 && (
+                        <span className="absolute bottom-2 right-2 rounded bg-black/75 px-1.5 py-0.5 text-[11px] text-white">
+                          {Math.floor(video.durationSeconds / 60)}:
+                          {String(Math.floor(video.durationSeconds % 60)).padStart(2, "0")}
+                        </span>
+                      )}
+                    </div>
+                    <div className="p-3">
+                      <p className="line-clamp-2 text-sm font-medium">
+                        {video.title?.trim() || "Untitled video"}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">Add to timeline</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="flex min-h-48 flex-col items-center justify-center rounded-xl border border-dashed border-border px-6 text-center">
+                <Film className="mb-3 h-8 w-8 text-muted-foreground/60" />
+                <p className="font-medium">Your Gallery is empty</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Generate or upload a video first, then return here to add it.
+                </p>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Timeline */}
       <Card className="mb-6 p-4">

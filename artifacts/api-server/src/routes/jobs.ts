@@ -4,7 +4,7 @@ import { Client } from "pg";
 import { db } from "@workspace/db";
 import { jobsTable, creditsTable, usersTable, videosTable } from "@workspace/db";
 import type { VideoClipMeta } from "@workspace/db";
-import { eq, and, desc, count, isNull, sql } from "drizzle-orm";
+import { eq, and, desc, count, isNull, inArray, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import {
@@ -22,6 +22,8 @@ const router = Router();
 // Shape of the billing/salvage state we stash in an AI job's manifest jsonb.
 type AiJobMeta = {
   reservedCredits?: number;
+  reservedSubscriptionCredits?: number;
+  reservedTopupCredits?: number;
   refunded?: boolean;
   partialClips?: Record<string, string>;
 };
@@ -73,33 +75,53 @@ async function refundJobReservation(job: {
   userId: string;
   manifest: unknown;
 }): Promise<number> {
-  const meta: AiJobMeta =
-    job.manifest && typeof job.manifest === "object" ? (job.manifest as AiJobMeta) : {};
-  const reserved = meta.reservedCredits ?? 0;
-  if (reserved <= 0 || meta.refunded) return 0;
+  let paths: string[] = [];
+  const totalRefund = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({ manifest: jobsTable.manifest })
+      .from(jobsTable)
+      .where(eq(jobsTable.id, job.id))
+      .limit(1)
+      .for("update");
+    const meta: AiJobMeta =
+      row?.manifest && typeof row.manifest === "object" ? (row.manifest as AiJobMeta) : {};
+    const reserved = meta.reservedCredits ?? 0;
+    if (reserved <= 0 || meta.refunded) return 0;
+    const hasExactSplit =
+      typeof meta.reservedSubscriptionCredits === "number" ||
+      typeof meta.reservedTopupCredits === "number";
+    const subscriptionRefund = hasExactSplit ? Math.max(0, meta.reservedSubscriptionCredits ?? 0) : reserved;
+    const topupRefund = hasExactSplit ? Math.max(0, meta.reservedTopupCredits ?? 0) : 0;
+    const total = subscriptionRefund + topupRefund;
+    paths = Object.values(meta.partialClips ?? {});
 
-  await db
-    .update(creditsTable)
-    .set({
-      subscriptionCredits: sql`subscription_credits + ${reserved}`,
-      creditsRemaining: sql`credits_remaining + ${reserved}`,
-      creditsUsed: sql`GREATEST(credits_used - ${reserved}, 0)`,
-      updatedAt: new Date(),
-    })
-    .where(eq(creditsTable.userId, job.userId));
+    await tx
+      .update(creditsTable)
+      .set({
+        subscriptionCredits: sql`subscription_credits + ${subscriptionRefund}`,
+        topupCredits: sql`topup_credits + ${topupRefund}`,
+        creditsRemaining: sql`credits_remaining + ${total}`,
+        creditsUsed: sql`GREATEST(credits_used - ${total}, 0)`,
+        updatedAt: new Date(),
+      })
+      .where(eq(creditsTable.userId, job.userId));
 
-  await db
-    .update(jobsTable)
-    .set({ manifest: { ...meta, refunded: true, partialClips: {} } as unknown as Record<string, unknown> })
-    .where(eq(jobsTable.id, job.id));
+    await tx
+      .update(jobsTable)
+      .set({
+        manifest: { ...meta, refunded: true, partialClips: {} } as unknown as Record<string, unknown>,
+        updatedAt: new Date(),
+      })
+      .where(eq(jobsTable.id, job.id));
+    return total;
+  });
 
   // Best-effort: drop the salvage copies of any clips this job rendered.
-  const paths = Object.values(meta.partialClips ?? {});
   if (paths.length) {
     const storage = new ObjectStorageService();
     await Promise.all(paths.map((p) => storage.deleteObject(p).catch(() => {})));
   }
-  return reserved;
+  return totalRefund;
 }
 
 // Storyboard preview: returns the planned shots (label, timing, energy, prompt)
@@ -716,6 +738,12 @@ router.post("/jobs/:id/retry", async (req, res) => {
     res.status(400).json({ error: "Only failed jobs can be retried" });
     return;
   }
+  if (job.jobType === "runway_lipsync") {
+    res.status(409).json({
+      error: "AI Lip Sync jobs cannot be retried automatically. Start a new Lip Sync request instead.",
+    });
+    return;
+  }
 
   const [updated] = await db
     .update(jobsTable)
@@ -782,17 +810,28 @@ router.post("/jobs/:id/cancel", async (req, res) => {
     res.status(404).json({ error: "Job not found" });
     return;
   }
-  const IN_PROGRESS = ["pending_approval", "queued", "analyzing", "generating", "stitching"];
-  if (!IN_PROGRESS.includes(job.status)) {
+  const IN_PROGRESS = ["pending_approval", "queued", "analyzing", "generating", "stitching"] as const;
+  if (!IN_PROGRESS.some((status) => status === job.status)) {
     res.status(400).json({ error: "This job isn't running." });
     return;
   }
-  await db
+  const [canceled] = await db
     .update(jobsTable)
-    .set({ status: "failed", errorMessage: "Canceled by you" })
-    .where(eq(jobsTable.id, jobId));
+    .set({ status: "failed", errorMessage: "Canceled by you", claimedAt: null, updatedAt: new Date() })
+    .where(
+      and(
+        eq(jobsTable.id, jobId),
+        eq(jobsTable.userId, req.user.id),
+        inArray(jobsTable.status, IN_PROGRESS),
+      ),
+    )
+    .returning();
+  if (!canceled) {
+    res.status(409).json({ error: "This job finished before it could be canceled." });
+    return;
+  }
   // Refund the up-front reservation for the canceled job.
-  const refunded = await refundJobReservation(job);
+  const refunded = await refundJobReservation(canceled);
   req.log.info({ jobId, userId: req.user.id, refunded }, "User canceled job");
   res.json({ ok: true, refunded });
 });

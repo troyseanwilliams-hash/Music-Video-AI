@@ -741,7 +741,8 @@ export default function JobStatus() {
                       )}
 
                       <div className="flex flex-wrap gap-3">
-                        {errInfo.canRetry && (
+                        {errInfo.canRetry &&
+                          (job as { jobType?: string }).jobType !== "runway_lipsync" && (
                           <Button
                             variant="outline"
                             className="border-destructive/30 hover:bg-destructive/10 hover:text-destructive"

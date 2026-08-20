@@ -17,3 +17,4 @@
 - [Full-track runtime contract](full-track-runtime.md) — Full track is analysis-gated, limited to 600 seconds, and billed, rendered, and recorded against one target runtime.
 - [Lip Sync opt-in controls](lipsync-opt-in-controls.md) — Lip Sync is off by default; users explicitly enable it and choose a whole-second 5–30s segment.
 - [Karaoke opt-in](karaoke-opt-in.md) — Loading or changing an audio source must never enable the paid lyric overlay automatically.
+- [Long AI job request limits](long-ai-job-request-limits.md) — never hold an HTTP request open for provider generation; queue it, persist the poll handle, and fence completion/refunds.

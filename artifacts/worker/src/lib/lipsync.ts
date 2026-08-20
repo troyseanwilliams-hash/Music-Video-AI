@@ -21,26 +21,35 @@ export function lipsyncAvailable(): boolean {
   return !!process.env.PIXAZO_API_KEY;
 }
 
-export async function generateLipsync(params: { imageUrl: string; audioUrl: string }): Promise<string> {
+export async function generateLipsync(params: {
+  imageUrl: string;
+  audioUrl: string;
+  existingPollUrl?: string | null;
+  onSubmitted?: (pollUrl: string) => Promise<void>;
+}): Promise<string> {
   const key = process.env.PIXAZO_API_KEY;
   if (!key) throw new Error("Lip sync requires PIXAZO_API_KEY");
-  const model = lipsyncModel();
-  const op = lipsyncOp(model);
-  const resolution = process.env.PIXAZO_LIPSYNC_RESOLUTION?.trim() || "720p";
+  let pollUrl = params.existingPollUrl?.trim() || null;
 
-  const submit = await fetch(`https://gateway.pixazo.ai/${model}/v1/${op}`, {
-    method: "POST",
-    headers: { "Ocp-Apim-Subscription-Key": key, "Content-Type": "application/json" },
-    body: JSON.stringify({ image_url: params.imageUrl, audio_url: params.audioUrl, resolution }),
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!submit.ok) {
-    throw new Error(`Pixazo lipsync ${submit.status}: ${(await submit.text()).slice(0, 200)}`);
+  if (!pollUrl) {
+    const model = lipsyncModel();
+    const op = lipsyncOp(model);
+    const resolution = process.env.PIXAZO_LIPSYNC_RESOLUTION?.trim() || "720p";
+    const submit = await fetch(`https://gateway.pixazo.ai/${model}/v1/${op}`, {
+      method: "POST",
+      headers: { "Ocp-Apim-Subscription-Key": key, "Content-Type": "application/json" },
+      body: JSON.stringify({ image_url: params.imageUrl, audio_url: params.audioUrl, resolution }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!submit.ok) {
+      throw new Error(`Pixazo lipsync ${submit.status}: ${(await submit.text()).slice(0, 200)}`);
+    }
+    const data = (await submit.json()) as { request_id?: string; polling_url?: string };
+    const requestId = data.request_id;
+    if (!requestId) throw new Error("Pixazo lipsync: no request_id returned");
+    pollUrl = data.polling_url ?? `https://gateway.pixazo.ai/v2/requests/status/${requestId}`;
+    await params.onSubmitted?.(pollUrl);
   }
-  const data = (await submit.json()) as { request_id?: string; polling_url?: string };
-  const requestId = data.request_id;
-  if (!requestId) throw new Error("Pixazo lipsync: no request_id returned");
-  const pollUrl = data.polling_url ?? `https://gateway.pixazo.ai/v2/requests/status/${requestId}`;
 
   for (let i = 0; i < 180; i++) {
     await delay(5000);

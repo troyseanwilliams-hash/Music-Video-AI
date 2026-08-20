@@ -32,16 +32,16 @@ async function extractAudioClip(
 ): Promise<{ buffer: Buffer; ext: string }> {
   const id = randomUUID();
   const inputPath = join(tmpdir(), `bv_in_${id}.${audio.ext}`);
-  const outputPath = join(tmpdir(), `bv_clip_${id}.${audio.ext}`);
+  const outputPath = join(tmpdir(), `bv_clip_${id}.m4a`);
   try {
     await writeFile(inputPath, audio.buffer);
     await execAsync(
-      `ffmpeg -y -ss ${startSec.toFixed(3)} -t ${durationSec} -i "${inputPath}" -c copy "${outputPath}"`,
+      `ffmpeg -y -ss ${startSec.toFixed(3)} -t ${durationSec} -i "${inputPath}" -map 0:a:0 -vn -c:a aac -b:a 192k "${outputPath}"`,
       { timeout: 30_000 },
     );
     const { readFile } = await import("fs/promises");
     const clipped = await readFile(outputPath);
-    return { buffer: clipped, ext: audio.ext };
+    return { buffer: clipped, ext: "m4a" };
   } finally {
     await unlink(inputPath).catch(() => {});
     await unlink(outputPath).catch(() => {});
@@ -104,7 +104,10 @@ type JobRow = typeof jobsTable.$inferSelect;
 // job retry only regenerates the ones that failed (no re-paying for the rest).
 type AiJobMeta = {
   reservedCredits?: number;
+  reservedSubscriptionCredits?: number;
+  reservedTopupCredits?: number;
   refunded?: boolean;
+  lipSyncPollUrl?: string;
   partialClips?: Record<string, string>; // clip index -> object storage path
   pendingRequests?: Record<string, string>; // clip index -> provider poll URL (submitted, not yet downloaded)
   retryAfter?: number; // epoch ms — queued job must not be claimed before this
@@ -194,22 +197,57 @@ async function clearPendingRequest(jobId: string, index: number): Promise<void> 
   `);
 }
 
+async function persistLipSyncPollUrl(jobId: string, pollUrl: string): Promise<void> {
+  await db.execute(sql`
+    UPDATE jobs
+    SET manifest = jsonb_set(
+          COALESCE(manifest, '{}'::jsonb),
+          '{lipSyncPollUrl}',
+          to_jsonb(${pollUrl}::text)
+        ),
+        updated_at = NOW()
+    WHERE id = ${jobId}
+  `);
+}
+
 // Refund the up-front reservation exactly once (idempotent via manifest.refunded).
 async function refundReservation(jobId: string, userId: string, reason: string): Promise<void> {
-  const meta = await readAiMeta(jobId);
-  const reserved = meta.reservedCredits ?? 0;
-  if (reserved <= 0 || meta.refunded) return;
-  await db
-    .update(creditsTable)
-    .set({
-      subscriptionCredits: sql`subscription_credits + ${reserved}`,
-      creditsRemaining: sql`credits_remaining + ${reserved}`,
-      creditsUsed: sql`GREATEST(credits_used - ${reserved}, 0)`,
-      updatedAt: new Date(),
-    })
-    .where(eq(creditsTable.userId, userId));
-  await writeAiMeta(jobId, { ...meta, refunded: true });
-  logger.info({ jobId, userId, reserved, reason }, "Refunded reserved credits");
+  const totalRefund = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({ manifest: jobsTable.manifest })
+      .from(jobsTable)
+      .where(eq(jobsTable.id, jobId))
+      .limit(1)
+      .for("update");
+    const meta =
+      row?.manifest && typeof row.manifest === "object" ? (row.manifest as AiJobMeta) : {};
+    const reserved = meta.reservedCredits ?? 0;
+    if (reserved <= 0 || meta.refunded) return 0;
+    const hasExactSplit =
+      typeof meta.reservedSubscriptionCredits === "number" ||
+      typeof meta.reservedTopupCredits === "number";
+    const subscriptionRefund = hasExactSplit ? Math.max(0, meta.reservedSubscriptionCredits ?? 0) : reserved;
+    const topupRefund = hasExactSplit ? Math.max(0, meta.reservedTopupCredits ?? 0) : 0;
+    const total = subscriptionRefund + topupRefund;
+    await tx
+      .update(creditsTable)
+      .set({
+        subscriptionCredits: sql`subscription_credits + ${subscriptionRefund}`,
+        topupCredits: sql`topup_credits + ${topupRefund}`,
+        creditsRemaining: sql`credits_remaining + ${total}`,
+        creditsUsed: sql`GREATEST(credits_used - ${total}, 0)`,
+        updatedAt: new Date(),
+      })
+      .where(eq(creditsTable.userId, userId));
+    await tx
+      .update(jobsTable)
+      .set({ manifest: { ...meta, refunded: true } as unknown as Record<string, unknown>, updatedAt: new Date() })
+      .where(eq(jobsTable.id, jobId));
+    return total;
+  });
+  if (totalRefund > 0) {
+    logger.info({ jobId, userId, reserved: totalRefund, reason }, "Refunded reserved credits");
+  }
 }
 
 // Best-effort delete of a job's persisted salvage clips + clear the pointers.
@@ -364,19 +402,36 @@ async function updateJobStatus(
 async function getAudioBuffer(
   job: JobRow,
 ): Promise<{ buffer: Buffer; ext: string } | null> {
-  if (!job.audioObjectPath) return null;
-  try {
-    const file = await storageService.getObjectEntityFile(job.audioObjectPath);
-    const [buf] = await file.download();
-    const filename = job.audioObjectPath.split("/").pop() ?? "";
-    const dotIndex = filename.lastIndexOf(".");
-    const rawExt = dotIndex !== -1 ? filename.slice(dotIndex + 1).toLowerCase() : "";
-    const ext = rawExt.length > 0 && rawExt.length <= 5 ? rawExt : "mp3";
-    return { buffer: buf, ext };
-  } catch (err) {
-    logger.warn({ err, jobId: job.id }, "Could not download audio, using defaults");
-    return null;
+  if (job.audioObjectPath) {
+    try {
+      const file = await storageService.getObjectEntityFile(job.audioObjectPath);
+      const [buf] = await file.download();
+      const filename = job.audioObjectPath.split("/").pop() ?? "";
+      const dotIndex = filename.lastIndexOf(".");
+      const rawExt = dotIndex !== -1 ? filename.slice(dotIndex + 1).toLowerCase() : "";
+      const ext = rawExt.length > 0 && rawExt.length <= 5 ? rawExt : "mp3";
+      return { buffer: buf, ext };
+    } catch (err) {
+      logger.warn({ err, jobId: job.id }, "Could not download uploaded audio");
+      return null;
+    }
   }
+
+  if (job.audioSourceType === "suno" && job.audioSourceUrl) {
+    try {
+      const res = await fetch(job.audioSourceUrl, {
+        headers: { "User-Agent": "AIBeatSync/1.0" },
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (!res.ok) throw new Error(`Audio source returned ${res.status}`);
+      return { buffer: Buffer.from(await res.arrayBuffer()), ext: "mp3" };
+    } catch (err) {
+      logger.warn({ err, jobId: job.id }, "Could not fetch source audio");
+      return null;
+    }
+  }
+
+  return null;
 }
 
 const STYLE_PROMPTS: Record<string, string> = {
@@ -731,9 +786,15 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
   // this job type: a second request could create duplicate provider spend
   // without guaranteeing that the original request cannot still complete.
   if (job.jobType === "runway_lipsync") {
+    const meta = aiMetaOf(job) as AiJobMeta & { publicLipSync?: boolean };
+    if (meta.publicLipSync) {
+      await refundReservation(job.id, job.userId, "lip-sync-failure");
+    }
     await updateJobStatus(job.id, {
       status: "failed",
-      errorMessage: `${errMsg} — no automatic retry was attempted to prevent additional Runway charges.`,
+      errorMessage: meta.publicLipSync
+        ? "AI Lip Sync could not finish. Your reserved credits were returned. No automatic retry was attempted."
+        : "AI Lip Sync could not finish. No automatic retry was attempted to prevent duplicate charges.",
     });
     void notifyAdminRenderFailed(job, errMsg);
     return;
@@ -1315,8 +1376,14 @@ async function processRemixJob(job: JobRow): Promise<void> {
 // compatibility; the admin-only generator now runs through Pixazo.
 type RunwayLipsyncMeta = {
   reservedCredits?: number;
+  reservedSubscriptionCredits?: number;
+  reservedTopupCredits?: number;
   refunded?: boolean;
   lipSyncEnabled?: boolean;
+  publicLipSync?: boolean;
+  sourceVideoId?: string;
+  sourceVideoTitle?: string;
+  lipSyncPollUrl?: string;
 };
 
 // Single-pass, Pixazo-only render for the admin Lip Sync Generator.
@@ -1334,7 +1401,7 @@ async function processRunwayLipSyncJob(job: JobRow): Promise<void> {
 
     const imageUrl = await loadReferenceImageUrl(job);
     if (!imageUrl) {
-      throw new Error("A character/reference image is required for the Pixazo Lip Sync Generator.");
+      throw new Error("A character/reference image is required for AI Lip Sync.");
     }
 
     const durationSeconds = Math.min(
@@ -1344,7 +1411,7 @@ async function processRunwayLipSyncJob(job: JobRow): Promise<void> {
 
     // Pull + trim the selected song segment, if one was provided.
     let audioData: { buffer: Buffer; ext: string } | null = null;
-    if (job.audioObjectPath) {
+    if (job.audioObjectPath || (job.audioSourceType === "suno" && job.audioSourceUrl)) {
       const raw = await getAudioBuffer(job);
       if (raw) {
         const start = job.clipStartTime && job.clipStartTime > 0 ? job.clipStartTime : 0;
@@ -1372,10 +1439,14 @@ async function processRunwayLipSyncJob(job: JobRow): Promise<void> {
       );
       const audioUrl = await storageService.getObjectEntitySignedUrl(lipsyncAudioPath, 3600);
       await updateJobStatus(job.id, { progressPercent: 25 });
+      const liveMeta = (await readAiMeta(job.id)) as RunwayLipsyncMeta;
       outputUrl = await generateLipsync({
         imageUrl,
         audioUrl,
+        existingPollUrl: liveMeta.lipSyncPollUrl,
+        onSubmitted: (pollUrl) => persistLipSyncPollUrl(job.id, pollUrl),
       });
+      await assertJobOwned(job);
     } else {
       await assertJobOwned(job);
       await updateJobStatus(job.id, { progressPercent: 25 });
@@ -1421,20 +1492,40 @@ async function processRunwayLipSyncJob(job: JobRow): Promise<void> {
       storageService.uploadThumbnailBuffer(thumbnailBuffer, videoId),
     ]);
 
-    await db.insert(videosTable).values({
-      id: videoId,
-      userId: job.userId,
-      jobId: job.id,
-      videoObjectPath,
-      thumbnailObjectPath,
-      title: job.prompt?.trim().slice(0, 80) || (lipSyncEnabled ? "Pixazo Lip Sync test" : "Pixazo test render"),
-      durationSeconds,
-      style: job.style,
-      prompt: job.prompt,
-      shareToken: randomUUID().replace(/-/g, "").slice(0, 16),
+    await db.transaction(async (tx) => {
+      const [owned] = await tx
+        .select({ status: jobsTable.status, claimedAt: jobsTable.claimedAt })
+        .from(jobsTable)
+        .where(eq(jobsTable.id, job.id))
+        .limit(1)
+        .for("update");
+      const ours = job.claimedAt ? new Date(job.claimedAt).getTime() : null;
+      const current = owned?.claimedAt ? new Date(owned.claimedAt).getTime() : null;
+      if (!owned || owned.status === "queued" || owned.status === "failed" || ours !== current) {
+        throw new Error(`${OWNERSHIP_LOST} (finalization fence)`);
+      }
+
+      await tx.insert(videosTable).values({
+        id: videoId,
+        userId: job.userId,
+        jobId: job.id,
+        videoObjectPath,
+        thumbnailObjectPath,
+        title: meta.publicLipSync
+          ? `${meta.sourceVideoTitle?.trim() || "Video"} — lip sync`.slice(0, 120)
+          : job.prompt?.trim().slice(0, 80) || (lipSyncEnabled ? "AI Lip Sync test" : "AI test render"),
+        durationSeconds,
+        style: job.style,
+        prompt: job.prompt,
+        shareToken: randomUUID().replace(/-/g, "").slice(0, 16),
+      });
+      await tx
+        .update(jobsTable)
+        .set({ status: "ready", progressPercent: 100, videoId, updatedAt: new Date() })
+        .where(eq(jobsTable.id, job.id));
     });
 
-    await updateJobStatus(job.id, { status: "ready", progressPercent: 100, videoId });
+    await notifyJobUpdate(job.id);
     void notifyRenderReady(job);
     logger.info({ jobId: job.id, videoId, lipSyncEnabled }, "Admin Pixazo Lip Sync job completed");
   } catch (err) {

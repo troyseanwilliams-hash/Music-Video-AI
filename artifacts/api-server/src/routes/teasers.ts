@@ -28,8 +28,6 @@ import {
 } from "../lib/creditCost.js";
 import { burnLyricsOnVideo } from "../lib/lyricOverlay.js";
 import { extractVideoThumbnail } from "../lib/videoStitcher.js";
-import { generateLipsync } from "../lib/lipsync.js";
-import { trimAudioToLength } from "../lib/musicApis.js";
 import { z } from "zod";
 
 function isAdminEmail(email?: string | null): boolean {
@@ -437,10 +435,9 @@ router.post("/videos/:id/release-kit", async (req: Request<{ id: string }>, res:
   }
 });
 
-// Lip sync: turn an uploaded face image into a singing avatar synced to a short
-// clip (up to 30s) of this video's song, via the Pixazo OmniHuman model (billed
-// per second). Saved as a NEW video. Credits are reserved up front and refunded
-// if it fails; admins are free.
+// Lip sync: queue an uploaded face image plus a short range of this video's
+// soundtrack as a background job. Returning immediately avoids the five-minute
+// HTTP request limit while the long-running AI render continues in the worker.
 const LipsyncBody = z.object({
   imageObjectPath: z.string().min(1),
   lipsyncSeconds: z.number().int().min(LIPSYNC_MIN_SECONDS).max(LIPSYNC_MAX_SECONDS).default(15),
@@ -519,87 +516,75 @@ router.post("/videos/:id/lipsync", async (req: Request<{ id: string }>, res: Res
   }
 
   try {
-    // Audio to sync to = the original job's song, trimmed to the chosen short
-    // clip so the per-second lip sync cost stays bounded.
-    const job = sourceJob;
-    let audioUrl: string | null = null;
-    let audioExt = "mp3";
-    if (job?.audioObjectPath) audioUrl = await storageService.getObjectEntitySignedUrl(job.audioObjectPath, 3600);
-    else if (job?.audioSourceUrl) audioUrl = job.audioSourceUrl;
-    else if (video.hasAudio !== false && video.videoObjectPath) {
-      // Editor/Remix and some legacy videos may carry their soundtrack only in
-      // the finished MP4. The video is already owner-scoped by loadOwnedVideo,
-      // so its embedded audio is a safe authoritative fallback.
-      audioUrl = await storageService.getObjectEntitySignedUrl(video.videoObjectPath, 3600);
-      audioExt = "mp4";
+    const [sourceJob] = await db
+      .select()
+      .from(jobsTable)
+      .where(eq(jobsTable.id, video.jobId))
+      .limit(1);
+
+    let audioObjectPath: string | null = null;
+    let audioSourceUrl: string | null = null;
+    let audioSourceType: "upload" | "suno" | null = null;
+    if (sourceJob?.audioObjectPath) {
+      audioObjectPath = sourceJob.audioObjectPath;
+      audioSourceType = "upload";
+    } else if (sourceJob?.audioSourceUrl) {
+      audioSourceUrl = sourceJob.audioSourceUrl;
+      audioSourceType = "suno";
+    } else if (video.hasAudio !== false && video.videoObjectPath) {
+      // Remix/Editor and legacy videos may carry their only authoritative audio
+      // in the owned finished MP4. The worker can extract the selected range.
+      audioObjectPath = video.videoObjectPath;
+      audioSourceType = "upload";
     }
-    if (!audioUrl) throw new Error("This video has no source audio to sync to.");
+    if (!audioObjectPath && !audioSourceUrl) {
+      throw new Error("This video has no source audio to sync to.");
+    }
 
-    const audioResp = await fetch(audioUrl, { signal: AbortSignal.timeout(60_000) });
-    if (!audioResp.ok) throw new Error("Could not read the source audio.");
-    const trimmed = await trimAudioToLength(Buffer.from(await audioResp.arrayBuffer()), audioExt, lipsyncSeconds, lipsyncStartTime);
-    const trimmedPath = await storageService.uploadAudioBuffer(trimmed.buffer, randomUUID(), trimmed.ext);
-    const trimmedAudioUrl = await storageService.getObjectEntitySignedUrl(trimmedPath, 3600);
-
-    const imageUrl = await storageService.getObjectEntitySignedUrl(parsed.data.imageObjectPath, 3600);
-    const mediaUrl = await generateLipsync({ imageUrl, audioUrl: trimmedAudioUrl });
-
-    const resp = await fetch(mediaUrl, { signal: AbortSignal.timeout(120_000) });
-    if (!resp.ok) throw new Error(`Could not fetch lip sync result: ${resp.status}`);
-    const outBuffer = Buffer.from(await resp.arrayBuffer());
-    const thumbBuffer = await extractVideoThumbnail(outBuffer, Math.max(1, lipsyncSeconds * 0.3));
-
-    const newVideoId = randomUUID();
-    const [vPath, tPath] = await Promise.all([
-      storageService.uploadVideoBuffer(outBuffer, newVideoId),
-      storageService.uploadThumbnailBuffer(thumbBuffer, newVideoId),
-    ]);
-    await db.insert(videosTable).values({
-      id: newVideoId,
+    const lipSyncJobId = randomUUID();
+    const title = `${video.title ?? "Video"} — lip sync`;
+    await db.insert(jobsTable).values({
+      id: lipSyncJobId,
       userId: req.user.id,
-      jobId: video.jobId,
-      videoObjectPath: vPath,
-      thumbnailObjectPath: tPath,
-      title: `${video.title ?? "Video"} — lip sync`,
-      durationSeconds: lipsyncSeconds,
+      jobType: "runway_lipsync",
+      status: "queued",
+      prompt: title,
       style: video.style,
-      prompt: video.prompt,
-      shareToken: randomUUID().replace(/-/g, "").slice(0, 16),
+      referenceImagePath: parsed.data.imageObjectPath,
+      audioSourceType,
+      audioObjectPath,
+      audioSourceUrl,
+      clipStartTime: lipsyncStartTime,
+      requestedDuration: String(lipsyncSeconds),
+      aspectRatio: "16:9",
+      aiProvider: "pixazo",
+      watermark: false,
+      manifest: {
+        reservedCredits: admin ? 0 : cost,
+        reservedSubscriptionCredits: charged?.subDebit ?? 0,
+        reservedTopupCredits: charged?.topDebit ?? 0,
+        lipSyncEnabled: true,
+        publicLipSync: true,
+        sourceVideoId: video.id,
+        sourceVideoTitle: video.title ?? "Video",
+      } as unknown as Record<string, unknown>,
+      progressPercent: 0,
     });
 
-    const url = await storageService.getObjectEntitySignedUrl(vPath, 3600);
-    res.json({
-      videoId: newVideoId,
-      url,
-      creditsCharged: admin ? 0 : cost,
-      // Cheap, already-in-scope data for the "Guided Hybrid Lip Sync Remix"
-      // handoff (LipSyncPanel -> Remix Lab): lets the client build a
-      // before/lipsync/after timeline against the ORIGINAL video without a
-      // second round trip. Resolving a Remix-Lab-usable copy of the full
-      // song (which may require downloading it, for youtube/suno sources
-      // with no audioObjectPath) is deliberately NOT done here -- it's only
-      // needed if the user actually takes the hybrid-insert action, so it's
-      // a separate on-demand call (GET /videos/:id/song-audio) instead of
-      // extra cost on every Lip Sync request.
-      hybridRemix: {
-        originalVideoId: video.id,
-        originalObjectPath: video.videoObjectPath,
-        originalThumbnailPath: video.thumbnailObjectPath ?? null,
-        originalDurationSec: Number(video.durationSeconds) || null,
-        lipsyncObjectPath: vPath,
-        lipsyncThumbnailPath: tPath,
-        lipsyncStartTime,
-        lipsyncSeconds,
-        hasSourceAudio: !!(sourceJob?.audioObjectPath || sourceJob?.audioSourceUrl),
-      },
-    });
+    req.log.info(
+      { jobId: lipSyncJobId, sourceVideoId: video.id, lipsyncSeconds, lipsyncStartTime },
+      "AI Lip Sync job queued",
+    );
+    res.status(202).json({ jobId: lipSyncJobId, creditsCharged: admin ? 0 : cost });
   } catch (err) {
-    // Refund the reservation on failure.
+    // Queue setup failed before a worker could own the reservation.
     if (charged) {
       await refundCredits(req.user.id, charged.subDebit, charged.topDebit);
     }
-    req.log.error({ err, videoId: video.id }, "Lip sync failed");
-    res.status(500).json({ error: err instanceof Error ? err.message : "Lip sync failed" });
+    req.log.error({ err, videoId: video.id }, "Lip sync queueing failed");
+    res.status(500).json({
+      error: "AI Lip Sync could not start. Any reserved credits were returned. Please try again.",
+    });
   }
 });
 

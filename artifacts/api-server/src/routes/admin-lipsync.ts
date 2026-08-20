@@ -63,8 +63,8 @@ router.get("/admin/runway-lipsync/status", (req: Request, res: Response) => {
     lipSyncUnavailableReason: lipSyncAvailable
       ? null
       : !hasPixazoKey
-        ? "PIXAZO_API_KEY is not configured."
-        : "Pixazo Lip Sync is unavailable.",
+        ? "The AI rendering service is not configured."
+        : "AI Lip Sync is unavailable.",
     minSeconds: LIPSYNC_MIN_SECONDS,
     maxSeconds: LIPSYNC_MAX_SECONDS,
   });
@@ -102,8 +102,8 @@ router.post("/admin/runway-lipsync/jobs", async (req: Request, res: Response) =>
 
   if (!process.env.PIXAZO_API_KEY) {
     res.status(503).json({
-      error: "PIXAZO_API_KEY is not configured -- this generator only renders via Pixazo and never falls back to another provider.",
-      code: "PIXAZO_UNAVAILABLE",
+      error: "The AI rendering service is not configured. This generator does not use a fallback.",
+      code: "AI_SERVICE_UNAVAILABLE",
     });
     return;
   }
@@ -121,8 +121,8 @@ router.post("/admin/runway-lipsync/jobs", async (req: Request, res: Response) =>
   if (lipSyncEnabled && !lipsyncAvailable()) {
     res.status(503).json({
       error:
-        "Pixazo audio-driven character lip sync isn't available on the configured Pixazo account. This never falls back to Runway, Kling, or Luma.",
-      code: "PIXAZO_LIPSYNC_UNAVAILABLE",
+        "Audio-driven character Lip Sync is not available on the configured AI service. This generator does not use a fallback.",
+      code: "AI_LIPSYNC_UNAVAILABLE",
     });
     return;
   }

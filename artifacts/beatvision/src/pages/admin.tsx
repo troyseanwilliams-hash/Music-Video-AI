@@ -566,7 +566,7 @@ function AdminMusicPanel() {
       <CardContent className="space-y-5">
         {isSim && (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-300 px-3 py-2 text-xs">
-            <b>Simulation mode</b> (placeholder audio). Set <code>PIXAZO_API_KEY</code> (same key as your video provider — recommended) or <code>REPLICATE_API_TOKEN</code> to generate real instrumentals.
+            <b>Simulation mode</b> (placeholder audio). Configure a supported music-generation service to create real instrumentals.
           </div>
         )}
 
@@ -836,7 +836,7 @@ function RecoverStrandedPanel() {
       ) : (
         <div className="rounded-2xl border border-border bg-card/50 p-4 space-y-4">
           <p className="text-sm text-muted-foreground">
-            Videos that failed after their clips finished on Pixazo can be re-queued — the worker reclaims
+            Videos that failed after their clips finished rendering can be re-queued — the worker reclaims
             finished renders for free and regenerates only what's missing.
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

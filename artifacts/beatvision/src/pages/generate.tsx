@@ -933,12 +933,10 @@ export default function Generate() {
                       <span>
                         {PROVIDER_LABELS[p]}
                         <span className="text-muted-foreground"> · {p === "runway" ? "premium quality" : "value price"}</span>
-                        {/* TEMPORARY, admin-only: picking Runway here hits the real
-                            Runway API directly, with Pixazo disabled as a fallback
-                            entirely — see routes/jobs.ts preferDirectRunway. Public
-                            Generate (non-admins) is unaffected either way. */}
+                        {/* TEMPORARY, admin-only: this direct path has fallback
+                            disabled entirely. Public Generate is unaffected. */}
                         {isAdmin && p === "runway" && (
-                          <span className="ml-1.5 text-[10px] font-medium text-amber-400/90" title="Admin-only: renders via the real Runway API. Pixazo is not used as a fallback — if Runway fails, this fails.">
+                          <span className="ml-1.5 text-[10px] font-medium text-amber-400/90" title="Admin-only direct rendering with no fallback. If the selected service fails, this render fails.">
                             · direct API, no fallback
                           </span>
                         )}

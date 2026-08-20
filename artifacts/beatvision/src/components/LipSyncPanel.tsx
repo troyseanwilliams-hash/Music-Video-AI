@@ -22,7 +22,7 @@ import {
 } from "@/lib/hybridRemixHandoff";
 import TopUpRequiredDialog from "@/components/TopUpRequiredDialog";
 
-// Lip sync is billed per second (OmniHuman ~$0.16/s at 1.5x markup). Mirrors
+// Lip sync is billed per second. Mirrors
 // the server's calculateLipsyncCost() in lib/creditCost.ts exactly, so the
 // price shown here never drifts from what's actually charged.
 const LIP_PRESETS = [5, 10, 15, 20, 30].filter((s) => s >= LIPSYNC_MIN_SECONDS && s <= LIPSYNC_MAX_SECONDS);
@@ -59,7 +59,7 @@ async function presignAndUpload(file: File): Promise<string> {
 
 /**
  * Lip Sync: upload a face photo and turn it into a singing avatar synced to a
- * short clip of this video's song, via the Pixazo OmniHuman lipsync API.
+ * short clip of this video's song.
  */
 function formatTime(seconds: number): string {
   const safeSeconds = Math.max(0, Math.floor(seconds));
@@ -202,6 +202,11 @@ export default function LipSyncPanel({
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error ?? "Lip sync failed");
+      if (typeof data.jobId === "string") {
+        setLocation(`/jobs/${data.jobId}`);
+        return;
+      }
+      // Backward-compatible handling for an older synchronous API response.
       const created = { videoId: data.videoId as string, url: data.url as string };
       setResult(created);
       onCreated?.(created);

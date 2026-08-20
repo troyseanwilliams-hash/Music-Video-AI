@@ -46,12 +46,12 @@ interface StatusResponse {
 
 async function fetchStatus(): Promise<StatusResponse> {
   const res = await fetch("/api/admin/runway-lipsync/status", { credentials: "include" });
-  if (!res.ok) throw new Error("Could not load Pixazo status");
+  if (!res.ok) throw new Error("Could not load AI rendering status");
   return res.json();
 }
 
 export default function AdminRunwayLipSync() {
-  useSEO({ title: "Pixazo Lip Sync Generator (Admin)", noindex: true });
+  useSEO({ title: "AI Lip Sync Generator (Admin)", noindex: true });
   const [, setLocation] = useLocation();
   const { user, isLoading: isAuthLoading } = useAuth();
   const { toast } = useToast();
@@ -230,9 +230,9 @@ export default function AdminRunwayLipSync() {
           <ShieldCheck className="h-4 w-4 text-primary" />
         </div>
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Pixazo Lip Sync Generator</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">AI Lip Sync Generator</h1>
           <p className="text-xs sm:text-sm text-muted-foreground">
-            Admin-only. Renders a single test video via Pixazo only — never Runway, Kling, or Luma.
+            Admin-only. Renders a single test video with the configured AI service and no fallback.
           </p>
         </div>
       </div>
@@ -240,13 +240,13 @@ export default function AdminRunwayLipSync() {
       {/* Engine badge — always visible, never a picker. */}
       <div className="mt-4 mb-6 flex flex-wrap items-center gap-2">
         <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-          <Sparkles className="h-3 w-3" /> Engine: Pixazo (fixed, no fallback)
+          <Sparkles className="h-3 w-3" /> AI engine · fixed, no fallback
         </span>
         {isStatusLoading ? (
           <span className="text-xs text-muted-foreground">Checking availability…</span>
         ) : noKey ? (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-destructive/30 bg-destructive/10 px-3 py-1 text-xs font-medium text-destructive">
-            <XCircle className="h-3 w-3" /> PIXAZO_API_KEY not configured
+            <XCircle className="h-3 w-3" /> AI rendering is not configured
           </span>
         ) : status?.lipSyncAvailable ? (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-green-500/30 bg-green-500/10 px-3 py-1 text-xs font-medium text-green-500">
@@ -254,15 +254,14 @@ export default function AdminRunwayLipSync() {
           </span>
         ) : (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-500">
-            <AlertTriangle className="h-3 w-3" /> Lip Sync unavailable — plain Pixazo render still works
+            <AlertTriangle className="h-3 w-3" /> Lip Sync unavailable — plain video rendering still works
           </span>
         )}
       </div>
 
       {status && !status.lipSyncAvailable && status.lipSyncUnavailableReason && (
         <div className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-600 dark:text-amber-400">
-          {status.lipSyncUnavailableReason} This never falls back to Runway, Kling, or Luma — the request
-          simply won't be sent until Pixazo is configured.
+          {status.lipSyncUnavailableReason} This request will remain unavailable until the AI service configuration is restored.
         </div>
       )}
 
@@ -274,7 +273,7 @@ export default function AdminRunwayLipSync() {
             <p className="text-xs text-muted-foreground mt-0.5">
               {lipSyncEnabled
                 ? "On — one audio-driven video of the character performing to the song segment."
-                : "Off — a plain Runway render of the character, with the song segment muxed in as a soundtrack."}
+                : "Off — a plain AI render of the character, with the song segment added as a soundtrack."}
             </p>
           </div>
           <Switch id="lipsync-toggle" checked={lipSyncEnabled} onCheckedChange={setLipSyncEnabled} />
@@ -500,7 +499,7 @@ export default function AdminRunwayLipSync() {
         )}
         {unavailable && (
           <p className="flex items-center gap-1.5 text-sm font-medium text-amber-500">
-            <AlertTriangle className="h-4 w-4 shrink-0" /> Lip Sync isn't available right now — turn it off to render a plain Pixazo test, or configure PIXAZO_API_KEY.
+            <AlertTriangle className="h-4 w-4 shrink-0" /> Lip Sync isn't available right now — turn it off to render a plain test, or restore the AI service configuration.
           </p>
         )}
 
