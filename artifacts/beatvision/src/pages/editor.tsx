@@ -38,6 +38,11 @@ import {
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  buildHybridTimeline,
+  isValidHybridHandoff,
+  HYBRID_REMIX_KIND,
+} from "@/lib/hybridRemixHandoff";
 
 type Kind = "video" | "photo";
 
@@ -435,13 +440,79 @@ export default function Editor() {
   // Logged-out visitors get a teaser (below) instead of a redirect, so they can
   // see what Remix Lab does and sign up.
 
-  // Handoff from Gallery / job page: pre-load a finished video as the first clip.
+  // Handoff from Gallery / job page: pre-load a finished video as the first
+  // clip, OR (see HYBRID_REMIX_KIND) a "Guided Hybrid Lip Sync Remix"
+  // replacement timeline from LipSyncPanel's "Insert into video" action.
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem("editor:init");
       if (!raw) return;
       sessionStorage.removeItem("editor:init");
       const init = JSON.parse(raw);
+
+      if (init?.kind === HYBRID_REMIX_KIND) {
+        // Fail closed on any malformed/stale/corrupted payload rather than
+        // crash the editor or silently build a nonsense timeline -- falls
+        // through to the normal empty Remix Lab state, with a toast so the
+        // user knows what happened instead of just wondering where their
+        // video went.
+        if (!isValidHybridHandoff(init)) {
+          toast({
+            title: "Couldn't prepare the hybrid video",
+            description: "That handoff looked incomplete or out of date, so Remix Lab opened empty instead. You can still build the timeline manually.",
+            variant: "destructive",
+          });
+          return;
+        }
+        const timeline = buildHybridTimeline(init);
+        const SEGMENT_LABELS: Record<string, string> = {
+          before: "Original video (before)",
+          lipsync: "Lip Sync performance",
+          after: "Original video (after)",
+        };
+        setSegments(
+          timeline.segments.map((seg) => ({
+            id: uid(),
+            name: SEGMENT_LABELS[seg.label] ?? "Video",
+            kind: "video",
+            localUrl: `/api/storage${seg.objectPath}`,
+            objectPath: seg.objectPath,
+            durationSec: seg.durationSec,
+            thumb: seg.thumbnailPath ? `/api/storage${seg.thumbnailPath}` : null,
+            uploading: false,
+            trimStart: seg.trimStart || undefined,
+            trimEnd: seg.trimEnd || undefined,
+          })),
+        );
+        // "replace" mode: the original song is the ONLY soundtrack -- every
+        // segment's own audio (original video's baked-in song, Lip Sync
+        // clip's regenerated slice of it) is dropped in favor of this one
+        // continuous, untouched track, so the audio can never double or
+        // drift out of sync at the cut points. Full volume (not the usual
+        // background-music default) since this isn't music layered under a
+        // video's own audio -- it IS the entire soundtrack. No loop: with
+        // the timeline's total length equal to the song's own length by
+        // construction, looping would only ever risk an abrupt restart from
+        // a rounding sliver, and a beat of trailing silence is safer.
+        setMusic({
+          name: "Original song",
+          objectPath: timeline.musicObjectPath,
+          localUrl: `/api/storage${timeline.musicObjectPath}`,
+          mode: "replace",
+          volume: 1,
+          uploading: false,
+          loop: false,
+          fade: false,
+        });
+        setSourceVideoId(init.originalVideoId);
+        setLyricsSyncSource("video");
+        toast({
+          title: "Hybrid video prepared",
+          description: "Your visual video and Lip Sync performance are combined below — review the timeline, then export when ready.",
+        });
+        return;
+      }
+
       if (init?.video?.objectPath) {
         setSegments([
           {
@@ -461,7 +532,11 @@ export default function Editor() {
         setLyricsSyncSource("video");
       }
     } catch {
-      /* ignore */
+      toast({
+        title: "Couldn't prepare the hybrid video",
+        description: "Something went wrong reading the handoff, so Remix Lab opened empty instead. You can still build the timeline manually.",
+        variant: "destructive",
+      });
     }
   }, []);
 

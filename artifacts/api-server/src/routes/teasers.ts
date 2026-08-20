@@ -572,7 +572,31 @@ router.post("/videos/:id/lipsync", async (req: Request<{ id: string }>, res: Res
     });
 
     const url = await storageService.getObjectEntitySignedUrl(vPath, 3600);
-    res.json({ videoId: newVideoId, url, creditsCharged: admin ? 0 : cost });
+    res.json({
+      videoId: newVideoId,
+      url,
+      creditsCharged: admin ? 0 : cost,
+      // Cheap, already-in-scope data for the "Guided Hybrid Lip Sync Remix"
+      // handoff (LipSyncPanel -> Remix Lab): lets the client build a
+      // before/lipsync/after timeline against the ORIGINAL video without a
+      // second round trip. Resolving a Remix-Lab-usable copy of the full
+      // song (which may require downloading it, for youtube/suno sources
+      // with no audioObjectPath) is deliberately NOT done here -- it's only
+      // needed if the user actually takes the hybrid-insert action, so it's
+      // a separate on-demand call (GET /videos/:id/song-audio) instead of
+      // extra cost on every Lip Sync request.
+      hybridRemix: {
+        originalVideoId: video.id,
+        originalObjectPath: video.videoObjectPath,
+        originalThumbnailPath: video.thumbnailObjectPath ?? null,
+        originalDurationSec: Number(video.durationSeconds) || null,
+        lipsyncObjectPath: vPath,
+        lipsyncThumbnailPath: tPath,
+        lipsyncStartTime,
+        lipsyncSeconds,
+        hasSourceAudio: !!(sourceJob?.audioObjectPath || sourceJob?.audioSourceUrl),
+      },
+    });
   } catch (err) {
     // Refund the reservation on failure.
     if (charged) {
@@ -588,6 +612,73 @@ router.post("/videos/:id/lipsync", async (req: Request<{ id: string }>, res: Res
     }
     req.log.error({ err, videoId: video.id }, "Lip sync failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Lip sync failed" });
+  }
+});
+
+// Classifies where a job's ORIGINAL (untrimmed) song audio lives, for the
+// "Guided Hybrid Lip Sync Remix" handoff's song-audio resolution below. Pure
+// and DB/network-free so it's directly unit-testable.
+export type SongSourceClassification =
+  | { kind: "stored"; objectPath: string }
+  | { kind: "remote"; url: string }
+  | { kind: "unavailable" };
+
+export function classifySongSource(
+  job: { audioObjectPath?: string | null; audioSourceUrl?: string | null } | null | undefined,
+): SongSourceClassification {
+  if (job?.audioObjectPath) return { kind: "stored", objectPath: job.audioObjectPath };
+  if (job?.audioSourceUrl) return { kind: "remote", url: job.audioSourceUrl };
+  return { kind: "unavailable" };
+}
+
+// GET /videos/:id/song-audio — resolve a Remix-Lab-usable object storage path
+// for this video's ORIGINAL full song (not a Lip Sync trim), for the "Guided
+// Hybrid Lip Sync Remix" handoff (LipSyncPanel -> Remix Lab). Cheap when the
+// source song is already an uploaded file (job.audioObjectPath); for a
+// youtube/suno-imported song (only job.audioSourceUrl, no stored object) it
+// downloads and caches a copy, since Remix Lab's render pipeline only accepts
+// object storage paths, not arbitrary external URLs. Called on demand (only
+// when the user takes the hybrid-insert action), not on every Lip Sync
+// request, since most Lip Sync requests never use it.
+router.get("/videos/:id/song-audio", async (req: Request<{ id: string }>, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const video = await loadOwnedVideo(req.user.id, req.params.id);
+  if (!video) {
+    res.status(404).json({ error: "Video not found" });
+    return;
+  }
+  const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, video.jobId)).limit(1);
+  const durationSec =
+    (job?.audioAnalysis as { durationSeconds?: number } | null | undefined)?.durationSeconds ?? null;
+  const source = classifySongSource(job);
+
+  try {
+    if (source.kind === "stored") {
+      const url = await storageService.getObjectEntitySignedUrl(source.objectPath, 3600);
+      res.json({ objectPath: source.objectPath, durationSec, url });
+      return;
+    }
+    if (source.kind === "remote") {
+      const audioResp = await fetch(source.url, { signal: AbortSignal.timeout(60_000) });
+      if (!audioResp.ok) throw new Error("Could not read the source audio.");
+      const buffer = Buffer.from(await audioResp.arrayBuffer());
+      const contentType = audioResp.headers.get("content-type") || "";
+      const ext = contentType.includes("wav") ? "wav" : contentType.includes("ogg") ? "ogg" : "mp3";
+      const objectPath = await storageService.uploadAudioBuffer(buffer, randomUUID(), ext);
+      const url = await storageService.getObjectEntitySignedUrl(objectPath, 3600);
+      res.json({ objectPath, durationSec, url });
+      return;
+    }
+    res.status(404).json({
+      error: "This video has no source song to use as the hybrid soundtrack.",
+      code: "SONG_AUDIO_UNAVAILABLE",
+    });
+  } catch (err) {
+    req.log.error({ err, videoId: video.id }, "Could not resolve song audio for hybrid remix");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Could not prepare the song audio." });
   }
 });
 
