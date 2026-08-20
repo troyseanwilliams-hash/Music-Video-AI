@@ -1351,10 +1351,11 @@ async function processRunwayLipSyncJob(job: JobRow): Promise<void> {
       );
       const audioUrl = await storageService.getObjectEntitySignedUrl(lipsyncAudioPath, 3600);
       await updateJobStatus(job.id, { progressPercent: 25 });
+      // avatar_videos has no "prompt" concept -- the performance is 100%
+      // audio-driven, not text-directed. job.prompt is unused here.
       outputUrl = await generateRunwayCharacterLipsync({
         imageUrl,
         audioUrl,
-        prompt: job.prompt ?? "",
         durationSeconds,
       });
     } else {

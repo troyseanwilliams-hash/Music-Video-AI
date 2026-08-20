@@ -54,10 +54,14 @@ function requireAdmin(req: Request, res: Response): boolean {
 }
 
 // What's actually available right now -- drives the UI's unavailable/error
-// state before the admin fills out (and pays for) a request. Honest by
-// default: Runway's public API doesn't currently document a confirmed
-// image+audio lip-sync endpoint, so this reads false unless an operator has
-// explicitly set RUNWAY_LIPSYNC_MODEL to a verified model on their account.
+// state before the admin fills out (and pays for) a request. Explicit opt-in
+// by design: reads false until an operator sets RUNWAY_LIPSYNC_MODEL, even
+// though the real value (gwm1_avatars, Runway's Avatar Videos model) is
+// known -- see videoApis.ts generateRunwayCharacterLipsync for the documented
+// caveat: it works by creating a throwaway Avatar per request, and the
+// "custom avatar" shape it relies on is confirmed for Runway's sibling
+// realtime_sessions endpoint but NOT explicitly documented for avatar_videos
+// itself. Worth a real test render before relying on it.
 router.get("/admin/runway-lipsync/status", (req: Request, res: Response) => {
   if (!requireAdmin(req, res)) return;
   const hasRunwayKey = !!process.env.RUNWAY_API_KEY;
@@ -72,7 +76,7 @@ router.get("/admin/runway-lipsync/status", (req: Request, res: Response) => {
       ? null
       : !hasRunwayKey
         ? "RUNWAY_API_KEY is not configured."
-        : "RUNWAY_LIPSYNC_MODEL is not configured -- Runway's public API doesn't currently document a confirmed audio-driven character endpoint, so this stays off until a real model/endpoint is verified and set.",
+        : "RUNWAY_LIPSYNC_MODEL is not set. Set it to \"gwm1_avatars\" (Runway's real Avatar Videos model) to enable this -- it creates a throwaway Runway Avatar per request from the character image, then generates an audio-driven video from it. The underlying \"custom avatar\" request shape isn't explicitly documented by Runway for this endpoint (only confirmed for their live-session endpoint), so treat the first render as a real test, not a guarantee.",
     minSeconds: LIPSYNC_MIN_SECONDS,
     maxSeconds: LIPSYNC_MAX_SECONDS,
   });

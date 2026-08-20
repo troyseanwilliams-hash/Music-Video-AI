@@ -198,20 +198,35 @@ async function generateWithRunwayDirect(req: ClipRequest): Promise<string> {
 
 // --- Direct Runway, audio-driven character render (admin-only Runway Lip
 // Sync Generator) -------------------------------------------------------------
-// IMPORTANT / HONEST STATUS: Runway's public API (Act-Two) performs character
-// PERFORMANCE TRANSFER from a reference VIDEO, not from a raw audio track --
-// as of this build there is no confirmed, documented Runway endpoint that
-// takes (image + audio) and returns a lip-synced character video the way
-// Pixazo's OmniHuman does. So this defaults to UNAVAILABLE (see
-// runwayCharacterLipsyncAvailable below) until an operator sets
-// RUNWAY_LIPSYNC_MODEL to a real, confirmed model/endpoint on their Runway
-// account. The admin-only generator checks availability BEFORE charging
-// credits or submitting anything, and never falls back to Pixazo, Kling, or
-// Luma if this is unavailable or fails -- it just fails cleanly.
+// REAL, VERIFIED Runway endpoint (checked against Runway's public API docs,
+// docs.dev.runwayml.com, Aug 2026): POST /v1/avatar_videos with model
+// "gwm1_avatars" generates a video of a talking Avatar driven by a raw audio
+// track (speech: {type: "audio", audio: <url>}). This is NOT the same as
+// Act-Two/character_performance, which needs a driving PERFORMANCE VIDEO of
+// an actor, not audio -- that endpoint can't do "character sings along to a
+// song" at all.
+//
+// avatar_videos doesn't take an inline reference image per request -- Runway's
+// Avatar system is built on persistent Avatar objects (POST /v1/avatars), so
+// this function creates a throwaway Avatar from the character's reference
+// image, generates against it, then best-effort deletes it afterward.
+//
+// CAVEAT (documented honestly, not swept under the rug): Runway's own
+// generated API reference only shows avatar_videos' `avatar` field accepting
+// {type: "runway-preset", presetId: <one of 9 fixed personas>} -- it does NOT
+// show a {type: "custom", avatarId} branch for THIS endpoint. That shape is
+// confirmed for the sibling realtime_sessions endpoint (same model,
+// identical doc-rendering gap there too -- Runway's doc generator collapses
+// oneOf unions to their first branch), and is a reasonable bet for
+// avatar_videos, but is unconfirmed. If Runway rejects the custom-avatar
+// shape, this throws a clear error and the job fails cleanly -- it never
+// falls back to Pixazo, Kling, or Luma.
 export interface RunwayLipsyncRequest {
   imageUrl: string;
   audioUrl: string;
-  prompt?: string;
+  // Informational only: avatar_videos has no duration field in its schema --
+  // Runway derives the output length from the audio itself. The trimmed
+  // segment uploaded as audioUrl is what actually bounds the render length.
   durationSeconds: number;
 }
 
@@ -219,22 +234,9 @@ export function runwayCharacterLipsyncAvailable(): boolean {
   return !!process.env.RUNWAY_API_KEY && !!process.env.RUNWAY_LIPSYNC_MODEL?.trim();
 }
 
-export async function generateRunwayCharacterLipsync(req: RunwayLipsyncRequest): Promise<string> {
-  if (!runwayCharacterLipsyncAvailable()) {
-    throw new Error(
-      "Runway audio-driven character generation isn't available. Runway's public API doesn't currently document a confirmed image+audio lip-sync endpoint -- set RUNWAY_LIPSYNC_MODEL to a verified model/endpoint on your Runway account to enable this (and RUNWAY_API_KEY, if not already set). This never falls back to another provider.",
-    );
-  }
+async function createRunwayAvatar(imageUrl: string, label: string): Promise<string> {
   const apiKey = process.env.RUNWAY_API_KEY!;
-  const model = process.env.RUNWAY_LIPSYNC_MODEL!.trim();
-  // Configurable request path -- the exact route depends on what Runway
-  // exposes on the caller's account/model. Defaults to a plausible REST shape
-  // mirroring the rest of this direct-Runway client; override with
-  // RUNWAY_LIPSYNC_ENDPOINT if your account's actual path differs.
-  const endpoint = process.env.RUNWAY_LIPSYNC_ENDPOINT?.trim() || "character_performance";
-  const duration = Math.min(Math.max(Math.ceil(req.durationSeconds), 1), 30);
-
-  const genRes = await fetch(`${RUNWAY_BASE}/${endpoint}`, {
+  const res = await fetch(`${RUNWAY_BASE}/avatars`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -242,48 +244,107 @@ export async function generateRunwayCharacterLipsync(req: RunwayLipsyncRequest):
       "X-Runway-Version": RUNWAY_VERSION,
     },
     body: JSON.stringify({
-      model,
-      characterImage: req.imageUrl,
-      audio: req.audioUrl,
-      promptText: (req.prompt ?? "").slice(0, 1000),
-      duration,
+      name: label.slice(0, 50),
+      referenceImage: imageUrl,
+      // personality/voice are REQUIRED by the Avatars API (it's built for
+      // Runway's conversational/live-session product) but are irrelevant
+      // here -- this Avatar is only ever used once, for a single audio-driven
+      // video, never a live conversation. Minimal placeholder values.
+      personality: "A character used for a single audio-driven test video. Not used for conversation.",
+      voice: { type: "runway-live-preset", presetId: "clara" },
     }),
     signal: AbortSignal.timeout(30_000),
   });
+  if (!res.ok)
+    throw new Error(`Runway avatar creation ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  const avatar = (await res.json()) as { id: string };
+  if (!avatar.id) throw new Error("Runway avatar creation: no id returned");
+  return avatar.id;
+}
 
-  if (!genRes.ok)
-    throw new Error(`Runway lip sync ${genRes.status}: ${(await genRes.text()).slice(0, 300)}`);
-  const { id: taskId } = (await genRes.json()) as { id: string };
-  if (!taskId) throw new Error("Runway lip sync: no task id returned");
-
-  // Audio-driven character generation can run long -- allow up to ~15 min.
-  for (let i = 0; i < 180; i++) {
-    await delay(5000);
-    const pollRes = await fetch(`${RUNWAY_BASE}/tasks/${taskId}`, {
-      headers: { Authorization: `Bearer ${apiKey}`, "X-Runway-Version": RUNWAY_VERSION },
+// Best-effort cleanup of the throwaway Avatar -- never throws, since a
+// leaked Avatar is harmless clutter, not a failure worth surfacing.
+async function deleteRunwayAvatar(avatarId: string): Promise<void> {
+  try {
+    await fetch(`${RUNWAY_BASE}/avatars/${avatarId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${process.env.RUNWAY_API_KEY!}`, "X-Runway-Version": RUNWAY_VERSION },
       signal: AbortSignal.timeout(15_000),
     });
-    if (!pollRes.ok) continue;
-    const task = (await pollRes.json()) as {
-      status: string;
-      output?: string[];
-      failure?: string | { message?: string; [key: string]: unknown };
-    };
-    if (task.status === "SUCCEEDED" && task.output?.[0]) return task.output[0];
-    if (task.status === "FAILED") {
-      const fail = task.failure;
-      const failMsg =
-        typeof fail === "string"
-          ? fail
-          : fail?.message
-            ? fail.message
-            : fail
-              ? JSON.stringify(fail).slice(0, 300)
-              : "no details provided";
-      throw new Error(`Runway lip sync task failed: ${failMsg}`);
-    }
+  } catch {
+    // ignore -- best effort only
   }
-  throw new Error("Runway lip sync task timed out after 15 minutes");
+}
+
+export async function generateRunwayCharacterLipsync(req: RunwayLipsyncRequest): Promise<string> {
+  if (!runwayCharacterLipsyncAvailable()) {
+    throw new Error(
+      "Runway audio-driven character lip sync isn't enabled -- set RUNWAY_LIPSYNC_MODEL=gwm1_avatars (and RUNWAY_API_KEY, if not already set) to turn it on. This never falls back to another provider.",
+    );
+  }
+  const apiKey = process.env.RUNWAY_API_KEY!;
+  const model = process.env.RUNWAY_LIPSYNC_MODEL!.trim();
+
+  const avatarId = await createRunwayAvatar(req.imageUrl, `lipsync-${Date.now()}`);
+
+  let taskId: string;
+  try {
+    const genRes = await fetch(`${RUNWAY_BASE}/avatar_videos`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "X-Runway-Version": RUNWAY_VERSION,
+      },
+      body: JSON.stringify({
+        model,
+        avatar: { type: "custom", avatarId },
+        speech: { type: "audio", audio: req.audioUrl },
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!genRes.ok)
+      throw new Error(`Runway avatar video ${genRes.status}: ${(await genRes.text()).slice(0, 300)}`);
+    const task = (await genRes.json()) as { id: string };
+    if (!task.id) throw new Error("Runway avatar video: no task id returned");
+    taskId = task.id;
+  } catch (err) {
+    await deleteRunwayAvatar(avatarId);
+    throw err;
+  }
+
+  try {
+    // Audio-driven character generation can run long -- allow up to ~15 min.
+    for (let i = 0; i < 180; i++) {
+      await delay(5000);
+      const pollRes = await fetch(`${RUNWAY_BASE}/tasks/${taskId}`, {
+        headers: { Authorization: `Bearer ${apiKey}`, "X-Runway-Version": RUNWAY_VERSION },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!pollRes.ok) continue;
+      const task = (await pollRes.json()) as {
+        status: string;
+        output?: string[];
+        failure?: string | { message?: string; [key: string]: unknown };
+      };
+      if (task.status === "SUCCEEDED" && task.output?.[0]) return task.output[0];
+      if (task.status === "FAILED") {
+        const fail = task.failure;
+        const failMsg =
+          typeof fail === "string"
+            ? fail
+            : fail?.message
+              ? fail.message
+              : fail
+                ? JSON.stringify(fail).slice(0, 300)
+                : "no details provided";
+        throw new Error(`Runway avatar video task failed: ${failMsg}`);
+      }
+    }
+    throw new Error("Runway avatar video task timed out after 15 minutes");
+  } finally {
+    void deleteRunwayAvatar(avatarId);
+  }
 }
 
 async function generateWithLuma(req: ClipRequest): Promise<string> {
