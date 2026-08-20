@@ -455,14 +455,18 @@ export async function stitchEditorTimeline(
       }
       const musicFilter = `volume=${vol}${fadeChain}`;
 
-      // -stream_loop -1 (when looping) makes the music repeat; without it the
-      // track plays once and the video continues silent after it ends. -t
-      // <videoDuration> trims the whole output to the video length.
+      // -stream_loop -1 (when looping) makes the music repeat. Replacement
+      // audio instead plays once and is padded with silence through the full
+      // stitched duration, so its stream cannot end early or reveal clip audio.
+      // -t <videoDuration> trims the whole output to the video length.
       const args = ["-y", "-i", current];
       if (loop) args.push("-stream_loop", "-1");
       args.push("-i", musicPath);
       if (input.music.mode === "replace") {
-        args.push("-filter_complex", `[1:a]${musicFilter}[a]`, "-map", "0:v:0", "-map", "[a]");
+        const replacementFilter = videoDuration > 0
+          ? `[1:a]${musicFilter},apad=pad_dur=${videoDuration.toFixed(3)},atrim=duration=${videoDuration.toFixed(3)},asetpts=PTS-STARTPTS[a]`
+          : `[1:a]${musicFilter}[a]`;
+        args.push("-filter_complex", replacementFilter, "-map", "0:v:0", "-map", "[a]");
       } else {
         // duration=longest keeps the music going (looped or not); the -t cap
         // below ends the file at the video's end.
