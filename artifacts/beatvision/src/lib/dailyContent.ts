@@ -80,7 +80,7 @@ export const DAILY_CONTENT: DailyItem[] = [
   { type: "tip", text: "In Remix Lab you can drop your own photos in alongside video clips and sync everything to the beat — no watermark on export." },
   { type: "tip", text: "Every new account gets a free 7-day trial with unlimited Remix Lab exports — no credit card required." },
   { type: "tip", text: "You can paste a Suno share link straight into the generator — no need to download and re-upload your track." },
-  { type: "tip", text: "Prompt Studio can generate lyrics for 3 credits — handy for finishing a song idea fast." },
+  { type: "tip", text: "Prompt can generate lyrics for 3 credits — handy for finishing a song idea fast." },
   { type: "tip", text: "Remix Lab supports smooth transitions between every clip on your timeline — crossfade, Circle Open, and more." },
   { type: "tip", text: "You can generate 5-second Spotify Canvas clips, perfectly sized and beat-synced, ready to upload straight to Spotify for Artists." },
   { type: "tip", text: "Refer a friend and you'll both earn free credits — grab your referral link from your dashboard." },

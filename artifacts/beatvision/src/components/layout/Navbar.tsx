@@ -36,7 +36,7 @@ export function Navbar() {
   const memberLinks = [
     { href: "/generate", label: "Generate", icon: Wand2 },
     { href: "/editor", label: "Remix", icon: Video },
-    { href: "/prompt-studio", label: "Prompt Studio", icon: Sparkles },
+    { href: "/prompt-studio", label: "Prompt", icon: Sparkles },
     { href: "/soundtracks", label: "Soundtracks", icon: Music2 },
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/gallery", label: "Gallery", icon: Film },

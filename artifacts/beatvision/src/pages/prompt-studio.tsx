@@ -189,7 +189,7 @@ export default function PromptStudio() {
     return (
       <div className="container mx-auto px-4 py-20 max-w-md text-center">
         <Sparkles className="mx-auto h-10 w-10 text-primary mb-4" />
-        <h1 className="text-2xl font-bold mb-2">Prompt Studio</h1>
+        <h1 className="text-2xl font-bold mb-2">Prompt</h1>
         <p className="text-muted-foreground mb-6">Sign in to build polished prompts for your videos and soundtracks.</p>
         <Link href="/login"><Button size="lg" className="bg-gradient-electric text-white border-0">Sign in</Button></Link>
       </div>
@@ -203,7 +203,7 @@ export default function PromptStudio() {
           <Sparkles className="h-6 w-6 text-white" />
         </div>
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
-          Prompt Studio
+          Prompt
         </h1>
         <p className="text-muted-foreground mt-2 text-sm sm:text-base max-w-xl mx-auto">
           Describe what you want in plain words — we'll turn it into a ready-to-use prompt. The soundtrack &amp; video

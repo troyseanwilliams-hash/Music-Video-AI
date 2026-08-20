@@ -250,7 +250,7 @@ export default function Pricing() {
           cheaper). Full-length videos scale with song length (up to 10 minutes).
           Render in 720p, 1080p HD (×1.25), or 4K Ultra (×5, Pro &amp; Studio).
           TikTok teaser packs cost 30, Spotify Canvas loops 20. Generating
-          lyrics in Prompt Studio or Soundtracks costs 3 credits. Plan credits
+          lyrics in Prompt or Soundtracks costs 3 credits. Plan credits
           reset each cycle — top-up credits never expire, and you can earn more
           by referring friends.
         </p>
