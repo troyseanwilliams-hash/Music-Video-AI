@@ -16,3 +16,4 @@
 - [Runway Avatar billing safety](runway-avatar-billing-safety.md) — never retry Avatar Video creation blindly; wait for provider readiness, persist state, and validate billing before enabling paid submits.
 - [Full-track runtime contract](full-track-runtime.md) — Full track is analysis-gated, limited to 600 seconds, and billed, rendered, and recorded against one target runtime.
 - [Lip Sync opt-in controls](lipsync-opt-in-controls.md) — Lip Sync is off by default; users explicitly enable it and choose a whole-second 5–30s segment.
+- [Karaoke opt-in](karaoke-opt-in.md) — Loading or changing an audio source must never enable the paid lyric overlay automatically.
