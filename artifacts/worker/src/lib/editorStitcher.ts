@@ -251,12 +251,25 @@ export async function stitchEditorTimeline(
           const audio = await hasAudio(raw);
           // Optional front/back trim: -ss seeks past the front, -t caps the kept
           // duration (origDur − trimStart − trimEnd). Both re-encode below.
-          const trimStart = Math.max(0, seg.trimStart || 0);
-          const trimEnd = Math.max(0, seg.trimEnd || 0);
+          const requestedTrimStart =
+            typeof seg.trimStart === "number" && Number.isFinite(seg.trimStart)
+              ? Math.max(0, seg.trimStart)
+              : 0;
+          const requestedTrimEnd =
+            typeof seg.trimEnd === "number" && Number.isFinite(seg.trimEnd)
+              ? Math.max(0, seg.trimEnd)
+              : 0;
+          let trimStart = requestedTrimStart;
+          let trimEnd = requestedTrimEnd;
           let keepDur: number | null = null;
-          if (trimStart > 0 || trimEnd > 0) {
+          if (requestedTrimStart > 0 || requestedTrimEnd > 0) {
             const origDur = await probeDuration(raw);
-            keepDur = Math.max(0.3, origDur - trimStart - trimEnd);
+            if (!(origDur > 0)) throw new Error("Could not determine the source video duration for trimming.");
+            const minimumKept = Math.min(0.3, origDur);
+            const maximumTotalTrim = Math.max(0, origDur - minimumKept);
+            trimStart = Math.min(requestedTrimStart, maximumTotalTrim);
+            trimEnd = Math.min(requestedTrimEnd, Math.max(0, maximumTotalTrim - trimStart));
+            keepDur = Math.max(minimumKept, origDur - trimStart - trimEnd);
           }
           const args = ["-y"];
           if (trimStart > 0) args.push("-ss", String(trimStart));

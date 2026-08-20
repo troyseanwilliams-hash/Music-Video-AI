@@ -73,6 +73,35 @@ interface Segment {
   sourceVideoId?: string; // owned Gallery video used for audio/lyrics lookup
 }
 
+const MIN_VIDEO_KEEP_SECONDS = 0.3;
+
+function normalizedVideoTrim(segment: Segment) {
+  const duration = Math.max(0, Number.isFinite(segment.durationSec) ? segment.durationSec : 0);
+  const minimumKept = Math.min(MIN_VIDEO_KEEP_SECONDS, duration);
+  const maximumTotalTrim = Math.max(0, duration - minimumKept);
+  const requestedFront =
+    typeof segment.trimStart === "number" && Number.isFinite(segment.trimStart)
+      ? Math.max(0, segment.trimStart)
+      : 0;
+  const requestedBack =
+    typeof segment.trimEnd === "number" && Number.isFinite(segment.trimEnd)
+      ? Math.max(0, segment.trimEnd)
+      : 0;
+  const front = Math.min(requestedFront, maximumTotalTrim);
+  const back = Math.min(requestedBack, Math.max(0, maximumTotalTrim - front));
+  return {
+    front,
+    back,
+    kept: Math.max(minimumKept, duration - front - back),
+  };
+}
+
+function timelineSegmentDuration(segment: Segment) {
+  return segment.kind === "video"
+    ? normalizedVideoTrim(segment).kept
+    : Math.max(0, segment.durationSec || 0);
+}
+
 interface MusicTrack {
   name: string;
   objectPath: string | null;
@@ -357,7 +386,11 @@ export default function Editor() {
   const idxRef = useRef(-1);
   const playingRef = useRef(false);
   const photoTimerRef = useRef<number | null>(null);
+  const photoProgressFrameRef = useRef<number | null>(null);
   const photoStartRef = useRef(0);
+  const photoOffsetRef = useRef(0);
+  const previewVideoLoadIdRef = useRef(0);
+  const pendingAudioSeekRef = useRef<number | null>(null);
 
   useEffect(() => {
     segmentsRef.current = segments;
@@ -569,7 +602,7 @@ export default function Editor() {
     }
   }, []);
 
-  const totalDuration = segments.reduce((s, x) => s + (x.durationSec || 0), 0);
+  const totalDuration = segments.reduce((sum, segment) => sum + timelineSegmentDuration(segment), 0);
   const uploadsPending = segments.some((s) => s.uploading) || music?.uploading;
 
   // Remix Lab is pure ffmpeg (no AI cost), so the real charge is the flat
@@ -612,13 +645,37 @@ export default function Editor() {
       window.clearTimeout(photoTimerRef.current);
       photoTimerRef.current = null;
     }
+    if (photoProgressFrameRef.current) {
+      window.cancelAnimationFrame(photoProgressFrameRef.current);
+      photoProgressFrameRef.current = null;
+    }
   }
 
   function cumulativeStart(i: number) {
     const segs = segmentsRef.current;
     let t = 0;
-    for (let k = 0; k < i && k < segs.length; k++) t += segs[k]!.durationSec || 0;
+    for (let k = 0; k < i && k < segs.length; k++) t += timelineSegmentDuration(segs[k]!);
     return t;
+  }
+
+  function startPhotoProgress(index: number, segment: Segment) {
+    const duration = timelineSegmentDuration(segment);
+    const update = () => {
+      if (!playingRef.current || idxRef.current !== index) {
+        photoProgressFrameRef.current = null;
+        return;
+      }
+      const elapsed = Math.max(0, Math.min(duration, (performance.now() - photoStartRef.current) / 1000));
+      photoOffsetRef.current = elapsed;
+      const timelineTime = cumulativeStart(index) + elapsed;
+      setProgress(totalDuration ? Math.min(1, timelineTime / totalDuration) : 0);
+      if (elapsed < duration) {
+        photoProgressFrameRef.current = window.requestAnimationFrame(update);
+      } else {
+        photoProgressFrameRef.current = null;
+      }
+    };
+    photoProgressFrameRef.current = window.requestAnimationFrame(update);
   }
 
   function captureTransPrev() {
@@ -674,7 +731,7 @@ export default function Editor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transition]);
 
-  function showSegment(i: number, autoplay: boolean) {
+  function showSegment(i: number, autoplay: boolean, offsetSec = 0) {
     const segs = segmentsRef.current;
     const seg = segs[i];
     if (!seg) return;
@@ -684,27 +741,62 @@ export default function Editor() {
     const video = videoRef.current!;
     const photo = photoRef.current!;
     if (seg.kind === "video") {
+      const trim = normalizedVideoTrim(seg);
+      const clipOffset = Math.max(0, Math.min(trim.kept, offsetSec));
+      const targetTime = trim.front + clipOffset;
+      const loadId = ++previewVideoLoadIdRef.current;
       photo.style.display = "none";
       video.style.display = "block";
+      const startVideo = () => {
+        if (loadId !== previewVideoLoadIdRef.current || video.dataset.url !== seg.localUrl) return;
+        try {
+          video.currentTime = targetTime;
+        } catch {
+          /* metadata is not ready yet */
+        }
+        if (autoplay && playingRef.current) video.play().catch(() => {});
+      };
       if (video.dataset.url !== seg.localUrl) {
-        video.src = seg.localUrl;
         video.dataset.url = seg.localUrl;
+        video.dataset.loading = "true";
+        video.addEventListener(
+          "loadedmetadata",
+          () => {
+            if (loadId !== previewVideoLoadIdRef.current) return;
+            video.dataset.loading = "false";
+            startVideo();
+          },
+          { once: true },
+        );
+        video.src = seg.localUrl;
+      } else if (video.dataset.loading === "true") {
+        video.addEventListener(
+          "loadedmetadata",
+          () => {
+            if (loadId !== previewVideoLoadIdRef.current) return;
+            video.dataset.loading = "false";
+            startVideo();
+          },
+          { once: true },
+        );
+      } else {
+        startVideo();
       }
       video.muted = !!music && music.mode === "replace";
-      try {
-        video.currentTime = 0;
-      } catch {
-        /* ignore */
-      }
-      if (autoplay && playingRef.current) video.play().catch(() => {});
     } else {
       video.pause();
       video.style.display = "none";
       photo.style.display = "block";
       photo.src = seg.localUrl;
-      photoStartRef.current = performance.now();
+      const clipOffset = Math.max(0, Math.min(timelineSegmentDuration(seg), offsetSec));
+      photoOffsetRef.current = clipOffset;
+      photoStartRef.current = performance.now() - clipOffset * 1000;
       if (autoplay && playingRef.current) {
-        photoTimerRef.current = window.setTimeout(() => advance(), Math.max(300, (seg.durationSec || 3) * 1000));
+        photoTimerRef.current = window.setTimeout(
+          () => advance(),
+          Math.max(300, (timelineSegmentDuration(seg) - clipOffset) * 1000),
+        );
+        startPhotoProgress(i, seg);
       }
     }
   }
@@ -719,21 +811,60 @@ export default function Editor() {
       if (transition !== "none") requestAnimationFrame(() => animateTransition());
     } else {
       pause();
+      setProgress(1);
     }
+  }
+
+  function applyPendingAudioSeek() {
+    const audio = audioRef.current;
+    const requestedTime = pendingAudioSeekRef.current;
+    if (!audio || requestedTime == null || audio.readyState < HTMLMediaElement.HAVE_METADATA) return;
+    try {
+      const duration = Number.isFinite(audio.duration) ? Math.max(0, audio.duration) : 0;
+      const shouldLoop = music?.mode === "mix" && music.loop !== false;
+      const targetTime =
+        shouldLoop && duration > 0
+          ? requestedTime % duration
+          : Math.min(requestedTime, duration || requestedTime);
+      audio.currentTime = Math.max(0, targetTime);
+      pendingAudioSeekRef.current = null;
+    } catch {
+      /* the next metadata/can-play event will retry */
+    }
+  }
+
+  function seekAudioToTimelineTime(timeSec: number) {
+    pendingAudioSeekRef.current = Math.max(0, timeSec);
+    applyPendingAudioSeek();
   }
 
   function play() {
     if (segmentsRef.current.length === 0) return;
+    if (progress >= 1 - Number.EPSILON) {
+      seekPreview(0);
+    }
     playingRef.current = true;
     setPlaying(true);
     if (idxRef.current < 0) {
       showSegment(0, true);
     } else {
       const seg = segmentsRef.current[idxRef.current];
-      if (seg?.kind === "video") videoRef.current?.play().catch(() => {});
+      if (seg?.kind === "video") {
+        const video = videoRef.current;
+        const trim = normalizedVideoTrim(seg);
+        if (video && (video.currentTime < trim.front || video.currentTime >= trim.front + trim.kept - 0.03)) {
+          video.currentTime = trim.front;
+        }
+        video?.play().catch(() => {});
+      }
       else {
-        photoStartRef.current = performance.now();
-        photoTimerRef.current = window.setTimeout(() => advance(), Math.max(300, (seg?.durationSec || 3) * 1000));
+        const offset = Math.max(0, Math.min(timelineSegmentDuration(seg!), photoOffsetRef.current));
+        photoStartRef.current = performance.now() - offset * 1000;
+        photoTimerRef.current = window.setTimeout(
+          () => advance(),
+          Math.max(300, (seg ? timelineSegmentDuration(seg) - offset : 3) * 1000),
+        );
+        if (seg) startPhotoProgress(idxRef.current, seg);
       }
     }
     if (music?.localUrl && audioRef.current) {
@@ -743,6 +874,13 @@ export default function Editor() {
   }
 
   function pause() {
+    const activeSegment = segmentsRef.current[idxRef.current];
+    if (activeSegment?.kind === "photo" && photoStartRef.current > 0) {
+      photoOffsetRef.current = Math.max(
+        0,
+        Math.min(timelineSegmentDuration(activeSegment), (performance.now() - photoStartRef.current) / 1000),
+      );
+    }
     playingRef.current = false;
     setPlaying(false);
     videoRef.current?.pause();
@@ -760,10 +898,43 @@ export default function Editor() {
     showSegment(i, false);
   }
 
+  function seekPreview(timeSec: number) {
+    const segs = segmentsRef.current;
+    if (segs.length === 0 || totalDuration <= 0) return;
+    const target = Math.max(0, Math.min(totalDuration, timeSec));
+    pause();
+
+    let cumulative = 0;
+    let targetIndex = segs.length - 1;
+    let offset = timelineSegmentDuration(segs[targetIndex]!);
+    for (let i = 0; i < segs.length; i++) {
+      const duration = timelineSegmentDuration(segs[i]!);
+      if (target < cumulative + duration || i === segs.length - 1) {
+        targetIndex = i;
+        offset = Math.max(0, Math.min(duration, target - cumulative));
+        break;
+      }
+      cumulative += duration;
+    }
+
+    showSegment(targetIndex, false, offset);
+    seekAudioToTimelineTime(target);
+    setProgress(target / totalDuration);
+  }
+
   function onVideoTimeUpdate() {
     const seg = segmentsRef.current[idxRef.current];
     if (!seg || seg.kind !== "video") return;
-    const t = cumulativeStart(idxRef.current) + (videoRef.current?.currentTime || 0);
+    const video = videoRef.current;
+    const trim = normalizedVideoTrim(seg);
+    const currentTime = video?.currentTime || 0;
+    if (playingRef.current && currentTime >= trim.front + trim.kept - 0.03) {
+      video?.pause();
+      advance();
+      return;
+    }
+    const elapsed = Math.max(0, Math.min(trim.kept, currentTime - trim.front));
+    const t = cumulativeStart(idxRef.current) + elapsed;
     setProgress(totalDuration ? Math.min(1, t / totalDuration) : 0);
   }
 
@@ -1222,7 +1393,15 @@ export default function Editor() {
           </button>
         )}
       </div>
-      {music?.localUrl && <audio ref={audioRef} src={music.localUrl} />}
+      {music?.localUrl && (
+        <audio
+          ref={audioRef}
+          src={music.localUrl}
+          loop={music.mode === "mix" && music.loop !== false}
+          onLoadedMetadata={applyPendingAudioSeek}
+          onCanPlay={applyPendingAudioSeek}
+        />
+      )}
 
       {/* Transport */}
       {segments.length > 0 && (
@@ -1230,9 +1409,15 @@ export default function Editor() {
           <Button size="icon" variant="outline" onClick={togglePlay} className="h-9 w-9 shrink-0" aria-label={playing ? "Pause preview" : "Play preview"}>
             {playing ? <Pause className="h-4 w-4" aria-hidden="true" /> : <Play className="h-4 w-4" aria-hidden="true" />}
           </Button>
-          <div className="bg-muted h-1.5 flex-1 overflow-hidden rounded">
-            <div className="bg-primary h-full rounded" style={{ width: `${Math.round(progress * 100)}%` }} />
-          </div>
+          <Slider
+            min={0}
+            max={Math.max(0.01, totalDuration)}
+            step={0.05}
+            value={[Math.min(totalDuration, progress * totalDuration)]}
+            onValueChange={([time]) => seekPreview(time ?? 0)}
+            className="flex-1 cursor-pointer"
+            aria-label="Preview position"
+          />
           <span className="text-muted-foreground w-14 text-right text-xs tabular-nums">{totalDuration.toFixed(1)}s</span>
         </div>
       )}
@@ -1470,6 +1655,13 @@ export default function Editor() {
             const f = Math.max(0, Math.min(front, sel.durationSec - 0.3 - back));
             const b = Math.max(0, Math.min(back, sel.durationSec - 0.3 - f));
             patchSegment(sel.id, { trimStart: f, trimEnd: b });
+            if (idxRef.current === previewIndex && videoRef.current) {
+              try {
+                videoRef.current.currentTime = f;
+              } catch {
+                /* metadata is not ready yet */
+              }
+            }
           };
           return (
             <div className="mt-3 rounded-lg border border-border/60 bg-background/40 p-3">

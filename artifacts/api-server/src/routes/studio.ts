@@ -18,6 +18,16 @@ const SegmentSchema = z.object({
   trimEnd: z.number().min(0).max(600).optional(),
 });
 
+function effectiveSegmentDuration(segment: z.infer<typeof SegmentSchema>) {
+  const duration = segment.durationSec;
+  if (segment.kind !== "video") return duration;
+  const minimumKept = Math.min(0.3, duration);
+  const maximumTotalTrim = Math.max(0, duration - minimumKept);
+  const front = Math.min(segment.trimStart ?? 0, maximumTotalTrim);
+  const back = Math.min(segment.trimEnd ?? 0, Math.max(0, maximumTotalTrim - front));
+  return Math.max(minimumKept, duration - front - back);
+}
+
 const RenderSchema = z.object({
   name: z.string().max(120).optional(),
   segments: z.array(SegmentSchema).min(1).max(500),
@@ -173,7 +183,7 @@ router.post("/studio/render", async (req, res) => {
 
   const resolution = input.resolution;
   const transition = input.transition;
-  const totalDuration = input.segments.reduce((sum, s) => sum + (s.durationSec ?? 0), 0);
+  const totalDuration = input.segments.reduce((sum, segment) => sum + effectiveSegmentDuration(segment), 0);
 
   // Freemium Remix Lab: admins/subscribers/trial are unlimited. Everyone else
   // gets FREE_EDITOR_EXPORTS_PER_MONTH free exports per calendar month, then a
