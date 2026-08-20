@@ -102,6 +102,14 @@ type JobRow = typeof jobsTable.$inferSelect;
 // manifest jsonb: credits are RESERVED up front at job creation and refunded
 // here on permanent failure; successfully rendered clips are persisted so a
 // job retry only regenerates the ones that failed (no re-paying for the rest).
+type PersistedStoryboardShot = {
+  index: number;
+  label: string;
+  startTime: number;
+  energy: number;
+  prompt: string;
+};
+
 type AiJobMeta = {
   reservedCredits?: number;
   reservedSubscriptionCredits?: number;
@@ -112,6 +120,7 @@ type AiJobMeta = {
   pendingRequests?: Record<string, string>; // clip index -> provider poll URL (submitted, not yet downloaded)
   retryAfter?: number; // epoch ms — queued job must not be claimed before this
   finalizeWithPartial?: boolean; // admin: stitch whatever clips exist, never call the provider
+  storyboard?: { shots?: unknown[] };
   // TEMPORARY, admin-only: call the real Runway API directly instead of via
   // Pixazo. Set by routes/jobs.ts at job creation. See
   // videoApis.ts ClipRequest.preferDirectRunway.
@@ -121,6 +130,25 @@ type AiJobMeta = {
 function aiMetaOf(job: JobRow): AiJobMeta {
   const m = (job as JobRow & { manifest?: unknown }).manifest;
   return m && typeof m === "object" ? (m as AiJobMeta) : {};
+}
+
+function storyboardShotsOf(job: JobRow): PersistedStoryboardShot[] {
+  const shots = aiMetaOf(job).storyboard?.shots;
+  if (!Array.isArray(shots)) return [];
+  return shots
+    .filter((value): value is PersistedStoryboardShot => {
+      if (!value || typeof value !== "object") return false;
+      const shot = value as Record<string, unknown>;
+      return (
+        Number.isFinite(shot.index) &&
+        typeof shot.label === "string" &&
+        Number.isFinite(shot.startTime) &&
+        Number.isFinite(shot.energy) &&
+        typeof shot.prompt === "string" &&
+        shot.prompt.trim().length > 0
+      );
+    })
+    .sort((a, b) => a.index - b.index);
 }
 
 async function readAiMeta(jobId: string): Promise<AiJobMeta> {
@@ -531,6 +559,7 @@ async function generateClips(
 }> {
   const provider = getActiveProvider((job as JobRow & { aiProvider?: string | null }).aiProvider ?? undefined);
   const { sections, clipDurationSec } = plan;
+  const storyboardShots = storyboardShotsOf(job);
   const clips: { buffer: Buffer; targetDuration: number; prompt: string }[] = new Array(sections.length);
   const refImageUrl = await loadReferenceImageUrl(job);
 
@@ -564,7 +593,17 @@ async function generateClips(
   const perClipTargetDuration = plan.targetOutputDuration / sections.length;
 
   for (let i = 0; i < sections.length; i++) {
-    const section = sections[i]!;
+    const storyboardShot = storyboardShots.length > 0
+      ? storyboardShots[i % storyboardShots.length]!
+      : null;
+    const section = storyboardShot
+      ? {
+          startTime: storyboardShot.startTime,
+          endTime: storyboardShot.startTime + clipDurationSec,
+          label: storyboardShot.label,
+          energy: storyboardShot.energy,
+        }
+      : sections[i]!;
     const targetDuration = Math.max(1, perClipTargetDuration);
     const clipDuration = clipDurationSec;
 
@@ -572,7 +611,7 @@ async function generateClips(
 
     // Build the prompt regardless of provider so it can be persisted as clip
     // metadata (and reused as the basis for a future remix of this clip).
-    const prompt = buildSectionPrompt(job, analysis, section);
+    const prompt = storyboardShot?.prompt ?? buildSectionPrompt(job, analysis, section);
 
     // 1) Reuse a previously-rendered clip if we have one (salvage on retry).
     if (persisted[i]) {

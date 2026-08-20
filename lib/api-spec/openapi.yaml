@@ -1144,6 +1144,47 @@ components:
           type: array
           items:
             type: integer
+        storyboard:
+          $ref: '#/components/schemas/JobStoryboard'
+
+    JobStoryboard:
+      type: object
+      required: [numClips, clipDurationSec, targetOutputDuration, shots, approximate]
+      properties:
+        numClips:
+          type: integer
+          minimum: 1
+        clipDurationSec:
+          type: number
+          minimum: 0
+        targetOutputDuration:
+          type: number
+          minimum: 0
+        approximate:
+          type: boolean
+        shots:
+          type: array
+          items:
+            $ref: '#/components/schemas/JobStoryboardShot'
+
+    JobStoryboardShot:
+      type: object
+      required: [index, label, startTime, energy, prompt]
+      properties:
+        index:
+          type: integer
+          minimum: 0
+        label:
+          type: string
+        startTime:
+          type: number
+          minimum: 0
+        energy:
+          type: number
+          minimum: 0
+          maximum: 1
+        prompt:
+          type: string
 
     CreateJobRequest:
       type: object

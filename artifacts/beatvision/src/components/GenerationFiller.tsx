@@ -17,8 +17,8 @@ const KIND_META: Record<FillerKind, { label: string; icon: typeof Lightbulb }> =
 };
 
 // A fixed, hand-picked rotation: mostly prompt tips and fun facts, with an
-// occasional podcast cross-promo mixed in — used in place of the (fake, since
-// there's no audio to analyse) Track Structure chart on silent-video jobs.
+// occasional podcast cross-promo mixed in. This is the fallback waiting
+// experience for older jobs that do not have a persisted storyboard.
 const ROTATION: FillerItem[] = [
   { kind: "prompt", text: "Naming a camera move — “slow dolly in”, “sweeping drone shot” — gives your clips cinematic energy." },
   { kind: "fact", text: "Standard film runs at 24 frames per second — every clip you're generating is built from hundreds of individual frames." },
@@ -39,9 +39,7 @@ const ROTATE_MS = 5500;
 
 /**
  * Rotating filler content (prompt tips, fun facts, and the occasional
- * podcast hint) shown in place of audio-analysis data during generation of
- * a silent (no-audio) video — there's no real song to analyse, so a fake
- * BPM/key/track-structure chart would just be misleading.
+ * podcast hint) shown while an active generation has no stored storyboard.
  */
 export default function GenerationFiller() {
   const [index, setIndex] = useState(0);

@@ -7,6 +7,7 @@
  */
 import type { JobManifestSegmentsItem } from "./jobManifestSegmentsItem";
 import type { JobManifestTransition } from "./jobManifestTransition";
+import type { JobStoryboard } from "./jobStoryboard";
 
 export interface JobManifest {
   segments?: JobManifestSegmentsItem[];
@@ -15,5 +16,6 @@ export interface JobManifest {
   /** @nullable */
   lyricsText?: string | null;
   clipIndexes?: number[];
+  storyboard?: JobStoryboard;
   [key: string]: unknown;
 }

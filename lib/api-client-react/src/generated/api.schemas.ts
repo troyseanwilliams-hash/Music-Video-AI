@@ -246,6 +246,31 @@ export const JobManifestSegmentsItemKind = {
   photo: "photo",
 } as const;
 
+export interface JobStoryboardShot {
+  /** @minimum 0 */
+  index: number;
+  label: string;
+  /** @minimum 0 */
+  startTime: number;
+  /**
+   * @minimum 0
+   * @maximum 1
+   */
+  energy: number;
+  prompt: string;
+}
+
+export interface JobStoryboard {
+  /** @minimum 1 */
+  numClips: number;
+  /** @minimum 0 */
+  clipDurationSec: number;
+  /** @minimum 0 */
+  targetOutputDuration: number;
+  approximate: boolean;
+  shots: JobStoryboardShot[];
+}
+
 export type JobManifestSegmentsItem = {
   kind?: JobManifestSegmentsItemKind;
   durationSec?: number;
@@ -267,6 +292,7 @@ export interface JobManifest {
   /** @nullable */
   lyricsText?: string | null;
   clipIndexes?: number[];
+  storyboard?: JobStoryboard;
   [key: string]: unknown;
 }
 

@@ -413,6 +413,13 @@ router.post("/jobs", async (req, res) => {
       // Runway engine hit the real Runway API instead of Pixazo's Runway route.
       manifest: {
         reservedCredits: creditCost,
+        storyboard: planShots({
+          prompt,
+          style,
+          character,
+          requestedDuration,
+          analysis: (audioAnalysis ?? null) as never,
+        }),
         ...(isAdmin && engine === "runway" ? { preferDirectRunway: true } : {}),
       } as unknown as Record<string, unknown>,
       prompt,

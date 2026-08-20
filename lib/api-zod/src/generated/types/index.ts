@@ -50,6 +50,8 @@ export * from "./jobPreviewClips";
 export * from "./jobRequestedDuration";
 export * from "./jobResolution";
 export * from "./jobStatus";
+export * from "./jobStoryboard";
+export * from "./jobStoryboardShot";
 export * from "./likeResponse";
 export * from "./listGalleryParams";
 export * from "./listJobsParams";

@@ -29,6 +29,7 @@ import SocialExportsPanel from "@/components/SocialExportsPanel";
 import LipSyncPanel from "@/components/LipSyncPanel";
 import ReferEarnCard from "@/components/ReferEarnCard";
 import GenerationFiller from "@/components/GenerationFiller";
+import GenerationStoryboard from "@/components/GenerationStoryboard";
 
 const TERMINAL_STATUSES = new Set(["ready", "failed"]);
 
@@ -421,14 +422,22 @@ export default function JobStatus() {
   // Remix Lab renders one final output video regardless of its timeline size.
   const isRemixJob = job.jobType === "editor_render";
   const isClipRemixJob = job.jobType === "remix";
+  const isGenerateJob =
+    job.jobType === "ai" ||
+    job.jobType == null ||
+    job.jobType === "ai_video";
   const manifest = job.manifest ?? {};
+  const storyboard = manifest.storyboard;
   const timelineItems = Array.isArray(manifest.segments) ? manifest.segments.length : 0;
   const selectedRemixClips = Array.isArray(manifest.clipIndexes) ? manifest.clipIndexes.length : 0;
   const previewClips = job.previewClips ?? {};
-  const completedClips = Object.keys(previewClips).length;
   // AI jobs use the server's authoritative scene plan. Other job types fall
   // back to the duration-aware estimate used by the progress model.
   const serverScenePlan = (job as { scenePlan?: { numClips?: number } }).scenePlan;
+  const completedClipIndexes = Object.keys(previewClips)
+    .map(Number)
+    .filter((index) => Number.isInteger(index) && index >= 0);
+  const completedClips = completedClipIndexes.length;
   const numClips = isRemixJob
     ? 1
     : isClipRemixJob
@@ -626,16 +635,20 @@ export default function JobStatus() {
                     </motion.p>
                   </AnimatePresence>
 
-                  {/* ── Storyboard: an ordered scene card per planned clip.
-                      Each card starts as a loading placeholder and becomes a
-                      playable preview the moment its clip finishes rendering
-                      -- well before the final stitch. Cards never move once
-                      placed, and earlier scenes stay visible while later
-                      ones are still generating. Once generation itself has
-                      finished (stitching or later) any slot that never got a
-                      clip is shown as unavailable -- it didn't make the cut
-                      (e.g. a salvage/partial-clip recovery), not "still
-                      loading" forever. ── */}
+                  {isGenerateJob && isActive && (
+                    storyboard ? (
+                      <GenerationStoryboard
+                        storyboard={storyboard}
+                        completedClipIndexes={completedClipIndexes}
+                        status={job.status ?? "queued"}
+                      />
+                    ) : (
+                      <GenerationFiller />
+                    )
+                  )}
+
+                  {/* ── Live scene previews: each clip appears here the moment it
+                      finishes rendering, well before the final stitch. ── */}
                   {showScenePreviews && (
                     <div className="space-y-2">
                       <div className="flex items-center gap-1.5 text-xs font-mono uppercase tracking-wide text-muted-foreground">
@@ -1013,9 +1026,6 @@ export default function JobStatus() {
           </div>
         )}
 
-        {/* ── Silent-video filler: no real audio to analyse, so swap the fake
-             track-structure chart for rotating prompt tips / fun facts / hints. ── */}
-        {noAudioJob && isActive && <GenerationFiller />}
       </div>
     </div>
   );

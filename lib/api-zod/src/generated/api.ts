@@ -197,6 +197,17 @@ export const ListJobsHeader = zod.object({
 
 export const listJobsResponseJobsItemClipStartTimeMin = 0;
 
+export const listJobsResponseJobsItemManifestOneStoryboardClipDurationSecMin = 0;
+
+export const listJobsResponseJobsItemManifestOneStoryboardTargetOutputDurationMin = 0;
+
+export const listJobsResponseJobsItemManifestOneStoryboardShotsItemIndexMin = 0;
+
+export const listJobsResponseJobsItemManifestOneStoryboardShotsItemStartTimeMin = 0;
+
+export const listJobsResponseJobsItemManifestOneStoryboardShotsItemEnergyMin = 0;
+export const listJobsResponseJobsItemManifestOneStoryboardShotsItemEnergyMax = 1;
+
 export const ListJobsResponse = zod.object({
   jobs: zod.array(
     zod.object({
@@ -357,6 +368,46 @@ export const ListJobsResponse = zod.object({
             resolution: zod.string().optional(),
             lyricsText: zod.string().nullish(),
             clipIndexes: zod.array(zod.number()).optional(),
+            storyboard: zod
+              .object({
+                numClips: zod.number().min(1),
+                clipDurationSec: zod
+                  .number()
+                  .min(
+                    listJobsResponseJobsItemManifestOneStoryboardClipDurationSecMin,
+                  ),
+                targetOutputDuration: zod
+                  .number()
+                  .min(
+                    listJobsResponseJobsItemManifestOneStoryboardTargetOutputDurationMin,
+                  ),
+                approximate: zod.boolean(),
+                shots: zod.array(
+                  zod.object({
+                    index: zod
+                      .number()
+                      .min(
+                        listJobsResponseJobsItemManifestOneStoryboardShotsItemIndexMin,
+                      ),
+                    label: zod.string(),
+                    startTime: zod
+                      .number()
+                      .min(
+                        listJobsResponseJobsItemManifestOneStoryboardShotsItemStartTimeMin,
+                      ),
+                    energy: zod
+                      .number()
+                      .min(
+                        listJobsResponseJobsItemManifestOneStoryboardShotsItemEnergyMin,
+                      )
+                      .max(
+                        listJobsResponseJobsItemManifestOneStoryboardShotsItemEnergyMax,
+                      ),
+                    prompt: zod.string(),
+                  }),
+                ),
+              })
+              .optional(),
           }),
           zod.null(),
         ])
@@ -536,6 +587,17 @@ export const GetJobHeader = zod.object({
 
 export const getJobResponseClipStartTimeMin = 0;
 
+export const getJobResponseManifestOneStoryboardClipDurationSecMin = 0;
+
+export const getJobResponseManifestOneStoryboardTargetOutputDurationMin = 0;
+
+export const getJobResponseManifestOneStoryboardShotsItemIndexMin = 0;
+
+export const getJobResponseManifestOneStoryboardShotsItemStartTimeMin = 0;
+
+export const getJobResponseManifestOneStoryboardShotsItemEnergyMin = 0;
+export const getJobResponseManifestOneStoryboardShotsItemEnergyMax = 1;
+
 export const GetJobResponse = zod.object({
   id: zod.string(),
   userId: zod.string(),
@@ -688,6 +750,36 @@ export const GetJobResponse = zod.object({
         resolution: zod.string().optional(),
         lyricsText: zod.string().nullish(),
         clipIndexes: zod.array(zod.number()).optional(),
+        storyboard: zod
+          .object({
+            numClips: zod.number().min(1),
+            clipDurationSec: zod
+              .number()
+              .min(getJobResponseManifestOneStoryboardClipDurationSecMin),
+            targetOutputDuration: zod
+              .number()
+              .min(getJobResponseManifestOneStoryboardTargetOutputDurationMin),
+            approximate: zod.boolean(),
+            shots: zod.array(
+              zod.object({
+                index: zod
+                  .number()
+                  .min(getJobResponseManifestOneStoryboardShotsItemIndexMin),
+                label: zod.string(),
+                startTime: zod
+                  .number()
+                  .min(
+                    getJobResponseManifestOneStoryboardShotsItemStartTimeMin,
+                  ),
+                energy: zod
+                  .number()
+                  .min(getJobResponseManifestOneStoryboardShotsItemEnergyMin)
+                  .max(getJobResponseManifestOneStoryboardShotsItemEnergyMax),
+                prompt: zod.string(),
+              }),
+            ),
+          })
+          .optional(),
       }),
       zod.null(),
     ])
@@ -1244,6 +1336,17 @@ export const GetDashboardStatsHeader = zod.object({
 
 export const getDashboardStatsResponseRecentJobsItemClipStartTimeMin = 0;
 
+export const getDashboardStatsResponseRecentJobsItemManifestOneStoryboardClipDurationSecMin = 0;
+
+export const getDashboardStatsResponseRecentJobsItemManifestOneStoryboardTargetOutputDurationMin = 0;
+
+export const getDashboardStatsResponseRecentJobsItemManifestOneStoryboardShotsItemIndexMin = 0;
+
+export const getDashboardStatsResponseRecentJobsItemManifestOneStoryboardShotsItemStartTimeMin = 0;
+
+export const getDashboardStatsResponseRecentJobsItemManifestOneStoryboardShotsItemEnergyMin = 0;
+export const getDashboardStatsResponseRecentJobsItemManifestOneStoryboardShotsItemEnergyMax = 1;
+
 export const GetDashboardStatsResponse = zod.object({
   totalJobs: zod.number(),
   completedJobs: zod.number(),
@@ -1415,6 +1518,46 @@ export const GetDashboardStatsResponse = zod.object({
               resolution: zod.string().optional(),
               lyricsText: zod.string().nullish(),
               clipIndexes: zod.array(zod.number()).optional(),
+              storyboard: zod
+                .object({
+                  numClips: zod.number().min(1),
+                  clipDurationSec: zod
+                    .number()
+                    .min(
+                      getDashboardStatsResponseRecentJobsItemManifestOneStoryboardClipDurationSecMin,
+                    ),
+                  targetOutputDuration: zod
+                    .number()
+                    .min(
+                      getDashboardStatsResponseRecentJobsItemManifestOneStoryboardTargetOutputDurationMin,
+                    ),
+                  approximate: zod.boolean(),
+                  shots: zod.array(
+                    zod.object({
+                      index: zod
+                        .number()
+                        .min(
+                          getDashboardStatsResponseRecentJobsItemManifestOneStoryboardShotsItemIndexMin,
+                        ),
+                      label: zod.string(),
+                      startTime: zod
+                        .number()
+                        .min(
+                          getDashboardStatsResponseRecentJobsItemManifestOneStoryboardShotsItemStartTimeMin,
+                        ),
+                      energy: zod
+                        .number()
+                        .min(
+                          getDashboardStatsResponseRecentJobsItemManifestOneStoryboardShotsItemEnergyMin,
+                        )
+                        .max(
+                          getDashboardStatsResponseRecentJobsItemManifestOneStoryboardShotsItemEnergyMax,
+                        ),
+                      prompt: zod.string(),
+                    }),
+                  ),
+                })
+                .optional(),
             }),
             zod.null(),
           ])
