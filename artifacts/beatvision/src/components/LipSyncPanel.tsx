@@ -1,15 +1,23 @@
 import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Loader2, Smile, Upload } from "lucide-react";
 import { useGetDashboardStats } from "@workspace/api-client-react";
-import { canAffordCredits, calculateLipsyncCost, LIPSYNC_MIN_SECONDS, LIPSYNC_MAX_SECONDS } from "@/lib/creditPricing";
+import {
+  canAffordCredits,
+  calculateLipsyncCost,
+  LIPSYNC_DEFAULT_SECONDS,
+  LIPSYNC_MAX_SECONDS,
+  LIPSYNC_MIN_SECONDS,
+} from "@/lib/creditPricing";
 import TopUpRequiredDialog from "@/components/TopUpRequiredDialog";
 
 // Lip sync is billed per second (OmniHuman ~$0.16/s at 1.5x markup). Mirrors
 // the server's calculateLipsyncCost() in lib/creditCost.ts exactly, so the
 // price shown here never drifts from what's actually charged.
-const LIP_OPTIONS = [5, 10, 15, 20, 30].filter((s) => s >= LIPSYNC_MIN_SECONDS && s <= LIPSYNC_MAX_SECONDS);
+const LIP_PRESETS = [5, 10, 15, 20, 30].filter((s) => s >= LIPSYNC_MIN_SECONDS && s <= LIPSYNC_MAX_SECONDS);
 
 async function presignAndUpload(file: File): Promise<string> {
   const res = await fetch("/api/storage/uploads/request-url", {
@@ -39,18 +47,28 @@ function clampStartTime(startTime: number, totalDuration: number | null, clipDur
   return Math.max(0, Math.min(startTime, Math.max(0, totalDuration - clipDuration)));
 }
 
+function clampDuration(seconds: number | null | undefined): number {
+  return Math.min(
+    Math.max(Math.round(seconds ?? LIPSYNC_DEFAULT_SECONDS), LIPSYNC_MIN_SECONDS),
+    LIPSYNC_MAX_SECONDS,
+  );
+}
+
 export default function LipSyncPanel({
   videoId,
   audioDurationSeconds,
   initialStartTime = 0,
+  initialSeconds = LIPSYNC_DEFAULT_SECONDS,
 }: {
   videoId: string;
   audioDurationSeconds?: number | null;
   initialStartTime?: number | null;
+  initialSeconds?: number | null;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
-  const [seconds, setSeconds] = useState(15);
+  const [enabled, setEnabled] = useState(false);
+  const [seconds, setSeconds] = useState(() => clampDuration(initialSeconds));
   const totalDuration =
     typeof audioDurationSeconds === "number" && Number.isFinite(audioDurationSeconds) && audioDurationSeconds > 0
       ? audioDurationSeconds
@@ -75,6 +93,7 @@ export default function LipSyncPanel({
   }, [totalDuration, seconds]);
 
   async function run(file: File) {
+    if (!enabled) return;
     // Proactive credit check — show the top-up modal instead of letting the
     // user hit a backend failure after submitting.
     if (!canAffordCredits(cost, balance)) {
@@ -111,88 +130,133 @@ export default function LipSyncPanel({
     <>
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-base font-semibold">
-          <Smile className="h-4 w-4 text-primary" /> Lip Sync
-          <span className="rounded-full border border-primary/25 bg-primary/15 px-2 py-0.5 text-[10px] font-medium text-primary">New</span>
-        </CardTitle>
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle className="flex items-center gap-2 text-base font-semibold">
+            <Smile className="h-4 w-4 text-primary" /> Lip Sync
+            <span className="rounded-full border border-primary/25 bg-primary/15 px-2 py-0.5 text-[10px] font-medium text-primary">Optional</span>
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            <label htmlFor={`enable-lipsync-${videoId}`} className="text-xs font-medium text-muted-foreground">
+              {enabled ? "On" : "Off"}
+            </label>
+            <Switch
+              id={`enable-lipsync-${videoId}`}
+              checked={enabled}
+              disabled={busy}
+              onCheckedChange={setEnabled}
+            />
+          </div>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Upload a face photo and we'll animate it to sing a short clip of this video's song. Takes a few minutes and
-          saves as a new video in your library.
+          {enabled
+            ? "Upload a face photo and we'll animate it to sing a selected clip of this video's song. Takes a few minutes and saves as a new video in your library."
+            : "Optional add-on. Turn it on when you want to animate a face photo to sing part of this video's song."}
         </p>
 
-        <div>
-          <label className="text-sm font-medium">Clip length</label>
-          <div className="grid grid-cols-5 gap-2 mt-1.5">
-            {LIP_OPTIONS.map((s) => (
-              <button
-                key={s}
-                type="button"
+        {enabled && (
+          <>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <label htmlFor={`lipsync-duration-${videoId}`} className="text-sm font-medium">Clip length</label>
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    id={`lipsync-duration-${videoId}`}
+                    type="number"
+                    min={LIPSYNC_MIN_SECONDS}
+                    max={LIPSYNC_MAX_SECONDS}
+                    step={1}
+                    value={seconds}
+                    disabled={busy}
+                    onChange={(event) => setSeconds(clampDuration(Number(event.target.value)))}
+                    className="h-8 w-16 text-center text-xs tabular-nums"
+                    aria-label="Lip Sync clip length in seconds"
+                  />
+                  <span className="text-xs text-muted-foreground">sec</span>
+                </div>
+              </div>
+              <input
+                type="range"
+                min={LIPSYNC_MIN_SECONDS}
+                max={LIPSYNC_MAX_SECONDS}
+                step={1}
+                value={seconds}
                 disabled={busy}
-                onClick={() => setSeconds(s)}
-                className={`rounded-lg border px-2 py-2 text-xs font-medium transition-colors disabled:opacity-50 ${seconds === s ? "border-primary bg-primary/10 text-primary" : "border-border bg-background/40 text-muted-foreground hover:border-primary/50"}`}
-              >
-                {s}s
-              </button>
-            ))}
-          </div>
-          <p className="text-[11px] text-muted-foreground mt-1.5">
-            <strong>{cost} credits</strong> — billed per second, synced to {startTime > 0 ? rangeLabel : `the first ${seconds}s`} of the song.
-          </p>
-        </div>
-        {canChooseRange && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-3">
-              <label htmlFor={`lipsync-range-${videoId}`} className="text-sm font-medium">Song range</label>
-              <span className="text-xs font-medium tabular-nums text-primary">{rangeLabel}</span>
+                onChange={(event) => setSeconds(Number(event.target.value))}
+                className="w-full accent-primary disabled:opacity-50"
+              />
+              <div className="flex flex-wrap gap-1.5">
+                {LIP_PRESETS.map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setSeconds(preset)}
+                    className={`rounded-md border px-2 py-1 text-[11px] font-medium transition-colors disabled:opacity-50 ${seconds === preset ? "border-primary bg-primary/10 text-primary" : "border-border bg-background/40 text-muted-foreground hover:border-primary/50"}`}
+                  >
+                    {preset}s
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Choose any whole-second length from {LIPSYNC_MIN_SECONDS}–{LIPSYNC_MAX_SECONDS} seconds. <strong>{cost} credits</strong> — billed per second.
+              </p>
             </div>
-            <input
-              id={`lipsync-range-${videoId}`}
-              type="range"
-              min={0}
-              max={maxStartTime}
-              step={1}
-              value={Math.min(startTime, maxStartTime)}
-              disabled={busy}
-              onChange={(event) => setStartTime(Number(event.target.value))}
-              className="w-full accent-primary disabled:opacity-50"
-            />
-            <p className="text-[11px] text-muted-foreground">
-              Choose the section of your song the avatar should perform. Your video remains the full track.
-            </p>
-          </div>
-        )}
-
-        <input
-          ref={inputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) run(f);
-            e.target.value = "";
-          }}
-        />
-        <div className="flex items-center gap-3">
-          <Button variant="outline" disabled={busy} onClick={() => inputRef.current?.click()}>
-            {busy ? (
-              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Syncing… (a few min)</>
-            ) : (
-              <><Upload className="mr-2 h-4 w-4" /> Upload a face · {cost} cr</>
+            {canChooseRange && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <label htmlFor={`lipsync-range-${videoId}`} className="text-sm font-medium">Song range</label>
+                  <span className="text-xs font-medium tabular-nums text-primary">{rangeLabel}</span>
+                </div>
+                <input
+                  id={`lipsync-range-${videoId}`}
+                  type="range"
+                  min={0}
+                  max={maxStartTime}
+                  step={1}
+                  value={Math.min(startTime, maxStartTime)}
+                  disabled={busy}
+                  onChange={(event) => setStartTime(Number(event.target.value))}
+                  className="w-full accent-primary disabled:opacity-50"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Choose the section of your song the avatar should perform. Your video remains the full track.
+                </p>
+              </div>
             )}
-          </Button>
-          {facePreview && !result && (
-            <img src={facePreview} alt="Uploaded face photo preview" className="h-16 w-16 rounded-lg border border-border object-cover" />
-          )}
-        </div>
-        {error && <p className="text-sm text-destructive">{error}</p>}
-        {result && (
-          <div className="space-y-2">
-            <video src={result.url} controls playsInline className="w-full max-w-md rounded-lg border border-border bg-black" />
-            <p className="text-xs text-muted-foreground">Saved to your library as a new video.</p>
-          </div>
+
+            <input
+              ref={inputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) run(f);
+                e.target.value = "";
+              }}
+            />
+            <div className="flex items-center gap-3">
+              <Button variant="outline" disabled={busy} onClick={() => inputRef.current?.click()}>
+                {busy ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Syncing… (a few min)</>
+                ) : (
+                  <><Upload className="mr-2 h-4 w-4" /> Upload a face · {cost} cr</>
+                )}
+              </Button>
+              {facePreview && !result && (
+                <img src={facePreview} alt="Uploaded face photo preview" className="h-16 w-16 rounded-lg border border-border object-cover" />
+              )}
+            </div>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            {result && (
+              <div className="space-y-2">
+                <video src={result.url} controls playsInline className="w-full max-w-md rounded-lg border border-border bg-black" />
+                <p className="text-xs text-muted-foreground">Saved to your library as a new video.</p>
+              </div>
+            )}
+          </>
         )}
       </CardContent>
     </Card>

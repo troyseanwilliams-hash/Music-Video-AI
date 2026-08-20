@@ -806,6 +806,7 @@ export default function JobStatus() {
             videoId={job.videoId}
             audioDurationSeconds={typeof analysis?.durationSeconds === "number" ? analysis.durationSeconds : undefined}
             initialStartTime={typeof job.clipStartTime === "number" ? job.clipStartTime : 0}
+            initialSeconds={typeof analysis?.lipSyncDurationSeconds === "number" ? analysis.lipSyncDurationSeconds : undefined}
           />
         )}
 

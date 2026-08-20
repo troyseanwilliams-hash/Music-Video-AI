@@ -15,7 +15,18 @@ import {
   VideoStyle,
   type CreateJobRequest,
 } from "@workspace/api-client-react";
-import { estimateCreditCost, canAffordCredits, LYRIC_ALIGN_COST, LYRIC_OVERLAY_COST, MAX_FULL_SECONDS, PROVIDER_LABELS, type AiProvider } from "@/lib/creditPricing";
+import {
+  estimateCreditCost,
+  canAffordCredits,
+  LIPSYNC_DEFAULT_SECONDS,
+  LIPSYNC_MAX_SECONDS,
+  LIPSYNC_MIN_SECONDS,
+  LYRIC_ALIGN_COST,
+  LYRIC_OVERLAY_COST,
+  MAX_FULL_SECONDS,
+  PROVIDER_LABELS,
+  type AiProvider,
+} from "@/lib/creditPricing";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -218,6 +229,11 @@ export default function Generate() {
   const [requestedDuration, setRequestedDuration] = useState<CreateJobRequestRequestedDuration>(CreateJobRequestRequestedDuration.NUMBER_10);
   const [aiProvider, setAiProvider] = useState<AiProvider>("runway");
   const [clipStartTime, setClipStartTime] = useState(0);
+  // Full-track renders do not need a Lip Sync segment. This is intentionally
+  // opt-in; when enabled, the selection becomes the starting configuration for
+  // the later, separately charged Lip Sync add-on.
+  const [fullTrackLipSyncEnabled, setFullTrackLipSyncEnabled] = useState(false);
+  const [fullTrackLipSyncSeconds, setFullTrackLipSyncSeconds] = useState(LIPSYNC_DEFAULT_SECONDS);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [errorDialog, setErrorDialog] = useState<ErrorDialogState>({ open: false, title: "", message: "" });
   const [copyrightAcknowledged, setCopyrightAcknowledged] = useState(false);
@@ -672,6 +688,7 @@ export default function Generate() {
           aiProvider,
           clipStartTime:
             sourceType === CreateJobRequestAudioSourceType.upload &&
+            (!fullTrackSelected || fullTrackLipSyncEnabled) &&
             clipStartTime > 0
               ? clipStartTime
               : null,
@@ -680,7 +697,12 @@ export default function Generate() {
             analyzeAudio.isSuccess &&
             analysisForPath === objectPath &&
             analyzeAudio.data
-              ? analyzeAudio.data
+              ? {
+                  ...analyzeAudio.data,
+                  ...(fullTrackSelected && fullTrackLipSyncEnabled
+                    ? { lipSyncDurationSeconds: fullTrackLipSyncSeconds }
+                    : {}),
+                }
               : null,
           // Copyright/ownership attestation (gated by the checkbox above) —
           // not applicable to a silent "no audio" render, so it's implicitly
@@ -1256,6 +1278,7 @@ export default function Generate() {
                         setUploadedFileName(null);
                         setUploadedFile(null);
                         setClipStartTime(0);
+                        setFullTrackLipSyncEnabled(false);
                         setUploadError(null);
                       }}
                     >
@@ -1265,31 +1288,92 @@ export default function Generate() {
                 </div>
               )}
 
-               {/* ── Waveform Clip Selector — Full track retains this as the
-                   preferred starting point for a later Lip Sync pass. ── */}
+                {/* ── Waveform Clip Selector — Full-track Lip Sync is opt-in. ── */}
                 {uploadedFile && (
                 <div className="rounded-xl border border-primary/30 bg-background/40 p-4 space-y-2">
                   <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-primary mb-3">
                     <Clock className="h-4 w-4 shrink-0" />
-                     <span>{fullTrackSelected ? "Choose lip sync range" : "Select clip section"}</span>
-                    <span className="text-muted-foreground font-normal text-xs sm:ml-auto">
-                       {fullTrackSelected
-                         ? "Drag to choose a 15s lip-sync window"
-                         : `Drag to choose your ${durationToSeconds(requestedDuration) ?? 10}s window`}
+                    <span>
+                      {fullTrackSelected
+                        ? "Lip Sync section"
+                        : "Select clip section"}
                     </span>
+                    {fullTrackSelected ? (
+                      <div className="ml-auto flex items-center gap-2">
+                        <Label htmlFor="full-track-lipsync-enabled" className="text-xs font-medium text-muted-foreground">
+                          {fullTrackLipSyncEnabled ? "On" : "Off"}
+                        </Label>
+                        <Switch
+                          id="full-track-lipsync-enabled"
+                          checked={fullTrackLipSyncEnabled}
+                          onCheckedChange={(enabled) => {
+                            setFullTrackLipSyncEnabled(enabled);
+                            if (!enabled) setClipStartTime(0);
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground font-normal text-xs sm:ml-auto">
+                        Drag to choose your {durationToSeconds(requestedDuration) ?? 10}s window
+                      </span>
+                    )}
                   </div>
-                  <AudioWaveformSelector
-                    file={uploadedFile}
-                     clipDurationSec={fullTrackSelected ? 15 : (durationToSeconds(requestedDuration) ?? 10)}
-                    clipStartTime={clipStartTime}
-                    onClipStartTimeChange={setClipStartTime}
-                  />
-                   {fullTrackSelected && (
-                     <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
-                       <span className="font-medium text-primary">Full track stays intact.</span>{" "}
-                       This range is saved as the starting point for Lip Sync after your video is ready; you can still change it then.
-                     </div>
-                   )}
+                  {fullTrackSelected && !fullTrackLipSyncEnabled ? (
+                    <div className="rounded-lg border border-border/60 bg-background/30 px-3 py-3 text-xs text-muted-foreground">
+                      Lip Sync is off by default. Turn it on to choose a saved song range and clip duration for the optional add-on after this full-track video is ready.
+                    </div>
+                  ) : (
+                    <>
+                      {fullTrackSelected && (
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
+                          <div>
+                            <p className="text-xs font-medium text-primary">Lip Sync clip length</p>
+                            <p className="text-[11px] text-muted-foreground">Choose any whole-second length from {LIPSYNC_MIN_SECONDS}–{LIPSYNC_MAX_SECONDS} seconds.</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="number"
+                              min={LIPSYNC_MIN_SECONDS}
+                              max={LIPSYNC_MAX_SECONDS}
+                              step={1}
+                              value={fullTrackLipSyncSeconds}
+                              onChange={(event) => {
+                                const requested = Number(event.target.value);
+                                setFullTrackLipSyncSeconds(
+                                  Math.min(Math.max(Math.round(requested || LIPSYNC_DEFAULT_SECONDS), LIPSYNC_MIN_SECONDS), LIPSYNC_MAX_SECONDS),
+                                );
+                              }}
+                              className="h-8 w-16 text-center text-xs tabular-nums"
+                              aria-label="Preferred Lip Sync clip length in seconds"
+                            />
+                            <span className="text-xs text-muted-foreground">sec</span>
+                          </div>
+                          <input
+                            type="range"
+                            min={LIPSYNC_MIN_SECONDS}
+                            max={LIPSYNC_MAX_SECONDS}
+                            step={1}
+                            value={fullTrackLipSyncSeconds}
+                            onChange={(event) => setFullTrackLipSyncSeconds(Number(event.target.value))}
+                            className="w-full accent-primary"
+                            aria-label="Preferred Lip Sync clip length"
+                          />
+                        </div>
+                      )}
+                      <AudioWaveformSelector
+                        file={uploadedFile}
+                        clipDurationSec={fullTrackSelected ? fullTrackLipSyncSeconds : (durationToSeconds(requestedDuration) ?? 10)}
+                        clipStartTime={clipStartTime}
+                        onClipStartTimeChange={setClipStartTime}
+                      />
+                      {fullTrackSelected && (
+                        <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+                          <span className="font-medium text-primary">Full track stays intact.</span>{" "}
+                          This range and duration are saved as the starting configuration for optional Lip Sync after your video is ready.
+                        </div>
+                      )}
+                    </>
+                  )}
 
                   {/* ── Audio Analysis Badges ── */}
                   <div className="pt-3 border-t border-border/30 mt-1">

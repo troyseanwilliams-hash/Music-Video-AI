@@ -30,9 +30,10 @@ const LIPSYNC_USD_PER_SECOND = 0.16;
 const LIPSYNC_MARKUP = 1.5;
 export const LIPSYNC_MIN_SECONDS = 5;
 export const LIPSYNC_MAX_SECONDS = 30;
+export const LIPSYNC_DEFAULT_SECONDS = 15;
 export const LIPSYNC_CREDITS_PER_SECOND = 16;
 export function calculateLipsyncCost(seconds: number | null | undefined): number {
-  const s = Math.min(Math.max(Math.round(seconds || 15), LIPSYNC_MIN_SECONDS), LIPSYNC_MAX_SECONDS);
+  const s = Math.min(Math.max(Math.round(seconds || LIPSYNC_DEFAULT_SECONDS), LIPSYNC_MIN_SECONDS), LIPSYNC_MAX_SECONDS);
   return Math.ceil((s * LIPSYNC_USD_PER_SECOND * LIPSYNC_MARKUP) / USD_PER_CREDIT);
 }
 
