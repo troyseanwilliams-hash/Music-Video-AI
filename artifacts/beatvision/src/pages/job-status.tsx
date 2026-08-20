@@ -395,9 +395,14 @@ export default function JobStatus() {
     !jobAudio.audioSourceUrl;
   const errInfo = categoriseError(job.errorMessage);
 
-  // Estimate number of clips for the progress hint
-  let numClips = 3;
-  if (durVal && durVal !== "full") {
+  // Authoritative scene count from the server (jobs.ts resolveScenePlan --
+  // the SAME formula used for billing/generation, getClipPlan), not a guess.
+  // Falls back to the old rough heuristic only for job types that don't get
+  // a scenePlan (e.g. remix/editor renders, which don't use this grid the
+  // same way) so nothing regresses for those.
+  const serverScenePlan = (job as { scenePlan?: { numClips?: number } } | undefined)?.scenePlan;
+  let numClips = serverScenePlan?.numClips ?? 3;
+  if (!serverScenePlan && durVal && durVal !== "full") {
     const d = parseInt(durVal, 10);
     const clipSec = d <= 5 ? 5 : 10;
     numClips = Math.max(1, Math.ceil(d / clipSec));
@@ -405,8 +410,15 @@ export default function JobStatus() {
   const clipHint = inferClipProgress(job.status ?? "", displayPercent, { numClips });
   const previewClips =
     (job as { previewClips?: Record<string, string> } | undefined)?.previewClips ?? {};
+  // Defensive floor: never render fewer slots than scenes we've actually
+  // received, even if the plan estimate is somehow stale (e.g. requested
+  // before audio analysis finished) -- a completed scene must never be
+  // silently dropped from the grid.
+  const knownClipIndexes = Object.keys(previewClips).map((k) => parseInt(k, 10)).filter((n) => !Number.isNaN(n));
+  const highestKnownIndex = knownClipIndexes.length ? Math.max(...knownClipIndexes) : -1;
+  const gridSlots = Math.max(numClips, highestKnownIndex + 1);
   const showScenePreviews =
-    (job.status === "generating" || job.status === "stitching") && numClips > 0;
+    (job.status === "generating" || job.status === "stitching") && gridSlots > 0;
 
   function copyLink() {
     navigator.clipboard.writeText(window.location.href).then(() => {
@@ -580,26 +592,45 @@ export default function JobStatus() {
                     </motion.p>
                   </AnimatePresence>
 
-                  {/* ── Live scene previews: each clip appears here the moment it
-                      finishes rendering, well before the final stitch. ── */}
+                  {/* ── Storyboard: an ordered scene card per planned clip.
+                      Each card starts as a loading placeholder and becomes a
+                      playable preview the moment its clip finishes rendering
+                      -- well before the final stitch. Cards never move once
+                      placed, and earlier scenes stay visible while later
+                      ones are still generating. Once generation itself has
+                      finished (stitching or later) any slot that never got a
+                      clip is shown as unavailable -- it didn't make the cut
+                      (e.g. a salvage/partial-clip recovery), not "still
+                      loading" forever. ── */}
                   {showScenePreviews && (
                     <div className="space-y-2">
                       <div className="flex items-center gap-1.5 text-xs font-mono uppercase tracking-wide text-muted-foreground">
                         <Clapperboard className="h-3.5 w-3.5" />
-                        Scenes
+                        Storyboard
                         <span className="text-muted-foreground/60">
-                          {Object.keys(previewClips).length}/{numClips}
+                          {Object.keys(previewClips).length}/{gridSlots}
                         </span>
                       </div>
                       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
-                        {Array.from({ length: numClips }).map((_, i) => {
+                        {Array.from({ length: gridSlots }).map((_, i) => {
                           const clipUrl = previewClips[String(i)];
+                          // Generation (new clips being created) is done once the
+                          // job has moved past "generating" -- any slot still
+                          // empty at that point won't ever fill in, so it reads
+                          // as unavailable instead of an endless loading shimmer.
+                          const generationComplete = job.status !== "generating";
+                          const cardState: "ready" | "loading" | "unavailable" = clipUrl
+                            ? "ready"
+                            : generationComplete
+                              ? "unavailable"
+                              : "loading";
                           return (
                             <div
                               key={i}
                               className="relative aspect-video rounded-md overflow-hidden border border-border bg-secondary/40"
+                              aria-label={`Scene ${i + 1} of ${gridSlots}: ${cardState}`}
                             >
-                              {clipUrl ? (
+                              {cardState === "ready" ? (
                                 <motion.video
                                   initial={{ opacity: 0, scale: 1.03 }}
                                   animate={{ opacity: 1, scale: 1 }}
@@ -611,6 +642,13 @@ export default function JobStatus() {
                                   playsInline
                                   autoPlay
                                 />
+                              ) : cardState === "unavailable" ? (
+                                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-secondary/60">
+                                  <X className="h-3.5 w-3.5 text-muted-foreground/40" />
+                                  <span className="text-[10px] font-mono text-muted-foreground/40">
+                                    {i + 1}
+                                  </span>
+                                </div>
                               ) : (
                                 <div className="absolute inset-0 flex items-center justify-center">
                                   <motion.div

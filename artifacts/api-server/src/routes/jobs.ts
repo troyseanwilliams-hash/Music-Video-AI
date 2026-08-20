@@ -12,7 +12,7 @@ import {
   ListJobsQueryParams,
   GetJobParams,
 } from "@workspace/api-zod";
-import { calculateCreditCost, calculateRemixCost, LYRIC_OVERLAY_COST, MAX_FULL_SECONDS } from "../lib/creditCost.js";
+import { calculateCreditCost, calculateRemixCost, LYRIC_OVERLAY_COST, MAX_FULL_SECONDS, getClipPlan } from "../lib/creditCost.js";
 import { getUserTier, canRender4k } from "../lib/tier.js";
 import { planShots } from "../lib/shotPlan.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
@@ -32,6 +32,26 @@ type AiJobMeta = {
 // serves thumbnails and finished videos. Lets the job-status page show each
 // scene as soon as it's rendered, instead of only after the whole video is
 // stitched together.
+// Authoritative scene count for the live generation preview grid, computed
+// with the SAME formula used for billing (getClipPlan/fullClipCount) and by
+// the worker's buildGenerationPlan -- so the preview never under-counts
+// relative to what's actually being generated (the bug: the frontend used to
+// guess its own numClips with a simplified formula that maxed out around 3
+// for "full" jobs, silently truncating the grid for anything longer).
+// Only meaningful for the AI generation pipeline -- editor/remix jobs render
+// differently and don't have this kind of clip plan.
+function resolveScenePlan(job: {
+  jobType?: string | null;
+  requestedDuration?: string | null;
+  audioAnalysis?: unknown;
+}): { numClips: number } | undefined {
+  if (job.jobType && job.jobType !== "ai") return undefined;
+  const songDurationSec = (job.audioAnalysis as { durationSeconds?: number } | null | undefined)
+    ?.durationSeconds;
+  const { numClips } = getClipPlan(job.requestedDuration, songDurationSec);
+  return { numClips };
+}
+
 function resolvePreviewClips(manifest: unknown): Record<string, string> | undefined {
   const meta = manifest && typeof manifest === "object" ? (manifest as AiJobMeta) : {};
   const partial = meta.partialClips;
@@ -429,6 +449,8 @@ router.get("/jobs/:id", async (req, res) => {
   const jobData: Record<string, unknown> = { ...job[0] };
   const previewClips = resolvePreviewClips(job[0].manifest);
   if (previewClips) jobData.previewClips = previewClips;
+  const scenePlan = resolveScenePlan(job[0]);
+  if (scenePlan) jobData.scenePlan = scenePlan;
   if (job[0].videoId && job[0].status === "ready") {
     const storageService = new ObjectStorageService();
     jobData.videoUrl = await storageService.getVideoSignedUrl(job[0].videoId);
@@ -475,7 +497,12 @@ router.get("/jobs/:id/events", async (req, res) => {
 
   const sendJob = (job: typeof existing[0]) => {
     const previewClips = resolvePreviewClips(job.manifest);
-    const payload = previewClips ? { ...job, previewClips } : job;
+    const scenePlan = resolveScenePlan(job);
+    const payload = {
+      ...job,
+      ...(previewClips ? { previewClips } : {}),
+      ...(scenePlan ? { scenePlan } : {}),
+    };
     res.write(`data: ${JSON.stringify(payload)}\n\n`);
   };
 
