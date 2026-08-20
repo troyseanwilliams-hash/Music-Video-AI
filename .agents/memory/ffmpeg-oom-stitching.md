@@ -22,6 +22,14 @@ on long timelines despite existing mitigations (720p cap, ultrafast preset, glob
 normalized segments) — xfade errors out on mismatched input video timebases
 (`timebase (1/15360) do not match ... (1/30000)`).
 
+3. Normalized scene clips must not be re-encoded merely to attach the soundtrack. Concatenate
+   the normalized video streams and stream-copy video while muxing audio; reserve full-video
+   encoding for filters that truly require decoded frames (captions/watermarks).
+
+**Why:** a six-scene full-track render completed every paid provider call, then repeatedly hit
+the fixed 12-minute deadline during an unnecessary final libx264 encode.
+
 **How to apply:** any new ffmpeg encode path in editorStitcher/videoStitcher (both api-server
 AND worker copies — keep in lockstep) needs the output-side `-threads 2`, and multi-input
-filter graphs should be avoided in favor of pairwise/sequential processing.
+filter graphs should be avoided in favor of pairwise/sequential processing. Duration-aware
+timeouts are appropriate only for unavoidable full-video encodes.

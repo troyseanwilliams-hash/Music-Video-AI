@@ -35,11 +35,44 @@ function runFfmpeg(cmd: ffmpeg.FfmpegCommand): Promise<void> {
   });
 }
 
+// A short render should never wait forever, but long caption/watermark encodes
+// legitimately need more than 12 minutes on the production VM. Scale the
+// deadline with output duration while keeping a hard upper bound.
+const MIN_FFMPEG_TIMEOUT_MS = 12 * 60 * 1000;
+const MAX_FFMPEG_TIMEOUT_MS = 45 * 60 * 1000;
+
+function encodeTimeoutForDuration(totalDurationSeconds: number): number {
+  const durationScaled = Math.ceil(Math.max(1, totalDurationSeconds) * 4_000);
+  return Math.min(MAX_FFMPEG_TIMEOUT_MS, Math.max(MIN_FFMPEG_TIMEOUT_MS, durationScaled));
+}
+
+function runFfmpegWithTimeout(
+  cmd: ffmpeg.FfmpegCommand,
+  timeoutMs = MIN_FFMPEG_TIMEOUT_MS,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try { cmd.kill("SIGKILL"); } catch { /* ignore */ }
+      reject(new Error(`ffmpeg processing exceeded ${Math.ceil(timeoutMs / 60_000)} minutes`));
+    }, timeoutMs);
+    cmd
+      .on("end", () => { if (!settled) { settled = true; clearTimeout(timer); resolve(); } })
+      .on("error", (err) => { if (!settled) { settled = true; clearTimeout(timer); reject(err); } })
+      .run();
+  });
+}
+
 // Burns a small semi-transparent "AIBeatSync" watermark (bottom-right) onto a
 // finished video. Used for Starter-tier exports so shared videos market the site
 // (Pro/Studio render clean). Returns the watermarked buffer; on any failure it
 // returns the original so a watermark hiccup never fails a render.
-export async function applyWatermark(videoBuffer: Buffer): Promise<Buffer> {
+export async function applyWatermark(
+  videoBuffer: Buffer,
+  totalDurationSeconds = 0,
+): Promise<Buffer> {
   const tmpDir = join(tmpdir(), `bv_wm_${randomUUID()}`);
   const inPath = join(tmpDir, "in.mp4");
   const outPath = join(tmpDir, "out.mp4");
@@ -49,14 +82,16 @@ export async function applyWatermark(videoBuffer: Buffer): Promise<Buffer> {
     const draw =
       "drawtext=text='Made with AIBeatSync · aibeatsync.com':fontcolor=white@0.85:fontsize=h/28:" +
       "box=1:boxcolor=black@0.35:boxborderw=8:x=w-text_w-24:y=h-text_h-24";
-    await runFfmpeg(
+    await runFfmpegWithTimeout(
       ffmpeg(inPath)
         .videoFilters(draw)
         .outputOptions([
-          "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+          "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-pix_fmt", "yuv420p",
+          "-threads", "2",
           "-c:a", "copy", "-movflags", "+faststart",
         ])
         .output(outPath),
+      encodeTimeoutForDuration(totalDurationSeconds),
     );
     return await readFile(outPath);
   } catch {
@@ -64,27 +99,6 @@ export async function applyWatermark(videoBuffer: Buffer): Promise<Buffer> {
   } finally {
     await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
   }
-}
-
-// Hard-kill ffmpeg if it exceeds the timeout. Converts an infinite hang (e.g.
-// OOM-kill silently disappearing, 4K encode on a memory-constrained VM) into a
-// thrown error so the job fails visibly instead of blocking the worker forever.
-const FFMPEG_TIMEOUT_MS = 12 * 60 * 1000; // 12 minutes per ffmpeg command
-
-function runFfmpegWithTimeout(cmd: ffmpeg.FfmpegCommand, timeoutMs = FFMPEG_TIMEOUT_MS): Promise<void> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      try { cmd.kill("SIGKILL"); } catch { /* ignore */ }
-      reject(new Error(`ffmpeg timed out after ${timeoutMs / 60_000} minutes — the video may be too large or the server ran out of memory`));
-    }, timeoutMs);
-    cmd
-      .on("end", () => { if (!settled) { settled = true; clearTimeout(timer); resolve(); } })
-      .on("error", (err) => { if (!settled) { settled = true; clearTimeout(timer); reject(err); } })
-      .run();
-  });
 }
 
 async function trimOrLoopClip(
@@ -216,33 +230,53 @@ export async function stitchVideoClips(input: StitchInput): Promise<StitchResult
         .output(stitchedPath),
     );
 
-    const outputOptions = hasAudio
-      ? [
+    const hasLyrics = !!input.lyricsText?.trim();
+    const outputOptions = hasLyrics
+      ? hasAudio
+        ? [
+            "-map", "0:v",
+            "-map", "1:a",
+            "-t", String(input.totalDuration),
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-crf", "22",
+            "-threads", "2",
+            "-c:a", "aac",
+            "-b:a", "192k",
+            "-shortest",
+            "-movflags", "+faststart",
+          ]
+        : [
+            "-map", "0:v",
+            "-an",
+            "-t", String(input.totalDuration),
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-crf", "22",
+            "-threads", "2",
+            "-movflags", "+faststart",
+          ]
+      : hasAudio
+        ? [
           "-map", "0:v",
           "-map", "1:a",
-          "-t", String(input.totalDuration),   // hard cap — guarantees correct duration
-          "-c:v", "libx264",
-          "-preset", "fast",
-          "-crf", "22",
-          "-threads", "2",
+          "-t", String(input.totalDuration),
+          // Every scene was normalized above, so attaching audio does not need
+          // another full-video encode. Stream copy keeps peak memory flat and
+          // turns the riskiest 12+ minute step into a quick mux.
+          "-c:v", "copy",
           "-c:a", "aac",
           "-b:a", "192k",
           "-shortest",
           "-movflags", "+faststart",
         ]
-      : [
-          // No audio track at all (silent video, to be scored later in the
-          // Editor) — video-only encode, no -shortest/-c:a since there's no
-          // second input to trim against.
-          "-map", "0:v",
-          "-an",
-          "-t", String(input.totalDuration),
-          "-c:v", "libx264",
-          "-preset", "fast",
-          "-crf", "22",
-          "-threads", "2",
-          "-movflags", "+faststart",
-        ];
+        : [
+            "-map", "0:v",
+            "-an",
+            "-t", String(input.totalDuration),
+            "-c:v", "copy",
+            "-movflags", "+faststart",
+          ];
 
     // Lyric mode: word-level karaoke via an ASS subtitle burn (libass). Falls
     // back to the v1 line-timed drawtext filter if the subtitles filter is
@@ -267,14 +301,22 @@ export async function stitchVideoClips(input: StitchInput): Promise<StitchResult
     };
 
     try {
-      await runFfmpegWithTimeout(buildCmd(karaokeOptions));
+      await runFfmpegWithTimeout(
+        buildCmd(karaokeOptions),
+        hasLyrics ? encodeTimeoutForDuration(input.totalDuration) : MIN_FFMPEG_TIMEOUT_MS,
+      );
     } catch (err) {
       if (!assPath) throw err;
+      const message = err instanceof Error ? err.message : String(err);
+      if (/timed out|exceeded \d+ minutes/i.test(message)) throw err;
       // libass unavailable — retry with the simple drawtext lyric overlay.
       const fallbackOptions = [...outputOptions];
       const lyricsFilter = buildLyricsFilter(input.lyricsText!, input.totalDuration);
       if (lyricsFilter) fallbackOptions.push("-vf", lyricsFilter);
-      await runFfmpegWithTimeout(buildCmd(fallbackOptions));
+      await runFfmpegWithTimeout(
+        buildCmd(fallbackOptions),
+        encodeTimeoutForDuration(input.totalDuration),
+      );
     }
 
     const thumbTimestamp = Math.max(1, input.totalDuration * 0.3);

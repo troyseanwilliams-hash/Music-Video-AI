@@ -779,7 +779,9 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
   const nextRetry = (job.retryCount ?? 0) + 1;
 
   if (nextRetry < maxRetries) {
-    // Each retry re-incurs real provider spend, so it must be paid for again.
+    // Provider-stage retries can incur real spend and must be paid for again.
+    // Assembly-only retries reuse clips already saved in object storage, make
+    // no provider call, and must never charge the user again.
     // The charge and the durable retry schedule are committed in ONE atomic
     // statement (data-modifying CTE): either the credits are deducted AND the
     // job is re-queued with manifest.retryAfter, or neither happens — a crash
@@ -787,10 +789,17 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
     // retryAfter is still in the future, so the schedule survives restarts.
     // Finalize-only runs make no provider calls, so a retry of one must be
     // free — never charge credits for them.
-    const retryCost = aiMetaOf(job).finalizeWithPartial === true ? 0 : (aiMetaOf(job).reservedCredits ?? 0);
+    const liveMeta = await readAiMeta(job.id);
+    const savedClipCount = Object.keys(liveMeta.partialClips ?? {}).length;
+    const assemblyOnlyRetry =
+      liveMeta.finalizeWithPartial === true ||
+      (savedClipCount > 0 && /ffmpeg|stitch|video processing/i.test(errMsg));
+    const retryCost = assemblyOnlyRetry ? 0 : (liveMeta.reservedCredits ?? 0);
     const delayMs = Math.pow(2, nextRetry) * 60_000;
     const retryAfter = Date.now() + delayMs;
-    const noteMsg = `${errMsg} — retry ${nextRetry}/${maxRetries} in ${delayMs / 60_000}m`;
+    const noteMsg = assemblyOnlyRetry
+      ? `${errMsg} — retry ${nextRetry}/${maxRetries} in ${delayMs / 60_000}m using saved scenes at no charge`
+      : `${errMsg} — retry ${nextRetry}/${maxRetries} in ${delayMs / 60_000}m`;
 
     // `target` fences the charge on still OWNING the job: if the watchdog (or
     // anything else) already re-queued/failed this row, its status is no longer
@@ -819,7 +828,10 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
         error_message = ${noteMsg},
         retry_count = ${nextRetry},
         claimed_at = NULL,
-        manifest = COALESCE(manifest, '{}'::jsonb) || jsonb_build_object('retryAfter', ${retryAfter}::bigint),
+        manifest = COALESCE(manifest, '{}'::jsonb) || jsonb_build_object(
+          'retryAfter', ${retryAfter}::bigint,
+          'finalizeWithPartial', ${assemblyOnlyRetry}
+        ),
         updated_at = NOW()
       WHERE id IN (SELECT id FROM target)
         AND (${retryCost} <= 0 OR EXISTS (SELECT 1 FROM charged))
@@ -1570,7 +1582,7 @@ async function processJob(job: JobRow): Promise<void> {
     // Starter-tier videos get a small "AIBeatSync" watermark so shared clips
     // market the site (Pro/Studio render clean). Falls open on any ffmpeg error.
     if ((job as JobRow & { watermark?: boolean }).watermark) {
-      videoBuffer = await applyWatermark(videoBuffer);
+      videoBuffer = await applyWatermark(videoBuffer, plan.targetOutputDuration);
     }
 
     await updateJobStatus(job.id, { progressPercent: 88 });
