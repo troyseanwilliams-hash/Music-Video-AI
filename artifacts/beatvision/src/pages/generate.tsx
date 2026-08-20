@@ -17,6 +17,7 @@ import {
 } from "@workspace/api-client-react";
 import {
   estimateCreditCost,
+  calculateLipsyncCost,
   canAffordCredits,
   LIPSYNC_DEFAULT_SECONDS,
   LIPSYNC_MAX_SECONDS,
@@ -181,7 +182,7 @@ export default function Generate() {
   const [prompt, setPrompt] = useState("");
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const audioSectionRef = useRef<HTMLDivElement>(null);
-  const [fieldErrors, setFieldErrors] = useState<{ prompt?: string; audio?: string }>({});
+  const [fieldErrors, setFieldErrors] = useState<{ prompt?: string; audio?: string; lipSync?: string }>({});
   const [selectedStyle, setSelectedStyle] = useState<VideoStyle>(VideoStyle.cinematic);
   const [lyricsEnabled, setLyricsEnabled] = useState(false);
   const [lyricsText, setLyricsText] = useState("");
@@ -224,6 +225,11 @@ export default function Generate() {
   // the later, separately charged Lip Sync add-on.
   const [fullTrackLipSyncEnabled, setFullTrackLipSyncEnabled] = useState(false);
   const [fullTrackLipSyncSeconds, setFullTrackLipSyncSeconds] = useState(LIPSYNC_DEFAULT_SECONDS);
+  const lipSyncImageInputRef = useRef<HTMLInputElement>(null);
+  const [lipSyncImageObjectPath, setLipSyncImageObjectPath] = useState<string | null>(null);
+  const [lipSyncImagePreviewUrl, setLipSyncImagePreviewUrl] = useState<string | null>(null);
+  const [isUploadingLipSyncImage, setIsUploadingLipSyncImage] = useState(false);
+  const [lipSyncImageError, setLipSyncImageError] = useState<string | null>(null);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [errorDialog, setErrorDialog] = useState<ErrorDialogState>({ open: false, title: "", message: "" });
   const [copyrightAcknowledged, setCopyrightAcknowledged] = useState(false);
@@ -290,6 +296,39 @@ export default function Generate() {
       setRefImagePreviewUrl(null);
     } finally {
       setIsUploadingRefImage(false);
+    }
+  };
+
+  const handleLipSyncImageSelect = async (file: File) => {
+    if (!file) return;
+    setLipSyncImageError(null);
+    setIsUploadingLipSyncImage(true);
+    if (lipSyncImagePreviewUrl) URL.revokeObjectURL(lipSyncImagePreviewUrl);
+    const localUrl = URL.createObjectURL(file);
+    setLipSyncImagePreviewUrl(localUrl);
+    try {
+      const res = await fetch("/api/storage/uploads/request-url", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+      });
+      if (!res.ok) throw new Error("Failed to get upload URL");
+      const data = await res.json();
+      const putRes = await fetch(data.uploadURL, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!putRes.ok) throw new Error(`Storage upload failed: ${putRes.status}`);
+      setLipSyncImageObjectPath(data.objectPath);
+      setFieldErrors((current) => ({ ...current, lipSync: undefined }));
+    } catch (err) {
+      setLipSyncImageError(err instanceof Error ? err.message : "Upload failed");
+      setLipSyncImageObjectPath(null);
+      setLipSyncImagePreviewUrl(null);
+    } finally {
+      setIsUploadingLipSyncImage(false);
     }
   };
 
@@ -549,7 +588,13 @@ export default function Generate() {
   // (jobs.ts adds LYRIC_OVERLAY_COST when lyrics are present). Every price
   // surface on this page must include it so the shown cost equals the charge.
   const lyricAddon = lyricsText.trim() ? LYRIC_OVERLAY_COST : 0;
-  const cost = estimateCreditCost(requestedDuration, aiProvider, resolution, songDurationSec) + lyricAddon;
+  const videoCost =
+    estimateCreditCost(requestedDuration, aiProvider, resolution, songDurationSec) + lyricAddon;
+  const lipSyncAddon =
+    fullTrackSelected && fullTrackLipSyncEnabled
+      ? calculateLipsyncCost(fullTrackLipSyncSeconds)
+      : 0;
+  const cost = videoCost + lipSyncAddon;
   const generationEstimate = getGenerationTimeEstimate(
     requestedDuration,
     aiProvider,
@@ -664,9 +709,14 @@ export default function Generate() {
           referenceImagePath: refImageObjectPath ?? null,
           requestedDuration,
           aiProvider,
+          fullTrackLipSyncEnabled: fullTrackSelected && fullTrackLipSyncEnabled,
+          fullTrackLipSyncSeconds,
+          fullTrackLipSyncStartTime: clipStartTime,
+          fullTrackLipSyncImagePath:
+            fullTrackSelected && fullTrackLipSyncEnabled ? lipSyncImageObjectPath : null,
           clipStartTime:
             sourceType === CreateJobRequestAudioSourceType.upload &&
-            (!fullTrackSelected || fullTrackLipSyncEnabled) &&
+            !fullTrackSelected &&
             clipStartTime > 0
               ? clipStartTime
               : null,
@@ -677,9 +727,6 @@ export default function Generate() {
             analyzeAudio.data
               ? {
                   ...analyzeAudio.data,
-                  ...(fullTrackSelected && fullTrackLipSyncEnabled
-                    ? { lipSyncDurationSeconds: fullTrackLipSyncSeconds }
-                    : {}),
                 }
               : null,
           // Copyright/ownership attestation (gated by the checkbox above) —
@@ -725,14 +772,7 @@ export default function Generate() {
   };
 
   const handleGenerate = () => {
-    // Proactive credit check — show the top-up modal instead of letting the
-    // user hit a backend INSUFFICIENT_CREDITS failure after submitting.
-    if (!canAfford) {
-      setTopUpOpen(true);
-      return;
-    }
-
-    const errors: { prompt?: string; audio?: string } = {};
+    const errors: { prompt?: string; audio?: string; lipSync?: string } = {};
 
     if (!prompt.trim()) {
       errors.prompt = "Please describe the visuals you want.";
@@ -756,6 +796,15 @@ export default function Generate() {
     if (requestedDuration === CreateJobRequestRequestedDuration.full && fullTrackOverLimit) {
       errors.audio = `Full-track videos support audio up to ${Math.floor(MAX_FULL_SECONDS / 60)} minutes. Choose a shorter track or a specific duration.`;
     }
+    if (
+      fullTrackSelected &&
+      fullTrackLipSyncEnabled &&
+      (!lipSyncImageObjectPath || isUploadingLipSyncImage)
+    ) {
+      errors.lipSync = isUploadingLipSyncImage
+        ? "Wait for the face image to finish uploading."
+        : "Upload a face image for the bundled AI Lip Sync video.";
+    }
 
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
@@ -769,6 +818,12 @@ export default function Generate() {
     }
 
     setFieldErrors({});
+
+    // Proactive credit check — use the compounded video + Lip Sync total.
+    if (!canAfford) {
+      setTopUpOpen(true);
+      return;
+    }
 
     const durSec = requestedDuration === CreateJobRequestRequestedDuration.full
       ? null
@@ -1255,6 +1310,10 @@ export default function Generate() {
                         setUploadedFile(null);
                         setClipStartTime(0);
                         setFullTrackLipSyncEnabled(false);
+                        setLipSyncImageObjectPath(null);
+                        if (lipSyncImagePreviewUrl) URL.revokeObjectURL(lipSyncImagePreviewUrl);
+                        setLipSyncImagePreviewUrl(null);
+                        setLipSyncImageError(null);
                         setUploadError(null);
                       }}
                     >
@@ -1296,7 +1355,7 @@ export default function Generate() {
                   </div>
                   {fullTrackSelected && !fullTrackLipSyncEnabled ? (
                     <div className="rounded-lg border border-border/60 bg-background/30 px-3 py-3 text-xs text-muted-foreground">
-                      Lip Sync is off by default. Turn it on to choose a saved song range and clip duration for the optional add-on after this full-track video is ready.
+                      AI Lip Sync is off by default. Turn it on to create a separate performance video automatically after this full-track video is ready.
                     </div>
                   ) : (
                     <>
@@ -1334,6 +1393,62 @@ export default function Generate() {
                             className="w-full accent-primary"
                             aria-label="Preferred Lip Sync clip length"
                           />
+                          <p className="w-full text-[11px] text-muted-foreground">
+                            AI Lip Sync adds <strong className="text-foreground">{calculateLipsyncCost(fullTrackLipSyncSeconds)} credits</strong>. The combined total is reserved once when you confirm.
+                          </p>
+                        </div>
+                      )}
+                      {fullTrackSelected && (
+                        <div className="rounded-lg border border-primary/20 bg-background/40 p-3">
+                          <input
+                            ref={lipSyncImageInputRef}
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            className="hidden"
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              if (file) void handleLipSyncImageSelect(file);
+                              event.target.value = "";
+                            }}
+                          />
+                          <div className="flex items-center gap-3">
+                            {lipSyncImagePreviewUrl ? (
+                              <img
+                                src={lipSyncImagePreviewUrl}
+                                alt="AI Lip Sync face preview"
+                                className="h-16 w-16 rounded-lg border border-border object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-dashed border-border bg-muted/20">
+                                <User className="h-6 w-6 text-muted-foreground" />
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-medium text-foreground">Face image for AI Lip Sync</p>
+                              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                                Upload the face that will perform the selected song segment.
+                              </p>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="mt-2"
+                                disabled={isUploadingLipSyncImage}
+                                onClick={() => lipSyncImageInputRef.current?.click()}
+                              >
+                                {isUploadingLipSyncImage ? (
+                                  <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Uploading…</>
+                                ) : (
+                                  <><Upload className="mr-1.5 h-3.5 w-3.5" /> {lipSyncImageObjectPath ? "Change face" : "Upload face"}</>
+                                )}
+                              </Button>
+                            </div>
+                          </div>
+                          {(lipSyncImageError || fieldErrors.lipSync) && (
+                            <p className="mt-2 text-xs text-destructive">
+                              {lipSyncImageError ?? fieldErrors.lipSync}
+                            </p>
+                          )}
                         </div>
                       )}
                       <AudioWaveformSelector
@@ -1345,7 +1460,7 @@ export default function Generate() {
                       {fullTrackSelected && (
                         <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
                           <span className="font-medium text-primary">Full track stays intact.</span>{" "}
-                          This range and duration are saved as the starting configuration for optional Lip Sync after your video is ready.
+                          After it is ready, we automatically create a separate AI Lip Sync video from this selected range. The original video is unchanged.
                         </div>
                       )}
                     </>
@@ -2027,6 +2142,21 @@ export default function Generate() {
                   <span className="text-muted-foreground">Credit cost</span>
                   <span className="font-medium">{cost} credits</span>
                 </div>
+                {lipSyncAddon > 0 && (
+                  <>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Video generation</span>
+                      <span>{videoCost} credits</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">AI Lip Sync · {fullTrackLipSyncSeconds}s</span>
+                      <span>{lipSyncAddon} credits</span>
+                    </div>
+                    <div className="mt-2 rounded-md border border-primary/20 bg-primary/5 px-2.5 py-2 text-xs text-muted-foreground">
+                      One combined reservation creates two videos: the full-track music video and a separate AI Lip Sync performance from {Math.floor(clipStartTime)}s–{Math.floor(clipStartTime + fullTrackLipSyncSeconds)}s.
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Storyboard preview — the shots we'll generate, before you spend credits */}

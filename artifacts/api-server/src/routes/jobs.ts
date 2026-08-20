@@ -12,7 +12,14 @@ import {
   ListJobsQueryParams,
   GetJobParams,
 } from "@workspace/api-zod";
-import { calculateCreditCost, calculateRemixCost, LYRIC_OVERLAY_COST, MAX_FULL_SECONDS, getClipPlan } from "../lib/creditCost.js";
+import {
+  calculateCreditCost,
+  calculateLipsyncCost,
+  calculateRemixCost,
+  getClipPlan,
+  LYRIC_OVERLAY_COST,
+  MAX_FULL_SECONDS,
+} from "../lib/creditCost.js";
 import { getUserTier, canRender4k } from "../lib/tier.js";
 import { planShots } from "../lib/shotPlan.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
@@ -26,6 +33,7 @@ type AiJobMeta = {
   reservedTopupCredits?: number;
   refunded?: boolean;
   partialClips?: Record<string, string>;
+  bundledLipSyncChildId?: string;
 };
 
 // Turn manifest.partialClips (clip index -> raw object storage path, e.g.
@@ -113,6 +121,16 @@ async function refundJobReservation(job: {
         updatedAt: new Date(),
       })
       .where(eq(jobsTable.id, job.id));
+    if (meta.bundledLipSyncChildId) {
+      await tx
+        .update(jobsTable)
+        .set({
+          status: "failed",
+          errorMessage: "The source video could not be created, so bundled AI Lip Sync was not started.",
+          updatedAt: new Date(),
+        })
+        .where(eq(jobsTable.id, meta.bundledLipSyncChildId));
+    }
     return total;
   });
 
@@ -215,13 +233,35 @@ router.post("/jobs", async (req, res) => {
     return;
   }
 
-  const { prompt, style, audioSourceType, audioObjectPath, audioSourceUrl, lyricsText, aspectRatio, resolution, character, referenceImagePath, requestedDuration, clipStartTime, audioAnalysis, aiProvider } =
+  const {
+    prompt,
+    style,
+    audioSourceType,
+    audioObjectPath,
+    audioSourceUrl,
+    lyricsText,
+    aspectRatio,
+    resolution,
+    character,
+    referenceImagePath,
+    requestedDuration,
+    clipStartTime,
+    audioAnalysis,
+    aiProvider,
+    fullTrackLipSyncEnabled,
+    fullTrackLipSyncSeconds,
+    fullTrackLipSyncStartTime,
+    fullTrackLipSyncImagePath,
+  } =
     parseResult.data;
 
   // "No audio" jobs render a silent video (soundtrack added later in the
   // Editor) — there's no audio to attest ownership of, and no song to derive
   // a "full length" from, so both requirements below are skipped for them.
   const noAudio = audioSourceType === "none";
+  const submittedDuration = (
+    audioAnalysis as { durationSeconds?: number | null } | null | undefined
+  )?.durationSeconds;
 
   if (!noAudio && (req.body as { acceptCopyright?: unknown })?.acceptCopyright !== true) {
     res.status(403).json({
@@ -246,6 +286,36 @@ router.post("/jobs", async (req, res) => {
       .json({ error: "audioSourceUrl required for youtube/suno source type" });
     return;
   }
+
+  const bundledLipSyncEnabled = fullTrackLipSyncEnabled === true;
+  const bundledLipSyncSeconds = fullTrackLipSyncSeconds ?? 15;
+  const bundledLipSyncStartTime = fullTrackLipSyncStartTime ?? 0;
+  if (bundledLipSyncEnabled) {
+    if (requestedDuration !== "full" || audioSourceType !== "upload" || !audioObjectPath) {
+      res.status(422).json({
+        error: "Bundled AI Lip Sync requires a full-track uploaded song.",
+        code: "LIPSYNC_FULL_TRACK_REQUIRED",
+      });
+      return;
+    }
+    if (!fullTrackLipSyncImagePath) {
+      res.status(422).json({
+        error: "Upload a face image before adding AI Lip Sync.",
+        code: "LIPSYNC_FACE_REQUIRED",
+      });
+      return;
+    }
+    if (
+      typeof submittedDuration !== "number" ||
+      bundledLipSyncStartTime + bundledLipSyncSeconds > submittedDuration + 0.01
+    ) {
+      res.status(422).json({
+        error: "Choose an AI Lip Sync range that ends within the uploaded song.",
+        code: "LIPSYNC_RANGE_OUT_OF_BOUNDS",
+      });
+      return;
+    }
+  }
   if (noAudio && (!requestedDuration || requestedDuration === "full")) {
     res.status(400).json({
       error: "Choose a specific length for a no-audio video — there's no song to derive a \"full length\" from.",
@@ -256,7 +326,6 @@ router.post("/jobs", async (req, res) => {
   // A Full track job must be priced and planned from the analysis of the exact
   // uploaded file. This prevents a stale client-side duration from becoming a
   // paid render with an unexpected runtime.
-  const submittedDuration = (audioAnalysis as { durationSeconds?: number | null } | null | undefined)?.durationSeconds;
   if (
     audioSourceType === "upload" &&
     (!requestedDuration || requestedDuration === "full") &&
@@ -334,7 +403,12 @@ router.post("/jobs", async (req, res) => {
   // LYRIC_OVERLAY_COST as burning lyrics onto a finished video, so there's no
   // free path to the same output. Mirror in creditPricing.ts (generate page).
   const lyricAddon = lyricsText?.trim() ? LYRIC_OVERLAY_COST : 0;
-  const creditCost = calculateCreditCost(requestedDuration, resolution, songDurationSec, engine) + lyricAddon;
+  const baseCreditCost =
+    calculateCreditCost(requestedDuration, resolution, songDurationSec, engine) + lyricAddon;
+  const bundledLipSyncCost = bundledLipSyncEnabled
+    ? calculateLipsyncCost(bundledLipSyncSeconds)
+    : 0;
+  const creditCost = baseCreditCost + bundledLipSyncCost;
 
   // Ensure a credits row exists for everyone — admins are metered too (their
   // balance floors at 0 but creditsUsed still tracks the spend).
@@ -352,17 +426,6 @@ router.post("/jobs", async (req, res) => {
     userCredits = newCredits;
   }
 
-  // Non-admins must have the credits before we spend a cent at the provider.
-  if (!isAdmin && userCredits.creditsRemaining < creditCost) {
-    res.status(402).json({
-      error: `Insufficient credits — this job costs ${creditCost} credits but you only have ${userCredits.creditsRemaining} remaining.`,
-      code: "INSUFFICIENT_CREDITS",
-      creditsRequired: creditCost,
-      creditsRemaining: userCredits.creditsRemaining,
-    });
-    return;
-  }
-
   // Reserve (charge) the credits UP FRONT so every paid provider clip is backed
   // by credits. The worker refunds this automatically if the job permanently
   // fails or is canceled. This replaces the old "deduct only on success" model,
@@ -371,7 +434,35 @@ router.post("/jobs", async (req, res) => {
   // Reservation + job insert run in ONE transaction so a failed insert rolls
   // back the exact bucket debits (no lossy compensating update).
   const jobId = randomUUID();
-  const job = await db.transaction(async (tx) => {
+  const bundledLipSyncChildId = bundledLipSyncEnabled ? randomUUID() : null;
+  const reservation = await db.transaction(async (tx) => {
+    const [lockedCredits] = await tx
+      .select()
+      .from(creditsTable)
+      .where(eq(creditsTable.userId, req.user.id))
+      .limit(1)
+      .for("update");
+    if (!lockedCredits) throw new Error("Credits account unavailable.");
+    if (!isAdmin && lockedCredits.creditsRemaining < creditCost) {
+      return { job: null, remaining: lockedCredits.creditsRemaining };
+    }
+
+    const subscriptionDebit = Math.min(
+      creditCost,
+      Math.max(0, lockedCredits.subscriptionCredits),
+    );
+    const topupDebit = Math.min(
+      Math.max(0, creditCost - subscriptionDebit),
+      Math.max(0, lockedCredits.topupCredits),
+    );
+    const baseSubscriptionDebit = Math.min(baseCreditCost, subscriptionDebit);
+    const baseTopupDebit = Math.min(
+      Math.max(0, baseCreditCost - baseSubscriptionDebit),
+      topupDebit,
+    );
+    const lipSyncSubscriptionDebit = Math.max(0, subscriptionDebit - baseSubscriptionDebit);
+    const lipSyncTopupDebit = Math.max(0, topupDebit - baseTopupDebit);
+
     await tx
       .update(creditsTable)
       .set({
@@ -402,7 +493,7 @@ router.post("/jobs", async (req, res) => {
       character: character ?? null,
       referenceImagePath: referenceImagePath ?? null,
       requestedDuration: requestedDuration ?? "full",
-      clipStartTime: clipStartTime ?? null,
+      clipStartTime: requestedDuration === "full" ? null : (clipStartTime ?? null),
       audioAnalysis: audioAnalysis as unknown as Record<string, unknown> ?? null,
       aiProvider: engine,
       watermark,
@@ -413,6 +504,16 @@ router.post("/jobs", async (req, res) => {
       // Runway engine hit the real Runway API instead of Pixazo's Runway route.
       manifest: {
         reservedCredits: creditCost,
+        reservedSubscriptionCredits: subscriptionDebit,
+        reservedTopupCredits: topupDebit,
+        baseCreditCost,
+        baseReservedSubscriptionCredits: baseSubscriptionDebit,
+        baseReservedTopupCredits: baseTopupDebit,
+        bundledLipSyncEnabled,
+        bundledLipSyncCost,
+        bundledLipSyncReservedSubscriptionCredits: lipSyncSubscriptionDebit,
+        bundledLipSyncReservedTopupCredits: lipSyncTopupDebit,
+        ...(bundledLipSyncChildId ? { bundledLipSyncChildId } : {}),
         storyboard: planShots({
           prompt,
           style,
@@ -436,11 +537,62 @@ router.post("/jobs", async (req, res) => {
       progressPercent: 0,
       })
       .returning();
-    return inserted;
+
+    if (bundledLipSyncChildId) {
+      await tx.insert(jobsTable).values({
+        id: bundledLipSyncChildId,
+        userId: req.user.id,
+        jobType: "runway_lipsync",
+        status: "pending_approval",
+        prompt: `${prompt} — AI Lip Sync`,
+        style: style as
+          | "realistic"
+          | "anime"
+          | "cinematic"
+          | "abstract"
+          | "neon"
+          | "vintage"
+          | "fantasy"
+          | "documentary"
+          | undefined,
+        referenceImagePath: fullTrackLipSyncImagePath,
+        audioSourceType: "upload",
+        audioObjectPath,
+        clipStartTime: bundledLipSyncStartTime,
+        requestedDuration: String(bundledLipSyncSeconds),
+        aspectRatio: aspectRatio ?? "16:9",
+        aiProvider: "pixazo",
+        watermark: false,
+        manifest: {
+          reservedCredits: 0,
+          lipSyncEnabled: true,
+          publicLipSync: true,
+          bundledLipSync: true,
+          bundledParentJobId: jobId,
+          bundledLipSyncCost,
+          bundledLipSyncReservedSubscriptionCredits: lipSyncSubscriptionDebit,
+          bundledLipSyncReservedTopupCredits: lipSyncTopupDebit,
+          sourceVideoTitle: prompt.slice(0, 100),
+        } as unknown as Record<string, unknown>,
+        progressPercent: 0,
+      });
+    }
+    return { job: inserted, remaining: lockedCredits.creditsRemaining - creditCost };
   });
 
+  if (!reservation.job) {
+    res.status(402).json({
+      error: `Insufficient credits — this bundle costs ${creditCost} credits but you only have ${reservation.remaining} remaining.`,
+      code: "INSUFFICIENT_CREDITS",
+      creditsRequired: creditCost,
+      creditsRemaining: reservation.remaining,
+    });
+    return;
+  }
+  const job = reservation.job;
+
   req.log.info(
-    { userId: req.user.id, requestedDuration, creditCost, isAdmin },
+    { userId: req.user.id, requestedDuration, baseCreditCost, bundledLipSyncCost, creditCost, isAdmin },
     "Job queued — credits reserved up front (refunded automatically on failure)",
   );
 
@@ -741,6 +893,25 @@ router.post("/jobs/:id/retry", async (req, res) => {
     return;
   }
 
+  const retryMeta =
+    job.manifest && typeof job.manifest === "object"
+      ? (job.manifest as {
+          refunded?: boolean;
+          bundledLipSyncEnabled?: boolean;
+          bundledLipSyncActivated?: boolean;
+        })
+      : {};
+  if (
+    retryMeta.refunded ||
+    (retryMeta.bundledLipSyncEnabled && !retryMeta.bundledLipSyncActivated)
+  ) {
+    res.status(409).json({
+      error: "This job's credit reservation was returned. Start a new generation to try again.",
+      code: "RESERVATION_REFUNDED",
+    });
+    return;
+  }
+
   if (job.status !== "failed") {
     res.status(400).json({ error: "Only failed jobs can be retried" });
     return;
@@ -788,6 +959,17 @@ router.delete("/jobs/:id", async (req, res) => {
     res.status(404).json({ error: "Job not found" });
     return;
   }
+  const deleteMeta =
+    job.manifest && typeof job.manifest === "object"
+      ? (job.manifest as { bundledParentJobId?: string })
+      : {};
+  if (deleteMeta.bundledParentJobId) {
+    res.status(409).json({
+      error: "This bundled AI Lip Sync job is managed with its source video and cannot be deleted separately.",
+      code: "BUNDLED_LIPSYNC_MANAGED",
+    });
+    return;
+  }
   if (job.status !== "failed") {
     res.status(400).json({ error: "Only failed generations can be deleted from here." });
     return;
@@ -815,6 +997,17 @@ router.post("/jobs/:id/cancel", async (req, res) => {
     .limit(1);
   if (!job) {
     res.status(404).json({ error: "Job not found" });
+    return;
+  }
+  const cancelMeta =
+    job.manifest && typeof job.manifest === "object"
+      ? (job.manifest as { bundledParentJobId?: string })
+      : {};
+  if (cancelMeta.bundledParentJobId) {
+    res.status(409).json({
+      error: "This bundled AI Lip Sync job starts with its source video and cannot be canceled separately.",
+      code: "BUNDLED_LIPSYNC_MANAGED",
+    });
     return;
   }
   const IN_PROGRESS = ["pending_approval", "queued", "analyzing", "generating", "stitching"] as const;

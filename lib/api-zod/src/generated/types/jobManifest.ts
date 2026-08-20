@@ -17,5 +17,12 @@ export interface JobManifest {
   lyricsText?: string | null;
   clipIndexes?: number[];
   storyboard?: JobStoryboard;
+  bundledLipSyncChildId?: string;
+  bundledLipSyncEnabled?: boolean;
+  /** @minimum 0 */
+  baseCreditCost?: number;
+  /** @minimum 0 */
+  bundledLipSyncCost?: number;
+  bundledLipSyncActivated?: boolean;
   [key: string]: unknown;
 }

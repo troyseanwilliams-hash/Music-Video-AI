@@ -208,6 +208,10 @@ export const listJobsResponseJobsItemManifestOneStoryboardShotsItemStartTimeMin 
 export const listJobsResponseJobsItemManifestOneStoryboardShotsItemEnergyMin = 0;
 export const listJobsResponseJobsItemManifestOneStoryboardShotsItemEnergyMax = 1;
 
+export const listJobsResponseJobsItemManifestOneBaseCreditCostMin = 0;
+
+export const listJobsResponseJobsItemManifestOneBundledLipSyncCostMin = 0;
+
 export const ListJobsResponse = zod.object({
   jobs: zod.array(
     zod.object({
@@ -408,6 +412,17 @@ export const ListJobsResponse = zod.object({
                 ),
               })
               .optional(),
+            bundledLipSyncChildId: zod.string().optional(),
+            bundledLipSyncEnabled: zod.boolean().optional(),
+            baseCreditCost: zod
+              .number()
+              .min(listJobsResponseJobsItemManifestOneBaseCreditCostMin)
+              .optional(),
+            bundledLipSyncCost: zod
+              .number()
+              .min(listJobsResponseJobsItemManifestOneBundledLipSyncCostMin)
+              .optional(),
+            bundledLipSyncActivated: zod.boolean().optional(),
           }),
           zod.null(),
         ])
@@ -454,6 +469,14 @@ export const createJobBodyLyricsTextMax = 5000;
 export const createJobBodyCharacterMax = 100;
 
 export const createJobBodyClipStartTimeMin = 0;
+
+export const createJobBodyFullTrackLipSyncEnabledDefault = false;
+export const createJobBodyFullTrackLipSyncSecondsDefault = 15;
+export const createJobBodyFullTrackLipSyncSecondsMin = 5;
+export const createJobBodyFullTrackLipSyncSecondsMax = 30;
+
+export const createJobBodyFullTrackLipSyncStartTimeDefault = 0;
+export const createJobBodyFullTrackLipSyncStartTimeMin = 0;
 
 export const CreateJobBody = zod.object({
   prompt: zod.string().min(1).max(createJobBodyPromptMax),
@@ -569,6 +592,29 @@ export const CreateJobBody = zod.object({
     .describe(
       "Preferred AI video generation provider; falls back to the server-configured active provider if not set or unavailable",
     ),
+  fullTrackLipSyncEnabled: zod
+    .boolean()
+    .default(createJobBodyFullTrackLipSyncEnabledDefault)
+    .describe(
+      "When true, reserve the Lip Sync add-on with the source video and automatically create a separate Lip Sync video",
+    ),
+  fullTrackLipSyncSeconds: zod
+    .number()
+    .min(createJobBodyFullTrackLipSyncSecondsMin)
+    .max(createJobBodyFullTrackLipSyncSecondsMax)
+    .default(createJobBodyFullTrackLipSyncSecondsDefault)
+    .describe("Duration of the bundled Lip Sync performance"),
+  fullTrackLipSyncStartTime: zod
+    .number()
+    .min(createJobBodyFullTrackLipSyncStartTimeMin)
+    .default(createJobBodyFullTrackLipSyncStartTimeDefault)
+    .describe("Start time of the bundled Lip Sync song segment"),
+  fullTrackLipSyncImagePath: zod
+    .string()
+    .nullish()
+    .describe(
+      "Object storage path for the face image used by the bundled Lip Sync video",
+    ),
 });
 
 /**
@@ -597,6 +643,10 @@ export const getJobResponseManifestOneStoryboardShotsItemStartTimeMin = 0;
 
 export const getJobResponseManifestOneStoryboardShotsItemEnergyMin = 0;
 export const getJobResponseManifestOneStoryboardShotsItemEnergyMax = 1;
+
+export const getJobResponseManifestOneBaseCreditCostMin = 0;
+
+export const getJobResponseManifestOneBundledLipSyncCostMin = 0;
 
 export const GetJobResponse = zod.object({
   id: zod.string(),
@@ -780,6 +830,17 @@ export const GetJobResponse = zod.object({
             ),
           })
           .optional(),
+        bundledLipSyncChildId: zod.string().optional(),
+        bundledLipSyncEnabled: zod.boolean().optional(),
+        baseCreditCost: zod
+          .number()
+          .min(getJobResponseManifestOneBaseCreditCostMin)
+          .optional(),
+        bundledLipSyncCost: zod
+          .number()
+          .min(getJobResponseManifestOneBundledLipSyncCostMin)
+          .optional(),
+        bundledLipSyncActivated: zod.boolean().optional(),
       }),
       zod.null(),
     ])
@@ -1347,6 +1408,10 @@ export const getDashboardStatsResponseRecentJobsItemManifestOneStoryboardShotsIt
 export const getDashboardStatsResponseRecentJobsItemManifestOneStoryboardShotsItemEnergyMin = 0;
 export const getDashboardStatsResponseRecentJobsItemManifestOneStoryboardShotsItemEnergyMax = 1;
 
+export const getDashboardStatsResponseRecentJobsItemManifestOneBaseCreditCostMin = 0;
+
+export const getDashboardStatsResponseRecentJobsItemManifestOneBundledLipSyncCostMin = 0;
+
 export const GetDashboardStatsResponse = zod.object({
   totalJobs: zod.number(),
   completedJobs: zod.number(),
@@ -1558,6 +1623,21 @@ export const GetDashboardStatsResponse = zod.object({
                   ),
                 })
                 .optional(),
+              bundledLipSyncChildId: zod.string().optional(),
+              bundledLipSyncEnabled: zod.boolean().optional(),
+              baseCreditCost: zod
+                .number()
+                .min(
+                  getDashboardStatsResponseRecentJobsItemManifestOneBaseCreditCostMin,
+                )
+                .optional(),
+              bundledLipSyncCost: zod
+                .number()
+                .min(
+                  getDashboardStatsResponseRecentJobsItemManifestOneBundledLipSyncCostMin,
+                )
+                .optional(),
+              bundledLipSyncActivated: zod.boolean().optional(),
             }),
             zod.null(),
           ])

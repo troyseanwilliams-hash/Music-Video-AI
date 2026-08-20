@@ -428,6 +428,10 @@ export default function JobStatus() {
     job.jobType === "ai_video";
   const manifest = job.manifest ?? {};
   const storyboard = manifest.storyboard;
+  const bundledLipSyncChildId =
+    typeof manifest.bundledLipSyncChildId === "string"
+      ? manifest.bundledLipSyncChildId
+      : null;
   const timelineItems = Array.isArray(manifest.segments) ? manifest.segments.length : 0;
   const selectedRemixClips = Array.isArray(manifest.clipIndexes) ? manifest.clipIndexes.length : 0;
   const previewClips = job.previewClips ?? {};
@@ -886,8 +890,25 @@ export default function JobStatus() {
           <SocialExportsPanel videoId={job.videoId} />
         )}
 
-        {/* ── Lip sync: animate a face photo singing this video's song ── */}
-        {isComplete && job.videoId && !noAudioJob && (
+        {/* ── Bundled Lip Sync starts automatically without another charge. ── */}
+        {isComplete && job.videoId && bundledLipSyncChildId && (
+          <Card className="border-primary/30 bg-primary/5">
+            <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-semibold text-foreground">Your AI Lip Sync video is being created</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  It was included in the combined Generate charge. No additional credits will be charged.
+                </p>
+              </div>
+              <Link href={`/jobs/${bundledLipSyncChildId}`}>
+                <Button variant="outline">View AI Lip Sync progress</Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ── Standalone Lip Sync for videos that were not purchased as a bundle. ── */}
+        {isComplete && job.videoId && !noAudioJob && !bundledLipSyncChildId && (
           <LipSyncPanel
             videoId={job.videoId}
             audioDurationSeconds={typeof analysis?.durationSeconds === "number" ? analysis.durationSeconds : undefined}

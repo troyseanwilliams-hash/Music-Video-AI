@@ -121,6 +121,15 @@ type AiJobMeta = {
   retryAfter?: number; // epoch ms — queued job must not be claimed before this
   finalizeWithPartial?: boolean; // admin: stitch whatever clips exist, never call the provider
   storyboard?: { shots?: unknown[] };
+  baseCreditCost?: number;
+  baseReservedSubscriptionCredits?: number;
+  baseReservedTopupCredits?: number;
+  bundledLipSyncEnabled?: boolean;
+  bundledLipSyncChildId?: string;
+  bundledLipSyncCost?: number;
+  bundledLipSyncReservedSubscriptionCredits?: number;
+  bundledLipSyncReservedTopupCredits?: number;
+  bundledLipSyncActivated?: boolean;
   // TEMPORARY, admin-only: call the real Runway API directly instead of via
   // Pixazo. Set by routes/jobs.ts at job creation. See
   // videoApis.ts ClipRequest.preferDirectRunway.
@@ -271,6 +280,16 @@ async function refundReservation(jobId: string, userId: string, reason: string):
       .update(jobsTable)
       .set({ manifest: { ...meta, refunded: true } as unknown as Record<string, unknown>, updatedAt: new Date() })
       .where(eq(jobsTable.id, jobId));
+    if (meta.bundledLipSyncChildId && !meta.bundledLipSyncActivated) {
+      await tx
+        .update(jobsTable)
+        .set({
+          status: "failed",
+          errorMessage: "The source video could not be created, so bundled AI Lip Sync was not started.",
+          updatedAt: new Date(),
+        })
+        .where(eq(jobsTable.id, meta.bundledLipSyncChildId));
+    }
     return total;
   });
   if (totalRefund > 0) {
@@ -859,12 +878,16 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
   if (errMsg.includes(PROVIDER_API_FAILURE)) {
     const cleanMsg = errMsg.replace(PROVIDER_API_FAILURE, "").trim();
     logger.warn({ jobId: job.id }, "Permanent failure: AI provider error — not retrying to avoid repeated charges");
-    // Do NOT auto-refund. Keep the reservation and alert the admin to attempt a
-    // fix/recovery (re-run failed clips, finalize from partials, or refund
-    // manually). Partial clips are retained so recovery is possible.
+    const meta = aiMetaOf(job);
+    if (meta.bundledLipSyncEnabled && !meta.bundledLipSyncActivated) {
+      await refundReservation(job.id, job.userId, "bundled-source-provider-failure");
+    }
     await updateJobStatus(job.id, {
       status: "failed",
-      errorMessage: cleanMsg,
+      errorMessage:
+        meta.bundledLipSyncEnabled && !meta.bundledLipSyncActivated
+          ? `${cleanMsg} The combined reservation was returned and AI Lip Sync was not started.`
+          : cleanMsg,
     });
     void notifyAdminRenderFailed(job, cleanMsg);
     return;
@@ -894,7 +917,9 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
     const assemblyOnlyRetry =
       liveMeta.finalizeWithPartial === true ||
       (savedClipCount > 0 && /ffmpeg|stitch|video processing/i.test(errMsg));
-    const retryCost = assemblyOnlyRetry ? 0 : (liveMeta.reservedCredits ?? 0);
+    const pendingBundle =
+      liveMeta.bundledLipSyncEnabled === true && liveMeta.bundledLipSyncActivated !== true;
+    const retryCost = assemblyOnlyRetry || pendingBundle ? 0 : (liveMeta.reservedCredits ?? 0);
     const delayMs = Math.pow(2, nextRetry) * 60_000;
     const retryAfter = Date.now() + delayMs;
     const noteMsg = assemblyOnlyRetry
@@ -984,9 +1009,16 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
     // stay deducted. Keep any salvage copies (partial clips) so the admin can
     // recover the job, and alert the admin to attempt a fix rather than telling
     // the user it's dead.
+    const meta = await readAiMeta(job.id);
+    if (meta.bundledLipSyncEnabled && !meta.bundledLipSyncActivated) {
+      await refundReservation(job.id, job.userId, "bundled-source-retries-exhausted");
+    }
     await updateJobStatus(job.id, {
       status: "failed",
-      errorMessage: `${errMsg} (max ${maxRetries} ${maxRetries === 1 ? "attempt" : "retries"} reached)`,
+      errorMessage:
+        meta.bundledLipSyncEnabled && !meta.bundledLipSyncActivated
+          ? `${errMsg} (max ${maxRetries} ${maxRetries === 1 ? "attempt" : "retries"} reached; combined reservation returned)`
+          : `${errMsg} (max ${maxRetries} ${maxRetries === 1 ? "attempt" : "retries"} reached)`,
     });
     void notifyAdminRenderFailed(job, errMsg);
   }
@@ -1730,47 +1762,124 @@ async function processJob(job: JobRow): Promise<void> {
     // them later without rerunning the whole pipeline.
     const clipMetas = await persistClips(videoId, clips, job.style ?? null);
 
-    await db.insert(videosTable).values({
-      id: videoId,
-      userId: job.userId,
-      jobId: job.id,
-      videoObjectPath,
-      thumbnailObjectPath,
-      title: job.prompt ? job.prompt.slice(0, 100) : "Generated Video",
-      durationSeconds: plan.targetOutputDuration,
-      style: job.style,
-      prompt: job.prompt,
-      clips: clipMetas as unknown as Record<string, unknown>,
-      shareToken: randomUUID().replace(/-/g, "").slice(0, 16),
-      hasAudio: !!audioData,
+    const activatedLipSyncChildId = await db.transaction(async (tx) => {
+      await tx.insert(videosTable).values({
+        id: videoId,
+        userId: job.userId,
+        jobId: job.id,
+        videoObjectPath,
+        thumbnailObjectPath,
+        title: job.prompt ? job.prompt.slice(0, 100) : "Generated Video",
+        durationSeconds: plan.targetOutputDuration,
+        style: job.style,
+        prompt: job.prompt,
+        clips: clipMetas as unknown as Record<string, unknown>,
+        shareToken: randomUUID().replace(/-/g, "").slice(0, 16),
+        hasAudio: !!audioData,
+      });
+      await tx
+        .update(creditsTable)
+        .set({
+          totalGenerations: sql`total_generations + 1`,
+          updatedAt: new Date(),
+        })
+        .where(eq(creditsTable.userId, job.userId));
+
+      const [parentState] = await tx
+        .select({
+          status: jobsTable.status,
+          claimedAt: jobsTable.claimedAt,
+          manifest: jobsTable.manifest,
+        })
+        .from(jobsTable)
+        .where(eq(jobsTable.id, job.id))
+        .limit(1)
+        .for("update");
+      const parentMeta =
+        parentState?.manifest && typeof parentState.manifest === "object"
+          ? (parentState.manifest as AiJobMeta)
+          : aiMetaOf(job);
+      const ours = job.claimedAt ? new Date(job.claimedAt).getTime() : null;
+      const current = parentState?.claimedAt ? new Date(parentState.claimedAt).getTime() : null;
+      if (
+        !parentState ||
+        parentState.status === "queued" ||
+        parentState.status === "failed" ||
+        ours !== current ||
+        parentMeta.refunded
+      ) {
+        throw new Error(`${OWNERSHIP_LOST} (source finalization fence)`);
+      }
+      let nextParentMeta = parentMeta;
+      let childId: string | null = null;
+      if (
+        parentMeta.bundledLipSyncEnabled &&
+        parentMeta.bundledLipSyncChildId &&
+        !parentMeta.bundledLipSyncActivated
+      ) {
+        childId = parentMeta.bundledLipSyncChildId;
+        const [childState] = await tx
+          .select({ status: jobsTable.status, manifest: jobsTable.manifest })
+          .from(jobsTable)
+          .where(eq(jobsTable.id, childId))
+          .limit(1)
+          .for("update");
+        if (!childState || childState.status !== "pending_approval") {
+          throw new Error("Bundled AI Lip Sync child is unavailable; refusing to transfer its reservation.");
+        }
+        const childMeta =
+          childState?.manifest && typeof childState.manifest === "object"
+            ? (childState.manifest as AiJobMeta)
+            : {};
+        await tx
+          .update(jobsTable)
+          .set({
+            status: "queued",
+            progressPercent: 0,
+            errorMessage: null,
+            manifest: {
+              ...childMeta,
+              reservedCredits: parentMeta.bundledLipSyncCost ?? 0,
+              reservedSubscriptionCredits:
+                parentMeta.bundledLipSyncReservedSubscriptionCredits ?? 0,
+              reservedTopupCredits: parentMeta.bundledLipSyncReservedTopupCredits ?? 0,
+            } as unknown as Record<string, unknown>,
+            updatedAt: new Date(),
+          })
+          .where(eq(jobsTable.id, childId));
+        nextParentMeta = {
+          ...parentMeta,
+          reservedCredits: parentMeta.baseCreditCost ?? parentMeta.reservedCredits ?? 0,
+          reservedSubscriptionCredits: parentMeta.baseReservedSubscriptionCredits ?? 0,
+          reservedTopupCredits: parentMeta.baseReservedTopupCredits ?? 0,
+          bundledLipSyncActivated: true,
+        };
+      }
+      await tx
+        .update(jobsTable)
+        .set({
+          status: "ready",
+          progressPercent: 100,
+          videoId,
+          manifest: nextParentMeta as unknown as Record<string, unknown>,
+          ...(shortfallNotice ? { errorMessage: shortfallNotice } : {}),
+          updatedAt: new Date(),
+        })
+        .where(eq(jobsTable.id, job.id));
+      return childId;
     });
 
     // Credits were RESERVED (charged) up front when the job was created, so we
-    // do NOT deduct again here — the old deduct-on-success path both risked a
-    // double charge and, worse, leaked real provider spend on failed/partial
-    // jobs that never reached this point. Just record the successful generation
-    // and drop the salvage copies now that the final video is stored.
-    await db
-      .update(creditsTable)
-      .set({
-        totalGenerations: sql`total_generations + 1`,
-        updatedAt: new Date(),
-      })
-      .where(eq(creditsTable.userId, job.userId));
+    // do NOT deduct again here. For a bundle, the transaction above moves only
+    // the Lip Sync portion to the waiting child before it becomes claimable.
     await cleanupPartialClips(job.id).catch(() => {});
     logger.info(
       { jobId: job.id, userId: job.userId, reserved: aiMetaOf(job).reservedCredits ?? 0 },
       "Generation complete — credits were reserved up front",
     );
 
-    await updateJobStatus(job.id, {
-      status: "ready",
-      progressPercent: 100,
-      videoId,
-      // Surface a partial-generation notice (provider ran out of tokens) on
-      // the finished job so the user knows why fewer unique clips appear.
-      ...(shortfallNotice ? { errorMessage: shortfallNotice } : {}),
-    });
+    await notifyJobUpdate(job.id);
+    if (activatedLipSyncChildId) await notifyJobUpdate(activatedLipSyncChildId);
     void notifyRenderReady(job);
     logger.info({ jobId: job.id, videoId, provider: getActiveProvider() }, "Job completed");
   } catch (err) {

@@ -1146,6 +1146,18 @@ components:
             type: integer
         storyboard:
           $ref: '#/components/schemas/JobStoryboard'
+        bundledLipSyncChildId:
+          type: string
+        bundledLipSyncEnabled:
+          type: boolean
+        baseCreditCost:
+          type: integer
+          minimum: 0
+        bundledLipSyncCost:
+          type: integer
+          minimum: 0
+        bundledLipSyncActivated:
+          type: boolean
 
     JobStoryboard:
       type: object
@@ -1239,6 +1251,24 @@ components:
           type: [string, 'null']
           enum: ['runway', 'kling', 'luma', null]
           description: Preferred AI video generation provider; falls back to the server-configured active provider if not set or unavailable
+        fullTrackLipSyncEnabled:
+          type: boolean
+          default: false
+          description: When true, reserve the Lip Sync add-on with the source video and automatically create a separate Lip Sync video
+        fullTrackLipSyncSeconds:
+          type: integer
+          minimum: 5
+          maximum: 30
+          default: 15
+          description: Duration of the bundled Lip Sync performance
+        fullTrackLipSyncStartTime:
+          type: number
+          minimum: 0
+          default: 0
+          description: Start time of the bundled Lip Sync song segment
+        fullTrackLipSyncImagePath:
+          type: [string, 'null']
+          description: Object storage path for the face image used by the bundled Lip Sync video
 
     VideoClip:
       type: object

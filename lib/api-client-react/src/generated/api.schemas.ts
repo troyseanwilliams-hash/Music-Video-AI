@@ -293,6 +293,13 @@ export interface JobManifest {
   lyricsText?: string | null;
   clipIndexes?: number[];
   storyboard?: JobStoryboard;
+  bundledLipSyncChildId?: string;
+  bundledLipSyncEnabled?: boolean;
+  /** @minimum 0 */
+  baseCreditCost?: number;
+  /** @minimum 0 */
+  bundledLipSyncCost?: number;
+  bundledLipSyncActivated?: boolean;
   [key: string]: unknown;
 }
 
@@ -495,6 +502,24 @@ export interface CreateJobRequest {
    * @nullable
    */
   aiProvider?: CreateJobRequestAiProvider;
+  /** When true, reserve the Lip Sync add-on with the source video and automatically create a separate Lip Sync video */
+  fullTrackLipSyncEnabled?: boolean;
+  /**
+   * Duration of the bundled Lip Sync performance
+   * @minimum 5
+   * @maximum 30
+   */
+  fullTrackLipSyncSeconds?: number;
+  /**
+   * Start time of the bundled Lip Sync song segment
+   * @minimum 0
+   */
+  fullTrackLipSyncStartTime?: number;
+  /**
+   * Object storage path for the face image used by the bundled Lip Sync video
+   * @nullable
+   */
+  fullTrackLipSyncImagePath?: string | null;
 }
 
 export interface RemixJobRequest {
