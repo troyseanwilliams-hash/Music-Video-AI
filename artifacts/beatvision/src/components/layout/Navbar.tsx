@@ -89,10 +89,10 @@ export function Navbar() {
             <a
               href="https://aipodsync.com"
               className="flex items-center gap-1.5 rounded-full border border-border/50 bg-secondary/40 px-2.5 sm:px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
-              aria-label="Make a podcast with AIPodSync"
+              aria-label="Narrate your videos on AIPodSync"
             >
               <Mic className="h-3.5 w-3.5" aria-hidden="true" />
-              <span className="hidden sm:inline">Podcast</span>
+              <span className="hidden sm:inline">Narrated Videos</span>
             </a>
             {isAuthenticated && processingCount > 0 && (
               <Link

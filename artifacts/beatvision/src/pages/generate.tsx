@@ -892,9 +892,9 @@ export default function Generate() {
             Templates fill in a prompt, style, aspect ratio, and length — tweak anything after.
           </p>
           <p className="mt-1.5 text-xs text-muted-foreground">
-            Got a podcast script too?{" "}
+            Need narration for your video too?{" "}
             <a href="https://aipodsync.com" className="text-primary font-medium hover:underline">
-              Turn it into a narrated episode with AIPodSync
+              Narrate your videos on AIPodSync
             </a>
             .
           </p>
