@@ -44,6 +44,7 @@ import ForgotPassword from "@/pages/forgot-password";
 import ResetPassword from "@/pages/reset-password";
 import Redeem from "@/pages/redeem";
 import Suite from "@/pages/suite";
+import Comparison from "@/pages/comparison";
 
 const queryClient = new QueryClient();
 
@@ -96,6 +97,7 @@ function Router() {
           <Route path="/support" component={Support} />
           <Route path="/settings" component={Settings} />
           <Route path="/suite" component={Suite} />
+          <Route path="/compare" component={Comparison} />
           <Route path="/suno" component={SunoLanding} />
           <Route path="/spotify-canvas" component={CanvasLanding} />
           <Route path="/ai-music-video-generator" component={AiMusicVideoLanding} />

@@ -144,6 +144,10 @@ export default function Home() {
                 <Link href="/dashboard" className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground">
                   earn free credits by referring friends
                 </Link>
+                <span className="text-sm text-muted-foreground">·</span>
+                <Link href="/compare" className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground">
+                  why AIBeatSync is different
+                </Link>
               </div>
             </motion.div>
           </div>

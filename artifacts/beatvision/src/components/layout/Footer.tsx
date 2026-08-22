@@ -16,6 +16,7 @@ const COLUMNS: { title: string; links: { label: string; href: string; external?:
     links: [
       { label: "Suno to Video", href: "/suno" },
       { label: "Canvas Maker", href: "/spotify-canvas" },
+      { label: "Why AIBeatSync?", href: "/compare" },
       { label: "Pricing", href: "/pricing" },
     ],
   },
