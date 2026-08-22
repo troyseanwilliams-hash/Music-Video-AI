@@ -96,10 +96,6 @@ type AiJobMeta = {
   bundledLipSyncReservedSubscriptionCredits?: number;
   bundledLipSyncReservedTopupCredits?: number;
   bundledLipSyncActivated?: boolean;
-  // TEMPORARY, admin-only: call the real Runway API directly instead of via
-  // Pixazo. Set by routes/jobs.ts at job creation. See
-  // videoApis.ts ClipRequest.preferDirectRunway.
-  preferDirectRunway?: boolean;
 };
 
 function aiMetaOf(job: JobRow): AiJobMeta {
@@ -701,8 +697,6 @@ async function generateClips(
           // and pass resolution so Kling selects the right model tier / output.
           provider,
           resolution: (job as JobRow & { resolution?: string | null }).resolution,
-          // TEMPORARY, admin-only — see AiJobMeta.preferDirectRunway.
-          preferDirectRunway: aiMetaOf(job).preferDirectRunway === true,
           // Persist the provider request id before polling starts so this clip
           // is recoverable if the server dies mid-poll.
           onSubmit: (info) => persistPendingRequest(job.id, i, info.pollUrl),

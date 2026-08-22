@@ -6,15 +6,6 @@ export interface ClipRequest {
   imageUrl?: string;
   /** Preferred engine chosen by the user (e.g. "runway", "kling"); pinned first in the chain. */
   provider?: string;
-  /**
-   * TEMPORARY, admin-only: call the real Runway API directly instead of routing
-   * "runway" through the Pixazo gateway. Set by routes/jobs.ts when the
-   * requesting user is an admin (ADMIN_EMAIL) and picks the Runway engine, so
-   * admins can preview genuine Runway output while everyone else keeps
-   * rendering through Pixazo. Requires RUNWAY_API_KEY; silently falls back to
-   * the Pixazo route if that key isn't set. Remove once no longer needed.
-   */
-  preferDirectRunway?: boolean;
   /** Requested output resolution ("720p" | "1080p" | "4k"). Selects the Kling model tier + gateway hint. */
   resolution?: string | null;
   /** When true, do not continue to another provider after this provider fails. */
@@ -62,7 +53,7 @@ function klingModel(resolution?: string | null): string {
 
 // Ordered provider chain with automatic fallback. Default order: Kling via
 // Pixazo first, then Runway via Pixazo (if PIXAZO_RUNWAY_MODEL is set), then
-// direct Runway/Luma. Override the whole order with VIDEO_API_CHAIN env var.
+// Luma. Override the whole order with VIDEO_API_CHAIN env var.
 // VIDEO_API pins the primary provider.
 export function getProviderChain(): Provider[] {
   const chainEnv = process.env.VIDEO_API_CHAIN
@@ -98,105 +89,8 @@ function delay(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-// --- Direct Runway REST client (bypasses Pixazo) -----------------------------
-// TEMPORARY, admin-only override — see ClipRequest.preferDirectRunway above.
-// Mirrors the client that was removed in "Route Runway through Pixazo; remove
-// the direct Runway endpoint" (fe543ca); kept isolated here rather than back
-// in the main provider chain so it can be deleted in one place later.
 const RUNWAY_BASE = "https://api.dev.runwayml.com/v1";
 const RUNWAY_VERSION = "2024-11-06";
-const RUNWAY_MODEL = "gen4.5";
-
-// image_to_video supports all ratios; text_to_video only supports landscape/portrait
-const IMAGE_TO_VIDEO_RATIOS: Record<string, string> = {
-  "16:9": "1280:720",
-  "9:16": "720:1280",
-  "4:3": "1104:832",
-  "1:1": "960:960",
-  "21:9": "1584:672",
-};
-
-// text_to_video gen4.5 only accepts these two ratios — map others to nearest
-const TEXT_TO_VIDEO_RATIOS: Record<string, "1280:720" | "720:1280"> = {
-  "16:9": "1280:720",
-  "9:16": "720:1280",
-  "4:3": "1280:720",
-  "1:1": "1280:720",
-  "21:9": "1280:720",
-};
-
-async function generateWithRunwayDirect(req: ClipRequest): Promise<string> {
-  const apiKey = process.env.RUNWAY_API_KEY!;
-  const duration = Math.min(Math.max(Math.ceil(req.durationSeconds), 2), 10);
-  const aspectRatio = req.aspectRatio ?? "16:9";
-
-  let endpoint: string;
-  let body: Record<string, unknown>;
-
-  if (req.imageUrl) {
-    // image_to_video: use the provided HTTPS reference image URL
-    endpoint = `${RUNWAY_BASE}/image_to_video`;
-    body = {
-      model: RUNWAY_MODEL,
-      promptImage: req.imageUrl,
-      promptText: req.prompt.slice(0, 1000),
-      duration,
-      ratio: IMAGE_TO_VIDEO_RATIOS[aspectRatio] ?? "1280:720",
-    };
-  } else {
-    // text_to_video: no reference image, let the prompt drive everything
-    endpoint = `${RUNWAY_BASE}/text_to_video`;
-    body = {
-      model: RUNWAY_MODEL,
-      promptText: req.prompt.slice(0, 1000),
-      duration,
-      ratio: TEXT_TO_VIDEO_RATIOS[aspectRatio] ?? "1280:720",
-    };
-  }
-
-  const genRes = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "X-Runway-Version": RUNWAY_VERSION,
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(30_000),
-  });
-
-  if (!genRes.ok)
-    throw new Error(`Runway ${genRes.status}: ${(await genRes.text()).slice(0, 300)}`);
-  const { id: taskId } = (await genRes.json()) as { id: string };
-
-  for (let i = 0; i < 120; i++) {
-    await delay(5000);
-    const pollRes = await fetch(`${RUNWAY_BASE}/tasks/${taskId}`, {
-      headers: { Authorization: `Bearer ${apiKey}`, "X-Runway-Version": RUNWAY_VERSION },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!pollRes.ok) continue;
-    const task = (await pollRes.json()) as {
-      status: string;
-      output?: string[];
-      failure?: string | { message?: string; [key: string]: unknown };
-    };
-    if (task.status === "SUCCEEDED" && task.output?.[0]) return task.output[0];
-    if (task.status === "FAILED") {
-      const fail = task.failure;
-      const failMsg =
-        typeof fail === "string"
-          ? fail
-          : fail?.message
-            ? fail.message
-            : fail
-              ? JSON.stringify(fail).slice(0, 300)
-              : "no details provided";
-      throw new Error(`Runway task failed: ${failMsg}`);
-    }
-  }
-  throw new Error("Runway task timed out after 10 minutes");
-}
 
 // --- Direct Runway, audio-driven character render (admin-only Runway Lip
 // Sync Generator) -------------------------------------------------------------
@@ -490,20 +384,6 @@ function isCreditError(err: unknown): boolean {
 async function callProvider(provider: Provider, req: ClipRequest): Promise<string> {
   switch (provider) {
     case "runway":
-      // TEMPORARY, admin-only: real Runway API instead of Pixazo's Runway
-      // routing. See ClipRequest.preferDirectRunway. Pixazo is intentionally
-      // NOT used as a fallback here — preferDirectRunway means "Runway only,
-      // no Pixazo," so a missing key or a failed call surfaces as a real
-      // error instead of silently billing through Pixazo.
-      if (req.preferDirectRunway) {
-        if (!process.env.RUNWAY_API_KEY) {
-          throw new Error(
-            "Direct Runway is enabled for this admin request (preferDirectRunway) but RUNWAY_API_KEY is not set — not falling back to Pixazo.",
-          );
-        }
-        return generateWithRunwayDirect(req);
-      }
-      // Everyone else still runs through the Pixazo gateway.
       // PIXAZO_RUNWAY_MODEL / PIXAZO_RUNWAY_I2V_MODEL choose the slugs.
       return generateWithPixazo(
         req,
@@ -521,25 +401,24 @@ async function callProvider(provider: Provider, req: ClipRequest): Promise<strin
   throw new Error(`Unknown video provider: ${provider}`);
 }
 
+export function resolveClipProviderChain(
+  req: Pick<ClipRequest, "provider" | "providerOnly">,
+): Provider[] {
+  let chain = getProviderChain();
+  // Honor a user-chosen engine: pin it first, keeping the rest as fallback.
+  const pinned = req.provider?.toLowerCase() as Provider | undefined;
+  if (pinned && providerAvailable(pinned)) {
+    chain = [pinned, ...chain.filter((p) => p !== pinned)];
+    if (req.providerOnly) chain = [pinned];
+  }
+  return chain;
+}
+
 // Try providers in order, automatically falling back to the next on failure
 // (e.g. Runway credits exhausted → Pixazo). Returns the first success.
 export async function generateClip(req: ClipRequest): Promise<ClipResult | null> {
-  let chain = getProviderChain();
+  const chain = resolveClipProviderChain(req);
   if (chain.length === 0) return null;
-
-  // TEMPORARY, admin-only: preferDirectRunway means Runway ONLY — no
-  // fallback to kling/pixazo/luma (kling and pixazo both bill through the
-  // same Pixazo gateway this flag exists to avoid). See ClipRequest.preferDirectRunway.
-  if (req.preferDirectRunway) {
-    chain = ["runway"];
-  } else {
-    // Honor a user-chosen engine: pin it first, keeping the rest as fallback.
-    const pinned = req.provider?.toLowerCase() as Provider | undefined;
-    if (pinned && providerAvailable(pinned)) {
-      chain = [pinned, ...chain.filter((p) => p !== pinned)];
-      if (req.providerOnly) chain = [pinned];
-    }
-  }
 
   let lastErr: unknown;
   for (let i = 0; i < chain.length; i++) {

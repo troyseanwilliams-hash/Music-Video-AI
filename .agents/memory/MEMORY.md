@@ -21,3 +21,4 @@
 - [Lip Sync audio format contract](lipsync-audio-format-contract.md) — the provider rejects M4A; both job processors must send a trimmed MP3 or WAV segment.
 - [Cross-product billing exclusion](cross-product-billing-exclusion.md) — direct and Suite checkout must reserve on one authority; refunds use source-aware current-period buckets.
 - [Timed-lyrics payload contract](timed-lyrics-payload-contract.md) — Auto-sync can exceed textarea limits because enhanced LRC adds per-word timestamps; keep all lyric entry paths and render parsers aligned.
+- [Generate provider routing](generate-provider-routing.md) — standard Generate jobs must use the same provider route for admins and customers; keep direct experiments isolated.
