@@ -117,13 +117,18 @@ export function sectionLabel(text: string): string {
 /** "Your video is ready" — celebration + watch CTA + what-to-do-next. */
 export function renderReadyEmailHtml(p: { title: string; jobUrl: string; unsubscribeUrl?: string }): string {
   const title = escapeHtml(p.title);
+  const jobUrl = escapeHtml(p.jobUrl);
   return emailShell(
     `
       <h1 style="font-size:22px;margin:0 0 12px">Your video is ready 🎬</h1>
       <p style="font-size:15px;line-height:1.6;color:#333;margin:0 0 8px">
         <strong>“${title}”</strong> just finished rendering — every shot generated and cut to the beat of your track.
       </p>
-      ${ctaButton(p.jobUrl, "▶&nbsp; Watch your video")}
+      ${ctaButton(jobUrl, "▶&nbsp; Watch your video")}
+      <p style="font-size:13px;line-height:1.6;color:#666;text-align:center;margin:-12px 0 24px">
+        Signed out? We'll ask you to sign in, then open your video.
+        <a href="${jobUrl}" style="color:#7c3aed;text-decoration:underline">Open your video</a>
+      </p>
       ${sectionLabel("Make the most of it")}
       <table style="width:100%;border-collapse:collapse;font-size:14px;line-height:1.5">
         ${featureRow("Download & post", "grab the MP4 from the video page — it's ready for TikTok, Reels, Shorts, and YouTube.")}

@@ -13,6 +13,13 @@ import { verifyUnsubscribeToken } from "../lib/emailTemplates.js";
 
 const router: IRouter = Router();
 
+export function videoEmailRedirect(jobId: string, isAuthenticated: boolean): string {
+  const jobPath = `/jobs/${encodeURIComponent(jobId)}`;
+  return isAuthenticated
+    ? jobPath
+    : `/login?from=${encodeURIComponent(jobPath)}`;
+}
+
 function page(title: string, body: string): string {
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} — AIBeatSync</title></head>
   <body style="margin:0;background:#0b0714;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
@@ -45,6 +52,18 @@ function confirmForm(action: string, uid: string, token: string, label: string):
 }
 
 const BAD_LINK = page("Link not valid", "This link is invalid or out of date. You can manage email notifications from your dashboard instead.");
+
+// Stable target for "Your video is ready" email links. An active session goes
+// straight to the video; a signed-out visitor goes to login with the video path
+// preserved, and the existing login flow resumes there after authentication.
+router.get("/email/video/:jobId", (req: Request, res: Response) => {
+  const jobId = String(req.params.jobId ?? "").trim();
+  if (!jobId || jobId.length > 200) {
+    res.redirect(302, "/login");
+    return;
+  }
+  res.redirect(302, videoEmailRedirect(jobId, req.isAuthenticated()));
+});
 
 // Browser click → non-mutating confirmation page (email scanners follow GET
 // links, so state only changes on POST).

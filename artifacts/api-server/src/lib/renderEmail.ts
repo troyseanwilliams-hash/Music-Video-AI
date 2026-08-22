@@ -19,7 +19,7 @@ import {
   unsubscribeHeaders,
 } from "./emailTemplates.js";
 
-const APP_URL = process.env.APP_URL ?? "https://aibeatsync.com";
+const APP_URL = (process.env.APP_URL ?? "https://aibeatsync.com").replace(/\/+$/, "");
 const FROM = "AIBeatSync <notifications@aibeatsync.com>";
 
 async function sendViaResend(to: string, subject: string, html: string, extraHeaders?: Record<string, string>): Promise<void> {
@@ -59,7 +59,11 @@ export async function notifyRenderReady(job: RenderEmailJob): Promise<void> {
     await sendViaResend(
       user.email,
       "Your video is ready 🎬",
-      renderReadyEmailHtml({ title, jobUrl: `${APP_URL}/jobs/${job.id}`, unsubscribeUrl: unsub }),
+      renderReadyEmailHtml({
+        title,
+        jobUrl: `${APP_URL}/api/email/video/${encodeURIComponent(job.id)}`,
+        unsubscribeUrl: unsub,
+      }),
       unsubscribeHeaders(unsub),
     );
     logger.info({ jobId: job.id }, "Render-ready email sent");
