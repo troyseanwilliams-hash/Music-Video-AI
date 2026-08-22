@@ -57,7 +57,7 @@ export function calculateLipsyncCostFromSourceVideo(
   songDurationSec?: number | null,
   provider?: AiProvider | string | null,
 ): number {
-  const { numClips, clipDurationSec } = getClipPlan(requestedDuration, songDurationSec);
+  const { numClips, clipDurationSec } = getGenerationClipPlan(requestedDuration, songDurationSec);
   const costCredits = (numClips * clipDurationSec * usdPerSecondFor(provider as AiProvider | undefined)) / USD_PER_CREDIT;
   return Math.ceil(costCredits * resolutionMultiplier(resolution) * LIPSYNC_MARKUP);
 }
