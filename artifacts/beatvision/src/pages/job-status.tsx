@@ -407,6 +407,8 @@ export default function JobStatus() {
   const currentStage = STAGES[currentStageIdx] ?? STAGES[0];
 
   const analysis = job.audioAnalysis as Record<string, unknown> | null | undefined;
+  const analysisBpm = typeof analysis?.bpm === "number" ? analysis.bpm : null;
+  const analysisMood = typeof analysis?.mood === "string" ? analysis.mood : null;
   // No-audio (prompt-only) jobs store a NULL audio source in the DB ("none"
   // isn't a valid enum value) — detect by the absence of any audio source.
   const jobAudio = job as {
@@ -646,6 +648,8 @@ export default function JobStatus() {
                         storyboard={storyboard}
                         completedClipIndexes={completedClipIndexes}
                         status={job.status ?? "queued"}
+                        bpm={analysisBpm}
+                        mood={analysisMood}
                       />
                     ) : (
                       <GenerationFiller />
