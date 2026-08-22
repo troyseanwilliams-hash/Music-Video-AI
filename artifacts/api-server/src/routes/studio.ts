@@ -6,6 +6,7 @@ import { randomUUID } from "crypto";
 import { z } from "zod";
 import { FREE_EDITOR_EXPORTS_PER_MONTH, EDITOR_OVERAGE_COST, TRIAL_LYRIC_EXPORTS } from "../lib/editorCost.js";
 import { LYRIC_OVERLAY_COST, LYRIC_ALIGN_COST, TRIAL_FREE_ALIGNS } from "../lib/creditCost.js";
+import { MAX_LYRICS_LENGTH } from "../lib/lyricLimits.js";
 
 const router = Router();
 
@@ -60,7 +61,7 @@ const RenderSchema = z.object({
   acceptCopyright: z.boolean().optional(),
   // Karaoke lyric burn (same engine as the generator): plain text, LRC, or
   // word-level enhanced LRC.
-  lyricsText: z.string().max(5000).optional(),
+  lyricsText: z.string().max(MAX_LYRICS_LENGTH).optional(),
 });
 
 // GET /api/studio/quota — this month's free-Remix usage for the current user.

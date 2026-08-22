@@ -66,6 +66,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 // three timing formats the karaoke engine understands: word-level tags on the
 // first lines, plain [mm:ss] line tags after, and a comment for plain text.
 import { SAMPLE_LYRICS } from "@/lib/sampleLyrics";
+import { MAX_LYRICS_LENGTH } from "@/lib/lyricLimits";
 
 type ErrorDialogState = {
   open: boolean;
@@ -184,7 +185,12 @@ export default function Generate() {
   const [quickStartTemplateId, setQuickStartTemplateId] = useState<string | null>(null);
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const audioSectionRef = useRef<HTMLDivElement>(null);
-  const [fieldErrors, setFieldErrors] = useState<{ prompt?: string; audio?: string; lipSync?: string }>({});
+  const [fieldErrors, setFieldErrors] = useState<{
+    prompt?: string;
+    audio?: string;
+    lipSync?: string;
+    lyrics?: string;
+  }>({});
   const [selectedStyle, setSelectedStyle] = useState<VideoStyle>(VideoStyle.cinematic);
   const [lyricsEnabled, setLyricsEnabled] = useState(false);
   const [lyricsText, setLyricsText] = useState("");
@@ -684,9 +690,11 @@ export default function Generate() {
       if (typeof data?.lrc === "string" && data.lrc.trim()) {
         setLyricsText(data.lrc);
         setLyricsSyncNote(
-          data?.source === "asr"
-            ? "Lyrics transcribed from the track and timed word-by-word — review below."
-            : "Your lyrics are now timed word-by-word to the vocals.",
+          data.lrc.length > MAX_LYRICS_LENGTH
+            ? `Auto-sync produced ${data.lrc.length.toLocaleString()} characters. Shorten the lyrics to ${MAX_LYRICS_LENGTH.toLocaleString()} characters before generating.`
+            : data?.source === "asr"
+              ? "Lyrics transcribed from the track and timed word-by-word — review below."
+              : "Your lyrics are now timed word-by-word to the vocals.",
         );
       } else {
         setLyricsSyncNote("Auto-sync couldn't detect vocals in this track.");
@@ -699,6 +707,18 @@ export default function Generate() {
   };
 
   const submitJob = () => {
+    if (
+      lyricsEnabled &&
+      lyricsText.trim().length > MAX_LYRICS_LENGTH
+    ) {
+      setConfirmOpen(false);
+      setErrorDialog({
+        open: true,
+        title: "Lyrics are too long",
+        message: `Shorten the lyrics to ${MAX_LYRICS_LENGTH.toLocaleString()} characters or fewer, then try again.`,
+      });
+      return;
+    }
     createJob.mutate(
       {
         data: {
@@ -779,7 +799,12 @@ export default function Generate() {
   };
 
   const handleGenerate = () => {
-    const errors: { prompt?: string; audio?: string; lipSync?: string } = {};
+    const errors: {
+      prompt?: string;
+      audio?: string;
+      lipSync?: string;
+      lyrics?: string;
+    } = {};
 
     if (!prompt.trim()) {
       errors.prompt = "Please describe the visuals you want.";
@@ -811,6 +836,12 @@ export default function Generate() {
       errors.lipSync = isUploadingLipSyncImage
         ? "Wait for the face image to finish uploading."
         : "Upload a face image for the bundled AI Lip Sync video.";
+    }
+    if (
+      lyricsEnabled &&
+      lyricsText.trim().length > MAX_LYRICS_LENGTH
+    ) {
+      errors.lyrics = `Shorten the lyrics to ${MAX_LYRICS_LENGTH.toLocaleString()} characters or fewer.`;
     }
 
     if (Object.keys(errors).length > 0) {
@@ -1900,14 +1931,29 @@ export default function Generate() {
                       ? "Type the exact words you want on screen, one line at a time — a title, a CTA like \"Try it free at yoursite.com\", credits, etc. They'll be spread evenly across the video and rendered as real text."
                       : "Paste your lyrics here — or leave empty and hit Auto-sync to transcribe them from the track. LRC with [mm:ss] timestamps works too…"
                   }
-                  className="min-h-[120px] resize-none bg-background/50 border-input"
+                  className={`min-h-[120px] resize-none bg-background/50 ${
+                    fieldErrors.lyrics ? "border-destructive" : "border-input"
+                  }`}
                   value={lyricsText}
-                  onChange={(e) => setLyricsText(e.target.value)}
-                  maxLength={5000}
+                  onChange={(e) => {
+                    setLyricsText(e.target.value);
+                    setFieldErrors((current) => ({
+                      ...current,
+                      lyrics: undefined,
+                    }));
+                  }}
+                  maxLength={MAX_LYRICS_LENGTH}
                 />
                 <div className="flex items-center justify-between gap-3 mt-1.5">
-                  <p className="text-xs text-muted-foreground">
-                    {lyricsText.length}/5000 characters
+                  <p
+                    className={`text-xs ${
+                      lyricsText.length > MAX_LYRICS_LENGTH
+                        ? "text-destructive"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    {lyricsText.length.toLocaleString()}/
+                    {MAX_LYRICS_LENGTH.toLocaleString()} characters
                     {/\[\d{1,2}:\d{2}/.test(lyricsText)
                       ? " · LRC timestamps detected — exact sync"
                       : lyricsText.trim()
@@ -1925,6 +1971,12 @@ export default function Generate() {
                     </button>
                   )}
                 </div>
+                {fieldErrors.lyrics && (
+                  <p className="mt-1.5 flex items-center gap-1.5 text-sm font-medium text-destructive">
+                    <XCircle className="h-4 w-4 shrink-0" />
+                    {fieldErrors.lyrics}
+                  </p>
+                )}
 
                 {/* Auto-sync to vocals — available for uploaded files and resolved Suno tracks */}
                 {sourceType !== CreateJobRequestAudioSourceType.none && (

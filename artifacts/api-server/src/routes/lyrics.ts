@@ -5,6 +5,7 @@ import { db, creditsTable, soundtracksTable, usersTable, videosTable } from "@wo
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { LYRIC_ALIGN_COST, TRIAL_FREE_ALIGNS } from "../lib/creditCost.js";
+import { MAX_LYRICS_LENGTH } from "../lib/lyricLimits.js";
 
 const router = Router();
 const storageService = new ObjectStorageService();
@@ -126,6 +127,14 @@ router.post("/lyrics/align", async (req, res) => {
   }
   if (audioObjectPath && videoId) {
     res.status(400).json({ error: "Provide exactly one of audioObjectPath or videoId" });
+    return;
+  }
+  if (lyricsText && lyricsText.length > MAX_LYRICS_LENGTH) {
+    res.status(400).json({
+      error: `Lyrics must be ${MAX_LYRICS_LENGTH.toLocaleString()} characters or fewer.`,
+      code: "LYRICS_TOO_LONG",
+      maximum: MAX_LYRICS_LENGTH,
+    });
     return;
   }
   // Server-side record of the rights attestation the UI collects — lyrics are

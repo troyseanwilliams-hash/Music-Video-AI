@@ -13,6 +13,7 @@ import {
   RELEASE_KIT_COST,
 } from "@/lib/creditPricing";
 import { track } from "@/lib/analytics";
+import { MAX_LYRICS_LENGTH } from "@/lib/lyricLimits";
 
 interface TeaserItem {
   index: number;
@@ -266,7 +267,7 @@ export default function SocialExportsPanel({ videoId }: { videoId: string }) {
                 className="min-h-[70px] resize-none text-sm"
                 value={kitLyrics}
                 onChange={(e) => setKitLyrics(e.target.value)}
-                maxLength={5000}
+                maxLength={MAX_LYRICS_LENGTH}
                 data-testid="textarea-kit-lyrics"
               />
               <label className="flex items-start gap-2.5 cursor-pointer group">
@@ -448,7 +449,7 @@ export default function SocialExportsPanel({ videoId }: { videoId: string }) {
                 className="min-h-[100px] resize-none text-sm"
                 value={lyricsText}
                 onChange={(e) => setLyricsText(e.target.value)}
-                maxLength={5000}
+                maxLength={MAX_LYRICS_LENGTH}
                 data-testid="textarea-lyric-burn"
               />
               <label className="flex items-start gap-2.5 cursor-pointer group">

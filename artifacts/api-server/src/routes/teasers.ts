@@ -29,6 +29,7 @@ import {
 import { burnLyricsOnVideo } from "../lib/lyricOverlay.js";
 import { extractVideoThumbnail } from "../lib/videoStitcher.js";
 import { z } from "zod";
+import { MAX_LYRICS_LENGTH } from "../lib/lyricLimits.js";
 
 function isAdminEmail(email?: string | null): boolean {
   return !!(process.env.ADMIN_EMAIL && email && email.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase());
@@ -229,7 +230,7 @@ router.post("/videos/:id/canvas", makeHandler("canvas"));
 // acceptCopyright: server-side record of the rights attestation the UI collects
 // (lyrics are copyrighted separately from the recording) — can't be bypassed.
 const LyricsBody = z.object({
-  lyricsText: z.string().min(1).max(5000),
+  lyricsText: z.string().min(1).max(MAX_LYRICS_LENGTH),
   acceptCopyright: z.literal(true, {
     errorMap: () => ({ message: "You must confirm you have the rights to this song and its lyrics." }),
   }),
@@ -242,7 +243,9 @@ router.post("/videos/:id/lyrics", async (req: Request<{ id: string }>, res: Resp
   }
   const parsed = LyricsBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: "lyricsText is required (max 5000 chars)" });
+    res.status(400).json({
+      error: `Lyrics are required and must be ${MAX_LYRICS_LENGTH.toLocaleString()} characters or fewer.`,
+    });
     return;
   }
 
@@ -310,7 +313,10 @@ router.post("/videos/:id/lyrics", async (req: Request<{ id: string }>, res: Resp
 // version, and return download URLs for the whole drop (full video, thumbnail,
 // shorts, Canvas, lyric video). Already-generated parts are reused (not recharged).
 const ReleaseKitBody = z
-  .object({ lyricsText: z.string().max(5000).optional(), acceptCopyright: z.boolean().optional() })
+  .object({
+    lyricsText: z.string().max(MAX_LYRICS_LENGTH).optional(),
+    acceptCopyright: z.boolean().optional(),
+  })
   .refine((d) => !d.lyricsText?.trim() || d.acceptCopyright === true, {
     message: "You must confirm you have the rights to this song and its lyrics.",
   });

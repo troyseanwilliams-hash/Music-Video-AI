@@ -29,7 +29,7 @@ export interface TimedLine {
   words: TimedWord[];
 }
 
-const MAX_LINES = 80;
+const MAX_LINES = 300;
 const LINE_TAG = /\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
 const WORD_TAG = /<(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?>/g;
 

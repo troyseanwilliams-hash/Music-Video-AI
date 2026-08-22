@@ -459,7 +459,7 @@ export interface CreateJobRequest {
   audioSourceUrl?: string | null;
   /**
    * Optional lyrics to overlay on the generated video
-   * @maxLength 5000
+   * @maxLength 50000
    * @nullable
    */
   lyricsText?: string | null;
@@ -537,7 +537,7 @@ export interface RemixJobRequest {
   promptOverride?: string;
   /**
    * Karaoke captions burned into the remixed video. Omitted = inherit the original job's lyrics; empty string = clear them.
-   * @maxLength 5000
+   * @maxLength 50000
    */
   lyricsText?: string;
   /** Required (true) whenever the remix will burn lyrics. */

@@ -1217,7 +1217,7 @@ components:
           type: [string, 'null']
         lyricsText:
           type: [string, 'null']
-          maxLength: 5000
+          maxLength: 50000
           description: Optional lyrics to overlay on the generated video
         aspectRatio:
           type: [string, 'null']
@@ -1314,7 +1314,7 @@ components:
           description: Optional prompt applied to the regenerated clips
         lyricsText:
           type: string
-          maxLength: 5000
+          maxLength: 50000
           description: >-
             Karaoke captions burned into the remixed video. Omitted = inherit the
             original job's lyrics; empty string = clear them.

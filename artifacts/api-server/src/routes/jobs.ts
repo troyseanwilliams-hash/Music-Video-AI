@@ -23,6 +23,7 @@ import {
 import { getUserTier, canRender4k } from "../lib/tier.js";
 import { planShots } from "../lib/shotPlan.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { MAX_LYRICS_LENGTH } from "../lib/lyricLimits.js";
 
 const router = Router();
 
@@ -1047,7 +1048,7 @@ const RemixBody = z.object({
   promptOverride: z.string().max(1000).optional(),
   // Optional karaoke captions burned into the remixed video. When omitted the
   // original job's lyrics are inherited; an empty string clears them.
-  lyricsText: z.string().max(5000).optional(),
+  lyricsText: z.string().max(MAX_LYRICS_LENGTH).optional(),
   acceptCopyright: z.boolean().optional(),
 }).refine(
   (b) => !b.lyricsText?.trim() || b.acceptCopyright === true,

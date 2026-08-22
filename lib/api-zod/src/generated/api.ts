@@ -464,7 +464,7 @@ export const CreateJobHeader = zod.object({
 
 export const createJobBodyPromptMax = 1000;
 
-export const createJobBodyLyricsTextMax = 5000;
+export const createJobBodyLyricsTextMax = 50000;
 
 export const createJobBodyCharacterMax = 100;
 
@@ -887,7 +887,7 @@ export const remixJobBodyClipIndexesMax = 64;
 
 export const remixJobBodyPromptOverrideMax = 1000;
 
-export const remixJobBodyLyricsTextMax = 5000;
+export const remixJobBodyLyricsTextMax = 50000;
 
 export const RemixJobBody = zod.object({
   clipIndexes: zod

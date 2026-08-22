@@ -13,6 +13,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { LYRICSYNC_PUBLIC } from "@/lib/featureFlags";
 import { SoundtrackPickerDialog, type PickedSoundtrack } from "@/components/SoundtrackPickerDialog";
+import { MAX_LYRICS_LENGTH } from "@/lib/lyricLimits";
 import {
   Mic2, Music2, Wand2, Play, Pause, Upload, Smile, Copy, Type, Clock,
   ChevronLeft, ChevronRight, Info, AlertTriangle, Loader2, Film,
@@ -785,7 +786,7 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
                   value={lyrics}
                   onChange={(e) => { setLyrics(e.target.value); setSynced(false); setSyncError(null); }}
                   className="min-h-[150px] resize-none bg-background/50"
-                  maxLength={5000}
+                  maxLength={MAX_LYRICS_LENGTH}
                   placeholder="Paste plain lyrics — one line each. Section tags like [Chorus] are ignored for timing."
                 />
                 <div className="flex items-center gap-2 mt-2">

@@ -19,6 +19,7 @@ import { canAffordCredits, LYRIC_ALIGN_COST } from "@/lib/creditPricing";
 import { getRemixTimeEstimate } from "@/lib/jobEstimates";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SAMPLE_LYRICS } from "@/lib/sampleLyrics";
+import { MAX_LYRICS_LENGTH } from "@/lib/lyricLimits";
 import {
   Select,
   SelectContent,
@@ -1121,9 +1122,11 @@ export default function Editor() {
       if (typeof data?.lrc === "string" && data.lrc.trim()) {
         setLyricsText(data.lrc);
         setLyricsSyncNote(
-          data?.source === "asr"
-            ? "Lyrics transcribed from the track and timed word-by-word — review below."
-            : "Your lyrics are now timed word-by-word to the vocals.",
+          data.lrc.length > MAX_LYRICS_LENGTH
+            ? `Auto-sync produced ${data.lrc.length.toLocaleString()} characters. Shorten the lyrics to ${MAX_LYRICS_LENGTH.toLocaleString()} characters before exporting.`
+            : data?.source === "asr"
+              ? "Lyrics transcribed from the track and timed word-by-word — review below."
+              : "Your lyrics are now timed word-by-word to the vocals.",
         );
       } else {
         setLyricsSyncNote("Auto-sync couldn't detect vocals in this track.");
@@ -1204,6 +1207,17 @@ export default function Editor() {
     // user hit a backend 402 after submitting.
     if (!canAffordCredits(estimatedCost, balance)) {
       setTopUpOpen(true);
+      return;
+    }
+    if (
+      karaokeEnabled &&
+      lyricsText.trim().length > MAX_LYRICS_LENGTH
+    ) {
+      toast({
+        title: "Lyrics are too long",
+        description: `Shorten the lyrics to ${MAX_LYRICS_LENGTH.toLocaleString()} characters or fewer before exporting.`,
+        variant: "destructive",
+      });
       return;
     }
     pause();
@@ -2023,13 +2037,14 @@ export default function Editor() {
               className="min-h-[90px] resize-none text-sm"
               value={lyricsText}
               onChange={(e) => setLyricsText(e.target.value)}
-              maxLength={5000}
+              maxLength={MAX_LYRICS_LENGTH}
               disabled={lyricsSyncing}
               data-testid="textarea-editor-lyrics"
             />
             <div className="flex items-center justify-between gap-3 mt-1.5">
               <p className="text-xs text-muted-foreground">
-                {lyricsText.length}/5000 characters
+                {lyricsText.length.toLocaleString()}/
+                {MAX_LYRICS_LENGTH.toLocaleString()} characters
                 {/\[\d{1,2}:\d{2}/.test(lyricsText)
                   ? " · LRC timestamps detected — exact sync"
                   : lyricsText.trim()

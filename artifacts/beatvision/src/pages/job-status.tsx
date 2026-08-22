@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRoute, useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { SAMPLE_LYRICS } from "@/lib/sampleLyrics";
+import { MAX_LYRICS_LENGTH } from "@/lib/lyricLimits";
 import { LYRIC_ALIGN_COST, LYRIC_OVERLAY_COST } from "@/lib/creditPricing";
 import {
   getGenerationTimeEstimate,
@@ -1322,9 +1323,11 @@ function RemixPanel({
       if (typeof data?.lrc === "string" && data.lrc.trim()) {
         setLyricsText(data.lrc);
         setSyncNote(
-          data?.source === "asr"
-            ? "Lyrics transcribed from the audio and timed word-by-word — review and edit below."
-            : "Your lyrics are now timed word-by-word to the vocals.",
+          data.lrc.length > MAX_LYRICS_LENGTH
+            ? `Auto-sync produced ${data.lrc.length.toLocaleString()} characters. Shorten the lyrics to ${MAX_LYRICS_LENGTH.toLocaleString()} characters before remixing.`
+            : data?.source === "asr"
+              ? "Lyrics transcribed from the audio and timed word-by-word — review and edit below."
+              : "Your lyrics are now timed word-by-word to the vocals.",
         );
       } else {
         setError("Auto-sync couldn't detect vocals in this track.");
@@ -1356,6 +1359,15 @@ function RemixPanel({
 
   const regenerate = async () => {
     if (selected.size === 0) return;
+    if (
+      lyricsEnabled &&
+      lyricsText.trim().length > MAX_LYRICS_LENGTH
+    ) {
+      setError(
+        `Shorten the lyrics to ${MAX_LYRICS_LENGTH.toLocaleString()} characters or fewer before remixing.`,
+      );
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -1480,7 +1492,9 @@ function RemixPanel({
               <div className="space-y-3">
                 <textarea
                   value={lyricsText}
-                  onChange={(e) => setLyricsText(e.target.value.slice(0, 5000))}
+                  onChange={(e) =>
+                    setLyricsText(e.target.value.slice(0, MAX_LYRICS_LENGTH))
+                  }
                   placeholder="Paste your lyrics here — or leave empty and hit Auto-sync to transcribe them from the track. LRC with [mm:ss] timestamps works too…"
                   rows={5}
                   className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm resize-none"
@@ -1488,7 +1502,8 @@ function RemixPanel({
                 />
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-xs text-muted-foreground">
-                    {lyricsText.length}/5000 characters
+                    {lyricsText.length.toLocaleString()}/
+                    {MAX_LYRICS_LENGTH.toLocaleString()} characters
                     {/\[\d{1,2}:\d{2}/.test(lyricsText)
                       ? " · LRC timestamps detected — exact sync"
                       : lyricsText.trim()
