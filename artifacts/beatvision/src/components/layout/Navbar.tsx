@@ -41,23 +41,24 @@ export function Navbar() {
     { href: "/generate", label: "Generate", icon: Wand2 },
     { href: "/editor", label: "Remix", icon: Video },
     { href: "/prompt-studio", label: "Prompt", icon: Sparkles },
-    { href: "/soundtracks", label: "Soundtracks", icon: Music2 },
+    { href: "/soundtracks", label: "Make Music", icon: Music2 },
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/gallery", label: "Gallery", icon: Film },
   ];
   const publicLinks = [
     { href: "/explore", label: "Explore", icon: Compass },
+    { href: "/soundtracks", label: "Make Music", icon: Music2 },
     { href: "/pricing", label: "Pricing", icon: CreditCard },
   ];
   // Top bar: flat member links + public links.
   const topBarLinks = [
     ...(isAuthenticated ? memberLinks : []),
-    ...publicLinks,
+    ...publicLinks.filter((link) => !isAuthenticated || link.href !== "/soundtracks"),
   ];
   // Account dropdown + mobile panel: everything.
   const navLinks = [
     ...(isAuthenticated ? memberLinks : []),
-    ...publicLinks,
+    ...publicLinks.filter((link) => !isAuthenticated || link.href !== "/soundtracks"),
   ];
 
   return (

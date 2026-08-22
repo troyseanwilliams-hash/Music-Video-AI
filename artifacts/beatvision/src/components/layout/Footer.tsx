@@ -6,7 +6,7 @@ const COLUMNS: { title: string; links: { label: string; href: string; external?:
     title: "Create",
     links: [
       { label: "Generate", href: "/generate" },
-      { label: "Soundtracks", href: "/soundtracks" },
+      { label: "Make Music", href: "/soundtracks" },
       { label: "Remix Lab", href: "/editor" },
       { label: "Explore", href: "/explore" },
     ],
@@ -47,7 +47,7 @@ export function Footer() {
               <span className="text-lg font-bold tracking-tight">AIBeatSync</span>
             </Link>
             <p className="mt-3 max-w-xs text-sm text-muted-foreground">
-              Turn your music into beat-synced AI videos and royalty-free soundtracks.
+              Create original songs and audio, then turn them into beat-synced AI videos—or use the music on its own.
             </p>
           </div>
 

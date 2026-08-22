@@ -336,7 +336,7 @@ export default function Soundtracks() {
       <div className="container mx-auto px-4 py-16 text-center">
         <Music2 className="h-10 w-10 mx-auto text-muted-foreground mb-4" />
         <h1 className="text-xl font-semibold mb-2">Soundtracks</h1>
-        <p className="text-muted-foreground mb-6">Sign in to generate royalty-free instrumentals for your videos.</p>
+        <p className="text-muted-foreground mb-6">Sign in to create full vocal songs or instrumentals from a prompt—use them in videos or download and share your music on its own.</p>
         <Link href="/login"><Button className="bg-gradient-electric text-white border-0">Sign in</Button></Link>
       </div>
     );
@@ -372,7 +372,7 @@ export default function Soundtracks() {
             <Music2 className="h-6 w-6 text-primary" /> Soundtracks
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Generate royalty-free instrumentals, then drop them into a video, download, or share.
+            Create original full songs with vocals or instrumentals from a prompt. Use them in a video, or download and share your music on its own.
           </p>
         </div>
         {freeLabel && (

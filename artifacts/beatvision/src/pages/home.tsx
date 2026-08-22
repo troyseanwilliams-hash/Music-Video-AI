@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Play, Sparkles, Zap, Music, MonitorPlay, ExternalLink, ScanLine, ImagePlus, Volume2, VolumeX, Scissors, Lock, Clapperboard, Share2, Wand2, Maximize, VideoOff, Mic2 } from "lucide-react";
+import { ArrowRight, Play, Sparkles, Zap, Music, MonitorPlay, ExternalLink, ScanLine, ImagePlus, Volume2, VolumeX, Scissors, Lock, Clapperboard, Share2, Wand2, Maximize, VideoOff, Mic2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { AuroraBackground } from "@/components/AuroraBackground";
 
@@ -104,9 +104,9 @@ export default function Home() {
               </h1>
 
               <p className="text-lg md:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto">
-                Most tools stop at a single clip. AIBeatSync takes you the whole way — beat-synced AI visuals,
-                consistent characters, a royalty-free soundtrack, and one-click social cuts. Bring a song or
-                <span className="text-foreground font-semibold"> generate one</span>, then let AI direct it or take control in <span className="text-foreground font-semibold">Remix Lab</span>.
+                Most tools stop at a single clip. AIBeatSync takes you the whole way — make an original song or audio track,
+                turn it into beat-synced AI visuals, then create social cuts. Bring a song or
+                <span className="text-foreground font-semibold"> generate a full vocal song or instrumental</span>, then let AI direct it or take control in <span className="text-foreground font-semibold">Remix Lab</span>.
               </p>
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -123,11 +123,20 @@ export default function Home() {
                   </Button>
                 </Link>
               </div>
+              <Link
+                href="/soundtracks"
+                className="mx-auto mt-5 flex max-w-2xl items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 text-left transition-colors hover:border-primary/60 hover:bg-primary/10"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/15">
+                  <Music className="h-4 w-4 text-primary" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold text-foreground">Create your own music with Soundtracks</span>
+                  <span className="block text-xs leading-relaxed text-muted-foreground">Generate full vocal songs or instrumentals to use in a video—or download, share, and enjoy as standalone audio.</span>
+                </span>
+                <ArrowRight className="h-4 w-4 shrink-0 text-primary" />
+              </Link>
               <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
-                <Link href="/soundtracks" className="text-sm text-primary underline underline-offset-4 hover:opacity-80">
-                  create a royalty-free soundtrack
-                </Link>
-                <span className="text-sm text-muted-foreground">·</span>
                 <Link href="/gallery" className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground">
                   browse the gallery
                 </Link>
@@ -155,7 +164,7 @@ export default function Home() {
             </p>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 text-left">
               {[
-                { icon: Music, title: "1 · Bring or make music", body: "Upload a song, paste a Suno link, or generate a royalty-free Soundtrack in seconds." },
+                { icon: Music, title: "1 · Bring or make music", body: "Upload a song, paste a Suno link, or create an original vocal song or instrumental from a prompt—use it in your video or as music on its own." },
                 { icon: Sparkles, title: "2 · AI beat-synced video", body: "The engine reads your track's beat, energy, and mood and renders cinematic, on-beat visuals." },
                 { icon: Scissors, title: "3 · Make it yours", body: "Fine-tune on the Remix Lab timeline — or build a slideshow from your own photos. Trim, sync music, add transitions, preview live. A simple CapCut alternative for weddings, work, socials, and just for fun." },
                 { icon: Share2, title: "4 · Export everywhere", body: "One-click Release Kit gives you TikTok, Reels, Shorts, and Spotify Canvas cuts, ready to post." },
