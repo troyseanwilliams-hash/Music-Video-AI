@@ -119,6 +119,7 @@ type GeneratedClip = {
 };
 
 type AiJobMeta = {
+  generationMode?: "montage" | "narrative";
   reservedCredits?: number;
   reservedSubscriptionCredits?: number;
   reservedTopupCredits?: number;
@@ -128,7 +129,14 @@ type AiJobMeta = {
   pendingRequests?: Record<string, string>; // clip index -> provider poll URL (submitted, not yet downloaded)
   retryAfter?: number; // epoch ms — queued job must not be claimed before this
   finalizeWithPartial?: boolean; // admin: stitch whatever clips exist, never call the provider
-  storyboard?: { shots?: unknown[]; timeline?: unknown[] };
+  storyboard?: {
+    generationMode?: "montage" | "narrative";
+    numClips?: number;
+    clipDurationSec?: number;
+    targetOutputDuration?: number;
+    shots?: unknown[];
+    timeline?: unknown[];
+  };
   baseCreditCost?: number;
   baseReservedSubscriptionCredits?: number;
   baseReservedTopupCredits?: number;
@@ -143,6 +151,14 @@ type AiJobMeta = {
 function aiMetaOf(job: JobRow): AiJobMeta {
   const m = (job as JobRow & { manifest?: unknown }).manifest;
   return m && typeof m === "object" ? (m as AiJobMeta) : {};
+}
+
+function generationModeOf(job: JobRow): "montage" | "narrative" {
+  const meta = aiMetaOf(job);
+  return meta.generationMode === "narrative"
+    || meta.storyboard?.generationMode === "narrative"
+    ? "narrative"
+    : "montage";
 }
 
 function storyboardShotsOf(job: JobRow): PersistedStoryboardShot[] {
@@ -162,6 +178,39 @@ function storyboardShotsOf(job: JobRow): PersistedStoryboardShot[] {
       );
     })
     .sort((a, b) => a.index - b.index);
+}
+
+function narrativeGenerationPlanOf(job: JobRow): GenerationPlan {
+  const storyboard = aiMetaOf(job).storyboard;
+  const shots = storyboardShotsOf(job);
+  const clipDurationSec = storyboard?.clipDurationSec === 5
+    ? 5
+    : storyboard?.clipDurationSec === 10
+      ? 10
+      : null;
+  const targetOutputDuration = storyboard?.targetOutputDuration;
+  const declaredClips = storyboard?.numClips;
+  if (
+    clipDurationSec == null
+    || !Number.isFinite(targetOutputDuration)
+    || !targetOutputDuration
+    || targetOutputDuration <= 0
+    || !Number.isInteger(declaredClips)
+    || declaredClips !== shots.length
+    || shots.length !== Math.ceil(targetOutputDuration / clipDurationSec)
+  ) {
+    throw new Error(`${PROVIDER_API_FAILURE}: Stored Narrative Story plan is incomplete or invalid`);
+  }
+  return {
+    clipDurationSec,
+    targetOutputDuration,
+    sections: shots.map((shot, index) => ({
+      startTime: shot.startTime,
+      endTime: Math.min(targetOutputDuration, shot.startTime + clipDurationSec),
+      label: shot.label,
+      energy: shot.energy,
+    })),
+  };
 }
 
 async function readAiMeta(jobId: string): Promise<AiJobMeta> {
@@ -582,7 +631,13 @@ async function generateClips(
 }> {
   const provider = getActiveProvider((job as JobRow & { aiProvider?: string | null }).aiProvider ?? undefined);
   const { sections, clipDurationSec } = plan;
+  const generationMode = generationModeOf(job);
   const storyboardShots = storyboardShotsOf(job);
+  if (generationMode === "narrative" && storyboardShots.length !== sections.length) {
+    throw new Error(
+      `${PROVIDER_API_FAILURE}: Narrative plan expected ${sections.length} unique scenes but found ${storyboardShots.length}`,
+    );
+  }
   const clips: GeneratedClip[] = new Array(sections.length);
   const refImageUrl = await loadReferenceImageUrl(job);
 
@@ -609,9 +664,11 @@ async function generateClips(
   const clipAttempts = is4k ? 1 : 2;
 
   for (let i = 0; i < sections.length; i++) {
-    const storyboardShot = storyboardShots.length > 0
-      ? storyboardShots[i % storyboardShots.length]!
-      : null;
+    const storyboardShot = generationMode === "narrative"
+      ? storyboardShots[i]!
+      : storyboardShots.length > 0
+        ? storyboardShots[i % storyboardShots.length]!
+        : null;
     const section = storyboardShot
       ? {
           startTime: storyboardShot.startTime,
@@ -732,6 +789,7 @@ async function generateClips(
         // the video is finished with fewer unique clips (looped to fill the
         // runtime) instead of throwing the whole job away.
         if (msg.includes(PROVIDER_OUT_OF_CREDITS)) {
+          if (generationMode === "narrative") throw e;
           const done = clips.filter(Boolean).length;
           if (done > 0) {
             logger.warn(
@@ -772,6 +830,11 @@ async function generateClips(
       throw new Error(`${PROVIDER_API_FAILURE}: Finalize requested but no rendered clips are available for this job`);
     }
     if (salvaged.length < sections.length) {
+      if (generationMode === "narrative") {
+        throw new Error(
+          `${PROVIDER_API_FAILURE}: Narrative finalization requires all ${sections.length} planned scenes`,
+        );
+      }
       logger.warn(
         { jobId: job.id, salvaged: salvaged.length, planned: sections.length },
         "Finalize-only: stitching with fewer unique clips than planned",
@@ -1701,11 +1764,13 @@ async function processJob(job: JobRow): Promise<void> {
     });
 
     // === GENERATING ===
-    const plan = buildGenerationPlan(
-      extJob.requestedDuration,
-      analysis.sections,
-      analysis.durationSeconds,
-    );
+    const plan = generationModeOf(job) === "narrative"
+      ? narrativeGenerationPlanOf(job)
+      : buildGenerationPlan(
+          extJob.requestedDuration,
+          analysis.sections,
+          analysis.durationSeconds,
+        );
 
     logger.info(
       { jobId: job.id, requestedDuration: extJob.requestedDuration, planClips: plan.sections.length, targetOutputDuration: plan.targetOutputDuration },
@@ -1725,18 +1790,22 @@ async function processJob(job: JobRow): Promise<void> {
 
     let videoBuffer: Buffer;
     let thumbnailBuffer: Buffer;
-    const montageSequence = resolveMontageSequence(
-      aiMetaOf(job).storyboard?.timeline,
-      clips,
-      plan.targetOutputDuration,
-      plan.clipDurationSec,
-    );
-    let resolvedMontageSequence = montageSequence;
+    const generationMode = generationModeOf(job);
+    const requestedSequence = generationMode === "narrative"
+      ? clips.map((_, index) => index)
+      : resolveMontageSequence(
+          aiMetaOf(job).storyboard?.timeline,
+          clips,
+          plan.targetOutputDuration,
+          plan.clipDurationSec,
+        );
+    let resolvedSequence = requestedSequence;
 
     if (audioData) {
       const stitchResult = await stitchVideoClips({
         clips,
-        sequence: montageSequence,
+        sequence: requestedSequence,
+        strictSequence: generationMode === "narrative",
         audioBuffer: audioData.buffer,
         audioExt: audioData.ext,
         totalDuration: plan.targetOutputDuration,
@@ -1744,7 +1813,7 @@ async function processJob(job: JobRow): Promise<void> {
       });
       videoBuffer = stitchResult.videoBuffer;
       thumbnailBuffer = stitchResult.thumbnailBuffer;
-      resolvedMontageSequence = stitchResult.resolvedSequence;
+      resolvedSequence = stitchResult.resolvedSequence;
     } else {
       // No audio — either the user intentionally chose "no audio" (a silent
       // video meant to get a soundtrack added later in the Editor), or audio
@@ -1752,13 +1821,14 @@ async function processJob(job: JobRow): Promise<void> {
       // silent video rather than discarding all but the first clip.
       const stitchResult = await stitchVideoClips({
         clips,
-        sequence: montageSequence,
+        sequence: requestedSequence,
+        strictSequence: generationMode === "narrative",
         totalDuration: plan.targetOutputDuration,
         lyricsText,
       });
       videoBuffer = stitchResult.videoBuffer;
       thumbnailBuffer = stitchResult.thumbnailBuffer;
-      resolvedMontageSequence = stitchResult.resolvedSequence;
+      resolvedSequence = stitchResult.resolvedSequence;
     }
 
     // Starter-tier videos get a small "AIBeatSync" watermark so shared clips
@@ -1784,7 +1854,7 @@ async function processJob(job: JobRow): Promise<void> {
       videoId,
       clips,
       job.style ?? null,
-      resolvedMontageSequence,
+      resolvedSequence,
       plan.targetOutputDuration,
     );
 

@@ -5,9 +5,11 @@
  * BeatVision AI API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { JobStoryboardGenerationMode } from "./jobStoryboardGenerationMode";
 import type { JobStoryboardShot } from "./jobStoryboardShot";
 
 export interface JobStoryboard {
+  generationMode: JobStoryboardGenerationMode;
   /** @minimum 1 */
   numClips: number;
   /** @minimum 0 */
@@ -15,5 +17,9 @@ export interface JobStoryboard {
   /** @minimum 0 */
   targetOutputDuration: number;
   approximate: boolean;
+  /** @minimum 1 */
+  timelineSceneCount?: number;
+  /** @minimum 0 */
+  reuseCount?: number;
   shots: JobStoryboardShot[];
 }

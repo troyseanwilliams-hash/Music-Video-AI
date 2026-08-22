@@ -258,6 +258,7 @@ function estimateForJob(job: Job): JobTimeEstimate {
     job.aiProvider,
     job.resolution,
     finiteNumber(job.audioAnalysis?.durationSeconds) || null,
+    manifest.generationMode === "narrative" ? "narrative" : "montage",
   );
 }
 

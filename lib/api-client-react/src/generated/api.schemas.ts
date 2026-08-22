@@ -251,6 +251,14 @@ export const JobManifestSegmentsItemKind = {
   photo: "photo",
 } as const;
 
+export type JobStoryboardGenerationMode =
+  (typeof JobStoryboardGenerationMode)[keyof typeof JobStoryboardGenerationMode];
+
+export const JobStoryboardGenerationMode = {
+  montage: "montage",
+  narrative: "narrative",
+} as const;
+
 export interface JobStoryboardShot {
   /** @minimum 0 */
   index: number;
@@ -266,6 +274,7 @@ export interface JobStoryboardShot {
 }
 
 export interface JobStoryboard {
+  generationMode: JobStoryboardGenerationMode;
   /** @minimum 1 */
   numClips: number;
   /** @minimum 0 */
@@ -273,6 +282,10 @@ export interface JobStoryboard {
   /** @minimum 0 */
   targetOutputDuration: number;
   approximate: boolean;
+  /** @minimum 1 */
+  timelineSceneCount?: number;
+  /** @minimum 0 */
+  reuseCount?: number;
   shots: JobStoryboardShot[];
 }
 
@@ -437,6 +450,17 @@ export const CreateJobRequestRequestedDuration = {
 } as const;
 
 /**
+ * Montage intentionally reuses a smaller visual library; Narrative renders one unique chronological scene per timeline slot.
+ */
+export type CreateJobRequestGenerationMode =
+  (typeof CreateJobRequestGenerationMode)[keyof typeof CreateJobRequestGenerationMode];
+
+export const CreateJobRequestGenerationMode = {
+  montage: "montage",
+  narrative: "narrative",
+} as const;
+
+/**
  * Preferred AI video generation provider; falls back to the server-configured active provider if not set or unavailable
  * @nullable
  */
@@ -494,6 +518,8 @@ export interface CreateJobRequest {
    * @nullable
    */
   requestedDuration?: CreateJobRequestRequestedDuration;
+  /** Montage intentionally reuses a smaller visual library; Narrative renders one unique chronological scene per timeline slot. */
+  generationMode?: CreateJobRequestGenerationMode;
   /**
    * Audio clip start time in seconds; null or omit means start from the beginning
    * @minimum 0

@@ -9,6 +9,7 @@ import type { AudioAnalysis } from "./audioAnalysis";
 import type { CreateJobRequestAiProvider } from "./createJobRequestAiProvider";
 import type { CreateJobRequestAspectRatio } from "./createJobRequestAspectRatio";
 import type { CreateJobRequestAudioSourceType } from "./createJobRequestAudioSourceType";
+import type { CreateJobRequestGenerationMode } from "./createJobRequestGenerationMode";
 import type { CreateJobRequestRequestedDuration } from "./createJobRequestRequestedDuration";
 import type { CreateJobRequestResolution } from "./createJobRequestResolution";
 import type { VideoStyle } from "./videoStyle";
@@ -57,6 +58,8 @@ export interface CreateJobRequest {
    * @nullable
    */
   requestedDuration?: CreateJobRequestRequestedDuration;
+  /** Montage intentionally reuses a smaller visual library; Narrative renders one unique chronological scene per timeline slot. */
+  generationMode?: CreateJobRequestGenerationMode;
   /**
    * Audio clip start time in seconds; null or omit means start from the beginning
    * @minimum 0

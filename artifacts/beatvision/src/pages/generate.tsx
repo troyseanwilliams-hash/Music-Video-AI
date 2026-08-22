@@ -12,6 +12,7 @@ import {
   CreateJobRequestAspectRatio,
   CreateJobRequestResolution,
   CreateJobRequestRequestedDuration,
+  CreateJobRequestGenerationMode,
   VideoStyle,
   type CreateJobRequest,
 } from "@workspace/api-client-react";
@@ -27,6 +28,7 @@ import {
   MAX_FULL_SECONDS,
   PROVIDER_LABELS,
   type AiProvider,
+  type GenerationMode,
 } from "@/lib/creditPricing";
 import { getGenerationTimeEstimate } from "@/lib/jobEstimates";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -118,7 +120,7 @@ const PLATFORM_PRESETS: {
   { id: "vertical", label: "TikTok · Reels · Shorts", emoji: "📱", aspect: CreateJobRequestAspectRatio["9:16"], duration: CreateJobRequestRequestedDuration.NUMBER_10 },
   { id: "youtube", label: "YouTube", emoji: "▶️", aspect: CreateJobRequestAspectRatio["16:9"], duration: CreateJobRequestRequestedDuration.NUMBER_30 },
   { id: "canvas", label: "Spotify Canvas", emoji: "🎵", aspect: CreateJobRequestAspectRatio["9:16"], duration: CreateJobRequestRequestedDuration.NUMBER_5 },
-  { id: "square", label: "Square feed", emoji: "⬛", aspect: CreateJobRequestAspectRatio["1:1"], duration: CreateJobRequestRequestedDuration.NUMBER_10 },
+  { id: "square", label: "Square feed", emoji: "⬜", aspect: CreateJobRequestAspectRatio["1:1"], duration: CreateJobRequestRequestedDuration.NUMBER_10 },
 ];
 
 const ASPECT_RATIOS = [
@@ -192,6 +194,7 @@ export default function Generate() {
     lyrics?: string;
   }>({});
   const [selectedStyle, setSelectedStyle] = useState<VideoStyle>(VideoStyle.cinematic);
+  const [generationMode, setGenerationMode] = useState<CreateJobRequestGenerationMode>(CreateJobRequestGenerationMode.montage);
   const [lyricsEnabled, setLyricsEnabled] = useState(false);
   const [lyricsText, setLyricsText] = useState("");
   // Auto-sync: AI listens to the uploaded track and returns word-timed lyrics.
@@ -443,6 +446,7 @@ export default function Generate() {
       body: JSON.stringify({
         prompt,
         style: selectedStyle,
+        generationMode,
         character,
         requestedDuration,
         audioObjectPath: selectedAudioObjectPath,
@@ -632,7 +636,7 @@ export default function Generate() {
   // surface on this page must include it so the shown cost equals the charge.
   const lyricAddon = lyricsText.trim() ? LYRIC_OVERLAY_COST : 0;
   const videoCost =
-    estimateCreditCost(requestedDuration, aiProvider, resolution, songDurationSec) + lyricAddon;
+    estimateCreditCost(requestedDuration, aiProvider, resolution, songDurationSec, generationMode as GenerationMode) + lyricAddon;
   const lipSyncAddon =
     fullTrackSelected && fullTrackLipSyncEnabled
       ? calculateLipsyncCost(fullTrackLipSyncSeconds)
@@ -643,6 +647,7 @@ export default function Generate() {
     aiProvider,
     resolution,
     songDurationSec,
+    generationMode as GenerationMode
   );
   const balance = statsData?.creditsRemaining ?? null;
   const canAfford = canAffordCredits(cost, balance, isAdmin);
@@ -765,6 +770,7 @@ export default function Generate() {
           character: character !== "none" ? character : null,
           referenceImagePath: refImageObjectPath ?? null,
           requestedDuration,
+          generationMode,
           aiProvider,
           fullTrackLipSyncEnabled: fullTrackSelected && fullTrackLipSyncEnabled,
           fullTrackLipSyncSeconds,
@@ -1012,7 +1018,7 @@ export default function Generate() {
                 key={t.id}
                 type="button"
                 onClick={() => applyTemplate(t)}
-                className="rounded-full border border-border/60 bg-secondary/40 px-3 py-1.5 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-secondary/70"
+                className="inline-flex items-center rounded-full border border-border/60 bg-secondary/40 px-3 py-1.5 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-secondary/70"
               >
                 <span className="mr-1">{t.emoji}</span>
                 {t.label}
@@ -1056,15 +1062,26 @@ export default function Generate() {
 
         <div className="grid gap-5 sm:gap-8 p-4 sm:p-8 rounded-2xl bg-card border border-card-border shadow-lg">
 
-          {/* Montage is the first production-ready structure. Narrative becomes
-              selectable after its separate planning/render contract ships. */}
           <div className="space-y-2">
             <Label>Video structure</Label>
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-xl border border-primary/50 bg-primary/[0.08] p-3.5 shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.08)]">
+              <button
+                type="button"
+                onClick={() => setGenerationMode(CreateJobRequestGenerationMode.montage)}
+                aria-pressed={generationMode === CreateJobRequestGenerationMode.montage}
+                className={`text-left rounded-xl border p-3.5 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                  generationMode === CreateJobRequestGenerationMode.montage
+                    ? "border-primary/50 bg-primary/[0.08] shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.08)]"
+                    : "border-border/60 bg-muted/20 hover:border-primary/30"
+                }`}
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3">
-                    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                    <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                      generationMode === CreateJobRequestGenerationMode.montage
+                        ? "bg-primary/15 text-primary"
+                        : "bg-secondary text-muted-foreground"
+                    }`}>
                       <Clapperboard className="h-4 w-4" />
                     </span>
                     <div>
@@ -1074,32 +1091,46 @@ export default function Generate() {
                       </p>
                     </div>
                   </div>
-                  <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
-                    Selected
-                  </span>
+                  {generationMode === CreateJobRequestGenerationMode.montage && (
+                    <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                      Selected
+                    </span>
+                  )}
                 </div>
-              </div>
-              <div
-                aria-disabled="true"
-                className="rounded-xl border border-border/60 bg-muted/20 p-3.5 opacity-65"
+              </button>
+              <button
+                type="button"
+                onClick={() => setGenerationMode(CreateJobRequestGenerationMode.narrative)}
+                aria-pressed={generationMode === CreateJobRequestGenerationMode.narrative}
+                className={`text-left rounded-xl border p-3.5 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                  generationMode === CreateJobRequestGenerationMode.narrative
+                    ? "border-primary/50 bg-primary/[0.08] shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.08)]"
+                    : "border-border/60 bg-muted/20 hover:border-primary/30"
+                }`}
               >
-                <div className="flex items-start gap-3">
-                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
-                    <FileText className="h-4 w-4" />
-                  </span>
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                      generationMode === CreateJobRequestGenerationMode.narrative
+                        ? "bg-primary/15 text-primary"
+                        : "bg-secondary text-muted-foreground"
+                    }`}>
+                      <FileText className="h-4 w-4" />
+                    </span>
+                    <div>
                       <p className="text-sm font-semibold">Narrative Story</p>
-                      <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-                        Coming next
-                      </span>
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                        A chronological beginning-to-ending story with a unique scene for each timeline segment. No visual recalls.
+                      </p>
                     </div>
-                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                      A chronological beginning-to-ending story with a unique scene for each timeline segment.
-                    </p>
                   </div>
+                  {generationMode === CreateJobRequestGenerationMode.narrative && (
+                    <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                      Selected
+                    </span>
+                  )}
                 </div>
-              </div>
+              </button>
             </div>
           </div>
 
@@ -1163,7 +1194,7 @@ export default function Generate() {
                         {PROVIDER_LABELS[p]}
                         <span className="text-muted-foreground"> · {p === "runway" ? "premium quality" : "value price"}</span>
                       </span>
-                      <span className="text-xs text-muted-foreground shrink-0">{estimateCreditCost(requestedDuration, p, resolution, songDurationSec) + lyricAddon} cr</span>
+                      <span className="text-xs text-muted-foreground shrink-0">{estimateCreditCost(requestedDuration, p, resolution, songDurationSec, generationMode as GenerationMode) + lyricAddon} cr</span>
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
@@ -1200,7 +1231,7 @@ export default function Generate() {
                   >
                     <span>{fullTrackLabel}</span>
                     <span className="text-xs text-muted-foreground shrink-0">
-                      {estimateCreditCost(CreateJobRequestRequestedDuration.full, aiProvider, resolution, songDurationSec) + lyricAddon} cr
+                      {estimateCreditCost(CreateJobRequestRequestedDuration.full, aiProvider, resolution, songDurationSec, generationMode as GenerationMode) + lyricAddon} cr
                     </span>
                   </DropdownMenuItem>
                   {([
@@ -1214,7 +1245,7 @@ export default function Generate() {
                     { value: CreateJobRequestRequestedDuration.NUMBER_300, label: "5 minutes" },
                     { value: CreateJobRequestRequestedDuration.NUMBER_600, label: "10 minutes" },
                   ] as const).map(({ value, label }) => {
-                    const base = estimateCreditCost(value, aiProvider, resolution, songDurationSec) + lyricAddon;
+                    const base = estimateCreditCost(value, aiProvider, resolution, songDurationSec, generationMode as GenerationMode) + lyricAddon;
                     return (
                       <DropdownMenuItem
                         key={value}
@@ -1230,7 +1261,8 @@ export default function Generate() {
                   })}
                   <div className="px-2 pt-1 pb-1.5">
                     <p className="text-[10px] text-muted-foreground/60 leading-tight">
-                      Full track matches your analyzed audio exactly (up to 10 minutes). Longer videos use more clips and take more time to generate.
+                      Full track matches your analyzed audio exactly (up to 10 minutes). Longer videos use more{" "}
+                      {generationMode === CreateJobRequestGenerationMode.narrative ? "unique scenes" : "visuals"} and take more time to generate.
                     </p>
                   </div>
                 </DropdownMenuContent>
@@ -1661,7 +1693,9 @@ export default function Generate() {
                        : "Full track selected · analysing audio duration…"}
                    </div>
                    <p className="mt-1 text-xs text-muted-foreground">
-                     Visual clips are arranged across the complete song and the finished video ends with your audio.
+                     {generationMode === CreateJobRequestGenerationMode.narrative
+                       ? "Unique chronological scenes follow the complete song, and the finished story ends with your audio."
+                       : "Visual clips are arranged across the complete song and the finished video ends with your audio."}
                    </p>
                  </div>
                )}
@@ -2203,7 +2237,10 @@ export default function Generate() {
                   <Clock className="h-3.5 w-3.5" />
                   <span>
                      Typically <strong>{generationEstimate.label}</strong>
-                     {" · "}{generationEstimate.unitCount} AI {generationEstimate.unitCount === 1 ? "clip" : "clips"}
+                     {" · "}{generationEstimate.unitCount} AI{" "}
+                     {generationMode === CreateJobRequestGenerationMode.narrative
+                       ? generationEstimate.unitCount === 1 ? "scene" : "unique scenes"
+                       : generationEstimate.unitCount === 1 ? "visual" : "visuals"}
                      {" · "}credits reserved when the job starts
                   </span>
                 </div>
@@ -2224,7 +2261,7 @@ export default function Generate() {
       const numClips = generationEstimate.unitCount;
       const estimatedMin = generationEstimate.label;
       const durLabel = durSec === 300 ? "5-minute" : durSec === 600 ? "10-minute" : `${durSec}-second`;
-      const creditCost = estimateCreditCost(requestedDuration, aiProvider, resolution, songDurationSec) + lyricAddon;
+      const creditCost = estimateCreditCost(requestedDuration, aiProvider, resolution, songDurationSec, generationMode as GenerationMode) + lyricAddon;
       return (
         <Dialog open={durationWarningOpen} onOpenChange={setDurationWarningOpen}>
           <DialogContent className="sm:max-w-md">
@@ -2239,7 +2276,13 @@ export default function Generate() {
                 <div className="text-left space-y-3 mt-1">
                   <p className="text-sm text-muted-foreground leading-relaxed">
                     A <strong className="text-foreground">{durLabel}</strong> video requires{" "}
-                    <strong className="text-foreground">{numClips} separate AI clip generations</strong> and
+                    <strong className="text-foreground">
+                      {numClips} separate AI{" "}
+                      {generationMode === CreateJobRequestGenerationMode.narrative
+                        ? "chronological scene generations"
+                        : "visual generations"}
+                    </strong>{" "}
+                    and
                     typically takes <strong className="text-foreground">{estimatedMin}</strong> to complete.
                     The job may appear idle for several minutes — this is normal.
                   </p>
@@ -2249,8 +2292,14 @@ export default function Generate() {
                       <span className="font-medium">{estimatedMin}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">AI clips generated</span>
-                      <span className="font-medium">{numClips} clips</span>
+                      <span className="text-muted-foreground">
+                        {generationMode === CreateJobRequestGenerationMode.narrative
+                          ? "Unique scenes generated"
+                          : "AI visuals generated"}
+                      </span>
+                      <span className="font-medium">
+                        {numClips} {generationMode === CreateJobRequestGenerationMode.narrative ? "scenes" : "visuals"}
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">AI engine</span>
@@ -2356,7 +2405,10 @@ export default function Generate() {
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium flex items-center gap-1.5 text-foreground">
                     <Clapperboard className="h-4 w-4 text-primary" />
-                    Montage plan{shotPlan ? ` · ${shotPlan.numClips} unique visuals` : ""}
+                    {generationMode === CreateJobRequestGenerationMode.narrative ? "Narrative plan" : "Montage plan"}
+                    {shotPlan
+                      ? ` · ${shotPlan.numClips} unique ${generationMode === CreateJobRequestGenerationMode.narrative ? "scenes" : "visuals"}`
+                      : ""}
                   </span>
                   {shotPlan?.approximate && (
                     <span className="text-[10px] text-muted-foreground">approximate — analyze audio for exact</span>
@@ -2370,10 +2422,12 @@ export default function Generate() {
                 {shotPlan && shotPlan.shots.length > 0 && (
                   <>
                     <p className="mb-2 text-xs leading-relaxed text-muted-foreground">
-                      {shotPlan.timelineSceneCount} music-timed cuts
-                      {shotPlan.reuseCount > 0
-                        ? ` · ${shotPlan.reuseCount} intentional visual recalls keep the price lower`
-                        : " · no visual reuse needed"}
+                      {shotPlan.timelineSceneCount} {generationMode === CreateJobRequestGenerationMode.narrative ? "chronological scenes" : "music-timed cuts"}
+                      {generationMode === CreateJobRequestGenerationMode.narrative
+                        ? " · exact continuity, no visual reuse"
+                        : (shotPlan.reuseCount > 0
+                          ? ` · ${shotPlan.reuseCount} intentional visual recalls keep the price lower`
+                          : " · no visual reuse needed")}
                     </p>
                     <div className="max-h-44 overflow-y-auto space-y-2 pr-1">
                       {shotPlan.shots.map((s) => (

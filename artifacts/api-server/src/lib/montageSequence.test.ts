@@ -4,6 +4,7 @@ import {
   resolveAvailableStitchSequence,
   resolveMontageSequence,
 } from "./montageSequence.js";
+import { resolveNarrativeSequence } from "./narrativeSequence.js";
 
 function timeline(visualIndexes: number[]) {
   return visualIndexes.map((visualIndex, index) => ({
@@ -64,11 +65,32 @@ describe("resolveAvailableStitchSequence", () => {
   });
 });
 
+describe("resolveNarrativeSequence", () => {
+  it("returns every scene once in chronological order", () => {
+    expect(resolveNarrativeSequence(5, [4, 2, 0, 3, 1])).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it("fails instead of substituting or repeating a missing scene", () => {
+    expect(() => resolveNarrativeSequence(5, [0, 1, 3, 4])).toThrow(
+      "missing required scene: 3",
+    );
+  });
+});
+
 describe("worker parity", () => {
   it("keeps the API and worker montage sequence implementations byte-identical", async () => {
     const [apiSource, workerSource] = await Promise.all([
       readFile(new URL("./montageSequence.ts", import.meta.url), "utf8"),
       readFile(new URL("../../../worker/src/lib/montageSequence.ts", import.meta.url), "utf8"),
+    ]);
+
+    expect(workerSource).toBe(apiSource);
+  });
+
+  it("keeps the API and worker Narrative sequence implementations byte-identical", async () => {
+    const [apiSource, workerSource] = await Promise.all([
+      readFile(new URL("./narrativeSequence.ts", import.meta.url), "utf8"),
+      readFile(new URL("../../../worker/src/lib/narrativeSequence.ts", import.meta.url), "utf8"),
     ]);
 
     expect(workerSource).toBe(apiSource);

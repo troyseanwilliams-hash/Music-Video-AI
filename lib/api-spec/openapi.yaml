@@ -1165,8 +1165,11 @@ components:
 
     JobStoryboard:
       type: object
-      required: [numClips, clipDurationSec, targetOutputDuration, shots, approximate]
+      required: [generationMode, numClips, clipDurationSec, targetOutputDuration, shots, approximate]
       properties:
+        generationMode:
+          type: string
+          enum: [montage, narrative]
         numClips:
           type: integer
           minimum: 1
@@ -1178,6 +1181,12 @@ components:
           minimum: 0
         approximate:
           type: boolean
+        timelineSceneCount:
+          type: integer
+          minimum: 1
+        reuseCount:
+          type: integer
+          minimum: 0
         shots:
           type: array
           items:
@@ -1242,6 +1251,11 @@ components:
           type: [string, 'null']
           enum: ['5', '8', '10', '30', '45', '60', '90', '120', '300', '600', 'full', null]
           description: Requested output video length. '5'/'8'/'10' = short clip, '30'/'60'/'90'/'120' = multi-clip stitch, 'full' = full audio length (default; not valid when audioSourceType is "none", since there is no audio to derive a length from)
+        generationMode:
+          type: string
+          enum: [montage, narrative]
+          default: montage
+          description: Montage intentionally reuses a smaller visual library; Narrative renders one unique chronological scene per timeline slot.
         clipStartTime:
           type: [number, 'null']
           minimum: 0

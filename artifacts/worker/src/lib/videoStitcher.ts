@@ -5,6 +5,7 @@ import { tmpdir } from "os";
 import { randomUUID } from "crypto";
 import { buildTimedLines, buildAssKaraoke, karaokeFontsDir } from "./lyricTiming.js";
 import { resolveAvailableStitchSequence } from "./montageSequence.js";
+import { resolveNarrativeSequence } from "./narrativeSequence.js";
 
 // `:fontsdir=` option pointing libass at the bundled karaoke font (Archivo
 // Black); empty string when the font directory is missing.
@@ -20,6 +21,7 @@ export interface StitchInput {
   // Reusing indexes lets a small paid clip library recur across the timeline
   // without looping one source several times in a row.
   sequence?: number[];
+  strictSequence?: boolean;
   // Optional: omit to stitch a silent video (no audio track at all) — used for
   // "no audio" generations that get a soundtrack added later in the Editor.
   audioBuffer?: Buffer;
@@ -230,11 +232,18 @@ export async function stitchVideoClips(input: StitchInput): Promise<StitchResult
       if (match) availableBySource.set(Number(match[1]), path);
     }
     const availableSourceIndexes = [...availableBySource.keys()].sort((a, b) => a - b);
-    const resolvedSequence = resolveAvailableStitchSequence(
-      requestedSequence,
-      availableSourceIndexes,
-      input.clips.length,
-    );
+    if (input.strictSequence && skippedClips > 0) {
+      throw new Error(
+        `Narrative stitching requires every planned scene, but ${skippedClips} scene clip(s) could not be processed.`,
+      );
+    }
+    const resolvedSequence = input.strictSequence
+      ? resolveNarrativeSequence(input.clips.length, availableSourceIndexes)
+      : resolveAvailableStitchSequence(
+          requestedSequence,
+          availableSourceIndexes,
+          input.clips.length,
+        );
     const editPaths = resolvedSequence.map((sourceIndex) => availableBySource.get(sourceIndex)!);
     const concatContent = editPaths.map((p) => `file '${p}'`).join("\n");
     await writeFile(concatListPath, concatContent);

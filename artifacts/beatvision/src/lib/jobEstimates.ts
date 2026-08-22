@@ -1,6 +1,7 @@
 import {
   getGenerationClipPlan,
   type AiProvider,
+  type GenerationMode,
   type GenerationClipPlan,
 } from "@/lib/creditPricing";
 
@@ -31,8 +32,9 @@ export function getGenerationTimeEstimate(
   provider?: AiProvider | string | null,
   resolution?: string | null,
   songDurationSec?: number | null,
+  generationMode: GenerationMode = "montage",
 ): JobTimeEstimate & { plan: GenerationClipPlan } {
-  const plan = getGenerationClipPlan(requestedDuration, songDurationSec);
+  const plan = getGenerationClipPlan(requestedDuration, songDurationSec, generationMode);
   const providerFactor = provider === "kling" ? 1.15 : provider === "luma" ? 1.1 : 1;
   const resolutionFactor =
     resolution === "4k" || resolution === "2160p" ? 1.3 : resolution === "1080p" ? 1.08 : 1;

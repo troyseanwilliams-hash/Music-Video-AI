@@ -1,10 +1,42 @@
 import { describe, expect, it } from "vitest";
 import {
+  calculateCreditCost,
   calculateLipsyncCost,
   calculateLipsyncCostFromSourceVideo,
+  getClipPlan,
   LIPSYNC_MIN_SECONDS,
   LIPSYNC_MAX_SECONDS,
 } from "./creditCost.js";
+
+describe("Narrative Story provider work and pricing", () => {
+  it("charges one unique provider clip per ten-second scene", () => {
+    expect(getClipPlan("180", null, "montage")).toEqual({
+      numClips: 9,
+      clipDurationSec: 10,
+    });
+    expect(getClipPlan("180", null, "narrative")).toEqual({
+      numClips: 18,
+      clipDurationSec: 10,
+    });
+    expect(calculateCreditCost("180", "720p", null, "runway", "montage")).toBe(1261);
+    expect(calculateCreditCost("180", "720p", null, "runway", "narrative")).toBe(2521);
+  });
+
+  it("uses sixty paid scenes for a ten-minute full-track Narrative Story", () => {
+    expect(getClipPlan("full", 600, "narrative")).toEqual({
+      numClips: 60,
+      clipDurationSec: 10,
+    });
+    expect(calculateCreditCost("full", "720p", 600, "runway", "narrative")).toBe(8401);
+  });
+
+  it("keeps five-second Narrative output on a single five-second provider call", () => {
+    expect(getClipPlan("5", null, "narrative")).toEqual({
+      numClips: 1,
+      clipDurationSec: 5,
+    });
+  });
+});
 
 // Regression coverage for "Price Lip Sync From Source Cost": completed-video
 // Lip Sync must be priced from the source video's real (pre-markup) provider

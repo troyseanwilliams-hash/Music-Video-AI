@@ -482,6 +482,11 @@ router.post("/videos/:id/lipsync", async (req: Request<{ id: string }>, res: Res
   const [sourceJob] = await db.select().from(jobsTable).where(eq(jobsTable.id, video.jobId)).limit(1);
   const sourceSongDurationSec = (sourceJob?.audioAnalysis as { durationSeconds?: number } | null | undefined)
     ?.durationSeconds;
+  const sourceManifest = sourceJob?.manifest && typeof sourceJob.manifest === "object"
+    ? sourceJob.manifest as { generationMode?: unknown }
+    : {};
+  const sourceGenerationMode =
+    sourceManifest.generationMode === "narrative" ? "narrative" : "montage";
   const cost =
     sourceJob && (sourceJob.jobType === "ai" || sourceJob.jobType === "remix")
       ? calculateLipsyncCostFromSourceVideo(
@@ -489,6 +494,7 @@ router.post("/videos/:id/lipsync", async (req: Request<{ id: string }>, res: Res
           sourceJob.resolution,
           sourceSongDurationSec,
           sourceJob.aiProvider,
+          sourceGenerationMode,
         )
       : calculateLipsyncCost(lipsyncSeconds);
   const videoDuration = Number(video.durationSeconds);

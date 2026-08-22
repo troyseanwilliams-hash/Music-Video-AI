@@ -203,6 +203,8 @@ export const listJobsResponseJobsItemManifestOneStoryboardClipDurationSecMin = 0
 
 export const listJobsResponseJobsItemManifestOneStoryboardTargetOutputDurationMin = 0;
 
+export const listJobsResponseJobsItemManifestOneStoryboardReuseCountMin = 0;
+
 export const listJobsResponseJobsItemManifestOneStoryboardShotsItemIndexMin = 0;
 
 export const listJobsResponseJobsItemManifestOneStoryboardShotsItemStartTimeMin = 0;
@@ -383,6 +385,7 @@ export const ListJobsResponse = zod.object({
             clipIndexes: zod.array(zod.number()).optional(),
             storyboard: zod
               .object({
+                generationMode: zod.enum(["montage", "narrative"]),
                 numClips: zod.number().min(1),
                 clipDurationSec: zod
                   .number()
@@ -395,6 +398,13 @@ export const ListJobsResponse = zod.object({
                     listJobsResponseJobsItemManifestOneStoryboardTargetOutputDurationMin,
                   ),
                 approximate: zod.boolean(),
+                timelineSceneCount: zod.number().min(1).optional(),
+                reuseCount: zod
+                  .number()
+                  .min(
+                    listJobsResponseJobsItemManifestOneStoryboardReuseCountMin,
+                  )
+                  .optional(),
                 shots: zod.array(
                   zod.object({
                     index: zod
@@ -477,6 +487,7 @@ export const createJobBodyLyricsTextMax = 50000;
 
 export const createJobBodyCharacterMax = 100;
 
+export const createJobBodyGenerationModeDefault = `montage`;
 export const createJobBodyClipStartTimeMin = 0;
 
 export const createJobBodyAudioAnalysisOneAnalysisReceiptMax = 512;
@@ -558,6 +569,12 @@ export const CreateJobBody = zod.object({
     .nullish()
     .describe(
       "Requested output video length. '5'\/'8'\/'10' = short clip, '30'\/'60'\/'90'\/'120' = multi-clip stitch, 'full' = full audio length (default; not valid when audioSourceType is \"none\", since there is no audio to derive a length from)",
+    ),
+  generationMode: zod
+    .enum(["montage", "narrative"])
+    .default(createJobBodyGenerationModeDefault)
+    .describe(
+      "Montage intentionally reuses a smaller visual library; Narrative renders one unique chronological scene per timeline slot.",
     ),
   clipStartTime: zod
     .number()
@@ -656,6 +673,8 @@ export const getJobResponseClipStartTimeMin = 0;
 export const getJobResponseManifestOneStoryboardClipDurationSecMin = 0;
 
 export const getJobResponseManifestOneStoryboardTargetOutputDurationMin = 0;
+
+export const getJobResponseManifestOneStoryboardReuseCountMin = 0;
 
 export const getJobResponseManifestOneStoryboardShotsItemIndexMin = 0;
 
@@ -829,6 +848,7 @@ export const GetJobResponse = zod.object({
         clipIndexes: zod.array(zod.number()).optional(),
         storyboard: zod
           .object({
+            generationMode: zod.enum(["montage", "narrative"]),
             numClips: zod.number().min(1),
             clipDurationSec: zod
               .number()
@@ -837,6 +857,11 @@ export const GetJobResponse = zod.object({
               .number()
               .min(getJobResponseManifestOneStoryboardTargetOutputDurationMin),
             approximate: zod.boolean(),
+            timelineSceneCount: zod.number().min(1).optional(),
+            reuseCount: zod
+              .number()
+              .min(getJobResponseManifestOneStoryboardReuseCountMin)
+              .optional(),
             shots: zod.array(
               zod.object({
                 index: zod
@@ -1439,6 +1464,8 @@ export const getDashboardStatsResponseRecentJobsItemManifestOneStoryboardClipDur
 
 export const getDashboardStatsResponseRecentJobsItemManifestOneStoryboardTargetOutputDurationMin = 0;
 
+export const getDashboardStatsResponseRecentJobsItemManifestOneStoryboardReuseCountMin = 0;
+
 export const getDashboardStatsResponseRecentJobsItemManifestOneStoryboardShotsItemIndexMin = 0;
 
 export const getDashboardStatsResponseRecentJobsItemManifestOneStoryboardShotsItemStartTimeMin = 0;
@@ -1632,6 +1659,7 @@ export const GetDashboardStatsResponse = zod.object({
               clipIndexes: zod.array(zod.number()).optional(),
               storyboard: zod
                 .object({
+                  generationMode: zod.enum(["montage", "narrative"]),
                   numClips: zod.number().min(1),
                   clipDurationSec: zod
                     .number()
@@ -1644,6 +1672,13 @@ export const GetDashboardStatsResponse = zod.object({
                       getDashboardStatsResponseRecentJobsItemManifestOneStoryboardTargetOutputDurationMin,
                     ),
                   approximate: zod.boolean(),
+                  timelineSceneCount: zod.number().min(1).optional(),
+                  reuseCount: zod
+                    .number()
+                    .min(
+                      getDashboardStatsResponseRecentJobsItemManifestOneStoryboardReuseCountMin,
+                    )
+                    .optional(),
                   shots: zod.array(
                     zod.object({
                       index: zod

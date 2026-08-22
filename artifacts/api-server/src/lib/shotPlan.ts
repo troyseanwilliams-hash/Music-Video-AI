@@ -32,6 +32,7 @@ export interface ShotPlanInput {
   style?: string | null;
   character?: string | null;
   requestedDuration?: string | null;
+  generationMode?: GenerationMode | null;
   analysis?: {
     bpm?: number | null;
     mood?: string | null;
@@ -39,6 +40,8 @@ export interface ShotPlanInput {
     sections?: ShotSection[] | null;
   } | null;
 }
+
+export type GenerationMode = "montage" | "narrative";
 
 export interface PlannedShot {
   index: number;
@@ -58,6 +61,7 @@ export interface MontageTimelineEntry {
 }
 
 export interface ShotPlan {
+  generationMode: GenerationMode;
   numClips: number;
   clipDurationSec: number;
   targetOutputDuration: number;
@@ -83,13 +87,28 @@ function fallbackSections(durationSec: number): ShotSection[] {
   }));
 }
 
-// Mirror of buildGenerationPlan's clip-count math.
-function planCount(requestedDuration: string | null | undefined, durationSec: number): {
+// Mirror of the worker clip-count math for each generation mode.
+function planCount(
+  requestedDuration: string | null | undefined,
+  durationSec: number,
+  generationMode: GenerationMode,
+): {
   numClips: number;
   clipDurationSec: number;
   target: number;
 } {
   const dur = requestedDuration ?? "full";
+  if (generationMode === "narrative") {
+    const target = dur === "full"
+      ? Math.min(durationSec > 0 ? durationSec : MAX_FULL_SECONDS, MAX_FULL_SECONDS)
+      : Math.max(1, parseInt(dur, 10) || 10);
+    const clipDurationSec = target <= 5 ? 5 : 10;
+    return {
+      numClips: Math.max(1, Math.ceil(target / clipDurationSec)),
+      clipDurationSec,
+      target,
+    };
+  }
   if (dur === "full") {
     const capped = Math.min(durationSec > 0 ? durationSec : MAX_FULL_SECONDS, MAX_FULL_SECONDS);
     return { numClips: Math.max(3, Math.min(20, Math.ceil(capped / 30))), clipDurationSec: 10, target: capped };
@@ -115,7 +134,28 @@ const MONTAGE_ROLES = [
   "closing callback",
 ];
 
-function splitPromptIntoConcepts(prompt: string, count: number): string[] {
+const NARRATIVE_BEATS = [
+  "opening image",
+  "inciting moment",
+  "rising action",
+  "escalation",
+  "turning point",
+  "climax",
+  "resolution",
+  "final image",
+];
+
+function narrativeBeat(index: number, count: number): string {
+  if (count <= 1) return "complete story moment";
+  const position = index / (count - 1);
+  const beatIndex = Math.min(
+    NARRATIVE_BEATS.length - 1,
+    Math.floor(position * NARRATIVE_BEATS.length),
+  );
+  return NARRATIVE_BEATS[beatIndex]!;
+}
+
+function promptConcepts(prompt: string): string[] {
   const normalized = prompt.replace(/\s+/g, " ").trim() || "cinematic music video imagery";
   let parts = normalized
     .split(/(?:[.!?;]+\s*|\n+|,\s+(?=(?:then|next|while|as|before|after|finally)\b))/i)
@@ -129,6 +169,12 @@ function splitPromptIntoConcepts(prompt: string, count: number): string[] {
       .filter(Boolean);
     if (clauses.length > 1) parts = clauses;
   }
+
+  return parts;
+}
+
+function splitPromptIntoConcepts(prompt: string, count: number): string[] {
+  let parts = promptConcepts(prompt);
 
   if (parts.length > count) {
     parts = Array.from({ length: count }, (_, index) => {
@@ -234,16 +280,128 @@ function buildPrompt(
   ].filter(Boolean).join(", ");
 }
 
+function buildNarrativePrompt(
+  input: ShotPlanInput,
+  section: ShotSection,
+  bpm: number | null,
+  mood: string | null,
+  concept: string,
+  beat: string,
+  sceneIndex: number,
+  sceneCount: number,
+): string {
+  const style = input.style ?? "cinematic";
+  const styleDesc = STYLE_PROMPTS[style] ?? STYLE_PROMPTS.cinematic!;
+  const energyDesc =
+    section.energy > 0.75
+      ? "intense dramatic action and decisive movement"
+      : section.energy > 0.5
+        ? "purposeful movement with growing dramatic tension"
+        : "controlled atmospheric movement with clear emotional focus";
+  const paceDesc =
+    (bpm ?? 0) > 140
+      ? "urgent visual pacing"
+      : (bpm ?? 0) > 100
+        ? "confident forward momentum"
+        : "measured cinematic pacing";
+  const characterDesc = input.character && input.character !== "none"
+    ? `keep the same ${input.character} identity, face, wardrobe, and physical details established across every scene`
+    : "keep the same principal subject identity, wardrobe, and physical details established across every scene";
+  const continuity =
+    sceneIndex === 0
+      ? "establish the recurring subject, world, lighting language, and visual rules for all following scenes"
+      : "continue directly from the previous scene with consistent subject identity, world, wardrobe, lighting language, and screen direction";
+  const ending =
+    sceneIndex === sceneCount - 1
+      ? "deliver a clear visual resolution that completes the story"
+      : "end on an action or composition that naturally leads into the next chronological scene";
+
+  return [
+    styleDesc,
+    paceDesc,
+    `${mood ?? "cinematic"} mood`,
+    energyDesc,
+    `chronological story scene ${sceneIndex + 1} of ${sceneCount}`,
+    `${beat} story beat`,
+    `${section.label} music section`,
+    concept,
+    characterDesc,
+    continuity,
+    ending,
+    "one continuous story scene only, no montage, no flashback, no time jump, no multiple locations inside this clip",
+    "professional narrative music video production, cinematic composition, no text or titles",
+  ].join(", ");
+}
+
 export function planShots(input: ShotPlanInput): ShotPlan {
+  const generationMode: GenerationMode =
+    input.generationMode === "narrative" ? "narrative" : "montage";
   const durationSec = input.analysis?.durationSeconds ?? 0;
-  const { numClips, clipDurationSec, target } = planCount(input.requestedDuration, durationSec);
+  const { numClips, clipDurationSec, target } = planCount(
+    input.requestedDuration,
+    durationSec,
+    generationMode,
+  );
   const hasReal = !!(input.analysis?.sections && input.analysis.sections.length > 0);
   const sections = hasReal ? input.analysis!.sections! : fallbackSections(target || durationSec || 60);
-  const motifSections = representativeSections(sections, numClips);
   const concepts = splitPromptIntoConcepts(input.prompt || "music video", numClips);
+  const orderedStoryConcepts = promptConcepts(input.prompt || "music video");
   const bpm = input.analysis?.bpm ?? null;
   const mood = input.analysis?.mood ?? null;
 
+  if (generationMode === "narrative") {
+    const shots = Array.from({ length: numClips }, (_, index) => {
+      const startTime = index * clipDurationSec;
+      const duration = Math.min(clipDurationSec, target - startTime);
+      const section = sectionAtTime(sections, startTime + Math.max(0, duration) / 2);
+      const beat = narrativeBeat(index, numClips);
+      const conceptIndex = Math.min(
+        orderedStoryConcepts.length - 1,
+        Math.floor((index * orderedStoryConcepts.length) / numClips),
+      );
+      return {
+        index,
+        label: beat,
+        startTime,
+        energy: Math.round(section.energy * 100) / 100,
+        prompt: buildNarrativePrompt(
+          input,
+          section,
+          bpm,
+          mood,
+          orderedStoryConcepts[conceptIndex]!,
+          beat,
+          index,
+          numClips,
+        ),
+      };
+    });
+    const timeline = shots.map((shot, index) => {
+      const duration = Math.min(clipDurationSec, target - shot.startTime);
+      const section = sectionAtTime(sections, shot.startTime + Math.max(0, duration) / 2);
+      return {
+        index,
+        visualIndex: index,
+        startTime: shot.startTime,
+        duration,
+        label: shot.label,
+        energy: Math.round(section.energy * 100) / 100,
+      };
+    });
+    return {
+      generationMode,
+      numClips,
+      clipDurationSec,
+      targetOutputDuration: target,
+      shots,
+      timeline,
+      timelineSceneCount: timeline.length,
+      reuseCount: 0,
+      approximate: !hasReal,
+    };
+  }
+
+  const motifSections = representativeSections(sections, numClips);
   const shots: PlannedShot[] = [];
   for (let i = 0; i < numClips; i++) {
     const s = motifSections[i]!;
@@ -258,6 +416,7 @@ export function planShots(input: ShotPlanInput): ShotPlan {
   }
   const timeline = buildMontageTimeline(shots, sections, target, clipDurationSec);
   return {
+    generationMode,
     numClips,
     clipDurationSec,
     targetOutputDuration: target,

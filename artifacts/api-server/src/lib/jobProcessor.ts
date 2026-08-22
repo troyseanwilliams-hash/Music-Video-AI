@@ -85,6 +85,7 @@ type GeneratedClip = {
 };
 
 type AiJobMeta = {
+  generationMode?: "montage" | "narrative";
   reservedCredits?: number;
   reservedSubscriptionCredits?: number;
   reservedTopupCredits?: number;
@@ -94,7 +95,14 @@ type AiJobMeta = {
   pendingRequests?: Record<string, string>; // clip index -> provider poll URL (submitted, not yet downloaded)
   retryAfter?: number; // epoch ms — queued job must not be claimed before this
   finalizeWithPartial?: boolean; // admin: stitch whatever clips exist, never call the provider
-  storyboard?: { shots?: unknown[]; timeline?: unknown[] };
+  storyboard?: {
+    generationMode?: "montage" | "narrative";
+    numClips?: number;
+    clipDurationSec?: number;
+    targetOutputDuration?: number;
+    shots?: unknown[];
+    timeline?: unknown[];
+  };
   baseCreditCost?: number;
   baseReservedSubscriptionCredits?: number;
   baseReservedTopupCredits?: number;
@@ -109,6 +117,14 @@ type AiJobMeta = {
 function aiMetaOf(job: JobRow): AiJobMeta {
   const m = (job as JobRow & { manifest?: unknown }).manifest;
   return m && typeof m === "object" ? (m as AiJobMeta) : {};
+}
+
+function generationModeOf(job: JobRow): "montage" | "narrative" {
+  const meta = aiMetaOf(job);
+  return meta.generationMode === "narrative"
+    || meta.storyboard?.generationMode === "narrative"
+    ? "narrative"
+    : "montage";
 }
 
 function storyboardShotsOf(job: JobRow): PersistedStoryboardShot[] {
@@ -558,11 +574,21 @@ async function generateClips(
 }> {
   const provider = getActiveProvider((job as JobRow & { aiProvider?: string | null }).aiProvider ?? undefined);
   const requestedDur = (job as JobRow & { requestedDuration?: string | null }).requestedDuration;
+  const generationMode = generationModeOf(job);
 
   // Use the same clip plan as the credit formula so the number of provider calls
   // matches exactly what was charged.
-  const { numClips: maxClips, clipDurationSec } = getClipPlan(requestedDur, analysis.durationSeconds);
+  const { numClips: maxClips, clipDurationSec } = getClipPlan(
+    requestedDur,
+    analysis.durationSeconds,
+    generationMode,
+  );
   const storyboardShots = storyboardShotsOf(job);
+  if (generationMode === "narrative" && storyboardShots.length !== maxClips) {
+    throw new Error(
+      `${PROVIDER_API_FAILURE}: Narrative plan expected ${maxClips} unique scenes but found ${storyboardShots.length}`,
+    );
+  }
   // selectSections picks the best unique sections; cycle through them to fill
   // the required clip count (matches worker's buildGenerationPlan approach).
   const baseSections = storyboardShots.length > 0
@@ -605,9 +631,11 @@ async function generateClips(
   const clipAttempts = is4k ? 1 : 2;
 
   for (let i = 0; i < sections.length; i++) {
-    const storyboardShot = storyboardShots.length > 0
-      ? storyboardShots[i % storyboardShots.length]!
-      : null;
+    const storyboardShot = generationMode === "narrative"
+      ? storyboardShots[i]!
+      : storyboardShots.length > 0
+        ? storyboardShots[i % storyboardShots.length]!
+        : null;
     const section = sections[i]!;
     const targetDuration = clipDurationSec;
     const clipDuration = clipDurationSec;
@@ -720,6 +748,7 @@ async function generateClips(
         // the video is finished with fewer unique clips (looped to fill the
         // runtime) instead of throwing the whole job away.
         if (msg.includes(PROVIDER_OUT_OF_CREDITS)) {
+          if (generationMode === "narrative") throw e;
           const done = clips.filter(Boolean).length;
           if (done > 0) {
             logger.warn(
@@ -761,6 +790,11 @@ async function generateClips(
       throw new Error(`${PROVIDER_API_FAILURE}: Finalize requested but no rendered clips are available for this job`);
     }
     if (salvaged.length < sections.length) {
+      if (generationMode === "narrative") {
+        throw new Error(
+          `${PROVIDER_API_FAILURE}: Narrative finalization requires all ${sections.length} planned scenes`,
+        );
+      }
       logger.warn(
         { jobId: job.id, salvaged: salvaged.length, planned: sections.length },
         "Finalize-only: stitching with fewer unique clips than planned",
@@ -1711,17 +1745,21 @@ async function processJob(job: JobRow): Promise<void> {
 
     const reqDur = (job as JobRow & { requestedDuration?: string | null }).requestedDuration;
     const outputDuration = targetOutputDuration(reqDur, analysis.durationSeconds);
-    const montageSequence = resolveMontageSequence(
-      aiMetaOf(job).storyboard?.timeline,
-      clips,
-      outputDuration,
-      clips[0]?.targetDuration ?? 10,
-    );
-    let resolvedMontageSequence = montageSequence;
+    const generationMode = generationModeOf(job);
+    const requestedSequence = generationMode === "narrative"
+      ? clips.map((_, index) => index)
+      : resolveMontageSequence(
+          aiMetaOf(job).storyboard?.timeline,
+          clips,
+          outputDuration,
+          clips[0]?.targetDuration ?? 10,
+        );
+    let resolvedSequence = requestedSequence;
     if (audioData) {
       const stitchResult = await stitchVideoClips({
         clips,
-        sequence: montageSequence,
+        sequence: requestedSequence,
+        strictSequence: generationMode === "narrative",
         audioBuffer: audioData.buffer,
         audioExt: audioData.ext,
         totalDuration: outputDuration,
@@ -1729,7 +1767,7 @@ async function processJob(job: JobRow): Promise<void> {
       });
       videoBuffer = stitchResult.videoBuffer;
       thumbnailBuffer = stitchResult.thumbnailBuffer;
-      resolvedMontageSequence = stitchResult.resolvedSequence;
+      resolvedSequence = stitchResult.resolvedSequence;
     } else if (clips.length > 0) {
       // No audio — either the user intentionally chose "no audio" (a silent
       // video meant to get a soundtrack added later in the Editor), or audio
@@ -1737,13 +1775,14 @@ async function processJob(job: JobRow): Promise<void> {
       // silent video rather than discarding all but the first clip.
       const stitchResult = await stitchVideoClips({
         clips,
-        sequence: montageSequence,
+        sequence: requestedSequence,
+        strictSequence: generationMode === "narrative",
         totalDuration: outputDuration,
         lyricsText, // captions burn onto silent videos too
       });
       videoBuffer = stitchResult.videoBuffer;
       thumbnailBuffer = stitchResult.thumbnailBuffer;
-      resolvedMontageSequence = stitchResult.resolvedSequence;
+      resolvedSequence = stitchResult.resolvedSequence;
     } else {
       videoBuffer = await createSimulationClip(10);
       thumbnailBuffer = await extractVideoThumbnail(videoBuffer, 2);
@@ -1766,7 +1805,7 @@ async function processJob(job: JobRow): Promise<void> {
       videoId,
       clips,
       job.style ?? null,
-      resolvedMontageSequence,
+      resolvedSequence,
       outputDuration,
     );
 

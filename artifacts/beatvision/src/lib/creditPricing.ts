@@ -1,6 +1,7 @@
 import type { CreateJobRequestRequestedDuration } from "@workspace/api-client-react";
 
 export type AiProvider = "runway" | "kling" | "luma";
+export type GenerationMode = "montage" | "narrative";
 
 export const PROVIDER_LABELS: Record<AiProvider, string> = {
   runway: "Runway Gen-4",
@@ -104,8 +105,23 @@ export interface GenerationClipPlan {
 export function getGenerationClipPlan(
   requestedDuration: string | null | undefined,
   songDurationSec?: number | null,
+  generationMode: GenerationMode = "montage",
 ): GenerationClipPlan {
   const dur = requestedDuration ?? "full";
+  if (generationMode === "narrative") {
+    const targetDurationSec = dur === "full"
+      ? Math.min(
+          songDurationSec && songDurationSec > 0 ? songDurationSec : MAX_FULL_SECONDS,
+          MAX_FULL_SECONDS,
+        )
+      : Math.max(1, parseInt(dur, 10) || 10);
+    const clipDurationSec: 5 | 10 = targetDurationSec <= 5 ? 5 : 10;
+    return {
+      numClips: Math.max(1, Math.ceil(targetDurationSec / clipDurationSec)),
+      clipDurationSec,
+      targetDurationSec,
+    };
+  }
   if (dur === "full") {
     const targetDurationSec = Math.min(
       songDurationSec && songDurationSec > 0 ? songDurationSec : MAX_FULL_SECONDS,
@@ -136,8 +152,13 @@ export function estimateCreditCost(
   provider?: AiProvider,
   resolution?: string | null,
   songDurationSec?: number | null,
+  generationMode: GenerationMode = "montage",
 ): number {
-  const { numClips, clipDurationSec } = getGenerationClipPlan((requestedDuration ?? "full") as string, songDurationSec);
+  const { numClips, clipDurationSec } = getGenerationClipPlan(
+    (requestedDuration ?? "full") as string,
+    songDurationSec,
+    generationMode,
+  );
   const costCredits = (numClips * clipDurationSec * usdPerSecondFor(provider)) / USD_PER_CREDIT;
   const markup = numClips <= 1 ? SHORT_MARKUP : provider === "kling" ? KLING_LONG_MARKUP : LONG_MARKUP;
   return Math.ceil(costCredits * markup * resolutionMultiplier(resolution));

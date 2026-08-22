@@ -44,6 +44,23 @@ export const PRICE_MULTIPLIER = 2;
 // Full videos are capped at 10 minutes and scale unique clips with (capped) song
 // length: ~1 clip per 30s, min 3, max 20.
 export const MAX_FULL_SECONDS = 600;
+export type GenerationMode = "montage" | "narrative";
+
+function targetDurationSeconds(
+  requestedDuration: string | null | undefined,
+  songDurationSec?: number | null,
+): number {
+  const dur = requestedDuration ?? "full";
+  if (dur === "full") {
+    return Math.min(
+      songDurationSec && songDurationSec > 0 ? songDurationSec : MAX_FULL_SECONDS,
+      MAX_FULL_SECONDS,
+    );
+  }
+  const parsed = parseInt(dur, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 10;
+}
+
 export function fullClipCount(songDurationSec?: number | null): number {
   const secs = songDurationSec && songDurationSec > 0 ? songDurationSec : MAX_FULL_SECONDS;
   return Math.max(3, Math.min(20, Math.ceil(Math.min(secs, MAX_FULL_SECONDS) / 30)));
@@ -52,7 +69,16 @@ export function fullClipCount(songDurationSec?: number | null): number {
 export function getClipPlan(
   requestedDuration: string | null | undefined,
   songDurationSec?: number | null,
+  generationMode: GenerationMode = "montage",
 ): { numClips: number; clipDurationSec: 5 | 10 } {
+  if (generationMode === "narrative") {
+    const target = targetDurationSeconds(requestedDuration, songDurationSec);
+    const clipDurationSec: 5 | 10 = target <= 5 ? 5 : 10;
+    return {
+      numClips: Math.max(1, Math.ceil(target / clipDurationSec)),
+      clipDurationSec,
+    };
+  }
   const dur = requestedDuration ?? "full";
   if (dur === "full") {
     return { numClips: fullClipCount(songDurationSec), clipDurationSec: 10 };
@@ -74,8 +100,13 @@ function providerCostCredits(
   requestedDuration: string | null | undefined,
   songDurationSec?: number | null,
   provider?: string | null,
+  generationMode: GenerationMode = "montage",
 ): number {
-  const { numClips, clipDurationSec } = getClipPlan(requestedDuration, songDurationSec);
+  const { numClips, clipDurationSec } = getClipPlan(
+    requestedDuration,
+    songDurationSec,
+    generationMode,
+  );
   const usd = numClips * clipDurationSec * usdPerSecondFor(provider);
   return usd / USD_PER_CREDIT;
 }
@@ -86,8 +117,11 @@ function markupFor(
   requestedDuration: string | null | undefined,
   songDurationSec?: number | null,
   provider?: string | null,
+  generationMode: GenerationMode = "montage",
 ): number {
-  if (getClipPlan(requestedDuration, songDurationSec).numClips <= 1) return SHORT_MARKUP;
+  if (getClipPlan(requestedDuration, songDurationSec, generationMode).numClips <= 1) {
+    return SHORT_MARKUP;
+  }
   return (provider ?? "").toLowerCase() === "kling" ? KLING_LONG_MARKUP : LONG_MARKUP;
 }
 
@@ -105,8 +139,12 @@ export function calculateBaseCost(
   requestedDuration: string | null | undefined,
   resolution?: string | null,
   songDurationSec?: number | null,
+  generationMode: GenerationMode = "montage",
 ): number {
-  return Math.ceil(providerCostCredits(requestedDuration, songDurationSec) * resolutionMultiplier(resolution));
+  return Math.ceil(
+    providerCostCredits(requestedDuration, songDurationSec, undefined, generationMode)
+      * resolutionMultiplier(resolution),
+  );
 }
 
 // Estimated == actual cost (the same function backs the pre-flight estimate
@@ -119,10 +157,11 @@ export function calculateCreditCost(
   resolution?: string | null,
   songDurationSec?: number | null,
   provider?: string | null,
+  generationMode: GenerationMode = "montage",
 ): number {
   return Math.ceil(
-    providerCostCredits(requestedDuration, songDurationSec, provider) *
-      markupFor(requestedDuration, songDurationSec, provider) *
+    providerCostCredits(requestedDuration, songDurationSec, provider, generationMode) *
+      markupFor(requestedDuration, songDurationSec, provider, generationMode) *
       resolutionMultiplier(resolution),
   );
 }
@@ -220,9 +259,10 @@ export function calculateLipsyncCostFromSourceVideo(
   resolution?: string | null,
   songDurationSec?: number | null,
   provider?: string | null,
+  generationMode: GenerationMode = "montage",
 ): number {
   return Math.ceil(
-    providerCostCredits(requestedDuration, songDurationSec, provider) *
+    providerCostCredits(requestedDuration, songDurationSec, provider, generationMode) *
       resolutionMultiplier(resolution) *
       LIPSYNC_MARKUP,
   );
@@ -248,11 +288,20 @@ export function calculateRemixCost(
   totalClips: number,
   regeneratedClips: number,
   resolution?: string | null,
+  songDurationSec?: number | null,
+  provider?: string | null,
+  generationMode: GenerationMode = "montage",
 ): number {
   const safeTotal = Math.max(1, totalClips);
   const safeRegen = Math.max(0, Math.min(regeneratedClips, safeTotal));
   if (safeRegen === 0) return 0;
-  const perClip = calculateCreditCost(requestedDuration, resolution) / safeTotal;
+  const perClip = calculateCreditCost(
+    requestedDuration,
+    resolution,
+    songDurationSec,
+    provider,
+    generationMode,
+  ) / safeTotal;
   return Math.max(1, Math.ceil(perClip * safeRegen));
 }
 

@@ -63,3 +63,74 @@ describe("planShots montage planning", () => {
     expect(plan.shots.some((shot) => shot.prompt.includes("sunrise breaks over the mountains"))).toBe(true);
   });
 });
+
+describe("planShots narrative planning", () => {
+  it("creates eighteen unique chronological scenes for a three-minute story", () => {
+    const plan = planShots({
+      prompt: "A rider enters the desert. Then a storm arrives. Finally sunrise breaks over the mountains.",
+      style: "cinematic",
+      generationMode: "narrative",
+      requestedDuration: "full",
+      analysis: THREE_MINUTE_ANALYSIS,
+    });
+
+    expect(plan.generationMode).toBe("narrative");
+    expect(plan.numClips).toBe(18);
+    expect(plan.shots).toHaveLength(18);
+    expect(plan.timeline).toHaveLength(18);
+    expect(plan.reuseCount).toBe(0);
+    expect(plan.timeline.map((scene) => scene.visualIndex)).toEqual(
+      Array.from({ length: 18 }, (_, index) => index),
+    );
+    expect(new Set(plan.shots.map((shot) => shot.prompt)).size).toBe(18);
+    expect(plan.shots[0]!.prompt).toContain("chronological story scene 1 of 18");
+    expect(plan.shots[0]!.prompt).toContain("rider enters the desert");
+    expect(plan.shots[8]!.prompt).toContain("storm arrives");
+    expect(plan.shots[17]!.prompt).toContain("sunrise breaks over the mountains");
+    expect(plan.shots[17]!.prompt).not.toContain("rider enters the desert");
+    expect(plan.shots[17]!.prompt).toContain("deliver a clear visual resolution");
+  });
+
+  it("scales a ten-minute full track to sixty paid scenes without changing Montage", () => {
+    const analysis = {
+      ...THREE_MINUTE_ANALYSIS,
+      durationSeconds: 600,
+      sections: [
+        { startTime: 0, endTime: 600, label: "full track", energy: 0.7 },
+      ],
+    };
+    const narrative = planShots({
+      prompt: "A hero crosses a changing city",
+      generationMode: "narrative",
+      requestedDuration: "full",
+      analysis,
+    });
+    const montage = planShots({
+      prompt: "A hero crosses a changing city",
+      generationMode: "montage",
+      requestedDuration: "full",
+      analysis,
+    });
+
+    expect(narrative.numClips).toBe(60);
+    expect(narrative.timelineSceneCount).toBe(60);
+    expect(narrative.reuseCount).toBe(0);
+    expect(montage.numClips).toBe(20);
+    expect(montage.timelineSceneCount).toBe(60);
+    expect(montage.reuseCount).toBe(40);
+  });
+
+  it("uses one five-second scene for a five-second Narrative Story", () => {
+    const plan = planShots({
+      prompt: "A door opens into daylight",
+      generationMode: "narrative",
+      requestedDuration: "5",
+    });
+
+    expect(plan.numClips).toBe(1);
+    expect(plan.clipDurationSec).toBe(5);
+    expect(plan.timeline).toEqual([
+      expect.objectContaining({ index: 0, visualIndex: 0, duration: 5 }),
+    ]);
+  });
+});

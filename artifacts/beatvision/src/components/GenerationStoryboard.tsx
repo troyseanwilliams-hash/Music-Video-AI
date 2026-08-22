@@ -19,6 +19,7 @@ export interface StoryboardShot {
 }
 
 export interface StoryboardPlan {
+  generationMode?: string;
   numClips: number;
   clipDurationSec: number;
   targetOutputDuration: number;
@@ -57,6 +58,7 @@ export default function GenerationStoryboard({
     shots.find((shot) => !completedSet.has(shot.index)) ??
     shots[shots.length - 1]!;
   const completed = Math.min(completedSet.size, storyboard.numClips);
+  const isNarrative = storyboard.generationMode === "narrative";
   const energyPercent = Math.round(Math.max(0, Math.min(1, activeShot.energy)) * 100);
   const targetDuration = timestamp(storyboard.targetOutputDuration);
   const stage =
@@ -68,14 +70,18 @@ export default function GenerationStoryboard({
         }
       : status === "generating"
         ? {
-            label: `Creating visual ${Math.min(completed + 1, storyboard.numClips)} of ${storyboard.numClips}`,
-            detail: "This visual motif is being built from your direction and matched to the track's energy.",
+            label: `Creating ${isNarrative ? "scene" : "visual"} ${Math.min(completed + 1, storyboard.numClips)} of ${storyboard.numClips}`,
+            detail: isNarrative
+              ? "This chronological scene follows the reviewed story plan and preserves continuity with the surrounding scenes."
+              : "This visual motif is being built from your direction and matched to the track's energy.",
             icon: WandSparkles,
           }
         : status === "stitching"
           ? {
               label: "Assembling the final cut",
-              detail: "Arranging and recalling the completed visuals across the track, then aligning the final cut to your audio.",
+              detail: isNarrative
+                ? "Placing every completed scene in chronological order, then aligning the final cut to your audio."
+                : "Arranging and recalling the completed visuals across the track, then aligning the final cut to your audio.",
               icon: Scissors,
             }
           : {
@@ -99,7 +105,7 @@ export default function GenerationStoryboard({
           <p className="mt-1 text-xs text-muted-foreground">{stage.detail}</p>
         </div>
         <div className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs text-primary tabular-nums">
-          {completed}/{storyboard.numClips} visuals rendered
+          {completed}/{storyboard.numClips} {isNarrative ? "scenes" : "visuals"} rendered
         </div>
       </div>
 
@@ -114,7 +120,9 @@ export default function GenerationStoryboard({
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
               {status === "generating"
                 ? `${activeShot.label} begins near ${timestamp(activeShot.startTime)}.`
-                : `${storyboard.numClips} unique visuals · ${storyboard.timelineSceneCount ?? storyboard.numClips} timeline cuts · ${targetDuration} target runtime.`}
+                : (isNarrative
+                    ? `${storyboard.numClips} unique scenes · ${storyboard.timelineSceneCount ?? storyboard.numClips} timeline slots · ${targetDuration} target runtime.`
+                    : `${storyboard.numClips} unique visuals · ${storyboard.timelineSceneCount ?? storyboard.numClips} timeline cuts · ${targetDuration} target runtime.`)}
             </p>
           </div>
 
@@ -141,13 +149,19 @@ export default function GenerationStoryboard({
             </div>
             <p className="mt-2 text-sm font-semibold">
               {status === "stitching"
-                ? "Synchronizing the montage and audio"
-                : `${storyboard.timelineSceneCount ?? storyboard.numClips} music-timed cuts`}
+                ? (isNarrative ? "Synchronizing the timeline and audio" : "Synchronizing the montage and audio")
+                : (isNarrative
+                    ? `${storyboard.timelineSceneCount ?? storyboard.numClips} unique chronological scenes`
+                    : `${storyboard.timelineSceneCount ?? storyboard.numClips} music-timed cuts`)}
             </p>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
               {status === "stitching"
-                ? "Visual motifs are being alternated and recalled intentionally across one polished music video."
-                : `${storyboard.reuseCount ?? 0} intentional visual recalls keep longer Montage videos affordable.`}
+                ? (isNarrative
+                    ? "Chronological scenes are being aligned to the final cut, with strict continuity and no reuse."
+                    : "Visual motifs are being alternated and recalled intentionally across one polished music video.")
+                : (isNarrative
+                    ? "Every timeline slot receives a newly rendered scene. No visual recalls."
+                    : `${storyboard.reuseCount ?? 0} intentional visual recalls keep longer Montage videos affordable.`)}
             </p>
           </div>
         </div>
@@ -164,7 +178,8 @@ export default function GenerationStoryboard({
               <div className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-primary" />
                 <p className="text-sm font-semibold">
-                  Visual {activeShot.index + 1}: <span className="capitalize">{activeShot.label}</span>
+                  {isNarrative ? "Scene" : "Visual"} {activeShot.index + 1}:{" "}
+                  <span className="capitalize">{activeShot.label}</span>
                 </p>
               </div>
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -185,17 +200,17 @@ export default function GenerationStoryboard({
               </div>
             </div>
             <p className="mt-3 text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
-              Visual direction
+              {isNarrative ? "Scene direction" : "Visual direction"}
             </p>
             <p className="mt-1 text-sm leading-relaxed text-foreground/90">{activeShot.prompt}</p>
           </motion.div>
         )}
 
-        <div className="mt-4 flex gap-1.5" aria-label="Video visual progress">
+        <div className="mt-4 flex gap-1.5" aria-label={`Video ${isNarrative ? "scene" : "visual"} progress`}>
           {shots.map((shot) => (
             <span
               key={shot.index}
-              aria-label={`Visual ${shot.index + 1}: ${
+              aria-label={`${isNarrative ? "Scene" : "Visual"} ${shot.index + 1}: ${
                 completedSet.has(shot.index)
                   ? "rendered"
                   : shot.index === activeShot.index && status === "generating"

@@ -56,11 +56,16 @@ function resolveScenePlan(job: {
   jobType?: string | null;
   requestedDuration?: string | null;
   audioAnalysis?: unknown;
+  manifest?: unknown;
 }): { numClips: number } | undefined {
   if (job.jobType && job.jobType !== "ai") return undefined;
   const songDurationSec = (job.audioAnalysis as { durationSeconds?: number } | null | undefined)
     ?.durationSeconds;
-  const { numClips } = getClipPlan(job.requestedDuration, songDurationSec);
+  const manifest = job.manifest && typeof job.manifest === "object"
+    ? job.manifest as { generationMode?: unknown }
+    : {};
+  const generationMode = manifest.generationMode === "narrative" ? "narrative" : "montage";
+  const { numClips } = getClipPlan(job.requestedDuration, songDurationSec, generationMode);
   return { numClips };
 }
 
@@ -158,6 +163,7 @@ router.post("/jobs/preview-shots", async (req, res) => {
       style,
       character,
       requestedDuration,
+      generationMode,
       audioAnalysis,
       audioObjectPath,
     } = (req.body ?? {}) as Record<string, unknown>;
@@ -177,6 +183,7 @@ router.post("/jobs/preview-shots", async (req, res) => {
       style: style as string | null,
       character: character as string | null,
       requestedDuration: requestedDuration as string | null,
+      generationMode: generationMode === "narrative" ? "narrative" : "montage",
       analysis: verifiedAnalysis as never,
     });
     res.json(plan);
@@ -265,6 +272,7 @@ router.post("/jobs", async (req, res) => {
     character,
     referenceImagePath,
     requestedDuration,
+    generationMode,
     clipStartTime,
     audioAnalysis,
     aiProvider,
@@ -274,6 +282,8 @@ router.post("/jobs", async (req, res) => {
     fullTrackLipSyncImagePath,
   } =
     parseResult.data;
+  const normalizedGenerationMode =
+    generationMode === "narrative" ? "narrative" : "montage";
 
   // "No audio" jobs render a silent video (soundtrack added later in the
   // Editor) — there's no audio to attest ownership of, and no song to derive
@@ -432,12 +442,41 @@ router.post("/jobs", async (req, res) => {
   // Kling (via Pixazo) is cheaper than Runway, so the charge scales with the
   // chosen engine. Only "kling" is offered as an alternative for now.
   const engine = String(aiProvider ?? "").toLowerCase() === "kling" ? "kling" : "runway";
+  const storyboard = planShots({
+    prompt,
+    style,
+    character,
+    requestedDuration,
+    generationMode: normalizedGenerationMode,
+    analysis: verifiedAudioAnalysis as never,
+  });
+  if (
+    normalizedGenerationMode === "narrative"
+    && (
+      storyboard.reuseCount !== 0
+      || storyboard.shots.length !== storyboard.numClips
+      || storyboard.timeline.length !== storyboard.numClips
+      || storyboard.timeline.some((entry, index) => entry.visualIndex !== index)
+    )
+  ) {
+    res.status(422).json({
+      error: "Could not build a complete chronological story plan. Please adjust the prompt and try again.",
+      code: "NARRATIVE_PLAN_INVALID",
+    });
+    return;
+  }
   // Karaoke lyric burn is a paid add-on: generating with lyrics costs the same
   // LYRIC_OVERLAY_COST as burning lyrics onto a finished video, so there's no
   // free path to the same output. Mirror in creditPricing.ts (generate page).
   const lyricAddon = lyricsText?.trim() ? LYRIC_OVERLAY_COST : 0;
   const baseCreditCost =
-    calculateCreditCost(requestedDuration, resolution, songDurationSec, engine) + lyricAddon;
+    calculateCreditCost(
+      requestedDuration,
+      resolution,
+      songDurationSec,
+      engine,
+      normalizedGenerationMode,
+    ) + lyricAddon;
   const bundledLipSyncCost = bundledLipSyncEnabled
     ? calculateLipsyncCost(bundledLipSyncSeconds)
     : 0;
@@ -543,14 +582,9 @@ router.post("/jobs", async (req, res) => {
         bundledLipSyncCost,
         bundledLipSyncReservedSubscriptionCredits: lipSyncSubscriptionDebit,
         bundledLipSyncReservedTopupCredits: lipSyncTopupDebit,
+        generationMode: normalizedGenerationMode,
         ...(bundledLipSyncChildId ? { bundledLipSyncChildId } : {}),
-        storyboard: planShots({
-          prompt,
-          style,
-          character,
-          requestedDuration,
-          analysis: verifiedAudioAnalysis as never,
-        }),
+        storyboard,
       } as unknown as Record<string, unknown>,
       prompt,
       style: style as
@@ -1175,9 +1209,24 @@ router.post("/jobs/:id/remix", async (req, res) => {
   // Lyric burn is a paid add-on here too: a remix whose output carries burned
   // karaoke captions (entered OR inherited from the original job) is charged
   // LYRIC_OVERLAY_COST on top, so remixing isn't a free path to a lyric burn.
+  const sourceManifest = job.manifest && typeof job.manifest === "object"
+    ? job.manifest as { generationMode?: unknown }
+    : {};
+  const sourceGenerationMode =
+    sourceManifest.generationMode === "narrative" ? "narrative" : "montage";
+  const sourceSongDurationSec =
+    (job.audioAnalysis as { durationSeconds?: number } | null | undefined)?.durationSeconds;
   const remixLyricAddon = effectiveLyrics?.trim() ? LYRIC_OVERLAY_COST : 0;
   const remixCost =
-    calculateRemixCost(job.requestedDuration, clips.length, validIndexes.length, job.resolution) + remixLyricAddon;
+    calculateRemixCost(
+      job.requestedDuration,
+      clips.length,
+      validIndexes.length,
+      job.resolution,
+      sourceSongDurationSec,
+      job.aiProvider,
+      sourceGenerationMode,
+    ) + remixLyricAddon;
   const chargeCredits = !isAdmin;
 
   if (chargeCredits) {
@@ -1223,6 +1272,7 @@ router.post("/jobs/:id/remix", async (req, res) => {
       prompt: promptOverride?.trim() || job.prompt,
       style: (style ?? job.style) as typeof job.style,
       manifest: {
+        generationMode: sourceGenerationMode,
         originalVideoId: job.videoId,
         clipIndexes: validIndexes,
         style: style ?? null,
