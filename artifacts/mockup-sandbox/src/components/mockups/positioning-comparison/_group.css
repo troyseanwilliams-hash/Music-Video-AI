@@ -1,0 +1,52 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+:root {
+  --background: 240 10% 4%;
+  --foreground: 0 0% 98%;
+  --card: 240 10% 7%;
+  --card-foreground: 0 0% 98%;
+  --primary: 270 100% 64%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 240 10% 13%;
+  --secondary-foreground: 0 0% 98%;
+  --muted: 240 5% 66%;
+  --border: 240 10% 18%;
+  --ring: 270 100% 64%;
+  --app-font-sans: "Inter", sans-serif;
+  --radius: 0.7rem;
+}
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-border: hsl(var(--border));
+  --color-ring: hsl(var(--ring));
+  --font-sans: var(--app-font-sans);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * { @apply border-border; }
+  body { @apply m-0 bg-background font-sans text-foreground antialiased; }
+}
+
+.positioning-preview {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 84% 2%, rgb(124 58 237 / 0.2), transparent 27rem),
+    radial-gradient(circle at 8% 42%, rgb(37 99 235 / 0.12), transparent 34rem),
+    hsl(var(--background));
+}
+
+.positioning-preview button {
+  font: inherit;
+}
