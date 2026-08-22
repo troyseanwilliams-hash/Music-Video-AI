@@ -36,9 +36,10 @@ function targetOutputDuration(
   return Number.isFinite(requested) && requested > 0 ? requested : 10;
 }
 
-// Extract [startSec, startSec + durationSec) as an audio-only M4A. Re-encoding
+// Extract [startSec, startSec + durationSec) as an audio-only MP3. Re-encoding
 // makes embedded MP4 soundtracks and uploaded audio share one provider-safe
-// container instead of accidentally forwarding a video stream.
+// container instead of accidentally forwarding a video stream. The Lip Sync
+// service accepts MP3/WAV inputs but rejects M4A.
 async function extractAudioClip(
   audio: { buffer: Buffer; ext: string },
   startSec: number,
@@ -46,16 +47,16 @@ async function extractAudioClip(
 ): Promise<{ buffer: Buffer; ext: string }> {
   const id = randomUUID();
   const inputPath = join(tmpdir(), `bv_in_${id}.${audio.ext}`);
-  const outputPath = join(tmpdir(), `bv_clip_${id}.m4a`);
+  const outputPath = join(tmpdir(), `bv_clip_${id}.mp3`);
   try {
     await writeFile(inputPath, audio.buffer);
     await execAsync(
-      `ffmpeg -y -ss ${startSec.toFixed(3)} -t ${durationSec} -i "${inputPath}" -map 0:a:0 -vn -c:a aac -b:a 192k "${outputPath}"`,
+      `ffmpeg -y -ss ${startSec.toFixed(3)} -t ${durationSec} -i "${inputPath}" -map 0:a:0 -vn -c:a libmp3lame -b:a 192k "${outputPath}"`,
       { timeout: 30_000 },
     );
     const { readFile } = await import("fs/promises");
     const clipped = await readFile(outputPath);
-    return { buffer: clipped, ext: "m4a" };
+    return { buffer: clipped, ext: "mp3" };
   } finally {
     await unlink(inputPath).catch(() => {});
     await unlink(outputPath).catch(() => {});
