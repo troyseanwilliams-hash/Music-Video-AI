@@ -263,6 +263,8 @@ export interface JobStoryboardShot {
   /** @minimum 0 */
   index: number;
   label: string;
+  /** Short, human-readable description of the exact planned scene or visual. */
+  description?: string;
   /** @minimum 0 */
   startTime: number;
   /**

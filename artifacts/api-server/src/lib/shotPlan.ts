@@ -46,6 +46,7 @@ export type GenerationMode = "montage" | "narrative";
 export interface PlannedShot {
   index: number;
   label: string;
+  description: string;
   startTime: number;
   energy: number;
   prompt: string;
@@ -153,6 +154,15 @@ function narrativeBeat(index: number, count: number): string {
     Math.floor(position * NARRATIVE_BEATS.length),
   );
   return NARRATIVE_BEATS[beatIndex]!;
+}
+
+function sceneDescription(role: string, concept: string): string {
+  const normalized = concept.replace(/\s+/g, " ").trim();
+  const shortened = normalized.length > 180
+    ? `${normalized.slice(0, 177).trimEnd()}…`
+    : normalized;
+  const title = role.charAt(0).toUpperCase() + role.slice(1);
+  return `${title} — ${shortened || "cinematic music video imagery"}`;
 }
 
 function promptConcepts(prompt: string): string[] {
@@ -362,6 +372,7 @@ export function planShots(input: ShotPlanInput): ShotPlan {
       return {
         index,
         label: beat,
+        description: sceneDescription(beat, orderedStoryConcepts[conceptIndex]!),
         startTime,
         energy: Math.round(section.energy * 100) / 100,
         prompt: buildNarrativePrompt(
@@ -409,6 +420,7 @@ export function planShots(input: ShotPlanInput): ShotPlan {
     shots.push({
       index: i,
       label: role,
+      description: sceneDescription(role, concepts[i]!),
       startTime: s.startTime,
       energy: Math.round(s.energy * 100) / 100,
       prompt: buildPrompt(input, s, bpm, mood, concepts[i]!, role),

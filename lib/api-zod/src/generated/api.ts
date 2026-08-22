@@ -413,6 +413,12 @@ export const ListJobsResponse = zod.object({
                         listJobsResponseJobsItemManifestOneStoryboardShotsItemIndexMin,
                       ),
                     label: zod.string(),
+                    description: zod
+                      .string()
+                      .optional()
+                      .describe(
+                        "Short, human-readable description of the exact planned scene or visual.",
+                      ),
                     startTime: zod
                       .number()
                       .min(
@@ -868,6 +874,12 @@ export const GetJobResponse = zod.object({
                   .number()
                   .min(getJobResponseManifestOneStoryboardShotsItemIndexMin),
                 label: zod.string(),
+                description: zod
+                  .string()
+                  .optional()
+                  .describe(
+                    "Short, human-readable description of the exact planned scene or visual.",
+                  ),
                 startTime: zod
                   .number()
                   .min(
@@ -1687,6 +1699,12 @@ export const GetDashboardStatsResponse = zod.object({
                           getDashboardStatsResponseRecentJobsItemManifestOneStoryboardShotsItemIndexMin,
                         ),
                       label: zod.string(),
+                      description: zod
+                        .string()
+                        .optional()
+                        .describe(
+                          "Short, human-readable description of the exact planned scene or visual.",
+                        ),
                       startTime: zod
                         .number()
                         .min(

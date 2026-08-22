@@ -13,6 +13,7 @@ import {
 export interface StoryboardShot {
   index: number;
   label: string;
+  description?: string;
   startTime: number;
   energy: number;
   prompt: string;
@@ -57,6 +58,7 @@ export default function GenerationStoryboard({
   const activeShot =
     shots.find((shot) => !completedSet.has(shot.index)) ??
     shots[shots.length - 1]!;
+  const activeDescription = activeShot.description?.trim() || activeShot.label;
   const completed = Math.min(completedSet.size, storyboard.numClips);
   const isNarrative = storyboard.generationMode === "narrative";
   const energyPercent = Math.round(Math.max(0, Math.min(1, activeShot.energy)) * 100);
@@ -119,7 +121,7 @@ export default function GenerationStoryboard({
             <p className="mt-2 text-sm font-semibold">{stage.label}</p>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
               {status === "generating"
-                ? `${activeShot.label} begins near ${timestamp(activeShot.startTime)}.`
+                ? `${activeDescription} begins near ${timestamp(activeShot.startTime)}.`
                 : (isNarrative
                     ? `${storyboard.numClips} unique scenes · ${storyboard.timelineSceneCount ?? storyboard.numClips} timeline slots · ${targetDuration} target runtime.`
                     : `${storyboard.numClips} unique visuals · ${storyboard.timelineSceneCount ?? storyboard.numClips} timeline cuts · ${targetDuration} target runtime.`)}
@@ -179,7 +181,7 @@ export default function GenerationStoryboard({
                 <Sparkles className="h-4 w-4 text-primary" />
                 <p className="text-sm font-semibold">
                   {isNarrative ? "Scene" : "Visual"} {activeShot.index + 1}:{" "}
-                  <span className="capitalize">{activeShot.label}</span>
+                  <span>{activeDescription}</span>
                 </p>
               </div>
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">

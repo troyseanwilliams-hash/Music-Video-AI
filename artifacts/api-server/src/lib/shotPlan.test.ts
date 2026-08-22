@@ -84,9 +84,12 @@ describe("planShots narrative planning", () => {
     );
     expect(new Set(plan.shots.map((shot) => shot.prompt)).size).toBe(18);
     expect(plan.shots[0]!.prompt).toContain("chronological story scene 1 of 18");
+    expect(plan.shots[0]!.description).toContain("Opening image — A rider enters the desert");
     expect(plan.shots[0]!.prompt).toContain("rider enters the desert");
     expect(plan.shots[8]!.prompt).toContain("storm arrives");
+    expect(plan.shots[8]!.description).toContain("storm arrives");
     expect(plan.shots[17]!.prompt).toContain("sunrise breaks over the mountains");
+    expect(plan.shots[17]!.description).toContain("sunrise breaks over the mountains");
     expect(plan.shots[17]!.prompt).not.toContain("rider enters the desert");
     expect(plan.shots[17]!.prompt).toContain("deliver a clear visual resolution");
   });

@@ -1201,6 +1201,9 @@ components:
           minimum: 0
         label:
           type: string
+        description:
+          type: string
+          description: Short, human-readable description of the exact planned scene or visual.
         startTime:
           type: number
           minimum: 0

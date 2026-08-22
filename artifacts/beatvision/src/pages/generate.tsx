@@ -248,7 +248,14 @@ export default function Generate() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [topUpOpen, setTopUpOpen] = useState(false);
   // Storyboard preview shown in the confirm dialog (no charge, no render).
-  type PlannedShot = { index: number; label: string; startTime: number; energy: number; prompt: string };
+  type PlannedShot = {
+    index: number;
+    label: string;
+    description?: string;
+    startTime: number;
+    energy: number;
+    prompt: string;
+  };
   const [shotPlan, setShotPlan] = useState<{
     shots: PlannedShot[];
     numClips: number;
@@ -2436,10 +2443,14 @@ export default function Generate() {
                             <span className="inline-flex h-4 min-w-[1rem] px-1 items-center justify-center rounded bg-primary/15 text-primary text-[10px]">
                               {s.index + 1}
                             </span>
-                            <span className="capitalize">{s.label}</span>
+                            <span>{s.description ?? s.label}</span>
                             <span className="text-muted-foreground font-normal">· {Math.round(s.energy * 100)}% energy</span>
                           </div>
-                          <p className="text-muted-foreground mt-0.5 leading-snug">{s.prompt}</p>
+                          <p className="text-muted-foreground mt-0.5 leading-snug">
+                            {generationMode === CreateJobRequestGenerationMode.narrative
+                              ? `${s.label} scene`
+                              : `${s.label} visual`}
+                          </p>
                         </div>
                       ))}
                     </div>
