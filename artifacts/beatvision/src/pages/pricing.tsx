@@ -27,6 +27,11 @@ import {
 } from "lucide-react";
 
 type Interval = "month" | "year";
+type PlanPrice = {
+  interval: string | null;
+  unitAmount: number;
+  currency: string;
+};
 
 function formatPrice(amount: number, currency: string): string {
   const formatter = new Intl.NumberFormat("en-US", {
@@ -40,6 +45,20 @@ function formatPrice(amount: number, currency: string): string {
 function getQueryParam(name: string): string | null {
   if (typeof window === "undefined") return null;
   return new URLSearchParams(window.location.search).get(name);
+}
+
+function getYearlySavings(prices: PlanPrice[]) {
+  const monthly = prices.find((price) => price.interval === "month");
+  const yearly = prices.find((price) => price.interval === "year");
+  if (!monthly || !yearly) return null;
+
+  const amount = monthly.unitAmount * 12 - yearly.unitAmount;
+  if (amount <= 0) return null;
+
+  return {
+    amount,
+    percent: Math.round((amount / (monthly.unitAmount * 12)) * 100),
+  };
 }
 
 const TIER_ICONS: Record<string, typeof Zap> = {
@@ -125,6 +144,14 @@ export default function Pricing() {
   const hasYearly = useMemo(
     () =>
       subscriptions.some((p) => p.prices.some((pr) => pr.interval === "year")),
+    [subscriptions],
+  );
+  const annualSavings = useMemo(
+    () =>
+      subscriptions
+        .map((plan) => getYearlySavings(plan.prices))
+        .filter((saving): saving is NonNullable<typeof saving> => saving !== null)
+        .sort((a, b) => b.percent - a.percent)[0] ?? null,
     [subscriptions],
   );
 
@@ -233,7 +260,7 @@ export default function Pricing() {
         )}
       </div>
 
-      <div className="text-center mb-12">
+      <div className="text-center mb-10 sm:mb-12">
         <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary mb-4">
           <Zap className="h-3.5 w-3.5" />
           Simple, credit-based pricing
@@ -241,18 +268,9 @@ export default function Pricing() {
         <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight mb-4">
           Choose your <span className="text-gradient-electric">plan</span>
         </h1>
-        <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-          Credits are consumed per video generated — from{" "}
-          <strong className="text-foreground">80 credits</strong> for a
-          5-second clip on Runway. Pick your engine at generation:{" "}
-          <strong className="text-foreground">Runway</strong> (premium) or{" "}
-          <strong className="text-foreground">Kling</strong> (value — about 40%
-          cheaper). Full-length videos scale with song length (up to 10 minutes).
-          Render in 720p, 1080p HD (×1.25), or 4K Ultra (×5, Pro &amp; Studio).
-          TikTok teaser packs cost 30, Spotify Canvas loops 20. Generating
-          lyrics in Prompt or Soundtracks costs 3 credits. Plan credits
-          reset each cycle — top-up credits never expire, and you can earn more
-          by referring friends.
+        <p className="text-base leading-7 text-muted-foreground max-w-xl mx-auto sm:text-lg">
+          Pick the credits that fit your output. Every plan includes music videos, AI Soundtracks, Remix Lab, and a
+          free 7-day trial. Plan credits refresh with your billing cycle; top-ups never expire.
         </p>
         <div className="mx-auto mt-5 flex max-w-md items-start gap-2 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-3 text-left text-sm font-medium sm:inline-flex sm:max-w-none sm:items-center sm:rounded-full sm:py-2">
           <Sparkles className="h-4 w-4 text-primary" />
@@ -290,8 +308,14 @@ export default function Pricing() {
       </div>
 
       {hasYearly && (
-        <div className="flex items-center justify-center mb-10">
-          <div className="inline-flex rounded-lg border border-border bg-card/50 p-1">
+        <div className="mb-10 flex flex-col items-center justify-center gap-3">
+          {annualSavings && (
+            <div className="inline-flex items-center gap-2 rounded-full border border-primary/40 bg-primary/10 px-3.5 py-1.5 text-xs font-semibold text-primary">
+              <Sparkles className="h-3.5 w-3.5" />
+              Pay yearly and save {annualSavings.percent}% — about two months free
+            </div>
+          )}
+          <div className="inline-flex rounded-lg border border-border bg-card/50 p-1" aria-label="Billing interval">
             <button
               type="button"
               onClick={() => setInterval("month")}
@@ -314,7 +338,12 @@ export default function Pricing() {
               }`}
               data-testid="button-interval-yearly"
             >
-              Yearly <span className="text-xs opacity-70">(save ~17%)</span>
+              <span>Yearly</span>
+              {annualSavings && (
+                <span className="ml-1.5 rounded-sm bg-background/25 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+                  Save {annualSavings.percent}%
+                </span>
+              )}
             </button>
           </div>
         </div>
@@ -347,6 +376,10 @@ export default function Pricing() {
             plan.prices[0];
           if (!price) return null;
           const Icon = TIER_ICONS[plan.name.toLowerCase()] ?? Sparkles;
+          const yearlySaving =
+            price.interval === "year" ? getYearlySavings(plan.prices) : null;
+          const monthlyEquivalent =
+            price.interval === "year" ? price.unitAmount / 12 : null;
           const soundtracksPerMonth =
             ({ starter: 25, pro: 100, studio: 300 } as Record<string, number>)[plan.name.toLowerCase()] ?? 25;
           const isCurrent =
@@ -393,6 +426,17 @@ export default function Pricing() {
                     {price.credits} credits per{" "}
                     {price.interval === "year" ? "year" : "month"}
                   </div>
+                  {yearlySaving && monthlyEquivalent !== null && (
+                    <div className="mt-3 rounded-lg border border-primary/25 bg-primary/10 px-3 py-2 text-sm">
+                      <span className="font-semibold text-primary">
+                        Save {formatPrice(yearlySaving.amount, price.currency)}
+                      </span>
+                      <span className="text-muted-foreground"> a year · {yearlySaving.percent}% off monthly</span>
+                      <span className="mt-0.5 block text-xs text-muted-foreground">
+                        {formatPrice(monthlyEquivalent, price.currency)}/month when billed yearly
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <ul className="space-y-2 text-sm">
@@ -465,7 +509,9 @@ export default function Pricing() {
                   {isCurrent
                     ? "Current plan"
                     : isAuthenticated
-                      ? "Subscribe"
+                      ? price.interval === "year"
+                        ? "Start yearly & save"
+                        : "Subscribe monthly"
                       : "Sign in to subscribe"}
                 </Button>
               </CardContent>

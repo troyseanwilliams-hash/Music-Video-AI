@@ -1,4 +1,4 @@
-import { Mic, Video, Sparkles, Gift, Coins, Zap, ArrowRight } from "lucide-react";
+import { Mic, Video, Sparkles, Gift, Coins, Zap, ArrowRight, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,8 +26,8 @@ const VALUES = [
   },
   {
     icon: Coins,
-    title: "One pricing model",
-    body: "Simple, transparent credits on both sides — you always know what a render or export will cost before you commit to it.",
+    title: "Credits in both studios",
+    body: "Subscribe to both studios and each gets its own credit balance, so podcast work never takes away from video credits.",
   },
   {
     icon: Gift,
@@ -128,6 +128,54 @@ export default function Suite() {
           </p>
         </Card>
       </div>
+
+        <section className="mb-20 rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/10 via-card/70 to-accent/10 p-6 sm:p-8">
+          <div className="mx-auto max-w-3xl text-center">
+            <Badge className="mb-4 border-primary/30 bg-primary/10 text-primary">
+              <Coins className="mr-2 h-3.5 w-3.5" aria-hidden="true" />
+              Suite subscription strategy
+            </Badge>
+            <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
+              Subscribe to both. Get credits in both studios.
+            </h2>
+            <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
+              Keep each subscription focused on the work it powers. When you subscribe to AIBeatSync and AIPodSync,
+              each app receives its own renewable credits—so your podcast credits never compete with your video
+              credits.
+            </p>
+          </div>
+          <ol className="mx-auto mt-7 grid max-w-3xl gap-3 sm:grid-cols-3">
+            {[
+              "Choose an AIBeatSync plan for music videos and Soundtracks.",
+              "Add AIPodSync when you are ready to produce narrated shows.",
+              "Use each app's credits inside that studio—two balances, no trade-offs.",
+            ].map((step, index) => (
+              <li key={step} className="flex gap-3 rounded-xl border border-border/60 bg-background/50 p-4 text-sm text-muted-foreground">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-bold text-primary">
+                  {index + 1}
+                </span>
+                <span>{step}</span>
+              </li>
+            ))}
+          </ol>
+          <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <a href="/pricing">
+              <Button className="w-full bg-gradient-electric text-white shadow-glow sm:w-auto">
+                Choose AIBeatSync plan
+                <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
+              </Button>
+            </a>
+            <a href="https://aipodsync.com" target="_blank" rel="noopener noreferrer">
+              <Button variant="outline" className="w-full sm:w-auto">
+                Explore AIPodSync
+              </Button>
+            </a>
+          </div>
+          <p className="mt-4 flex items-center justify-center gap-1.5 text-center text-xs text-muted-foreground">
+            <Check className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+            Two subscriptions today; clear, independent credits in each app.
+          </p>
+        </section>
 
       <div className="text-center max-w-xl mx-auto mb-10">
         <h2 className="text-2xl font-bold mb-2">Why one suite</h2>
