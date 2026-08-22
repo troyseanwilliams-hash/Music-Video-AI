@@ -19,7 +19,12 @@ import {
   unsubscribeHeaders,
 } from "./emailTemplates.js";
 
-const APP_URL = (process.env.APP_URL ?? "https://aibeatsync.com").replace(/\/+$/, "");
+export function normalizeAppUrl(appUrl = process.env.APP_URL): string {
+  const value = (appUrl?.trim() || "https://aibeatsync.com").replace(/\/+$/, "");
+  return /^https?:\/\//i.test(value) ? value : `https://${value}`;
+}
+
+const APP_URL = normalizeAppUrl();
 const FROM = "AIBeatSync <notifications@aibeatsync.com>";
 
 async function sendViaResend(to: string, subject: string, html: string, extraHeaders?: Record<string, string>): Promise<void> {

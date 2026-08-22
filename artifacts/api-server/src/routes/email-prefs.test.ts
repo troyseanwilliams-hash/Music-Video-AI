@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { renderReadyEmailHtml } from "../lib/emailTemplates.js";
+import { normalizeAppUrl } from "../lib/renderEmail.js";
 import { videoEmailRedirect } from "./email-prefs.js";
 
 describe("video email links", () => {
+  it("always creates a normal HTTPS web URL for email clients", () => {
+    expect(normalizeAppUrl("aibeatsync.com/")).toBe("https://aibeatsync.com");
+    expect(normalizeAppUrl(" https://aibeatsync.com/ ")).toBe("https://aibeatsync.com");
+  });
+
   it("sends an authenticated visitor directly to the finished job", () => {
     expect(videoEmailRedirect("job-123", true)).toBe("/jobs/job-123");
   });
