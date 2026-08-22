@@ -19,3 +19,4 @@
 - [Karaoke opt-in](karaoke-opt-in.md) — Loading or changing an audio source must never enable the paid lyric overlay automatically.
 - [Long AI job request limits](long-ai-job-request-limits.md) — never hold an HTTP request open for provider generation; queue it, persist the poll handle, and fence completion/refunds.
 - [Lip Sync audio format contract](lipsync-audio-format-contract.md) — the provider rejects M4A; both job processors must send a trimmed MP3 or WAV segment.
+- [Cross-product billing exclusion](cross-product-billing-exclusion.md) — direct and Suite checkout must reserve on one authority; refunds use source-aware current-period buckets.

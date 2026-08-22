@@ -23,6 +23,7 @@ import promoRouter from "./promo.js";
 import analyticsRouter from "./analytics.js";
 import adminAnalyticsRouter from "./admin-analytics.js";
 import emailPrefsRouter from "./email-prefs.js";
+import suiteRouter from "./suite.js";
 
 const router: IRouter = Router();
 
@@ -50,5 +51,6 @@ router.use(promoRouter);
 router.use(analyticsRouter);
 router.use(adminAnalyticsRouter);
 router.use(emailPrefsRouter);
+router.use(suiteRouter);
 
 export default router;

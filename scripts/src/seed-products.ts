@@ -23,6 +23,8 @@ interface PriceSpec {
   recurring?: { interval: "month" | "year" };
   credits: number;
   lookupKey: string;
+  // Extra metadata fields (e.g. aipodCredits for Suite prices)
+  extraMetadata?: Record<string, string>;
 }
 
 interface ProductSpec {
@@ -102,6 +104,143 @@ const PRODUCTS: ProductSpec[] = [
         recurring: { interval: "year" },
         credits: 60000,
         lookupKey: "studio_yearly",
+      },
+    ],
+  },
+
+  // ── Suite Plans (cross-product AIBeatSync + AIPodSync) ────────────────────
+  // Each Suite plan includes AIBeat credits (local) AND AIPod credits
+  // delivered via the outbox. Metadata: kind=suite, suitePlan, credits (AIBeat),
+  // aipodCredits, interval.
+  {
+    name: "Suite Creator Monthly",
+    description: "Suite Creator — AIBeatSync + AIPodSync · $29/mo · 1,000 AIBeat + 200 AIPod credits",
+    metadata: {
+      kind: "suite",
+      suitePlan: "creator",
+      credits: "1000",
+      aipodCredits: "200",
+      interval: "month",
+    },
+    prices: [
+      {
+        nickname: "Suite Creator Monthly",
+        unitAmount: 2900,
+        currency: "usd",
+        recurring: { interval: "month" },
+        credits: 1000,
+        lookupKey: "suite_creator_monthly",
+        extraMetadata: { aipodCredits: "200", kind: "suite", suitePlan: "creator" },
+      },
+    ],
+  },
+  {
+    name: "Suite Creator Yearly",
+    description: "Suite Creator — AIBeatSync + AIPodSync · $290/yr · 12,000 AIBeat + 2,400 AIPod credits",
+    metadata: {
+      kind: "suite",
+      suitePlan: "creator",
+      credits: "12000",
+      aipodCredits: "2400",
+      interval: "year",
+    },
+    prices: [
+      {
+        nickname: "Suite Creator Yearly",
+        unitAmount: 29000,
+        currency: "usd",
+        recurring: { interval: "year" },
+        credits: 12000,
+        lookupKey: "suite_creator_yearly",
+        extraMetadata: { aipodCredits: "2400", kind: "suite", suitePlan: "creator" },
+      },
+    ],
+  },
+  {
+    name: "Suite Pro Monthly",
+    description: "Suite Pro — AIBeatSync + AIPodSync · $75/mo · 2,500 AIBeat + 800 AIPod credits",
+    metadata: {
+      kind: "suite",
+      suitePlan: "pro",
+      credits: "2500",
+      aipodCredits: "800",
+      interval: "month",
+    },
+    prices: [
+      {
+        nickname: "Suite Pro Monthly",
+        unitAmount: 7500,
+        currency: "usd",
+        recurring: { interval: "month" },
+        credits: 2500,
+        lookupKey: "suite_pro_monthly",
+        extraMetadata: { aipodCredits: "800", kind: "suite", suitePlan: "pro" },
+      },
+    ],
+  },
+  {
+    name: "Suite Pro Yearly",
+    description: "Suite Pro — AIBeatSync + AIPodSync · $750/yr · 30,000 AIBeat + 9,600 AIPod credits",
+    metadata: {
+      kind: "suite",
+      suitePlan: "pro",
+      credits: "30000",
+      aipodCredits: "9600",
+      interval: "year",
+    },
+    prices: [
+      {
+        nickname: "Suite Pro Yearly",
+        unitAmount: 75000,
+        currency: "usd",
+        recurring: { interval: "year" },
+        credits: 30000,
+        lookupKey: "suite_pro_yearly",
+        extraMetadata: { aipodCredits: "9600", kind: "suite", suitePlan: "pro" },
+      },
+    ],
+  },
+  {
+    name: "Suite Studio Monthly",
+    description: "Suite Studio — AIBeatSync + AIPodSync · $105/mo · 5,000 AIBeat + 800 AIPod credits",
+    metadata: {
+      kind: "suite",
+      suitePlan: "studio",
+      credits: "5000",
+      aipodCredits: "800",
+      interval: "month",
+    },
+    prices: [
+      {
+        nickname: "Suite Studio Monthly",
+        unitAmount: 10500,
+        currency: "usd",
+        recurring: { interval: "month" },
+        credits: 5000,
+        lookupKey: "suite_studio_monthly",
+        extraMetadata: { aipodCredits: "800", kind: "suite", suitePlan: "studio" },
+      },
+    ],
+  },
+  {
+    name: "Suite Studio Yearly",
+    description: "Suite Studio — AIBeatSync + AIPodSync · $1,050/yr · 60,000 AIBeat + 9,600 AIPod credits",
+    metadata: {
+      kind: "suite",
+      suitePlan: "studio",
+      credits: "60000",
+      aipodCredits: "9600",
+      interval: "year",
+    },
+    prices: [
+      {
+        nickname: "Suite Studio Yearly",
+        unitAmount: 105000,
+        currency: "usd",
+        recurring: { interval: "year" },
+        credits: 60000,
+        lookupKey: "suite_studio_yearly",
+        extraMetadata: { aipodCredits: "9600", kind: "suite", suitePlan: "studio" },
       },
     ],
   },
@@ -248,7 +387,7 @@ async function findOrCreatePrice(
     nickname: spec.nickname,
     lookup_key: spec.lookupKey,
     transfer_lookup_key: true,
-    metadata: { credits: String(spec.credits) },
+    metadata: { credits: String(spec.credits), ...(spec.extraMetadata ?? {}) },
   };
   if (spec.recurring) {
     params.recurring = { interval: spec.recurring.interval };

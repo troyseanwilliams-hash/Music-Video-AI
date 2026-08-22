@@ -1,11 +1,23 @@
 import Stripe from "stripe";
 import { db } from "@workspace/db";
-import { creditsTable, creditGrantsTable, usersTable } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import {
+  creditsTable,
+  creditGrantsTable,
+  usersTable,
+  suiteLinksTable,
+  suiteSubscriptionsTable,
+  suiteOutboxEventsTable,
+} from "@workspace/db";
+import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { getStripeSync, getUncachableStripeClient } from "./stripeClient.js";
 import { logger } from "./logger.js";
 import { notifyPayment } from "./notifications.js";
+import {
+  enqueueSuiteOutboxEvent,
+  parseAipodCredits,
+  isSuiteLookupKey,
+} from "../routes/suite.js";
 
 function parseCreditsFromMetadata(
   metadata: Stripe.Metadata | null | undefined,
@@ -143,27 +155,67 @@ async function resetSubscriptionCredits(params: {
   stripeEventId: string;
   stripeInvoiceId?: string | null;
   stripePriceId?: string | null;
+  subscriptionId: string;
+  observedUserSubscriptionId: string | null;
+  observedCurrentSubscriptionIsNonterminal: boolean;
 }): Promise<{ granted: boolean; reason?: string }> {
   if (params.credits <= 0) {
     return { granted: false, reason: "no credits to grant" };
   }
 
-  await ensureCreditsRow(params.userId);
-
-  if (params.stripeInvoiceId) {
-    const [existing] = await db
-      .select({ id: creditGrantsTable.id })
-      .from(creditGrantsTable)
-      .where(eq(creditGrantsTable.stripeInvoiceId, params.stripeInvoiceId))
-      .limit(1);
-    if (existing) return { granted: false, reason: "duplicate invoice" };
-  }
-
   try {
-    // Wrap the ledger insert and balance update in a single transaction so
-    // that a partial failure (insert succeeds, update fails) never leaves a
-    // stale ledger row that would block subsequent idempotent retries.
     const granted = await db.transaction(async (tx) => {
+      // All invoice grants for a user serialize on the user row. Re-read the
+      // authority state only after taking the lock so an older direct invoice
+      // cannot race a newer Suite grant and overwrite its balance.
+      await tx.execute(
+        sql`select ${usersTable.id} from ${usersTable} where ${usersTable.id} = ${params.userId} for update`,
+      );
+      const [lockedUser] = await tx
+        .select({
+          stripeSubscriptionId: usersTable.stripeSubscriptionId,
+        })
+        .from(usersTable)
+        .where(eq(usersTable.id, params.userId))
+        .limit(1);
+      if (!lockedUser) return "stale" as const;
+
+      const [suiteAuthority] = await tx
+        .select({
+          subscriptionStatus: suiteLinksTable.subscriptionStatus,
+          stripeSubscriptionId: suiteLinksTable.stripeSubscriptionId,
+        })
+        .from(suiteLinksTable)
+        .where(eq(suiteLinksTable.aibeatUserId, params.userId))
+        .limit(1);
+      if (
+        suiteAuthority?.stripeSubscriptionId &&
+        suiteAuthority.stripeSubscriptionId !== params.subscriptionId &&
+        (suiteAuthority.subscriptionStatus === "active" ||
+          suiteAuthority.subscriptionStatus === "past_due")
+      ) {
+        return "stale" as const;
+      }
+
+      if (lockedUser.stripeSubscriptionId !== params.subscriptionId) {
+        // If the pointer changed after the event began, a newer webhook won.
+        if (
+          lockedUser.stripeSubscriptionId !==
+          params.observedUserSubscriptionId
+        ) {
+          return "stale" as const;
+        }
+        // A different nonterminal subscription remains authoritative.
+        if (params.observedCurrentSubscriptionIsNonterminal) {
+          return "stale" as const;
+        }
+      }
+
+      await tx
+        .insert(creditsTable)
+        .values({ id: randomUUID(), userId: params.userId })
+        .onConflictDoNothing({ target: creditsTable.userId });
+
       const [grant] = await tx
         .insert(creditGrantsTable)
         .values({
@@ -176,10 +228,10 @@ async function resetSubscriptionCredits(params: {
           stripeCheckoutSessionId: null,
           stripePriceId: params.stripePriceId ?? null,
         })
-        .onConflictDoNothing({ target: creditGrantsTable.stripeEventId })
+        .onConflictDoNothing()
         .returning();
 
-      if (!grant) return false;
+      if (!grant) return "duplicate" as const;
 
       // Replace subscriptionCredits with the plan amount; add topupCredits on
       // top so creditsRemaining stays consistent without touching the top-up
@@ -192,11 +244,20 @@ async function resetSubscriptionCredits(params: {
         })
         .where(eq(creditsTable.userId, params.userId));
 
-      return true;
+      await tx
+        .update(usersTable)
+        .set({
+          subscriptionStatus: "active",
+          stripeSubscriptionId: params.subscriptionId,
+          billingCheckoutPendingUntil: null,
+        })
+        .where(eq(usersTable.id, params.userId));
+
+      return "granted" as const;
     });
 
-    if (!granted) {
-      return { granted: false, reason: "duplicate event" };
+    if (granted !== "granted") {
+      return { granted: false, reason: granted };
     }
 
     logger.info(
@@ -215,7 +276,32 @@ async function resetSubscriptionCredits(params: {
   }
 }
 
-async function handleInvoicePaid(
+/**
+ * Stripe 2025-08-27.basil+ moved the subscription reference under
+ * invoice.parent.subscription_details. Accept both that shape and the legacy
+ * top-level invoice.subscription field for webhook/replay compatibility.
+ */
+export function resolveSubscriptionId(invoice: Stripe.Invoice): string | null {
+  type ModernInvoiceParent = {
+    subscription_details?: {
+      subscription?: string | { id: string } | null;
+    } | null;
+  } | null;
+  const parent = (invoice as unknown as { parent?: ModernInvoiceParent }).parent;
+  const fromParent = parent?.subscription_details?.subscription;
+  if (fromParent) {
+    return typeof fromParent === "string" ? fromParent : fromParent.id;
+  }
+  const legacy = (
+    invoice as unknown as {
+      subscription?: string | { id: string } | null;
+    }
+  ).subscription;
+  if (!legacy) return null;
+  return typeof legacy === "string" ? legacy : legacy.id;
+}
+
+export async function handleInvoicePaid(
   event: Stripe.Event,
   invoice: Stripe.Invoice,
 ): Promise<void> {
@@ -292,25 +378,6 @@ async function handleInvoicePaid(
     return Boolean((line as LegacyLineExtra).proration);
   };
 
-  // Resolve the subscription ID from the invoice.
-  // Modern API: invoice.parent.subscription_details.subscription
-  // Legacy API: invoice.subscription
-  const resolveSubscriptionId = (inv: Stripe.Invoice): string | null => {
-    type ModernInvoiceParent = {
-      subscription_details?: { subscription?: string | { id: string } | null } | null;
-    } | null;
-    const parent = (inv as unknown as { parent?: ModernInvoiceParent }).parent;
-    const fromParent = parent?.subscription_details?.subscription;
-    if (fromParent) {
-      return typeof fromParent === "string" ? fromParent : fromParent.id;
-    }
-    // Legacy field
-    const legacy = (inv as unknown as { subscription?: string | { id: string } | null })
-      .subscription;
-    if (!legacy) return null;
-    return typeof legacy === "string" ? legacy : legacy.id;
-  };
-
   // Determine the subscription credit allotment for this invoice.
   //
   // We only look at non-proration subscription lines because:
@@ -380,22 +447,268 @@ async function handleInvoicePaid(
     return;
   }
 
+  // ── Detect Suite vs generic subscription ──────────────────────────────────
+  // Retrieve the resolved price to check its lookup_key.
+  let resolvedLookupKey: string | null = null;
+  let aipodCredits = 0;
+  if (firstPriceId) {
+    try {
+      const resolvedPrice = await stripe.prices.retrieve(firstPriceId);
+      resolvedLookupKey = resolvedPrice.lookup_key ?? null;
+      aipodCredits = parseAipodCredits(resolvedPrice.metadata);
+    } catch {
+      // non-fatal
+    }
+  }
+
+  const isSuite = isSuiteLookupKey(resolvedLookupKey);
+  const subscriptionId = resolveSubscriptionId(invoice);
+  if (!subscriptionId) {
+    logger.warn(
+      { invoiceId: invoice.id },
+      "invoice.paid: subscription-backed invoice had no subscription ID",
+    );
+    return;
+  }
+
+  let liveSubscription: Stripe.Subscription;
+  try {
+    liveSubscription = await stripe.subscriptions.retrieve(subscriptionId);
+  } catch (err) {
+    logger.error(
+      { err, invoiceId: invoice.id, subscriptionId },
+      "invoice.paid: failed to verify live subscription authority",
+    );
+    throw err;
+  }
+  if (
+    liveSubscription.status !== "active" &&
+    liveSubscription.status !== "trialing"
+  ) {
+    logger.info(
+      {
+        invoiceId: invoice.id,
+        subscriptionId,
+        liveStatus: liveSubscription.status,
+      },
+      "Ignoring stale invoice for a non-active subscription",
+    );
+    return;
+  }
+
+  if (isSuite) {
+    // ── Suite invoice.paid ─────────────────────────────────────────────────
+    // Find the link associated with this subscription via subscription metadata.
+    const linkId = liveSubscription.metadata?.["linkId"] ?? null;
+
+    if (!linkId || !invoice.id || aipodCredits <= 0) {
+      throw new Error(
+        `Suite invoice ${invoice.id ?? "(missing id)"} is missing link or AIPod entitlement metadata`,
+      );
+    }
+
+    // The AIBeat credit reset, Suite state, and AIPod outbox event are one
+    // transaction. A duplicate invoice does not reset spent credits again, but
+    // still repairs a missing outbox row from an interrupted older deployment.
+    const suiteResult = await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`select ${usersTable.id} from ${usersTable} where ${usersTable.id} = ${user.id} for update`,
+      );
+      const [currentLink] = await tx
+        .select({
+          id: suiteLinksTable.id,
+          subscriptionStatus: suiteLinksTable.subscriptionStatus,
+          stripeSubscriptionId: suiteLinksTable.stripeSubscriptionId,
+        })
+        .from(suiteLinksTable)
+        .where(
+          and(
+            eq(suiteLinksTable.id, linkId),
+            eq(suiteLinksTable.aibeatUserId, user.id),
+          ),
+        )
+        .limit(1);
+      if (!currentLink) {
+        return { stale: true, creditsReset: false };
+      }
+      if (
+        currentLink.stripeSubscriptionId &&
+        currentLink.stripeSubscriptionId !== subscriptionId &&
+        (currentLink.subscriptionStatus === "active" ||
+          currentLink.subscriptionStatus === "past_due")
+      ) {
+        return { stale: true, creditsReset: false };
+      }
+
+      await tx
+        .insert(creditsTable)
+        .values({ id: randomUUID(), userId: user.id })
+        .onConflictDoNothing({ target: creditsTable.userId });
+
+      const [grant] = await tx
+        .insert(creditGrantsTable)
+        .values({
+          id: randomUUID(),
+          userId: user.id,
+          source: "subscription",
+          creditsGranted: totalCredits,
+          stripeEventId: event.id,
+          stripeInvoiceId: invoice.id,
+          stripeCheckoutSessionId: null,
+          stripePriceId: firstPriceId,
+        })
+        .onConflictDoNothing()
+        .returning({ id: creditGrantsTable.id });
+
+      if (grant) {
+        await tx
+          .update(creditsTable)
+          .set({
+            subscriptionCredits: totalCredits,
+            creditsRemaining: sql`${totalCredits} + ${creditsTable.topupCredits}`,
+          })
+          .where(eq(creditsTable.userId, user.id));
+      }
+
+      await tx
+        .insert(suiteSubscriptionsTable)
+        .values({
+          id: randomUUID(),
+          linkId,
+          stripeSubscriptionId: subscriptionId ?? null,
+          stripePriceId: firstPriceId,
+          priceLookupKey: resolvedLookupKey,
+          status: "active",
+          aibeatCredits: totalCredits,
+          aipodCredits,
+        })
+        .onConflictDoUpdate({
+          target: suiteSubscriptionsTable.linkId,
+          set: {
+            stripeSubscriptionId: subscriptionId ?? null,
+            stripePriceId: firstPriceId,
+            priceLookupKey: resolvedLookupKey,
+            status: "active",
+            aibeatCredits: totalCredits,
+            aipodCredits,
+          },
+        });
+
+      await tx
+        .insert(suiteOutboxEventsTable)
+        .values({
+          id: randomUUID(),
+          linkId,
+          eventKey: `invoice.${invoice.id}.credits.grant`,
+          eventType: "credits.grant",
+          payload: JSON.stringify({
+            invoiceId: invoice.id,
+            subscriptionId,
+            aipodCredits,
+            aibeatCredits: totalCredits,
+            priceLookupKey: resolvedLookupKey,
+          }),
+        })
+        .onConflictDoNothing({ target: suiteOutboxEventsTable.eventKey });
+
+      await tx
+        .update(suiteLinksTable)
+        .set({
+          subscriptionStatus: "active",
+          stripeSubscriptionId: subscriptionId,
+          checkoutPendingUntil: null,
+        })
+        .where(eq(suiteLinksTable.id, linkId));
+
+      await tx
+        .update(usersTable)
+        .set({
+          subscriptionStatus: "active",
+          stripeSubscriptionId: subscriptionId,
+        })
+        .where(eq(usersTable.id, user.id));
+
+      return { stale: false, creditsReset: Boolean(grant) };
+    });
+
+    if (suiteResult.stale) {
+      logger.info(
+        { invoiceId: invoice.id, subscriptionId, linkId },
+        "Ignoring stale Suite invoice after a newer subscription became authoritative",
+      );
+      return;
+    }
+
+    if (suiteResult.creditsReset) {
+      notifyPayment({
+        email: user.email,
+        kind: "subscription",
+        amountUsd: (invoice.amount_paid ?? 0) / 100,
+        detail: `Suite ${resolvedLookupKey}: ${totalCredits} AIBeat + ${aipodCredits} AIPod credits`,
+      });
+    }
+
+    logger.info(
+      {
+        userId: user.id,
+        linkId,
+        totalCredits,
+        aipodCredits,
+        invoiceId: invoice.id,
+        creditsReset: suiteResult.creditsReset,
+      },
+      "Suite invoice.paid processed",
+    );
+    return;
+  }
+
+  // ── Generic (non-Suite) subscription ─────────────────────────────────────
+
+  let observedCurrentSubscriptionIsNonterminal = false;
+  if (
+    user.stripeSubscriptionId &&
+    user.stripeSubscriptionId !== subscriptionId
+  ) {
+    try {
+      const currentSubscription = await stripe.subscriptions.retrieve(
+        user.stripeSubscriptionId,
+      );
+      observedCurrentSubscriptionIsNonterminal =
+        currentSubscription.status !== "canceled" &&
+        currentSubscription.status !== "incomplete_expired";
+    } catch (err) {
+      logger.error(
+        {
+          err,
+          invoiceId: invoice.id,
+          currentSubscriptionId: user.stripeSubscriptionId,
+        },
+        "invoice.paid: failed to verify current subscription authority",
+      );
+      throw err;
+    }
+  }
+
   // Use reset (replace) semantics for subscription credits so unused plan
   // credits from the previous cycle do not roll over.  Top-up credits are
   // preserved automatically by resetSubscriptionCredits.
-  await resetSubscriptionCredits({
+  const resetResult = await resetSubscriptionCredits({
     userId: user.id,
     credits: totalCredits,
     stripeEventId: event.id,
     stripeInvoiceId: invoice.id ?? null,
     stripePriceId: firstPriceId,
+    subscriptionId,
+    observedUserSubscriptionId: user.stripeSubscriptionId ?? null,
+    observedCurrentSubscriptionIsNonterminal,
   });
 
-  if (user.subscriptionStatus !== "active") {
-    await db
-      .update(usersTable)
-      .set({ subscriptionStatus: "active" })
-      .where(eq(usersTable.id, user.id));
+  if (!resetResult.granted) {
+    logger.info(
+      { invoiceId: invoice.id, subscriptionId, reason: resetResult.reason },
+      "invoice.paid did not change generic subscription credits",
+    );
+    return;
   }
 
   notifyPayment({
@@ -465,7 +778,8 @@ async function handleCheckoutCompleted(
   });
 }
 
-async function handleSubscriptionUpdated(
+export async function handleSubscriptionUpdated(
+  stripeEventId: string,
   subscription: Stripe.Subscription,
 ): Promise<void> {
   const customerId =
@@ -477,10 +791,315 @@ async function handleSubscriptionUpdated(
   const user = await findUserByCustomerId(customerId);
   if (!user) return;
 
+  const stripe = await getUncachableStripeClient();
+  try {
+    // Webhook payloads are historical snapshots. Always base entitlement
+    // decisions on the provider's current subscription state.
+    subscription = await stripe.subscriptions.retrieve(subscription.id);
+  } catch (err) {
+    logger.error(
+      { err, subscriptionId: subscription.id, userId: user.id },
+      "Failed to verify live subscription lifecycle state",
+    );
+    throw err;
+  }
+
   const isActive =
     subscription.status === "active" || subscription.status === "trialing";
 
-  await db
+  // ── Suite subscription lifecycle ──────────────────────────────────────────
+  const linkId: string | null = subscription.metadata?.["linkId"] ?? null;
+  const item = subscription.items.data[0];
+  const resolvedLookupKey = item?.price?.lookup_key ?? null;
+  const isSuite = isSuiteLookupKey(resolvedLookupKey);
+
+  if (isSuite && !linkId) {
+    logger.error(
+      { subscriptionId: subscription.id, userId: user.id, resolvedLookupKey },
+      "Ignoring Suite subscription lifecycle event without link metadata",
+    );
+    return;
+  }
+
+  if (isSuite && linkId) {
+    const suiteStatus =
+      subscription.status === "active" || subscription.status === "trialing"
+        ? "active"
+        : subscription.status === "canceled"
+          ? "cancelled"
+          : subscription.status === "past_due"
+            ? "past_due"
+            : "none";
+
+    const cancelAtPeriodEnd = subscription.cancel_at_period_end;
+    // Get current_period_end from item (new API) or top-level (legacy)
+    const itemEnd = item
+      ? (item as Stripe.SubscriptionItem & { current_period_end?: number }).current_period_end
+      : undefined;
+    const legacyEnd = (subscription as Stripe.Subscription & { current_period_end?: number }).current_period_end;
+    const periodEnd = typeof itemEnd === "number" ? itemEnd : legacyEnd;
+    const currentPeriodEnd = typeof periodEnd === "number" ? new Date(periodEnd * 1000) : null;
+    let observedCurrentSubscriptionIsNonterminal = false;
+    if (
+      user.stripeSubscriptionId &&
+      user.stripeSubscriptionId !== subscription.id
+    ) {
+      const currentUserSubscription = await stripe.subscriptions.retrieve(
+        user.stripeSubscriptionId,
+      );
+      observedCurrentSubscriptionIsNonterminal =
+        currentUserSubscription.status !== "canceled" &&
+        currentUserSubscription.status !== "incomplete_expired";
+    }
+
+    const lifecycleResult = await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`select ${usersTable.id} from ${usersTable} where ${usersTable.id} = ${user.id} for update`,
+      );
+      const [lockedUser] = await tx
+        .select({ stripeSubscriptionId: usersTable.stripeSubscriptionId })
+        .from(usersTable)
+        .where(eq(usersTable.id, user.id))
+        .limit(1);
+      const [currentLink] = await tx
+        .select({
+          id: suiteLinksTable.id,
+          subscriptionStatus: suiteLinksTable.subscriptionStatus,
+          stripeSubscriptionId: suiteLinksTable.stripeSubscriptionId,
+        })
+        .from(suiteLinksTable)
+        .where(
+          and(
+            eq(suiteLinksTable.id, linkId),
+            eq(suiteLinksTable.aibeatUserId, user.id),
+          ),
+        )
+        .limit(1);
+      if (!lockedUser || !currentLink) return "stale" as const;
+      if (
+        lockedUser.stripeSubscriptionId !== subscription.id &&
+        (lockedUser.stripeSubscriptionId !==
+          (user.stripeSubscriptionId ?? null) ||
+          observedCurrentSubscriptionIsNonterminal)
+      ) {
+        return "stale" as const;
+      }
+      if (
+        currentLink.stripeSubscriptionId &&
+        currentLink.stripeSubscriptionId !== subscription.id &&
+        (currentLink.subscriptionStatus === "active" ||
+          currentLink.subscriptionStatus === "past_due")
+      ) {
+        return "stale" as const;
+      }
+
+      const [existingSuiteSub] = await tx
+        .select({
+          id: suiteSubscriptionsTable.id,
+          aipodCredits: suiteSubscriptionsTable.aipodCredits,
+        })
+        .from(suiteSubscriptionsTable)
+        .where(eq(suiteSubscriptionsTable.linkId, linkId))
+        .limit(1);
+
+      if (existingSuiteSub) {
+        await tx
+          .update(suiteSubscriptionsTable)
+          .set({
+            stripeSubscriptionId: subscription.id,
+            status: suiteStatus as "none" | "active" | "past_due" | "cancelled",
+            cancelAtPeriodEnd,
+            currentPeriodEnd,
+            priceLookupKey: resolvedLookupKey,
+            stripePriceId: item?.price?.id ?? null,
+          })
+          .where(eq(suiteSubscriptionsTable.id, existingSuiteSub.id));
+      } else {
+        await tx.insert(suiteSubscriptionsTable).values({
+          id: randomUUID(),
+          linkId,
+          stripeSubscriptionId: subscription.id,
+          status: suiteStatus as "none" | "active" | "past_due" | "cancelled",
+          cancelAtPeriodEnd,
+          currentPeriodEnd,
+          priceLookupKey: resolvedLookupKey,
+          stripePriceId: item?.price?.id ?? null,
+        });
+      }
+
+      await tx
+        .update(suiteLinksTable)
+        .set({
+          subscriptionStatus: suiteStatus as "none" | "active" | "past_due" | "cancelled",
+          stripeSubscriptionId: subscription.id,
+          checkoutPendingUntil: null,
+        })
+        .where(eq(suiteLinksTable.id, linkId));
+      await tx
+        .update(usersTable)
+        .set({
+          stripeSubscriptionId: subscription.id,
+          subscriptionStatus: isActive
+            ? "active"
+            : subscription.status === "canceled"
+              ? "cancelled"
+              : subscription.status,
+          billingCheckoutPendingUntil: null,
+        })
+        .where(eq(usersTable.id, user.id));
+
+      await tx
+        .insert(suiteOutboxEventsTable)
+        .values({
+          id: randomUUID(),
+          linkId,
+          eventKey: `stripe.${stripeEventId}.subscription.lifecycle`,
+          eventType: "subscription.lifecycle",
+          payload: JSON.stringify({
+            subscriptionId: subscription.id,
+            status: subscription.status,
+            cancelAtPeriodEnd,
+            currentPeriodEnd: currentPeriodEnd?.toISOString() ?? null,
+            priceLookupKey: resolvedLookupKey,
+          }),
+        })
+        .onConflictDoNothing({ target: suiteOutboxEventsTable.eventKey });
+
+      if (subscription.status === "canceled") {
+        await tx
+          .insert(creditsTable)
+          .values({ id: randomUUID(), userId: user.id })
+          .onConflictDoNothing({ target: creditsTable.userId });
+        await tx
+          .update(creditsTable)
+          .set({
+            subscriptionCredits: 0,
+            creditsRemaining: sql`${creditsTable.topupCredits}`,
+          })
+          .where(eq(creditsTable.userId, user.id));
+
+        const revokeCredits =
+          existingSuiteSub?.aipodCredits ??
+          parseAipodCredits(item?.price?.metadata);
+        await tx
+          .insert(suiteOutboxEventsTable)
+          .values({
+            id: randomUUID(),
+            linkId,
+            eventKey: `stripe.${stripeEventId}.credits.revoke`,
+            eventType: "credits.revoke",
+            payload: JSON.stringify({
+              subscriptionId: subscription.id,
+              reason: "subscription_canceled",
+              aipodCredits: revokeCredits,
+              priceLookupKey: resolvedLookupKey,
+            }),
+          })
+          .onConflictDoNothing({ target: suiteOutboxEventsTable.eventKey });
+      }
+
+      if (subscription.status === "past_due") {
+        await tx
+          .insert(suiteOutboxEventsTable)
+          .values({
+            id: randomUUID(),
+            linkId,
+            eventKey: `subscription.${subscription.id}.payment_failed`,
+            eventType: "subscription.payment_failed",
+            payload: JSON.stringify({
+              subscriptionId: subscription.id,
+              status: "past_due",
+            }),
+          })
+          .onConflictDoNothing({ target: suiteOutboxEventsTable.eventKey });
+      }
+
+      return "applied" as const;
+    });
+
+    if (lifecycleResult === "stale") {
+      logger.info(
+        { subscriptionId: subscription.id, userId: user.id, linkId },
+        "Ignoring stale Suite lifecycle event after another subscription became authoritative",
+      );
+    }
+    return;
+  }
+
+  // ── Generic (non-Suite) subscription lifecycle ────────────────────────────
+  const [suiteAuthority] = await db
+    .select({
+      subscriptionStatus: suiteLinksTable.subscriptionStatus,
+      stripeSubscriptionId: suiteLinksTable.stripeSubscriptionId,
+    })
+    .from(suiteLinksTable)
+    .where(eq(suiteLinksTable.aibeatUserId, user.id))
+    .limit(1);
+  if (
+    suiteAuthority?.stripeSubscriptionId &&
+    suiteAuthority.stripeSubscriptionId !== subscription.id &&
+    (suiteAuthority.subscriptionStatus === "active" ||
+      suiteAuthority.subscriptionStatus === "past_due")
+  ) {
+    logger.info(
+      {
+        staleSubscriptionId: subscription.id,
+        authoritativeSubscriptionId: suiteAuthority.stripeSubscriptionId,
+        userId: user.id,
+      },
+      "Ignoring standalone lifecycle event while Suite owns the entitlement",
+    );
+    return;
+  }
+  if (
+    user.stripeSubscriptionId &&
+    user.stripeSubscriptionId !== subscription.id &&
+    !isActive
+  ) {
+    logger.info(
+      {
+        staleSubscriptionId: subscription.id,
+        authoritativeSubscriptionId: user.stripeSubscriptionId,
+        userId: user.id,
+      },
+      "Ignoring stale standalone subscription lifecycle event",
+    );
+    return;
+  }
+  if (isActive && user.stripeSubscriptionId !== subscription.id) {
+    if (user.stripeSubscriptionId) {
+      const currentUserSubscription = await stripe.subscriptions.retrieve(
+        user.stripeSubscriptionId,
+      );
+      if (
+        currentUserSubscription.status !== "canceled" &&
+        currentUserSubscription.status !== "incomplete_expired"
+      ) {
+        logger.info(
+          {
+            staleSubscriptionId: subscription.id,
+            authoritativeSubscriptionId: user.stripeSubscriptionId,
+            userId: user.id,
+          },
+          "Ignoring standalone lifecycle event while another subscription is live",
+        );
+        return;
+      }
+    }
+    if (subscription.status !== "active" && subscription.status !== "trialing") {
+      logger.info(
+        {
+          staleSubscriptionId: subscription.id,
+          liveStatus: subscription.status,
+          userId: user.id,
+        },
+        "Ignoring stale active standalone lifecycle snapshot",
+      );
+      return;
+    }
+  }
+
+  const [claimedUser] = await db
     .update(usersTable)
     .set({
       stripeSubscriptionId: subscription.id,
@@ -489,9 +1108,33 @@ async function handleSubscriptionUpdated(
         : subscription.status === "canceled"
           ? "cancelled"
           : subscription.status,
+      billingCheckoutPendingUntil: null,
     })
-    .where(eq(usersTable.id, user.id));
+    .where(
+      and(
+        eq(usersTable.id, user.id),
+        user.stripeSubscriptionId
+          ? eq(usersTable.stripeSubscriptionId, user.stripeSubscriptionId)
+          : isNull(usersTable.stripeSubscriptionId),
+      ),
+    )
+    .returning({ id: usersTable.id });
+  if (!claimedUser) {
+    logger.info(
+      { subscriptionId: subscription.id, userId: user.id },
+      "Ignoring lifecycle event after subscription authority changed",
+    );
+    return;
+  }
 
+  // A standalone subscription checkout and Suite checkout use the same
+  // checkoutPendingUntil field as a distributed mutex. Once Stripe confirms
+  // the standalone subscription, release that reservation; the stored active
+  // subscription now becomes the durable exclusion check.
+  await db
+    .update(suiteLinksTable)
+    .set({ checkoutPendingUntil: null })
+    .where(eq(suiteLinksTable.aibeatUserId, user.id));
   // On cancellation, zero out plan/trial credits. Purchased top-up credits are
   // preserved (they never expire), so creditsRemaining collapses to the top-up
   // balance.
@@ -536,6 +1179,8 @@ export async function replayRecentStripeEvents(
   const RELEVANT_EVENT_TYPES = [
     "checkout.session.completed",
     "invoice.paid",
+    "invoice.payment_failed",
+    "charge.refunded",
     "customer.subscription.created",
     "customer.subscription.updated",
     "customer.subscription.deleted",
@@ -583,6 +1228,14 @@ export async function replayRecentStripeEvents(
           await handleInvoicePaid(event, event.data.object as Stripe.Invoice);
           replayed++;
           break;
+        case "invoice.payment_failed":
+          await handleInvoicePaymentFailed(event.data.object as Stripe.Invoice);
+          replayed++;
+          break;
+        case "charge.refunded":
+          await handleChargeRefunded(event, event.data.object as Stripe.Charge);
+          replayed++;
+          break;
         case "checkout.session.completed":
           await handleCheckoutCompleted(
             event,
@@ -594,6 +1247,7 @@ export async function replayRecentStripeEvents(
         case "customer.subscription.updated":
         case "customer.subscription.deleted":
           await handleSubscriptionUpdated(
+            event.id,
             event.data.object as Stripe.Subscription,
           );
           replayed++;
@@ -699,6 +1353,194 @@ async function notifyReplayFailures(
   }
 }
 
+// ─── Suite: invoice.payment_failed ────────────────────────────────────────────
+
+async function handleInvoicePaymentFailed(
+  invoice: Stripe.Invoice,
+): Promise<void> {
+  // Only care about Suite subscriptions here; generic failures are handled by
+  // handleSubscriptionUpdated (which fires on status → past_due).
+  const subscriptionId = resolveSubscriptionId(invoice);
+  if (!subscriptionId) return;
+
+  try {
+    const stripe = await getUncachableStripeClient();
+    const sub = await stripe.subscriptions.retrieve(subscriptionId);
+    const linkId: string | null = sub.metadata?.["linkId"] ?? null;
+    const resolvedLookupKey = sub.items.data[0]?.price?.lookup_key ?? null;
+    if (!isSuiteLookupKey(resolvedLookupKey) || !linkId) return;
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(suiteSubscriptionsTable)
+        .set({ status: "past_due" })
+        .where(eq(suiteSubscriptionsTable.linkId, linkId));
+      await tx
+        .update(suiteLinksTable)
+        .set({ subscriptionStatus: "past_due" })
+        .where(eq(suiteLinksTable.id, linkId));
+      await tx
+        .insert(suiteOutboxEventsTable)
+        .values({
+          id: randomUUID(),
+          linkId,
+          eventKey: `invoice.${invoice.id ?? subscriptionId}.payment_failed`,
+          eventType: "subscription.payment_failed",
+          payload: JSON.stringify({
+            invoiceId: invoice.id ?? null,
+            subscriptionId,
+            status: "payment_failed",
+          }),
+        })
+        .onConflictDoNothing({ target: suiteOutboxEventsTable.eventKey });
+    });
+
+    logger.info({ linkId, invoiceId: invoice.id }, "Suite invoice.payment_failed enqueued");
+  } catch (err) {
+    logger.error({ err, invoiceId: invoice.id }, "Suite: failed to handle invoice.payment_failed");
+  }
+}
+
+// ─── Suite: charge.refunded (full refund = revoke) ────────────────────────────
+
+async function handleChargeRefunded(
+  event: Stripe.Event,
+  charge: Stripe.Charge,
+): Promise<void> {
+  // Only act on a full refund (amount_refunded == amount)
+  if (charge.amount_refunded !== charge.amount) return;
+
+  type ChargeWithInvoice = Stripe.Charge & { invoice?: string | { id: string } | null };
+  const chargeInvoice = (charge as ChargeWithInvoice).invoice;
+  if (!chargeInvoice) return;
+
+  const invoiceId =
+    typeof chargeInvoice === "string" ? chargeInvoice : chargeInvoice?.id;
+  if (!invoiceId) return;
+
+  try {
+    const stripe = await getUncachableStripeClient();
+    const invoice = await stripe.invoices.retrieve(invoiceId);
+    const subscriptionId = resolveSubscriptionId(invoice);
+    if (!subscriptionId) return;
+
+    const sub = await stripe.subscriptions.retrieve(subscriptionId);
+    const linkId: string | null = sub.metadata?.["linkId"] ?? null;
+    const resolvedLookupKey = sub.items.data[0]?.price?.lookup_key ?? null;
+    if (!isSuiteLookupKey(resolvedLookupKey) || !linkId) return;
+
+    const [grantEvent] = await db
+      .select({ payload: suiteOutboxEventsTable.payload })
+      .from(suiteOutboxEventsTable)
+      .where(
+        eq(
+          suiteOutboxEventsTable.eventKey,
+          `invoice.${invoiceId}.credits.grant`,
+        ),
+      )
+      .limit(1);
+    let grantPayload: Record<string, unknown> = {};
+    if (grantEvent?.payload) {
+      try {
+        grantPayload = JSON.parse(grantEvent.payload) as Record<string, unknown>;
+      } catch {
+        logger.warn(
+          { linkId, invoiceId },
+          "Suite refund: stored grant payload was not valid JSON",
+        );
+      }
+    }
+    const payloadAipodCredits = Number(grantPayload["aipodCredits"]);
+    const aipodCredits =
+      Number.isFinite(payloadAipodCredits) && payloadAipodCredits > 0
+        ? payloadAipodCredits
+        : parseAipodCredits(sub.items.data[0]?.price?.metadata);
+    const grantedLookupKey =
+      typeof grantPayload["priceLookupKey"] === "string"
+        ? grantPayload["priceLookupKey"]
+        : resolvedLookupKey;
+
+    const customerId =
+      typeof charge.customer === "string" ? charge.customer : charge.customer?.id;
+    const user = customerId ? await findUserByCustomerId(customerId) : null;
+    let currentGrantCredits = 0;
+    if (user) {
+      const [refundedGrant] = await db
+        .select({
+          id: creditGrantsTable.id,
+          creditsGranted: creditGrantsTable.creditsGranted,
+        })
+        .from(creditGrantsTable)
+        .where(
+          and(
+            eq(creditGrantsTable.userId, user.id),
+            eq(creditGrantsTable.stripeInvoiceId, invoiceId),
+          ),
+        )
+        .limit(1);
+      const [latestSubscriptionGrant] = await db
+        .select({ id: creditGrantsTable.id })
+        .from(creditGrantsTable)
+        .where(
+          and(
+            eq(creditGrantsTable.userId, user.id),
+            eq(creditGrantsTable.source, "subscription"),
+          ),
+        )
+        .orderBy(desc(creditGrantsTable.createdAt))
+        .limit(1);
+      if (refundedGrant?.id === latestSubscriptionGrant?.id) {
+        currentGrantCredits = refundedGrant.creditsGranted;
+      }
+    }
+
+    await db.transaction(async (tx) => {
+      await tx
+        .insert(suiteOutboxEventsTable)
+        .values({
+          id: randomUUID(),
+          linkId,
+          eventKey: `charge.${charge.id}.full_refund.revoke`,
+          eventType: "credits.revoke",
+          payload: JSON.stringify({
+            chargeId: charge.id,
+            invoiceId,
+            subscriptionId,
+            reason: "full_refund",
+            aipodCredits,
+            priceLookupKey: grantedLookupKey,
+          }),
+        })
+        .onConflictDoNothing({ target: suiteOutboxEventsTable.eventKey });
+
+      // A refund does not cancel Stripe's subscription. Revoke only unspent
+      // credits from the currently active invoice; older grants have already
+      // expired through the next period's reset.
+      if (user && currentGrantCredits > 0) {
+        await tx
+          .update(creditsTable)
+          .set({
+            subscriptionCredits: sql`greatest(${creditsTable.subscriptionCredits} - ${currentGrantCredits}, 0)`,
+            creditsRemaining: sql`${creditsTable.topupCredits} + greatest(${creditsTable.subscriptionCredits} - ${currentGrantCredits}, 0)`,
+          })
+          .where(eq(creditsTable.userId, user.id));
+      }
+    });
+
+    logger.info(
+      {
+        linkId,
+        chargeId: charge.id,
+        eventId: event.id,
+        currentGrantCredits,
+      },
+      "Suite full refund: credits revoked, revoke event enqueued",
+    );
+  } catch (err) {
+    logger.error({ err, chargeId: charge.id }, "Suite: failed to handle charge.refunded");
+  }
+}
+
 export class WebhookHandlers {
   static async processWebhook(
     payload: Buffer,
@@ -730,6 +1572,12 @@ export class WebhookHandlers {
           // event-id idempotency alone would let us double-grant credits.
           await handleInvoicePaid(event, event.data.object as Stripe.Invoice);
           break;
+        case "invoice.payment_failed":
+          await handleInvoicePaymentFailed(event.data.object as Stripe.Invoice);
+          break;
+        case "charge.refunded":
+          await handleChargeRefunded(event, event.data.object as Stripe.Charge);
+          break;
         case "checkout.session.completed":
           await handleCheckoutCompleted(
             event,
@@ -740,6 +1588,7 @@ export class WebhookHandlers {
         case "customer.subscription.updated":
         case "customer.subscription.deleted":
           await handleSubscriptionUpdated(
+            event.id,
             event.data.object as Stripe.Subscription,
           );
           break;

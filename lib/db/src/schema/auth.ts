@@ -30,6 +30,11 @@ export const usersTable = pgTable("users", {
   copyrightAcceptedAt: timestamp("copyright_accepted_at", { withTimezone: true }),
   stripeCustomerId: varchar("stripe_customer_id"),
   stripeSubscriptionId: varchar("stripe_subscription_id"),
+  // Short-lived mutex shared by standalone and Suite subscription checkout.
+  // Stripe lifecycle webhooks clear it after the subscription is authoritative.
+  billingCheckoutPendingUntil: timestamp("billing_checkout_pending_until", {
+    withTimezone: true,
+  }),
   // Share-to-earn: this user's shareable referral code (generated lazily on
   // first visit to the Refer & Earn panel).
   referralCode: varchar("referral_code").unique(),

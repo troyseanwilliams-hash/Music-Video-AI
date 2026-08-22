@@ -1,7 +1,21 @@
 import { Router, type Request } from "express";
-import { eq, desc } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  or,
+} from "drizzle-orm";
 import { db } from "@workspace/db";
-import { usersTable, creditsTable, creditGrantsTable } from "@workspace/db";
+import {
+  usersTable,
+  creditsTable,
+  creditGrantsTable,
+  suiteLinksTable,
+} from "@workspace/db";
 import { randomUUID } from "crypto";
 import { getUncachableStripeClient } from "../lib/stripeClient.js";
 import type Stripe from "stripe";
@@ -15,6 +29,17 @@ function buildAppUrl(req: Request, path: string): string {
   }
   const host = req.get("host") ?? "localhost";
   return `${req.protocol}://${host}${path}`;
+}
+
+function safeCheckoutUrl(
+  req: Request,
+  raw: string | null | undefined,
+  fallbackPath: string,
+): string {
+  if (raw?.startsWith("/") && !raw.startsWith("//")) {
+    return buildAppUrl(req, raw);
+  }
+  return buildAppUrl(req, fallbackPath);
 }
 
 function parseCredits(meta: Stripe.Metadata | null | undefined): number {
@@ -73,6 +98,23 @@ async function getOrRepairStripeCustomerId(
 // Known topup lookup keys in ascending price order.
 // Fetch these directly so we don't depend on Stripe product active-status or metadata.
 const TOPUP_LOOKUP_KEYS = ["topup_1000", "topup_5000", "topup_20000"] as const;
+
+const DIRECT_CHECKOUT_LOOKUP_KEYS = new Set([
+  "starter_monthly",
+  "starter_yearly",
+  "pro_monthly",
+  "pro_yearly",
+  "studio_monthly",
+  "studio_yearly",
+  "topup_250",
+  ...TOPUP_LOOKUP_KEYS,
+]);
+
+export function isDirectCheckoutLookupKey(
+  lookupKey: string | null | undefined,
+): boolean {
+  return Boolean(lookupKey && DIRECT_CHECKOUT_LOOKUP_KEYS.has(lookupKey));
+}
 
 const TOPUP_META: Record<
   string,
@@ -284,6 +326,19 @@ router.post("/billing/checkout", async (req, res) => {
     res.status(400).json({ error: "priceId or lookupKey is required" });
     return;
   }
+  if (
+    !priceIdentifier.startsWith("price_") &&
+    !isDirectCheckoutLookupKey(priceIdentifier)
+  ) {
+    res.status(400).json({
+      error: "That price is not available through standalone checkout.",
+      code: "PRICE_NOT_ALLOWED",
+    });
+    return;
+  }
+
+  let reservedUserUntil: Date | null = null;
+  let reservedSuiteLinkId: string | null = null;
 
   try {
     const stripe = await getUncachableStripeClient();
@@ -298,8 +353,6 @@ router.post("/billing/checkout", async (req, res) => {
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
-
-    const customerId = await getOrRepairStripeCustomerId(stripe, user);
 
     // Resolve lookup key → real Stripe price ID if needed
     let resolvedPriceId = priceIdentifier;
@@ -319,32 +372,189 @@ router.post("/billing/checkout", async (req, res) => {
 
     const price = await stripe.prices.retrieve(resolvedPriceId);
     const priceId = resolvedPriceId;
+    if (!isDirectCheckoutLookupKey(price.lookup_key)) {
+      res.status(400).json({
+        error: "That price is not available through standalone checkout.",
+        code: "PRICE_NOT_ALLOWED",
+      });
+      return;
+    }
     const mode: "subscription" | "payment" = price.recurring
       ? "subscription"
       : "payment";
 
-    const defaultSuccess = buildAppUrl(req, "/pricing?status=success");
-    const defaultCancel = buildAppUrl(req, "/pricing?status=cancelled");
-
-    const session = await stripe.checkout.sessions.create({
-      mode,
-      customer: customerId,
-      line_items: [{ price: priceId, quantity: 1 }],
-      success_url: successUrl || defaultSuccess,
-      cancel_url: cancelUrl || defaultCancel,
-      allow_promotion_codes: true,
-      ...(mode === "subscription"
-        ? {
-            subscription_data: {
-              metadata: { userId: user.id },
-            },
+    let checkoutPendingUntil: Date | null = null;
+    let suiteLinkId: string | null = null;
+    if (mode === "subscription") {
+      if (user.stripeSubscriptionId) {
+        try {
+          const existing = await stripe.subscriptions.retrieve(
+            user.stripeSubscriptionId,
+          );
+          if (
+            existing.status !== "canceled" &&
+            existing.status !== "incomplete_expired"
+          ) {
+            res.status(409).json({
+              error:
+                "An active subscription already exists. Manage or cancel it before starting another checkout.",
+              code: "ACTIVE_SUBSCRIPTION",
+            });
+            return;
           }
-        : {
-            payment_intent_data: {
-              metadata: { userId: user.id, priceId },
-            },
-          }),
-    });
+        } catch (err) {
+          req.log.warn(
+            { err },
+            "Could not verify existing subscription for standalone checkout",
+          );
+          res.status(503).json({
+            error:
+              "Billing status could not be verified. Please try again before starting checkout.",
+            code: "BILLING_STATUS_UNAVAILABLE",
+          });
+          return;
+        }
+      }
+
+      checkoutPendingUntil = new Date(Date.now() + 31 * 60 * 1000);
+      const [reservedUser] = await db
+        .update(usersTable)
+        .set({ billingCheckoutPendingUntil: checkoutPendingUntil })
+        .where(
+          and(
+            eq(usersTable.id, user.id),
+            or(
+              isNull(usersTable.billingCheckoutPendingUntil),
+              lt(usersTable.billingCheckoutPendingUntil, new Date()),
+            ),
+          ),
+        )
+        .returning({ id: usersTable.id });
+      if (!reservedUser) {
+        res.status(409).json({
+          error:
+            "Another subscription checkout is already in progress. Please finish or cancel it first.",
+          code: "CHECKOUT_IN_PROGRESS",
+        });
+        return;
+      }
+      reservedUserUntil = checkoutPendingUntil;
+
+      const [finalizedLink] = await db
+        .select({
+          id: suiteLinksTable.id,
+          subscriptionStatus: suiteLinksTable.subscriptionStatus,
+        })
+        .from(suiteLinksTable)
+        .where(
+          and(
+            eq(suiteLinksTable.aibeatUserId, user.id),
+            isNotNull(suiteLinksTable.aipodUserId),
+          ),
+        )
+        .limit(1);
+
+      if (
+        finalizedLink?.subscriptionStatus === "active" ||
+        finalizedLink?.subscriptionStatus === "past_due"
+      ) {
+        await db
+          .update(usersTable)
+          .set({ billingCheckoutPendingUntil: null })
+          .where(
+            and(
+              eq(usersTable.id, user.id),
+              eq(usersTable.billingCheckoutPendingUntil, checkoutPendingUntil),
+            ),
+          );
+        reservedUserUntil = null;
+        res.status(409).json({
+          error:
+            "A Suite subscription is already active. Manage it before starting a standalone plan.",
+          code: "ACTIVE_SUITE_SUBSCRIPTION",
+        });
+        return;
+      }
+
+      if (finalizedLink) {
+        const [reserved] = await db
+          .update(suiteLinksTable)
+          .set({ checkoutPendingUntil })
+          .where(
+            and(
+              eq(suiteLinksTable.id, finalizedLink.id),
+              inArray(suiteLinksTable.subscriptionStatus, ["none", "cancelled"]),
+              or(
+                isNull(suiteLinksTable.checkoutPendingUntil),
+                lt(suiteLinksTable.checkoutPendingUntil, new Date()),
+              ),
+            ),
+          )
+          .returning({ id: suiteLinksTable.id });
+        if (!reserved) {
+          await db
+            .update(usersTable)
+            .set({ billingCheckoutPendingUntil: null })
+            .where(
+              and(
+                eq(usersTable.id, user.id),
+                eq(usersTable.billingCheckoutPendingUntil, checkoutPendingUntil),
+              ),
+            );
+          reservedUserUntil = null;
+          res.status(409).json({
+            error:
+              "Another checkout is already in progress. Please finish or cancel it first.",
+            code: "CHECKOUT_IN_PROGRESS",
+          });
+          return;
+        }
+        suiteLinkId = reserved.id;
+        reservedSuiteLinkId = reserved.id;
+      }
+    }
+
+    const customerId = await getOrRepairStripeCustomerId(stripe, user);
+    const defaultSuccess = safeCheckoutUrl(
+      req,
+      successUrl,
+      "/pricing?status=success",
+    );
+    const defaultCancel = safeCheckoutUrl(
+      req,
+      cancelUrl,
+      "/pricing?status=cancelled",
+    );
+
+    const session = await stripe.checkout.sessions.create(
+      {
+        mode,
+        customer: customerId,
+        line_items: [{ price: priceId, quantity: 1 }],
+        success_url: defaultSuccess,
+        cancel_url: defaultCancel,
+        allow_promotion_codes: true,
+        ...(checkoutPendingUntil
+          ? { expires_at: Math.floor(checkoutPendingUntil.getTime() / 1000) }
+          : {}),
+        ...(mode === "subscription"
+          ? {
+              subscription_data: {
+                metadata: { userId: user.id },
+              },
+            }
+          : {
+              payment_intent_data: {
+                metadata: { userId: user.id, priceId },
+              },
+            }),
+      },
+      checkoutPendingUntil
+        ? {
+            idempotencyKey: `direct-checkout:${user.id}:${checkoutPendingUntil.getTime()}`,
+          }
+        : undefined,
+    );
 
     if (!session.url) {
       throw new Error("Stripe did not return a checkout URL");
@@ -352,6 +562,30 @@ router.post("/billing/checkout", async (req, res) => {
 
     res.json({ url: session.url });
   } catch (err) {
+    if (reservedSuiteLinkId && reservedUserUntil) {
+      await db
+        .update(suiteLinksTable)
+        .set({ checkoutPendingUntil: null })
+        .where(
+          and(
+            eq(suiteLinksTable.id, reservedSuiteLinkId),
+            eq(suiteLinksTable.checkoutPendingUntil, reservedUserUntil),
+          ),
+        )
+        .catch(() => undefined);
+    }
+    if (reservedUserUntil) {
+      await db
+        .update(usersTable)
+        .set({ billingCheckoutPendingUntil: null })
+        .where(
+          and(
+            eq(usersTable.id, req.user.id),
+            eq(usersTable.billingCheckoutPendingUntil, reservedUserUntil),
+          ),
+        )
+        .catch(() => undefined);
+    }
     req.log.error({ err }, "Failed to create checkout session");
     res.status(500).json({ error: "Failed to create checkout session" });
   }
