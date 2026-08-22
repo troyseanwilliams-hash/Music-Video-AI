@@ -22,6 +22,8 @@ tags:
     description: User credits and usage
   - name: Billing
     description: Stripe subscriptions, top-ups, and customer portal
+  - name: Suite
+    description: Shared AISync Suite subscriptions and cross-product account linking
   - name: Audio
     description: Audio file analysis
 paths:
@@ -753,6 +755,136 @@ paths:
                 $ref: '#/components/schemas/CreatePortalResponse'
         '400':
           description: User has no Stripe customer record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /suite/status:
+    get:
+      tags: [Suite]
+      operationId: getSuiteStatus
+      summary: Get the current user's AISync Suite link and subscription status
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+      responses:
+        '200':
+          description: Suite account and subscription status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuiteStatus'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /suite/link/authorize:
+    post:
+      tags: [Suite]
+      operationId: authorizeSuiteLink
+      summary: Authorize a pending AIPodSync account-link request
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SuiteLinkAuthorizationInput'
+      responses:
+        '200':
+          description: One-time account-link redirect created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuiteLinkAuthorizationResponse'
+        '400':
+          description: Invalid or disallowed account-link request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /suite/checkout:
+    post:
+      tags: [Suite]
+      operationId: createSuiteCheckout
+      summary: Create checkout for a linked AISync Suite account
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SuiteCheckoutInput'
+      responses:
+        '200':
+          description: Suite checkout session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuiteBillingUrlResponse'
+        '400':
+          description: Invalid request or accounts are not linked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: An overlapping subscription prevents checkout
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /suite/portal:
+    post:
+      tags: [Suite]
+      operationId: createSuitePortal
+      summary: Create a billing portal session for an AISync Suite subscriber
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SuitePortalInput'
+      responses:
+        '200':
+          description: Suite billing portal session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuiteBillingUrlResponse'
+        '400':
+          description: No billing customer exists for the account
           content:
             application/json:
               schema:
@@ -1630,6 +1762,118 @@ components:
           type: [string, 'null']
 
     CreatePortalResponse:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          format: uri
+
+    SuiteProductLink:
+      type: object
+      required: [aipodUserId, aipodWalletId]
+      properties:
+        aipodUserId:
+          type: [string, 'null']
+        aipodWalletId:
+          type: [string, 'null']
+
+    SuiteSubscription:
+      type: object
+      required: [status, plan, interval, origin, cancelAtPeriodEnd, currentPeriodEnd]
+      properties:
+        status:
+          type: string
+        plan:
+          type: [string, 'null']
+          enum: [creator, pro, studio, null]
+        interval:
+          type: [string, 'null']
+          enum: [month, year, null]
+        origin:
+          type: [string, 'null']
+          enum: [aibeatsync, aipodsync, aisyncsuite, null]
+        cancelAtPeriodEnd:
+          type: boolean
+        currentPeriodEnd:
+          type: [string, 'null']
+          format: date-time
+
+    SuiteStatus:
+      type: object
+      required: [linked, hasDirectSubscription]
+      properties:
+        linked:
+          type: boolean
+        linkId:
+          type: string
+        link:
+          $ref: '#/components/schemas/SuiteProductLink'
+        subscription:
+          oneOf:
+            - $ref: '#/components/schemas/SuiteSubscription'
+            - type: 'null'
+        hasDirectSubscription:
+          type: boolean
+        aipodHasDirectSubscription:
+          type: boolean
+        subscriptionStatus:
+          type: string
+        priceLookupKey:
+          type: [string, 'null']
+        aibeatCredits:
+          type: integer
+          minimum: 0
+        aipodCredits:
+          type: integer
+          minimum: 0
+
+    SuiteLinkAuthorizationInput:
+      type: object
+      required: [state, codeChallenge, returnUrl]
+      properties:
+        state:
+          type: string
+          minLength: 1
+          maxLength: 256
+        codeChallenge:
+          type: string
+          minLength: 43
+          maxLength: 128
+        returnUrl:
+          type: string
+          format: uri
+
+    SuiteLinkAuthorizationResponse:
+      type: object
+      required: [redirectUrl]
+      properties:
+        redirectUrl:
+          type: string
+          format: uri
+
+    SuiteCheckoutInput:
+      type: object
+      required: [plan, interval, origin]
+      properties:
+        plan:
+          type: string
+          enum: [creator, pro, studio]
+        interval:
+          type: string
+          enum: [month, year]
+        origin:
+          type: string
+          enum: [aibeatsync, aipodsync, aisyncsuite]
+
+    SuitePortalInput:
+      type: object
+      properties:
+        origin:
+          type: string
+          enum: [aibeatsync, aipodsync, aisyncsuite]
+
+    SuiteBillingUrlResponse:
       type: object
       required: [url]
       properties:

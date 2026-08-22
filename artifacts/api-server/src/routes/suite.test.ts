@@ -7,6 +7,10 @@
  */
 import { describe, it, expect } from "vitest";
 import { createHash, randomBytes } from "crypto";
+import {
+  suitePagePath,
+  suiteReturnBase,
+} from "../lib/suiteReturnUrls.js";
 
 // ─── Inline pure helpers (copied from suite.ts to keep tests dependency-free)
 
@@ -198,6 +202,30 @@ describe("Redirect allowlisting", () => {
     expect(
       isAllowedReturnUrl("https://evil.aipodsync.com/callback", DEFAULT_ORIGINS),
     ).toBe(false);
+  });
+});
+
+describe("Suite product return URLs", () => {
+  it("returns standalone Suite customers to the Suite root", () => {
+    expect(suitePagePath("aisyncsuite")).toBe("/");
+    expect(
+      `${suiteReturnBase(
+        "aisyncsuite",
+        "https://aisyncsuite.com",
+        "https://aipodsync.com",
+      )}${suitePagePath("aisyncsuite")}`,
+    ).toBe("https://aisyncsuite.com/");
+  });
+
+  it("keeps legacy product returns on their Suite routes", () => {
+    expect(suitePagePath("aibeatsync")).toBe("/suite");
+    expect(
+      `${suiteReturnBase(
+        "aipodsync",
+        "https://aisyncsuite.com",
+        "https://aipodsync.com",
+      )}${suitePagePath("aipodsync")}`,
+    ).toBe("https://aipodsync.com/suite");
   });
 });
 

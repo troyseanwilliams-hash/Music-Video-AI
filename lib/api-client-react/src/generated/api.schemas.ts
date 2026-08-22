@@ -770,6 +770,147 @@ export interface CreatePortalResponse {
   url: string;
 }
 
+export interface SuiteProductLink {
+  /** @nullable */
+  aipodUserId: string | null;
+  /** @nullable */
+  aipodWalletId: string | null;
+}
+
+/**
+ * @nullable
+ */
+export type SuiteSubscriptionPlan =
+  | (typeof SuiteSubscriptionPlan)[keyof typeof SuiteSubscriptionPlan]
+  | null;
+
+export const SuiteSubscriptionPlan = {
+  creator: "creator",
+  pro: "pro",
+  studio: "studio",
+} as const;
+
+/**
+ * @nullable
+ */
+export type SuiteSubscriptionInterval =
+  | (typeof SuiteSubscriptionInterval)[keyof typeof SuiteSubscriptionInterval]
+  | null;
+
+export const SuiteSubscriptionInterval = {
+  month: "month",
+  year: "year",
+} as const;
+
+/**
+ * @nullable
+ */
+export type SuiteSubscriptionOrigin =
+  | (typeof SuiteSubscriptionOrigin)[keyof typeof SuiteSubscriptionOrigin]
+  | null;
+
+export const SuiteSubscriptionOrigin = {
+  aibeatsync: "aibeatsync",
+  aipodsync: "aipodsync",
+  aisyncsuite: "aisyncsuite",
+} as const;
+
+export interface SuiteSubscription {
+  status: string;
+  /** @nullable */
+  plan: SuiteSubscriptionPlan;
+  /** @nullable */
+  interval: SuiteSubscriptionInterval;
+  /** @nullable */
+  origin: SuiteSubscriptionOrigin;
+  cancelAtPeriodEnd: boolean;
+  /** @nullable */
+  currentPeriodEnd: string | null;
+}
+
+export interface SuiteStatus {
+  linked: boolean;
+  linkId?: string;
+  link?: SuiteProductLink;
+  subscription?: SuiteSubscription | null;
+  hasDirectSubscription: boolean;
+  aipodHasDirectSubscription?: boolean;
+  subscriptionStatus?: string;
+  /** @nullable */
+  priceLookupKey?: string | null;
+  /** @minimum 0 */
+  aibeatCredits?: number;
+  /** @minimum 0 */
+  aipodCredits?: number;
+}
+
+export interface SuiteLinkAuthorizationInput {
+  /**
+   * @minLength 1
+   * @maxLength 256
+   */
+  state: string;
+  /**
+   * @minLength 43
+   * @maxLength 128
+   */
+  codeChallenge: string;
+  returnUrl: string;
+}
+
+export interface SuiteLinkAuthorizationResponse {
+  redirectUrl: string;
+}
+
+export type SuiteCheckoutInputPlan =
+  (typeof SuiteCheckoutInputPlan)[keyof typeof SuiteCheckoutInputPlan];
+
+export const SuiteCheckoutInputPlan = {
+  creator: "creator",
+  pro: "pro",
+  studio: "studio",
+} as const;
+
+export type SuiteCheckoutInputInterval =
+  (typeof SuiteCheckoutInputInterval)[keyof typeof SuiteCheckoutInputInterval];
+
+export const SuiteCheckoutInputInterval = {
+  month: "month",
+  year: "year",
+} as const;
+
+export type SuiteCheckoutInputOrigin =
+  (typeof SuiteCheckoutInputOrigin)[keyof typeof SuiteCheckoutInputOrigin];
+
+export const SuiteCheckoutInputOrigin = {
+  aibeatsync: "aibeatsync",
+  aipodsync: "aipodsync",
+  aisyncsuite: "aisyncsuite",
+} as const;
+
+export interface SuiteCheckoutInput {
+  plan: SuiteCheckoutInputPlan;
+  interval: SuiteCheckoutInputInterval;
+  origin: SuiteCheckoutInputOrigin;
+}
+
+export type SuitePortalInputOrigin =
+  (typeof SuitePortalInputOrigin)[keyof typeof SuitePortalInputOrigin];
+
+export const SuitePortalInputOrigin = {
+  aibeatsync: "aibeatsync",
+  aipodsync: "aipodsync",
+  aisyncsuite: "aisyncsuite",
+} as const;
+
+export interface SuitePortalInput {
+  origin?: SuitePortalInputOrigin;
+}
+
+export interface SuiteBillingUrlResponse {
+  url: string;
+}
+
 export type CreditGrantSource =
   (typeof CreditGrantSource)[keyof typeof CreditGrantSource];
 

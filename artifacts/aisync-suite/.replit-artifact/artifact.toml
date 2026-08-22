@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/aisync-suite/"
+title = "AISync Suite"
+description = "The shared AISync Suite home for AIBeatSync and AIPodSync customers, with unified subscriptions, account linking, and billing access."
+version = "1.0.0"
+id = "artifacts/aisync-suite"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/aisync-suite/" ]
+localPort = 24613
+
+[services.development]
+run = "pnpm --filter @workspace/aisync-suite run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/aisync-suite", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/aisync-suite/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24613"
+BASE_PATH = "/aisync-suite/"

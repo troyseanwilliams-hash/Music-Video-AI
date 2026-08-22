@@ -1412,6 +1412,138 @@ export const CreateBillingPortalSessionResponse = zod.object({
 });
 
 /**
+ * @summary Get the current user's AISync Suite link and subscription status
+ */
+export const GetSuiteStatusHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const getSuiteStatusResponseAibeatCreditsMin = 0;
+
+export const getSuiteStatusResponseAipodCreditsMin = 0;
+
+export const GetSuiteStatusResponse = zod.object({
+  linked: zod.boolean(),
+  linkId: zod.string().optional(),
+  link: zod
+    .object({
+      aipodUserId: zod.string().nullable(),
+      aipodWalletId: zod.string().nullable(),
+    })
+    .optional(),
+  subscription: zod
+    .union([
+      zod.object({
+        status: zod.string(),
+        plan: zod
+          .union([
+            zod.literal("creator"),
+            zod.literal("pro"),
+            zod.literal("studio"),
+            zod.literal(null),
+          ])
+          .nullable(),
+        interval: zod
+          .union([zod.literal("month"), zod.literal("year"), zod.literal(null)])
+          .nullable(),
+        origin: zod
+          .union([
+            zod.literal("aibeatsync"),
+            zod.literal("aipodsync"),
+            zod.literal("aisyncsuite"),
+            zod.literal(null),
+          ])
+          .nullable(),
+        cancelAtPeriodEnd: zod.boolean(),
+        currentPeriodEnd: zod.coerce.date().nullable(),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+  hasDirectSubscription: zod.boolean(),
+  aipodHasDirectSubscription: zod.boolean().optional(),
+  subscriptionStatus: zod.string().optional(),
+  priceLookupKey: zod.string().nullish(),
+  aibeatCredits: zod
+    .number()
+    .min(getSuiteStatusResponseAibeatCreditsMin)
+    .optional(),
+  aipodCredits: zod
+    .number()
+    .min(getSuiteStatusResponseAipodCreditsMin)
+    .optional(),
+});
+
+/**
+ * @summary Authorize a pending AIPodSync account-link request
+ */
+export const AuthorizeSuiteLinkHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const authorizeSuiteLinkBodyStateMax = 256;
+
+export const authorizeSuiteLinkBodyCodeChallengeMin = 43;
+export const authorizeSuiteLinkBodyCodeChallengeMax = 128;
+
+export const AuthorizeSuiteLinkBody = zod.object({
+  state: zod.string().min(1).max(authorizeSuiteLinkBodyStateMax),
+  codeChallenge: zod
+    .string()
+    .min(authorizeSuiteLinkBodyCodeChallengeMin)
+    .max(authorizeSuiteLinkBodyCodeChallengeMax),
+  returnUrl: zod.string().url(),
+});
+
+export const AuthorizeSuiteLinkResponse = zod.object({
+  redirectUrl: zod.string().url(),
+});
+
+/**
+ * @summary Create checkout for a linked AISync Suite account
+ */
+export const CreateSuiteCheckoutHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const CreateSuiteCheckoutBody = zod.object({
+  plan: zod.enum(["creator", "pro", "studio"]),
+  interval: zod.enum(["month", "year"]),
+  origin: zod.enum(["aibeatsync", "aipodsync", "aisyncsuite"]),
+});
+
+export const CreateSuiteCheckoutResponse = zod.object({
+  url: zod.string().url(),
+});
+
+/**
+ * @summary Create a billing portal session for an AISync Suite subscriber
+ */
+export const CreateSuitePortalHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const CreateSuitePortalBody = zod.object({
+  origin: zod.enum(["aibeatsync", "aipodsync", "aisyncsuite"]).optional(),
+});
+
+export const CreateSuitePortalResponse = zod.object({
+  url: zod.string().url(),
+});
+
+/**
  * Fetches the audio from object storage and runs server-side ffmpeg + autocorrelation analysis. Call this after the file is uploaded via the presigned URL.
  * @summary Analyse an uploaded audio file and return BPM, mood, energy, and section structure
  */

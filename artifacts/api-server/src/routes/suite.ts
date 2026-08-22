@@ -25,6 +25,7 @@ import {
 import { randomBytes, createHash } from "crypto";
 import { randomUUID } from "crypto";
 import { getUncachableStripeClient } from "../lib/stripeClient.js";
+import { suitePagePath, suiteReturnBase } from "../lib/suiteReturnUrls.js";
 import { logger } from "../lib/logger.js";
 import type Stripe from "stripe";
 
@@ -467,7 +468,7 @@ router.post("/suite/link/finalize", async (req, res): Promise<void> => {
 const SuiteCheckoutSchema = z.object({
   plan: z.enum(["creator", "pro", "studio"]),
   interval: z.enum(["month", "year"]),
-  origin: z.enum(["aibeatsync", "aipodsync"]),
+  origin: z.enum(["aibeatsync", "aipodsync", "aisyncsuite"]),
 });
 
 router.post("/suite/checkout", async (req, res): Promise<void> => {
@@ -687,15 +688,16 @@ router.post("/suite/checkout", async (req, res): Promise<void> => {
 
     const aibeatBase = `${req.protocol}://${req.get("host")}`;
     const aipodBase = getAllowedAipodOrigins()[0]!;
-    const returnBase = origin === "aipodsync" ? aipodBase : aibeatBase;
+    const returnBase = suiteReturnBase(origin, aibeatBase, aipodBase);
+    const returnPath = suitePagePath(origin);
 
     const session = await stripe.checkout.sessions.create(
       {
         mode: "subscription",
         customer: customerId,
         line_items: [{ price: price.id, quantity: 1 }],
-        success_url: `${returnBase}/suite?status=success`,
-        cancel_url: `${returnBase}/suite?status=cancelled`,
+        success_url: `${returnBase}${returnPath}?status=success`,
+        cancel_url: `${returnBase}${returnPath}?status=cancelled`,
         expires_at: Math.floor(checkoutPendingUntil.getTime() / 1000),
         allow_promotion_codes: true,
         subscription_data: {
@@ -761,7 +763,7 @@ router.post("/suite/checkout", async (req, res): Promise<void> => {
 // Authenticated. Create a Stripe Billing Portal session.
 
 const SuitePortalSchema = z.object({
-  origin: z.enum(["aibeatsync", "aipodsync"]).optional(),
+  origin: z.enum(["aibeatsync", "aipodsync", "aisyncsuite"]).optional(),
 });
 
 router.post("/suite/portal", async (req, res): Promise<void> => {
@@ -800,9 +802,13 @@ router.post("/suite/portal", async (req, res): Promise<void> => {
       ? `https://${process.env["REPLIT_DOMAINS"].split(",")[0]}/suite`
       : `${req.protocol}://${req.get("host")}/suite`;
     const returnUrl =
-      origin === "aipodsync"
-        ? `${getAllowedAipodOrigins()[0]!}/suite`
-        : aibeatReturn;
+      origin === "aibeatsync"
+        ? aibeatReturn
+        : `${suiteReturnBase(
+            origin,
+            `${req.protocol}://${req.get("host")}`,
+            getAllowedAipodOrigins()[0]!,
+          )}${suitePagePath(origin)}`;
 
     const session = await stripe.billingPortal.sessions.create({
       customer: user.stripeCustomerId,

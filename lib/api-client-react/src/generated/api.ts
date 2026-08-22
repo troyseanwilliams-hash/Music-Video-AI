@@ -45,6 +45,12 @@ import type {
   RemixJobRequest,
   RemixJobResponse,
   SuccessResponse,
+  SuiteBillingUrlResponse,
+  SuiteCheckoutInput,
+  SuiteLinkAuthorizationInput,
+  SuiteLinkAuthorizationResponse,
+  SuitePortalInput,
+  SuiteStatus,
   UpdateVisibilityRequest,
   UploadUrlRequest,
   UploadUrlResponse,
@@ -2230,6 +2236,343 @@ export const useCreateBillingPortalSession = <
   TContext
 > => {
   return useMutation(getCreateBillingPortalSessionMutationOptions(options));
+};
+
+/**
+ * @summary Get the current user's AISync Suite link and subscription status
+ */
+export const getGetSuiteStatusUrl = () => {
+  return `/api/suite/status`;
+};
+
+export const getSuiteStatus = async (
+  options?: RequestInit,
+): Promise<SuiteStatus> => {
+  return customFetch<SuiteStatus>(getGetSuiteStatusUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetSuiteStatusQueryKey = () => {
+  return [`/api/suite/status`] as const;
+};
+
+export const getGetSuiteStatusQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSuiteStatus>>,
+  TError = ErrorType<ErrorEnvelope>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getSuiteStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetSuiteStatusQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getSuiteStatus>>> = ({
+    signal,
+  }) => getSuiteStatus({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSuiteStatus>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetSuiteStatusQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getSuiteStatus>>
+>;
+export type GetSuiteStatusQueryError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Get the current user's AISync Suite link and subscription status
+ */
+
+export function useGetSuiteStatus<
+  TData = Awaited<ReturnType<typeof getSuiteStatus>>,
+  TError = ErrorType<ErrorEnvelope>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getSuiteStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetSuiteStatusQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Authorize a pending AIPodSync account-link request
+ */
+export const getAuthorizeSuiteLinkUrl = () => {
+  return `/api/suite/link/authorize`;
+};
+
+export const authorizeSuiteLink = async (
+  suiteLinkAuthorizationInput: SuiteLinkAuthorizationInput,
+  options?: RequestInit,
+): Promise<SuiteLinkAuthorizationResponse> => {
+  return customFetch<SuiteLinkAuthorizationResponse>(
+    getAuthorizeSuiteLinkUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(suiteLinkAuthorizationInput),
+    },
+  );
+};
+
+export const getAuthorizeSuiteLinkMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof authorizeSuiteLink>>,
+    TError,
+    { data: BodyType<SuiteLinkAuthorizationInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof authorizeSuiteLink>>,
+  TError,
+  { data: BodyType<SuiteLinkAuthorizationInput> },
+  TContext
+> => {
+  const mutationKey = ["authorizeSuiteLink"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof authorizeSuiteLink>>,
+    { data: BodyType<SuiteLinkAuthorizationInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return authorizeSuiteLink(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AuthorizeSuiteLinkMutationResult = NonNullable<
+  Awaited<ReturnType<typeof authorizeSuiteLink>>
+>;
+export type AuthorizeSuiteLinkMutationBody =
+  BodyType<SuiteLinkAuthorizationInput>;
+export type AuthorizeSuiteLinkMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Authorize a pending AIPodSync account-link request
+ */
+export const useAuthorizeSuiteLink = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof authorizeSuiteLink>>,
+    TError,
+    { data: BodyType<SuiteLinkAuthorizationInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof authorizeSuiteLink>>,
+  TError,
+  { data: BodyType<SuiteLinkAuthorizationInput> },
+  TContext
+> => {
+  return useMutation(getAuthorizeSuiteLinkMutationOptions(options));
+};
+
+/**
+ * @summary Create checkout for a linked AISync Suite account
+ */
+export const getCreateSuiteCheckoutUrl = () => {
+  return `/api/suite/checkout`;
+};
+
+export const createSuiteCheckout = async (
+  suiteCheckoutInput: SuiteCheckoutInput,
+  options?: RequestInit,
+): Promise<SuiteBillingUrlResponse> => {
+  return customFetch<SuiteBillingUrlResponse>(getCreateSuiteCheckoutUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(suiteCheckoutInput),
+  });
+};
+
+export const getCreateSuiteCheckoutMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createSuiteCheckout>>,
+    TError,
+    { data: BodyType<SuiteCheckoutInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createSuiteCheckout>>,
+  TError,
+  { data: BodyType<SuiteCheckoutInput> },
+  TContext
+> => {
+  const mutationKey = ["createSuiteCheckout"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createSuiteCheckout>>,
+    { data: BodyType<SuiteCheckoutInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createSuiteCheckout(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateSuiteCheckoutMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createSuiteCheckout>>
+>;
+export type CreateSuiteCheckoutMutationBody = BodyType<SuiteCheckoutInput>;
+export type CreateSuiteCheckoutMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Create checkout for a linked AISync Suite account
+ */
+export const useCreateSuiteCheckout = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createSuiteCheckout>>,
+    TError,
+    { data: BodyType<SuiteCheckoutInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createSuiteCheckout>>,
+  TError,
+  { data: BodyType<SuiteCheckoutInput> },
+  TContext
+> => {
+  return useMutation(getCreateSuiteCheckoutMutationOptions(options));
+};
+
+/**
+ * @summary Create a billing portal session for an AISync Suite subscriber
+ */
+export const getCreateSuitePortalUrl = () => {
+  return `/api/suite/portal`;
+};
+
+export const createSuitePortal = async (
+  suitePortalInput?: SuitePortalInput,
+  options?: RequestInit,
+): Promise<SuiteBillingUrlResponse> => {
+  return customFetch<SuiteBillingUrlResponse>(getCreateSuitePortalUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(suitePortalInput),
+  });
+};
+
+export const getCreateSuitePortalMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createSuitePortal>>,
+    TError,
+    { data: BodyType<SuitePortalInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createSuitePortal>>,
+  TError,
+  { data: BodyType<SuitePortalInput> },
+  TContext
+> => {
+  const mutationKey = ["createSuitePortal"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createSuitePortal>>,
+    { data: BodyType<SuitePortalInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createSuitePortal(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateSuitePortalMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createSuitePortal>>
+>;
+export type CreateSuitePortalMutationBody = BodyType<SuitePortalInput>;
+export type CreateSuitePortalMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Create a billing portal session for an AISync Suite subscriber
+ */
+export const useCreateSuitePortal = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createSuitePortal>>,
+    TError,
+    { data: BodyType<SuitePortalInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createSuitePortal>>,
+  TError,
+  { data: BodyType<SuitePortalInput> },
+  TContext
+> => {
+  return useMutation(getCreateSuitePortalMutationOptions(options));
 };
 
 /**
