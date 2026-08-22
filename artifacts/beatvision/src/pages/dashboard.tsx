@@ -184,12 +184,12 @@ export default function Dashboard() {
   return (
     <div className="container mx-auto px-4 py-12 max-w-6xl">
       {subStatus === "trial" && !isAdmin && (
-        <div className={`mb-6 flex items-center justify-between gap-4 rounded-lg border px-4 py-3 text-sm ${
+        <div className={`mb-6 flex flex-col items-stretch gap-3 rounded-lg border px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-4 ${
           trialExpired
             ? "border-destructive/40 bg-destructive/5 text-destructive"
             : "border-primary/30 bg-primary/5"
         }`}>
-          <div className="flex items-center gap-2">
+          <div className="flex items-start gap-2">
             <Clock className={`h-4 w-4 shrink-0 ${trialExpired ? "text-destructive" : "text-primary"}`} />
             <span>
               {trialExpired
@@ -201,7 +201,7 @@ export default function Dashboard() {
             <Button
               size="sm"
               variant="outline"
-              className={`shrink-0 ${trialExpired ? "border-destructive/40 text-destructive hover:bg-destructive/10" : "border-primary/40 text-primary hover:bg-primary/10"}`}
+              className={`w-full sm:w-auto ${trialExpired ? "border-destructive/40 text-destructive hover:bg-destructive/10" : "border-primary/40 text-primary hover:bg-primary/10"}`}
               data-testid="button-dashboard-upgrade"
             >
               <Crown className="mr-1.5 h-3.5 w-3.5" />
@@ -313,10 +313,10 @@ export default function Dashboard() {
 
           {stats.creditsRemaining < LOW_CREDIT_THRESHOLD && (
             <div
-              className="flex items-center justify-between gap-4 rounded-lg border border-accent/40 bg-accent/5 px-4 py-3 text-sm"
+              className="flex flex-col items-stretch gap-3 rounded-lg border border-accent/40 bg-accent/5 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-4"
               data-testid="banner-low-credits"
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-start gap-2">
                 <Zap className="h-4 w-4 text-accent shrink-0" />
                 <span>
                   {stats.creditsRemaining === 0
@@ -325,7 +325,7 @@ export default function Dashboard() {
                 </span>
               </div>
               <Link href="/pricing">
-                <Button size="sm" variant="outline" className="shrink-0 border-accent/40 text-accent hover:bg-accent/10">
+                <Button size="sm" variant="outline" className="w-full sm:w-auto border-accent/40 text-accent hover:bg-accent/10">
                   <Coins className="mr-1.5 h-3.5 w-3.5" />
                   Get credits
                 </Button>
@@ -417,8 +417,8 @@ export default function Dashboard() {
             
             {stats.recentJobs && stats.recentJobs.length > 0 ? (
               <div className="rounded-xl border border-border bg-card/30 overflow-hidden">
-                <div className="grid grid-cols-12 gap-4 p-4 border-b border-border/50 bg-muted/20 text-sm font-medium text-muted-foreground">
-                  <div className="col-span-5 md:col-span-3">Prompt</div>
+                <div className="hidden md:grid md:grid-cols-12 md:gap-4 md:border-b md:border-border/50 md:bg-muted/20 md:p-4 md:text-sm md:font-medium md:text-muted-foreground">
+                  <div className="md:col-span-3">Prompt</div>
                   <div className="hidden md:block md:col-span-2">Style</div>
                   <div className="col-span-4 md:col-span-3">Status</div>
                   <div className="col-span-3 md:col-span-2 text-right">Cost</div>
@@ -447,20 +447,20 @@ export default function Dashboard() {
                     const isProcessing = !isReady && !isFailed;
                     return (
                     <Link key={job.id} href={`/jobs/${job.id}`}>
-                    <div className={`grid grid-cols-12 gap-4 p-4 transition-colors items-center ${isProcessing || isFailed ? "cursor-pointer hover:bg-muted/10" : "hover:bg-muted/5"}`}>
-                      <div className="col-span-5 md:col-span-3 truncate pr-2 font-medium text-sm">
+                    <div className={`grid grid-cols-1 gap-3 p-4 transition-colors md:grid-cols-12 md:items-center md:gap-4 ${isProcessing || isFailed ? "cursor-pointer hover:bg-muted/10" : "hover:bg-muted/5"}`}>
+                      <div className="min-w-0 text-sm font-medium md:col-span-3 md:truncate md:pr-2">
                         {job.prompt || "Untitled generation"}
                       </div>
                       <div className="hidden md:block md:col-span-2 capitalize text-sm text-muted-foreground truncate">
                         {job.style}
                       </div>
-                      <div className="col-span-4 md:col-span-3 flex items-center gap-2">
+                      <div className="flex items-center gap-2 md:col-span-3">
                         {isReady ? (
                           <>
                             <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
                             <Button
                               size="sm"
-                              className="h-7 text-xs bg-gradient-electric text-white shadow-glow px-3"
+                              className="h-9 px-3 text-xs bg-gradient-electric text-white shadow-glow md:h-7"
                               disabled={watchingJobId === job.id}
                               onClick={(e) => { e.preventDefault(); handleWatch(job.id); }}
                             >
@@ -473,7 +473,7 @@ export default function Dashboard() {
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                                className="h-9 w-9 p-0 text-muted-foreground hover:text-destructive md:h-7 md:w-7"
                                 title="Delete video"
                                 disabled={deletingId === videoId}
                                 onClick={(e) => { e.preventDefault(); handleDelete(videoId); }}
@@ -493,7 +493,7 @@ export default function Dashboard() {
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                              className="h-9 w-9 p-0 text-muted-foreground hover:text-destructive md:h-7 md:w-7"
                               title="Delete failed generation"
                               disabled={deletingId === job.id}
                               onClick={(e) => { e.preventDefault(); handleDeleteJob(job.id); }}
@@ -511,7 +511,7 @@ export default function Dashboard() {
                           </span>
                         )}
                       </div>
-                      <div className="col-span-3 md:col-span-2 flex items-center justify-end gap-1 text-sm font-medium text-accent">
+                      <div className="flex items-center gap-1 text-sm font-medium text-accent md:col-span-2 md:justify-end">
                         <Coins className="h-3.5 w-3.5 shrink-0" />
                         <span>{cost}</span>
                       </div>

@@ -15,12 +15,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export function Navbar() {
   const [location] = useLocation();
   const { user, isAuthenticated, logout, isLoading: isAuthLoading } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location]);
 
   const { data: stats } = useGetDashboardStats({
     query: {
@@ -88,7 +92,7 @@ export function Navbar() {
             {/* Always visible — icon-only on mobile, icon+label from sm: up — so it's never dropped from the right nav on small screens. */}
             <a
               href="https://aipodsync.com"
-              className="flex items-center gap-1.5 rounded-full border border-border/50 bg-secondary/40 px-2.5 sm:px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+              className="hidden sm:flex items-center gap-1.5 rounded-full border border-border/50 bg-secondary/40 px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
               aria-label="Narrate your videos on AIPodSync"
             >
               <Mic className="h-3.5 w-3.5" aria-hidden="true" />
@@ -209,7 +213,8 @@ export function Navbar() {
                 </Link>
                 <Link href="/login">
                   <Button className="bg-gradient-electric text-white shadow-glow hover:opacity-90 transition-opacity border-0">
-                    Get Started
+                    <span className="sm:hidden">Start</span>
+                    <span className="hidden sm:inline">Get Started</span>
                   </Button>
                 </Link>
                 {/* Mobile hamburger for logged-out visitors — reach Explore/Pricing */}
@@ -232,7 +237,7 @@ export function Navbar() {
 
       {/* Mobile slide-down nav panel */}
       {mobileMenuOpen && (
-        <div id="mobile-nav-panel" className="md:hidden fixed top-16 inset-x-0 z-40 border-b border-border/50 bg-background/95 backdrop-blur shadow-lg">
+        <div id="mobile-nav-panel" className="md:hidden fixed top-16 inset-x-0 z-40 max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain border-b border-border/50 bg-background/95 backdrop-blur shadow-lg">
           <nav aria-label="Mobile" className="container mx-auto px-4 py-3 flex flex-col gap-1">
             {navLinks.map(({ href, label, icon: Icon }) => (
               <Link

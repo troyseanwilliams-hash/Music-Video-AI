@@ -52,17 +52,17 @@ export function Footer() {
           </div>
 
           {COLUMNS.map((col) => (
-            <div key={col.title}>
+            <div key={col.title} className="min-w-0">
               <h4 className="mb-3 text-sm font-semibold">{col.title}</h4>
               <ul className="space-y-2 text-sm">
                 {col.links.map((l) => (
                   <li key={l.label}>
                     {l.external ? (
-                      <a href={l.href} className="text-muted-foreground transition-colors hover:text-foreground">
+                      <a href={l.href} className="inline-flex min-h-10 items-center break-words py-1 text-muted-foreground transition-colors hover:text-foreground">
                         {l.label}
                       </a>
                     ) : (
-                      <Link href={l.href} className="text-muted-foreground transition-colors hover:text-foreground">
+                      <Link href={l.href} className="inline-flex min-h-10 items-center break-words py-1 text-muted-foreground transition-colors hover:text-foreground">
                         {l.label}
                       </Link>
                     )}

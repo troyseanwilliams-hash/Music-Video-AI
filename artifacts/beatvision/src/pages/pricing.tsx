@@ -254,7 +254,7 @@ export default function Pricing() {
           reset each cycle — top-up credits never expire, and you can earn more
           by referring friends.
         </p>
-        <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-medium">
+        <div className="mx-auto mt-5 flex max-w-md items-start gap-2 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-3 text-left text-sm font-medium sm:inline-flex sm:max-w-none sm:items-center sm:rounded-full sm:py-2">
           <Sparkles className="h-4 w-4 text-primary" />
           <span>
             Every new account gets a{" "}
@@ -265,7 +265,7 @@ export default function Pricing() {
         </div>
         {isAuthenticated && subscription && (
           <div
-            className="mt-4 inline-flex items-center gap-2 rounded-full border border-border/50 bg-secondary/40 px-4 py-2 text-sm"
+            className="mx-auto mt-4 flex max-w-md flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-2xl border border-border/50 bg-secondary/40 px-4 py-3 text-sm sm:inline-flex sm:max-w-none sm:rounded-full sm:py-2"
             data-testid="pricing-credits-summary"
           >
             <Zap className="h-4 w-4 text-primary" />

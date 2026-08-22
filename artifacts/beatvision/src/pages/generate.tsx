@@ -180,6 +180,8 @@ export default function Generate() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [prompt, setPrompt] = useState("");
+  const [quickStartOpen, setQuickStartOpen] = useState(false);
+  const [quickStartTemplateId, setQuickStartTemplateId] = useState<string | null>(null);
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const audioSectionRef = useRef<HTMLDivElement>(null);
   const [fieldErrors, setFieldErrors] = useState<{ prompt?: string; audio?: string; lipSync?: string }>({});
@@ -442,6 +444,8 @@ export default function Generate() {
     setSelectedStyle(t.style);
     setAspectRatio(t.aspect);
     handleDurationChange(t.duration);
+    setQuickStartTemplateId(t.id);
+    setQuickStartOpen(false);
     setFieldErrors((fe) => ({ ...fe, prompt: undefined }));
   }
 
@@ -449,7 +453,10 @@ export default function Generate() {
   function applyPreset(p: (typeof PLATFORM_PRESETS)[number]) {
     setAspectRatio(p.aspect);
     handleDurationChange(p.duration);
+    setQuickStartOpen(false);
   }
+
+  const quickStartTemplateLabel = TEMPLATES.find((template) => template.id === quickStartTemplateId)?.label ?? "Choose a template";
 
   // Trigger server-side analysis as soon as the upload path is available.
   // Reset mutation state immediately when objectPath changes so old badges disappear.
@@ -863,8 +870,71 @@ export default function Generate() {
           or <strong>Kling</strong> (value) — and a length. We charge credits only when it succeeds.
         </TutorialTip>
 
-        {/* ── Quick start: templates + demo song ── */}
-        <div className="rounded-2xl border border-border/60 bg-background/30 p-4 sm:p-5">
+        {/* ── Quick start: a compact mobile picker, full controls on larger screens ── */}
+        <div className="sm:hidden rounded-2xl border border-primary/25 bg-gradient-to-r from-primary/[0.09] to-accent/[0.06] p-3">
+          <div className="flex items-center gap-2">
+            <div className="min-w-0 flex flex-1 items-center gap-2 max-[359px]:hidden">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                <Sparkles className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold leading-4">Quick start</p>
+                <p className="truncate text-xs text-muted-foreground">Start from a ready-made look</p>
+              </div>
+            </div>
+            <Link href="/soundtracks" aria-label="Create a song">
+              <Button variant="outline" size="icon" className="h-9 w-9 shrink-0">
+                <Music className="h-4 w-4" />
+              </Button>
+            </Link>
+            <Popover open={quickStartOpen} onOpenChange={setQuickStartOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="h-9 max-w-[8.75rem] min-w-0 shrink-0 justify-between gap-1.5 border-primary/35 bg-primary/10 px-2.5 text-xs font-semibold text-primary">
+                  <span className="truncate">{quickStartTemplateLabel}</span>
+                  <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${quickStartOpen ? "rotate-180" : ""}`} />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" sideOffset={8} className="w-[calc(100vw-2rem)] max-w-sm p-2">
+                <p className="px-2 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Choose a starting point</p>
+                <div className="grid grid-cols-2 gap-1">
+                  {TEMPLATES.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => applyTemplate(t)}
+                      className="min-w-0 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-secondary"
+                    >
+                      <span className="block truncate text-xs font-medium">{t.label}</span>
+                      <span className="mt-0.5 block text-[11px] text-muted-foreground">{t.style} · {t.duration}s</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-2 border-t border-border/60 pt-2">
+                  <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Output size</p>
+                  <div className="grid grid-cols-2 gap-1">
+                    {PLATFORM_PRESETS.map((p) => {
+                      const active = aspectRatio === p.aspect && requestedDuration === p.duration;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => applyPreset(p)}
+                          className={`rounded-lg px-2 py-2 text-left text-xs transition-colors ${
+                            active ? "bg-primary/10 font-semibold text-primary" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                          }`}
+                        >
+                          {p.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
+        </div>
+
+        <div className="hidden sm:block rounded-2xl border border-border/60 bg-background/30 p-5">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <span className="flex items-center gap-1.5 text-sm font-semibold">
               <Sparkles className="h-4 w-4 text-primary" /> Quick start
