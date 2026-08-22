@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
 import { analyzeAudioBuffer } from "../lib/audioAnalysis.js";
 import { resolveSunoUrl } from "../lib/sunoResolver.js";
+import { signAudioAnalysisReceipt } from "../lib/audioAnalysisReceipt.js";
 
 const router = Router();
 const storageService = new ObjectStorageService();
@@ -112,7 +113,12 @@ router.post("/audio/analyze", async (req, res) => {
     return;
   }
 
-  res.json(analysis);
+  const analysisReceipt = signAudioAnalysisReceipt({
+    userId: req.user.id,
+    objectPath,
+    analysis,
+  });
+  res.json({ ...analysis, analysisReceipt });
 });
 
 export default router;

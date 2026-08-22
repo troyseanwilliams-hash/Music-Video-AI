@@ -4,6 +4,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 import { randomUUID } from "crypto";
 import { buildTimedLines, buildAssKaraoke, karaokeFontsDir } from "./lyricTiming.js";
+import { resolveAvailableStitchSequence } from "./montageSequence.js";
 
 // `:fontsdir=` option pointing libass at the bundled karaoke font (Archivo
 // Black); empty string when the font directory is missing.
@@ -15,6 +16,10 @@ function fontsDirOpt(): string {
 
 export interface StitchInput {
   clips: { buffer: Buffer; targetDuration: number }[];
+  // Optional montage edit order. Each entry points at one item in `clips`.
+  // Reusing indexes lets a small paid clip library recur across the timeline
+  // without looping one source several times in a row.
+  sequence?: number[];
   // Optional: omit to stitch a silent video (no audio track at all) — used for
   // "no audio" generations that get a soundtrack added later in the Editor.
   audioBuffer?: Buffer;
@@ -27,6 +32,7 @@ export interface StitchResult {
   videoBuffer: Buffer;
   thumbnailBuffer: Buffer;
   skippedClips: number; // clips left out because they couldn't be processed
+  resolvedSequence: number[]; // actual source indexes used after corrupt-clip fallback
 }
 
 function runFfmpeg(cmd: ffmpeg.FfmpegCommand): Promise<void> {
@@ -215,7 +221,22 @@ export async function stitchVideoClips(input: StitchInput): Promise<StitchResult
       throw new Error("None of the clips could be processed, so no video could be stitched.");
     }
 
-    const concatContent = trimmedPaths.map((p) => `file '${p}'`).join("\n");
+    const requestedSequence = input.sequence?.length
+      ? input.sequence
+      : input.clips.map((_, index) => index);
+    const availableBySource = new Map<number, string>();
+    for (const path of trimmedPaths) {
+      const match = /clip_(\d+)\.mp4$/.exec(path);
+      if (match) availableBySource.set(Number(match[1]), path);
+    }
+    const availableSourceIndexes = [...availableBySource.keys()].sort((a, b) => a - b);
+    const resolvedSequence = resolveAvailableStitchSequence(
+      requestedSequence,
+      availableSourceIndexes,
+      input.clips.length,
+    );
+    const editPaths = resolvedSequence.map((sourceIndex) => availableBySource.get(sourceIndex)!);
+    const concatContent = editPaths.map((p) => `file '${p}'`).join("\n");
     await writeFile(concatListPath, concatContent);
 
     await runFfmpegWithTimeout(
@@ -327,7 +348,7 @@ export async function stitchVideoClips(input: StitchInput): Promise<StitchResult
       readFile(thumbPath),
     ]);
 
-    return { videoBuffer, thumbnailBuffer, skippedClips };
+    return { videoBuffer, thumbnailBuffer, skippedClips, resolvedSequence };
   } finally {
     await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
   }

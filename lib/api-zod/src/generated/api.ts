@@ -195,6 +195,8 @@ export const ListJobsHeader = zod.object({
     .describe("Opaque session token — `Bearer <sid>`."),
 });
 
+export const listJobsResponseJobsItemAudioAnalysisOneAnalysisReceiptMax = 512;
+
 export const listJobsResponseJobsItemClipStartTimeMin = 0;
 
 export const listJobsResponseJobsItemManifestOneStoryboardClipDurationSecMin = 0;
@@ -264,6 +266,13 @@ export const ListJobsResponse = zod.object({
       audioAnalysis: zod
         .union([
           zod.object({
+            analysisReceipt: zod
+              .string()
+              .max(listJobsResponseJobsItemAudioAnalysisOneAnalysisReceiptMax)
+              .optional()
+              .describe(
+                "Server-signed receipt binding this analysis to the authenticated user and stored audio object",
+              ),
             bpm: zod.number().nullish(),
             key: zod.string().nullish(),
             energy: zod.number().nullish(),
@@ -470,6 +479,8 @@ export const createJobBodyCharacterMax = 100;
 
 export const createJobBodyClipStartTimeMin = 0;
 
+export const createJobBodyAudioAnalysisOneAnalysisReceiptMax = 512;
+
 export const createJobBodyFullTrackLipSyncEnabledDefault = false;
 export const createJobBodyFullTrackLipSyncSecondsDefault = 15;
 export const createJobBodyFullTrackLipSyncSecondsMin = 5;
@@ -558,6 +569,13 @@ export const CreateJobBody = zod.object({
   audioAnalysis: zod
     .union([
       zod.object({
+        analysisReceipt: zod
+          .string()
+          .max(createJobBodyAudioAnalysisOneAnalysisReceiptMax)
+          .optional()
+          .describe(
+            "Server-signed receipt binding this analysis to the authenticated user and stored audio object",
+          ),
         bpm: zod.number().nullish(),
         key: zod.string().nullish(),
         energy: zod.number().nullish(),
@@ -579,7 +597,7 @@ export const CreateJobBody = zod.object({
     ])
     .optional()
     .describe(
-      "Pre-computed audio analysis from POST \/audio\/analyze; when provided the job processor skips re-analysis and uses this result directly",
+      "Pre-computed audio analysis from POST \/audio\/analyze. The server verifies its signed receipt against audioObjectPath before using it for planning or billing.",
     ),
   aiProvider: zod
     .union([
@@ -630,6 +648,8 @@ export const GetJobHeader = zod.object({
     .optional()
     .describe("Opaque session token — `Bearer <sid>`."),
 });
+
+export const getJobResponseAudioAnalysisOneAnalysisReceiptMax = 512;
 
 export const getJobResponseClipStartTimeMin = 0;
 
@@ -698,6 +718,13 @@ export const GetJobResponse = zod.object({
   audioAnalysis: zod
     .union([
       zod.object({
+        analysisReceipt: zod
+          .string()
+          .max(getJobResponseAudioAnalysisOneAnalysisReceiptMax)
+          .optional()
+          .describe(
+            "Server-signed receipt binding this analysis to the authenticated user and stored audio object",
+          ),
         bpm: zod.number().nullish(),
         key: zod.string().nullish(),
         energy: zod.number().nullish(),
@@ -1366,7 +1393,16 @@ export const AnalyzeAudioBody = zod.object({
     ),
 });
 
+export const analyzeAudioResponseAnalysisReceiptMax = 512;
+
 export const AnalyzeAudioResponse = zod.object({
+  analysisReceipt: zod
+    .string()
+    .max(analyzeAudioResponseAnalysisReceiptMax)
+    .optional()
+    .describe(
+      "Server-signed receipt binding this analysis to the authenticated user and stored audio object",
+    ),
   bpm: zod.number().nullish(),
   key: zod.string().nullish(),
   energy: zod.number().nullish(),
@@ -1394,6 +1430,8 @@ export const GetDashboardStatsHeader = zod.object({
     .optional()
     .describe("Opaque session token — `Bearer <sid>`."),
 });
+
+export const getDashboardStatsResponseRecentJobsItemAudioAnalysisOneAnalysisReceiptMax = 512;
 
 export const getDashboardStatsResponseRecentJobsItemClipStartTimeMin = 0;
 
@@ -1473,6 +1511,15 @@ export const GetDashboardStatsResponse = zod.object({
         audioAnalysis: zod
           .union([
             zod.object({
+              analysisReceipt: zod
+                .string()
+                .max(
+                  getDashboardStatsResponseRecentJobsItemAudioAnalysisOneAnalysisReceiptMax,
+                )
+                .optional()
+                .describe(
+                  "Server-signed receipt binding this analysis to the authenticated user and stored audio object",
+                ),
               bpm: zod.number().nullish(),
               key: zod.string().nullish(),
               energy: zod.number().nullish(),

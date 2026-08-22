@@ -246,7 +246,13 @@ export default function Generate() {
   const [topUpOpen, setTopUpOpen] = useState(false);
   // Storyboard preview shown in the confirm dialog (no charge, no render).
   type PlannedShot = { index: number; label: string; startTime: number; energy: number; prompt: string };
-  const [shotPlan, setShotPlan] = useState<{ shots: PlannedShot[]; numClips: number; approximate: boolean } | null>(null);
+  const [shotPlan, setShotPlan] = useState<{
+    shots: PlannedShot[];
+    numClips: number;
+    timelineSceneCount: number;
+    reuseCount: number;
+    approximate: boolean;
+  } | null>(null);
   const [shotPlanLoading, setShotPlanLoading] = useState(false);
 
   // Reference image
@@ -401,18 +407,23 @@ export default function Generate() {
   // Track which objectPath the current analysis result belongs to. This prevents
   // an old upload's duration from sizing or billing a newly uploaded track.
   const [analysisForPath, setAnalysisForPath] = useState<string | null>(null);
+  const selectedAudioObjectPath =
+    sourceType === CreateJobRequestAudioSourceType.upload
+      ? objectPath
+      : sourceType === CreateJobRequestAudioSourceType.suno
+        ? (sunoResolved?.objectPath ?? null)
+        : null;
   const analyzedDurationSec = (analyzeAudio.data as { durationSeconds?: number | null } | undefined)?.durationSeconds;
-  const hasCurrentUploadAnalysis =
-    sourceType === CreateJobRequestAudioSourceType.upload &&
-    !!objectPath &&
-    analysisForPath === objectPath &&
+  const hasCurrentAudioAnalysis =
+    !!selectedAudioObjectPath &&
+    analysisForPath === selectedAudioObjectPath &&
     analyzeAudio.isSuccess &&
     typeof analyzedDurationSec === "number" &&
     Number.isFinite(analyzedDurationSec) &&
     analyzedDurationSec > 0;
   // Analyzed song length is the authoritative Full track target shown to the
   // user and sent with the job. Never reuse a stale analysis from another file.
-  const songDurationSec = hasCurrentUploadAnalysis ? analyzedDurationSec : undefined;
+  const songDurationSec = hasCurrentAudioAnalysis ? analyzedDurationSec : undefined;
   const fullTrackOverLimit = !!songDurationSec && songDurationSec > MAX_FULL_SECONDS;
   const fullTrackLabel = songDurationSec
     ? `Full track · ${formatDuration(songDurationSec)}`
@@ -434,7 +445,11 @@ export default function Generate() {
         style: selectedStyle,
         character,
         requestedDuration,
-        audioAnalysis: analyzeAudio.isSuccess ? analyzeAudio.data : null,
+        audioObjectPath: selectedAudioObjectPath,
+        audioAnalysis:
+          analyzeAudio.isSuccess && analysisForPath === selectedAudioObjectPath
+            ? analyzeAudio.data
+            : null,
       }),
     })
       .then((r) => (r.ok ? r.json() : null))
@@ -467,17 +482,17 @@ export default function Generate() {
   // Trigger server-side analysis as soon as the upload path is available.
   // Reset mutation state immediately when objectPath changes so old badges disappear.
   useEffect(() => {
-    if (sourceType === CreateJobRequestAudioSourceType.upload && objectPath) {
+    if (selectedAudioObjectPath) {
       analyzeAudio.reset();
-      setAnalysisForPath(objectPath);
-      analyzeAudio.mutate({ data: { objectPath } });
+      setAnalysisForPath(selectedAudioObjectPath);
+      analyzeAudio.mutate({ data: { objectPath: selectedAudioObjectPath } });
     } else {
       analyzeAudio.reset();
       setAnalysisForPath(null);
     }
     // analyzeAudio.mutate / analyzeAudio.reset are stable refs — safe to omit
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [objectPath, sourceType]);
+  }, [selectedAudioObjectPath]);
 
   useEffect(() => {
     if (!isAuthLoading && !isAuthenticated) {
@@ -510,7 +525,22 @@ export default function Generate() {
       const res = await fetch(`/api/suno/resolve?url=${encodeURIComponent(sunoInputUrl)}`);
       const data = await res.json() as { audioUrl?: string; title?: string; artist?: string; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Failed to load track");
-      setSunoResolved({ audioUrl: data.audioUrl!, title: data.title ?? "Untitled", artist: data.artist ?? "" });
+      const importRes = await fetch("/api/audio/import-from-link", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: sunoInputUrl, title: data.title ?? "Untitled" }),
+      });
+      const imported = await importRes.json() as { objectPath?: string; error?: string };
+      if (!importRes.ok || !imported.objectPath) {
+        throw new Error(imported.error ?? "Failed to import track");
+      }
+      setSunoResolved({
+        audioUrl: data.audioUrl!,
+        title: data.title ?? "Untitled",
+        artist: data.artist ?? "",
+        objectPath: imported.objectPath,
+      });
       setFieldErrors((fe) => ({ ...fe, audio: undefined }));
     } catch (err) {
       setSunoError(err instanceof Error ? err.message : "Could not load track");
@@ -726,7 +756,7 @@ export default function Generate() {
           style: selectedStyle,
           audioSourceType: sourceType,
           audioObjectPath:
-            sourceType === CreateJobRequestAudioSourceType.upload ? objectPath : null,
+            sourceType === CreateJobRequestAudioSourceType.none ? null : selectedAudioObjectPath,
           audioSourceUrl:
             sourceType === CreateJobRequestAudioSourceType.suno ? (sunoResolved?.audioUrl ?? null) : null,
           lyricsText: lyricsEnabled && lyricsText.trim() ? lyricsText.trim() : null,
@@ -748,9 +778,9 @@ export default function Generate() {
               ? clipStartTime
               : null,
           audioAnalysis:
-            sourceType === CreateJobRequestAudioSourceType.upload &&
+            sourceType !== CreateJobRequestAudioSourceType.none &&
             analyzeAudio.isSuccess &&
-            analysisForPath === objectPath &&
+            analysisForPath === selectedAudioObjectPath &&
             analyzeAudio.data
               ? {
                   ...analyzeAudio.data,
@@ -820,8 +850,8 @@ export default function Generate() {
     }
     if (
       requestedDuration === CreateJobRequestRequestedDuration.full &&
-      sourceType === CreateJobRequestAudioSourceType.upload &&
-      !hasCurrentUploadAnalysis
+      sourceType !== CreateJobRequestAudioSourceType.none &&
+      !hasCurrentAudioAnalysis
     ) {
       errors.audio = "Wait for audio analysis to finish before creating a full-track video.";
     }
@@ -1026,6 +1056,53 @@ export default function Generate() {
 
         <div className="grid gap-5 sm:gap-8 p-4 sm:p-8 rounded-2xl bg-card border border-card-border shadow-lg">
 
+          {/* Montage is the first production-ready structure. Narrative becomes
+              selectable after its separate planning/render contract ships. */}
+          <div className="space-y-2">
+            <Label>Video structure</Label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-primary/50 bg-primary/[0.08] p-3.5 shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.08)]">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                      <Clapperboard className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold">Visual Montage</p>
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                        Creates a focused set of visuals, then edits and recalls them across the track to keep the cost lower.
+                      </p>
+                    </div>
+                  </div>
+                  <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                    Selected
+                  </span>
+                </div>
+              </div>
+              <div
+                aria-disabled="true"
+                className="rounded-xl border border-border/60 bg-muted/20 p-3.5 opacity-65"
+              >
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
+                    <FileText className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold">Narrative Story</p>
+                      <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                        Coming next
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                      A chronological beginning-to-ending story with a unique scene for each timeline segment.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* ── Settings Toolbar ── */}
           <div className="rounded-xl border border-border/60 bg-background/40 overflow-hidden">
             {/* Top bar */}
@@ -1085,13 +1162,6 @@ export default function Generate() {
                       <span>
                         {PROVIDER_LABELS[p]}
                         <span className="text-muted-foreground"> · {p === "runway" ? "premium quality" : "value price"}</span>
-                        {/* TEMPORARY, admin-only: this direct path has fallback
-                            disabled entirely. Public Generate is unaffected. */}
-                        {isAdmin && p === "runway" && (
-                          <span className="ml-1.5 text-[10px] font-medium text-amber-400/90" title="Admin-only direct rendering with no fallback. If the selected service fails, this render fails.">
-                            · direct API, no fallback
-                          </span>
-                        )}
                       </span>
                       <span className="text-xs text-muted-foreground shrink-0">{estimateCreditCost(requestedDuration, p, resolution, songDurationSec) + lyricAddon} cr</span>
                     </DropdownMenuItem>
@@ -1119,7 +1189,7 @@ export default function Generate() {
                   <DropdownMenuItem
                     disabled={
                       sourceType === CreateJobRequestAudioSourceType.none ||
-                      !hasCurrentUploadAnalysis ||
+                      !hasCurrentAudioAnalysis ||
                       fullTrackOverLimit
                     }
                     onClick={() => handleDurationChange(CreateJobRequestRequestedDuration.full)}
@@ -2081,7 +2151,7 @@ export default function Generate() {
              const fullTrackNeedsAnalysis =
                requestedDuration === CreateJobRequestRequestedDuration.full &&
                sourceType === CreateJobRequestAudioSourceType.upload &&
-               !hasCurrentUploadAnalysis;
+               !hasCurrentAudioAnalysis;
             return (
               <div className="space-y-2">
                 <Button
@@ -2286,7 +2356,7 @@ export default function Generate() {
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium flex items-center gap-1.5 text-foreground">
                     <Clapperboard className="h-4 w-4 text-primary" />
-                    Shot plan{shotPlan ? ` · ${shotPlan.numClips} shots` : ""}
+                    Montage plan{shotPlan ? ` · ${shotPlan.numClips} unique visuals` : ""}
                   </span>
                   {shotPlan?.approximate && (
                     <span className="text-[10px] text-muted-foreground">approximate — analyze audio for exact</span>
@@ -2298,20 +2368,28 @@ export default function Generate() {
                   </div>
                 )}
                 {shotPlan && shotPlan.shots.length > 0 && (
-                  <div className="max-h-44 overflow-y-auto space-y-2 pr-1">
-                    {shotPlan.shots.map((s) => (
-                      <div key={s.index} className="text-xs">
-                        <div className="flex items-center gap-2 font-medium text-foreground">
-                          <span className="inline-flex h-4 min-w-[1rem] px-1 items-center justify-center rounded bg-primary/15 text-primary text-[10px]">
-                            {s.index + 1}
-                          </span>
-                          <span className="capitalize">{s.label}</span>
-                          <span className="text-muted-foreground font-normal">· {Math.round(s.energy * 100)}% energy</span>
+                  <>
+                    <p className="mb-2 text-xs leading-relaxed text-muted-foreground">
+                      {shotPlan.timelineSceneCount} music-timed cuts
+                      {shotPlan.reuseCount > 0
+                        ? ` · ${shotPlan.reuseCount} intentional visual recalls keep the price lower`
+                        : " · no visual reuse needed"}
+                    </p>
+                    <div className="max-h-44 overflow-y-auto space-y-2 pr-1">
+                      {shotPlan.shots.map((s) => (
+                        <div key={s.index} className="text-xs">
+                          <div className="flex items-center gap-2 font-medium text-foreground">
+                            <span className="inline-flex h-4 min-w-[1rem] px-1 items-center justify-center rounded bg-primary/15 text-primary text-[10px]">
+                              {s.index + 1}
+                            </span>
+                            <span className="capitalize">{s.label}</span>
+                            <span className="text-muted-foreground font-normal">· {Math.round(s.energy * 100)}% energy</span>
+                          </div>
+                          <p className="text-muted-foreground mt-0.5 leading-snug">{s.prompt}</p>
                         </div>
-                        <p className="text-muted-foreground mt-0.5 leading-snug">{s.prompt}</p>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  </>
                 )}
               </div>
             </div>

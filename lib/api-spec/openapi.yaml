@@ -996,6 +996,10 @@ components:
     AudioAnalysis:
       type: object
       properties:
+        analysisReceipt:
+          type: string
+          maxLength: 512
+          description: Server-signed receipt binding this analysis to the authenticated user and stored audio object
         bpm:
           type: [number, 'null']
         key:
@@ -1246,7 +1250,7 @@ components:
           oneOf:
             - $ref: '#/components/schemas/AudioAnalysis'
             - type: 'null'
-          description: Pre-computed audio analysis from POST /audio/analyze; when provided the job processor skips re-analysis and uses this result directly
+          description: Pre-computed audio analysis from POST /audio/analyze. The server verifies its signed receipt against audioObjectPath before using it for planning or billing.
         aiProvider:
           type: [string, 'null']
           enum: ['runway', 'kling', 'luma', null]

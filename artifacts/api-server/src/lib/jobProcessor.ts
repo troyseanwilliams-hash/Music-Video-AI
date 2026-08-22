@@ -17,6 +17,7 @@ import { generateClip, downloadClip, checkPixazoRequest, getActiveProvider, PROV
 import { generateLipsync, lipsyncAvailable } from "./lipsync.js";
 import { stitchVideoClips, extractVideoThumbnail } from "./videoStitcher.js";
 import { stitchEditorTimeline } from "./editorStitcher.js";
+import { resolveMontageSequence } from "./montageSequence.js";
 
 const execAsync = promisify(exec);
 const MAX_RETRIES = 3;
@@ -76,6 +77,13 @@ type PersistedStoryboardShot = {
   prompt: string;
 };
 
+type GeneratedClip = {
+  buffer: Buffer;
+  targetDuration: number;
+  prompt: string;
+  visualIndex: number;
+};
+
 type AiJobMeta = {
   reservedCredits?: number;
   reservedSubscriptionCredits?: number;
@@ -86,7 +94,7 @@ type AiJobMeta = {
   pendingRequests?: Record<string, string>; // clip index -> provider poll URL (submitted, not yet downloaded)
   retryAfter?: number; // epoch ms — queued job must not be claimed before this
   finalizeWithPartial?: boolean; // admin: stitch whatever clips exist, never call the provider
-  storyboard?: { shots?: unknown[] };
+  storyboard?: { shots?: unknown[]; timeline?: unknown[] };
   baseCreditCost?: number;
   baseReservedSubscriptionCredits?: number;
   baseReservedTopupCredits?: number;
@@ -545,7 +553,7 @@ async function generateClips(
   analysis: AudioAnalysis,
   onProgress: (pct: number) => Promise<void>,
 ): Promise<{
-  clips: { buffer: Buffer; targetDuration: number; prompt: string }[];
+  clips: GeneratedClip[];
   shortfallNotice?: string;
 }> {
   const provider = getActiveProvider((job as JobRow & { aiProvider?: string | null }).aiProvider ?? undefined);
@@ -553,7 +561,7 @@ async function generateClips(
 
   // Use the same clip plan as the credit formula so the number of provider calls
   // matches exactly what was charged.
-  const { numClips: maxClips } = getClipPlan(requestedDur, analysis.durationSeconds);
+  const { numClips: maxClips, clipDurationSec } = getClipPlan(requestedDur, analysis.durationSeconds);
   const storyboardShots = storyboardShotsOf(job);
   // selectSections picks the best unique sections; cycle through them to fill
   // the required clip count (matches worker's buildGenerationPlan approach).
@@ -572,14 +580,7 @@ async function generateClips(
 
   const refImageUrl = await loadReferenceImageUrl(job);
 
-  // Compute the total output duration from the job's requested duration.
-  // Do NOT use section.endTime - section.startTime: when audio clipping fails
-  // or MP3 headers report the wrong total length, section timestamps reflect
-  // the full audio file and each clip gets looped for the entire song duration.
-  const totalOutputDuration = targetOutputDuration(requestedDur, analysis.durationSeconds);
-  const perClipTargetDuration = Math.max(1, totalOutputDuration / sections.length);
-
-  const clips: { buffer: Buffer; targetDuration: number; prompt: string }[] = new Array(sections.length);
+  const clips: GeneratedClip[] = new Array(sections.length);
 
   // Salvage: any clips rendered on a previous attempt are persisted in the job
   // manifest. Reuse them instead of paying to regenerate — a retry only re-runs
@@ -608,8 +609,8 @@ async function generateClips(
       ? storyboardShots[i % storyboardShots.length]!
       : null;
     const section = sections[i]!;
-    const targetDuration = perClipTargetDuration;
-    const clipDuration = Math.min(Math.max(Math.ceil(targetDuration), 5), 10);
+    const targetDuration = clipDurationSec;
+    const clipDuration = clipDurationSec;
 
     await onProgress(30 + Math.floor((i / sections.length) * 40));
 
@@ -622,7 +623,7 @@ async function generateClips(
       try {
         const url = await storageService.getObjectEntitySignedUrl(persisted[i]!, 3600);
         const buf = await downloadClip(url);
-        clips[i] = { buffer: buf, targetDuration, prompt };
+        clips[i] = { buffer: buf, targetDuration, prompt, visualIndex: i };
         logger.info({ jobId: job.id, clip: i }, "Reused previously-rendered clip (salvage)");
         continue;
       } catch (e) {
@@ -639,7 +640,7 @@ async function generateClips(
       if (check.state === "completed") {
         try {
           const buf = await downloadClip(check.mediaUrl);
-          clips[i] = { buffer: buf, targetDuration, prompt };
+          clips[i] = { buffer: buf, targetDuration, prompt, visualIndex: i };
           try {
             const path = await storageService.uploadClipBuffer(buf, `job-${job.id}`, i);
             persisted[i] = path;
@@ -673,7 +674,12 @@ async function generateClips(
     if (provider === "simulation") {
       logger.info({ jobId: job.id, section: section.label, clipDuration }, "Simulation: creating placeholder clip");
       await new Promise((r) => setTimeout(r, 1500));
-      clips[i] = { buffer: await createSimulationClip(clipDuration), targetDuration, prompt };
+      clips[i] = {
+        buffer: await createSimulationClip(clipDuration),
+        targetDuration,
+        prompt,
+        visualIndex: i,
+      };
       continue;
     }
 
@@ -746,7 +752,7 @@ async function generateClips(
       logger.warn({ jobId: job.id, clip: i, err: e }, "Could not persist salvage copy of clip (non-fatal)");
     }
 
-    clips[i] = { buffer: clipBuffer, targetDuration, prompt };
+    clips[i] = { buffer: clipBuffer, targetDuration, prompt, visualIndex: i };
   }
 
   if (finalizeOnly) {
@@ -759,12 +765,8 @@ async function generateClips(
         { jobId: job.id, salvaged: salvaged.length, planned: sections.length },
         "Finalize-only: stitching with fewer unique clips than planned",
       );
-      // Re-spread the requested runtime across the clips we actually have so
-      // the stitched video still fills the full duration (clips loop/stretch)
-      // instead of ending early.
-      const perClip = Math.max(1, totalOutputDuration / salvaged.length);
       return {
-        clips: salvaged.map((c) => ({ ...c, targetDuration: perClip })),
+        clips: salvaged.map((c) => ({ ...c, targetDuration: clipDurationSec })),
         shortfallNotice: "Finalized with available clips",
       };
     }
@@ -778,12 +780,13 @@ async function generateClips(
 // array persisted on videos.clips. Timestamps are cumulative across clips.
 async function persistClips(
   videoId: string,
-  clips: { buffer: Buffer; targetDuration: number; prompt: string }[],
+  clips: GeneratedClip[],
   style: string | null,
+  sequence?: number[],
+  totalDuration?: number,
 ): Promise<VideoClipMeta[]> {
   const round2 = (n: number) => Math.round(n * 100) / 100;
-  const metas: VideoClipMeta[] = [];
-  let cursor = 0;
+  const objectPaths: string[] = [];
   for (let i = 0; i < clips.length; i++) {
     const c = clips[i]!;
     let objectPath = "";
@@ -794,17 +797,29 @@ async function persistClips(
       // regenerated). Never fail the whole job over clip persistence.
       logger.warn({ err, videoId, index: i }, "Failed to persist clip for remix (non-fatal)");
     }
+    objectPaths.push(objectPath);
+  }
+
+  const editOrder = sequence?.length ? sequence : clips.map((_, index) => index);
+  const metas: VideoClipMeta[] = [];
+  let cursor = 0;
+  for (let i = 0; i < editOrder.length; i++) {
+    const sourceIndex = ((editOrder[i]! % clips.length) + clips.length) % clips.length;
+    const c = clips[sourceIndex]!;
+    const remaining = totalDuration == null ? c.targetDuration : Math.max(0, totalDuration - cursor);
+    const duration = Math.min(c.targetDuration, remaining);
+    if (duration <= 0) break;
     const start = cursor;
-    const end = cursor + c.targetDuration;
+    const end = cursor + duration;
     cursor = end;
     metas.push({
       index: i,
       startTime: round2(start),
       endTime: round2(end),
-      durationSec: round2(c.targetDuration),
+      durationSec: round2(duration),
       prompt: c.prompt,
       style,
-      objectPath,
+      objectPath: objectPaths[sourceIndex] ?? "",
     });
   }
   return metas;
@@ -1696,9 +1711,17 @@ async function processJob(job: JobRow): Promise<void> {
 
     const reqDur = (job as JobRow & { requestedDuration?: string | null }).requestedDuration;
     const outputDuration = targetOutputDuration(reqDur, analysis.durationSeconds);
+    const montageSequence = resolveMontageSequence(
+      aiMetaOf(job).storyboard?.timeline,
+      clips,
+      outputDuration,
+      clips[0]?.targetDuration ?? 10,
+    );
+    let resolvedMontageSequence = montageSequence;
     if (audioData) {
       const stitchResult = await stitchVideoClips({
         clips,
+        sequence: montageSequence,
         audioBuffer: audioData.buffer,
         audioExt: audioData.ext,
         totalDuration: outputDuration,
@@ -1706,6 +1729,7 @@ async function processJob(job: JobRow): Promise<void> {
       });
       videoBuffer = stitchResult.videoBuffer;
       thumbnailBuffer = stitchResult.thumbnailBuffer;
+      resolvedMontageSequence = stitchResult.resolvedSequence;
     } else if (clips.length > 0) {
       // No audio — either the user intentionally chose "no audio" (a silent
       // video meant to get a soundtrack added later in the Editor), or audio
@@ -1713,11 +1737,13 @@ async function processJob(job: JobRow): Promise<void> {
       // silent video rather than discarding all but the first clip.
       const stitchResult = await stitchVideoClips({
         clips,
+        sequence: montageSequence,
         totalDuration: outputDuration,
         lyricsText, // captions burn onto silent videos too
       });
       videoBuffer = stitchResult.videoBuffer;
       thumbnailBuffer = stitchResult.thumbnailBuffer;
+      resolvedMontageSequence = stitchResult.resolvedSequence;
     } else {
       videoBuffer = await createSimulationClip(10);
       thumbnailBuffer = await extractVideoThumbnail(videoBuffer, 2);
@@ -1736,7 +1762,13 @@ async function processJob(job: JobRow): Promise<void> {
 
     // Persist individual clips so the user can remix (regenerate) any one of
     // them later without rerunning the whole pipeline.
-    const clipMetas = await persistClips(videoId, clips, job.style ?? null);
+    const clipMetas = await persistClips(
+      videoId,
+      clips,
+      job.style ?? null,
+      resolvedMontageSequence,
+      outputDuration,
+    );
 
     const activatedLipSyncChildId = await db.transaction(async (tx) => {
       await tx.insert(videosTable).values({

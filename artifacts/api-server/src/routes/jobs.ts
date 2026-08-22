@@ -24,6 +24,7 @@ import { getUserTier, canRender4k } from "../lib/tier.js";
 import { planShots } from "../lib/shotPlan.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { MAX_LYRICS_LENGTH } from "../lib/lyricLimits.js";
+import { verifyAudioAnalysisReceipt } from "../lib/audioAnalysisReceipt.js";
 
 const router = Router();
 
@@ -152,13 +153,31 @@ router.post("/jobs/preview-shots", async (req, res) => {
     return;
   }
   try {
-    const { prompt, style, character, requestedDuration, audioAnalysis } = (req.body ?? {}) as Record<string, unknown>;
+    const {
+      prompt,
+      style,
+      character,
+      requestedDuration,
+      audioAnalysis,
+      audioObjectPath,
+    } = (req.body ?? {}) as Record<string, unknown>;
+    const analysisReceipt = audioAnalysis && typeof audioAnalysis === "object"
+      ? (audioAnalysis as Record<string, unknown>).analysisReceipt
+      : null;
+    const verifiedAnalysis = typeof audioObjectPath === "string"
+      ? verifyAudioAnalysisReceipt({
+          userId: req.user.id,
+          objectPath: audioObjectPath,
+          analysis: audioAnalysis,
+          receipt: analysisReceipt,
+        })
+      : null;
     const plan = planShots({
       prompt: prompt as string | null,
       style: style as string | null,
       character: character as string | null,
       requestedDuration: requestedDuration as string | null,
-      analysis: (audioAnalysis ?? null) as never,
+      analysis: verifiedAnalysis as never,
     });
     res.json(plan);
   } catch (err) {
@@ -260,8 +279,19 @@ router.post("/jobs", async (req, res) => {
   // Editor) — there's no audio to attest ownership of, and no song to derive
   // a "full length" from, so both requirements below are skipped for them.
   const noAudio = audioSourceType === "none";
+  const analysisReceipt = audioAnalysis && typeof audioAnalysis === "object"
+    ? (audioAnalysis as Record<string, unknown>).analysisReceipt
+    : null;
+  const verifiedAudioAnalysis = typeof audioObjectPath === "string"
+    ? verifyAudioAnalysisReceipt({
+        userId: req.user.id,
+        objectPath: audioObjectPath,
+        analysis: audioAnalysis,
+        receipt: analysisReceipt,
+      })
+    : null;
   const submittedDuration = (
-    audioAnalysis as { durationSeconds?: number | null } | null | undefined
+    verifiedAudioAnalysis as { durationSeconds?: number | null } | null
   )?.durationSeconds;
 
   if (!noAudio && (req.body as { acceptCopyright?: unknown })?.acceptCopyright !== true) {
@@ -328,7 +358,7 @@ router.post("/jobs", async (req, res) => {
   // uploaded file. This prevents a stale client-side duration from becoming a
   // paid render with an unexpected runtime.
   if (
-    audioSourceType === "upload" &&
+    !noAudio &&
     (!requestedDuration || requestedDuration === "full") &&
     (!Number.isFinite(submittedDuration) || !submittedDuration || submittedDuration <= 0)
   ) {
@@ -339,7 +369,7 @@ router.post("/jobs", async (req, res) => {
     return;
   }
   if (
-    audioSourceType === "upload" &&
+    !noAudio &&
     (!requestedDuration || requestedDuration === "full") &&
     typeof submittedDuration === "number" &&
     submittedDuration > MAX_FULL_SECONDS
@@ -396,7 +426,9 @@ router.post("/jobs", async (req, res) => {
   // admins render clean. getUserTier returns null when there's no paid plan.
   const watermark = !isAdmin && !tier;
 
-  const songDurationSec = (audioAnalysis as { durationSeconds?: number } | null | undefined)?.durationSeconds;
+  const songDurationSec = (
+    verifiedAudioAnalysis as { durationSeconds?: number } | null
+  )?.durationSeconds;
   // Kling (via Pixazo) is cheaper than Runway, so the charge scales with the
   // chosen engine. Only "kling" is offered as an alternative for now.
   const engine = String(aiProvider ?? "").toLowerCase() === "kling" ? "kling" : "runway";
@@ -495,7 +527,7 @@ router.post("/jobs", async (req, res) => {
       referenceImagePath: referenceImagePath ?? null,
       requestedDuration: requestedDuration ?? "full",
       clipStartTime: requestedDuration === "full" ? null : (clipStartTime ?? null),
-      audioAnalysis: audioAnalysis as unknown as Record<string, unknown> ?? null,
+      audioAnalysis: verifiedAudioAnalysis,
       aiProvider: engine,
       watermark,
       // AI jobs stash billing + clip-salvage state in the (otherwise unused)
@@ -517,7 +549,7 @@ router.post("/jobs", async (req, res) => {
           style,
           character,
           requestedDuration,
-          analysis: (audioAnalysis ?? null) as never,
+          analysis: verifiedAudioAnalysis as never,
         }),
       } as unknown as Record<string, unknown>,
       prompt,

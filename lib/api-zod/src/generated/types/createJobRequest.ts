@@ -63,7 +63,7 @@ export interface CreateJobRequest {
    * @nullable
    */
   clipStartTime?: number | null;
-  /** Pre-computed audio analysis from POST /audio/analyze; when provided the job processor skips re-analysis and uses this result directly */
+  /** Pre-computed audio analysis from POST /audio/analyze. The server verifies its signed receipt against audioObjectPath before using it for planning or billing. */
   audioAnalysis?: AudioAnalysis | null;
   /**
    * Preferred AI video generation provider; falls back to the server-configured active provider if not set or unavailable

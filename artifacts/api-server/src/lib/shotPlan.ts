@@ -48,11 +48,23 @@ export interface PlannedShot {
   prompt: string;
 }
 
+export interface MontageTimelineEntry {
+  index: number;
+  visualIndex: number;
+  startTime: number;
+  duration: number;
+  label: string;
+  energy: number;
+}
+
 export interface ShotPlan {
   numClips: number;
   clipDurationSec: number;
   targetOutputDuration: number;
   shots: PlannedShot[];
+  timeline: MontageTimelineEntry[];
+  timelineSceneCount: number;
+  reuseCount: number;
   approximate: boolean; // true when real audio analysis wasn't available
 }
 
@@ -90,10 +102,110 @@ function planCount(requestedDuration: string | null | undefined, durationSec: nu
   return { numClips, clipDurationSec, target: durSec };
 }
 
-// Mirror of buildSectionPrompt.
-function buildPrompt(input: ShotPlanInput, section: ShotSection, bpm: number | null, mood: string | null): string {
+const MONTAGE_ROLES = [
+  "establishing world",
+  "hero subject",
+  "kinetic motion",
+  "environment detail",
+  "texture and atmosphere",
+  "high-energy visual",
+  "intimate close-up",
+  "wide-scale spectacle",
+  "symbolic motif",
+  "closing callback",
+];
+
+function splitPromptIntoConcepts(prompt: string, count: number): string[] {
+  const normalized = prompt.replace(/\s+/g, " ").trim() || "cinematic music video imagery";
+  let parts = normalized
+    .split(/(?:[.!?;]+\s*|\n+|,\s+(?=(?:then|next|while|as|before|after|finally)\b))/i)
+    .map((part) => part.trim().replace(/^[,:\-\s]+|[,:\-\s]+$/g, ""))
+    .filter(Boolean);
+
+  if (parts.length === 1) {
+    const clauses = normalized
+      .split(/\s+(?:then|and then|before|after|while|finally)\s+/i)
+      .map((part) => part.trim().replace(/^[,:\-\s]+|[,:\-\s]+$/g, ""))
+      .filter(Boolean);
+    if (clauses.length > 1) parts = clauses;
+  }
+
+  if (parts.length > count) {
+    parts = Array.from({ length: count }, (_, index) => {
+      const from = Math.floor((index * parts.length) / count);
+      const to = Math.floor(((index + 1) * parts.length) / count);
+      return parts.slice(from, Math.max(from + 1, to)).join(", ");
+    });
+  }
+
+  return Array.from({ length: count }, (_, index) => parts[index % parts.length]!);
+}
+
+function representativeSections(sections: ShotSection[], count: number): ShotSection[] {
+  const chronological = [...sections].sort((a, b) => a.startTime - b.startTime);
+  if (count <= 1) return [chronological[0]!];
+  return Array.from({ length: count }, (_, index) => {
+    const position = Math.round((index / (count - 1)) * (chronological.length - 1));
+    return chronological[position]!;
+  });
+}
+
+function sectionAtTime(sections: ShotSection[], time: number): ShotSection {
+  const chronological = [...sections].sort((a, b) => a.startTime - b.startTime);
+  return chronological.find((section) => time >= section.startTime && time < section.endTime)
+    ?? chronological.reduce((closest, section) =>
+      Math.abs(section.startTime - time) < Math.abs(closest.startTime - time) ? section : closest,
+    chronological[0]!);
+}
+
+function buildMontageTimeline(
+  shots: PlannedShot[],
+  sections: ShotSection[],
+  targetDuration: number,
+  slotDuration: number,
+): MontageTimelineEntry[] {
+  if (shots.length === 0 || targetDuration <= 0) return [];
+  const sceneCount = Math.max(1, Math.ceil(targetDuration / slotDuration));
+  const usage = new Array(shots.length).fill(0) as number[];
+  let previousVisual = -1;
+
+  return Array.from({ length: sceneCount }, (_, index) => {
+    const startTime = index * slotDuration;
+    const duration = Math.min(slotDuration, targetDuration - startTime);
+    const section = sectionAtTime(sections, startTime + duration / 2);
+    const leastUsed = Math.min(...usage);
+    const candidates = shots.filter((shot) => usage[shot.index] === leastUsed);
+    const selected = candidates
+      .map((shot) => ({
+        shot,
+        score:
+          Math.abs(shot.energy - section.energy)
+          + (shot.index === previousVisual && shots.length > 1 ? 10 : 0),
+      }))
+      .sort((a, b) => a.score - b.score || a.shot.index - b.shot.index)[0]!.shot;
+
+    usage[selected.index] += 1;
+    previousVisual = selected.index;
+    return {
+      index,
+      visualIndex: selected.index,
+      startTime,
+      duration,
+      label: section.label,
+      energy: Math.round(section.energy * 100) / 100,
+    };
+  });
+}
+
+function buildPrompt(
+  input: ShotPlanInput,
+  section: ShotSection,
+  bpm: number | null,
+  mood: string | null,
+  concept: string,
+  montageRole: string,
+): string {
   const style = input.style ?? "cinematic";
-  const userPrompt = input.prompt || "music video";
   const styleDesc = STYLE_PROMPTS[style] ?? STYLE_PROMPTS.cinematic!;
   const energyDesc =
     section.energy > 0.75
@@ -114,8 +226,10 @@ function buildPrompt(input: ShotPlanInput, section: ShotSection, bpm: number | n
     `${mood ?? "energetic"} mood`,
     energyDesc,
     characterDesc,
+    `${montageRole} visual motif`,
     `${section.label} section visual treatment`,
-    userPrompt,
+    concept,
+    "one focused visual idea, no complete storyline or multi-scene sequence inside this clip",
     "beat-synced cuts, professional music video production, 4K ultra-wide",
   ].filter(Boolean).join(", ");
 }
@@ -125,20 +239,32 @@ export function planShots(input: ShotPlanInput): ShotPlan {
   const { numClips, clipDurationSec, target } = planCount(input.requestedDuration, durationSec);
   const hasReal = !!(input.analysis?.sections && input.analysis.sections.length > 0);
   const sections = hasReal ? input.analysis!.sections! : fallbackSections(target || durationSec || 60);
-  const sorted = [...sections].sort((a, b) => b.energy - a.energy);
+  const motifSections = representativeSections(sections, numClips);
+  const concepts = splitPromptIntoConcepts(input.prompt || "music video", numClips);
   const bpm = input.analysis?.bpm ?? null;
   const mood = input.analysis?.mood ?? null;
 
   const shots: PlannedShot[] = [];
   for (let i = 0; i < numClips; i++) {
-    const s = sorted[i % sorted.length]!;
+    const s = motifSections[i]!;
+    const role = MONTAGE_ROLES[i % MONTAGE_ROLES.length]!;
     shots.push({
       index: i,
-      label: s.label,
+      label: role,
       startTime: s.startTime,
       energy: Math.round(s.energy * 100) / 100,
-      prompt: buildPrompt(input, s, bpm, mood),
+      prompt: buildPrompt(input, s, bpm, mood, concepts[i]!, role),
     });
   }
-  return { numClips, clipDurationSec, targetOutputDuration: target, shots, approximate: !hasReal };
+  const timeline = buildMontageTimeline(shots, sections, target, clipDurationSec);
+  return {
+    numClips,
+    clipDurationSec,
+    targetOutputDuration: target,
+    shots,
+    timeline,
+    timelineSceneCount: timeline.length,
+    reuseCount: Math.max(0, timeline.length - numClips),
+    approximate: !hasReal,
+  };
 }

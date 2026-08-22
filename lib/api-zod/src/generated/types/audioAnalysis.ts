@@ -8,6 +8,11 @@
 import type { AudioAnalysisSectionsItem } from "./audioAnalysisSectionsItem";
 
 export interface AudioAnalysis {
+  /**
+   * Server-signed receipt binding this analysis to the authenticated user and stored audio object
+   * @maxLength 512
+   */
+  analysisReceipt?: string;
   /** @nullable */
   bpm?: number | null;
   /** @nullable */
