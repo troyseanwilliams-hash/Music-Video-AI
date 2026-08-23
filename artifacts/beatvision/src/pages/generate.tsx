@@ -431,6 +431,15 @@ export default function Generate() {
     typeof analyzedDurationSec === "number" &&
     Number.isFinite(analyzedDurationSec) &&
     analyzedDurationSec > 0;
+  const fullTrackSelected = String(requestedDuration) === "full";
+  const fullTrackNeedsAnalysis =
+    fullTrackSelected &&
+    sourceType !== CreateJobRequestAudioSourceType.none &&
+    !hasCurrentAudioAnalysis;
+  const isCurrentAudioAnalysisPending =
+    !!selectedAudioObjectPath &&
+    analysisForPath === selectedAudioObjectPath &&
+    analyzeAudio.isPending;
   // Analyzed song length is the authoritative Full track target shown to the
   // user and sent with the job. Never reuse a stale analysis from another file.
   const songDurationSec = hasCurrentAudioAnalysis ? analyzedDurationSec : undefined;
@@ -438,7 +447,6 @@ export default function Generate() {
   const fullTrackLabel = songDurationSec
     ? `Full track · ${formatDuration(songDurationSec)}`
     : "Full track";
-  const fullTrackSelected = String(requestedDuration) === "full";
 
   // Fetch the storyboard preview whenever the confirm dialog opens (free, no render).
   useEffect(() => {
@@ -761,6 +769,25 @@ export default function Generate() {
       });
       return;
     }
+    if (fullTrackNeedsAnalysis || fullTrackOverLimit) {
+      const message = fullTrackOverLimit
+        ? `Full-track videos support audio up to ${Math.floor(MAX_FULL_SECONDS / 60)} minutes. Choose a shorter track or a specific duration.`
+        : isCurrentAudioAnalysisPending
+          ? "Audio analysis is still running. Wait for it to finish before creating a full-track video."
+          : "Audio analysis did not finish. Retry the analysis or choose a specific video duration.";
+      setConfirmOpen(false);
+      setFieldErrors((errors) => ({ ...errors, audio: message }));
+      setErrorDialog({
+        open: true,
+        title: fullTrackOverLimit ? "Track is too long" : "Audio analysis not ready",
+        message,
+        code: fullTrackOverLimit
+          ? "AUDIO_DURATION_LIMIT_EXCEEDED"
+          : "AUDIO_ANALYSIS_REQUIRED",
+      });
+      return;
+    }
+    setConfirmOpen(false);
     createJob.mutate(
       {
         data: {
@@ -792,8 +819,7 @@ export default function Generate() {
               : null,
           audioAnalysis:
             sourceType !== CreateJobRequestAudioSourceType.none &&
-            analyzeAudio.isSuccess &&
-            analysisForPath === selectedAudioObjectPath &&
+            hasCurrentAudioAnalysis &&
             analyzeAudio.data
               ? {
                   ...analyzeAudio.data,
@@ -834,6 +860,12 @@ export default function Generate() {
 
           if (code === "INSUFFICIENT_CREDITS") title = "Not enough credits";
           else if (code === "SUBSCRIPTION_REQUIRED") title = "Subscription required";
+          else if (code === "AUDIO_ANALYSIS_REQUIRED") {
+            title = "Audio analysis not ready";
+            message = "Audio analysis did not finish. Retry the analysis or choose a specific video duration.";
+          } else if (code === "AUDIO_DURATION_LIMIT_EXCEEDED") {
+            title = "Track is too long";
+          }
 
           setErrorDialog({ open: true, title, message, code, creditsRequired, creditsRemaining });
         },
@@ -862,9 +894,7 @@ export default function Generate() {
       errors.audio = "Choose a specific length for a no-audio video.";
     }
     if (
-      requestedDuration === CreateJobRequestRequestedDuration.full &&
-      sourceType !== CreateJobRequestAudioSourceType.none &&
-      !hasCurrentAudioAnalysis
+      fullTrackNeedsAnalysis
     ) {
       errors.audio = "Wait for audio analysis to finish before creating a full-track video.";
     }
@@ -1750,10 +1780,25 @@ export default function Generate() {
                       );
                     })()}
 
-                    {analyzeAudio.isError && !analyzeAudio.isPending && analysisForPath === objectPath && (
-                      <div className="flex items-center gap-1.5 text-xs text-amber-500/80">
-                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                        Audio analysis unavailable — you can still generate.
+                    {analyzeAudio.isError && !analyzeAudio.isPending && analysisForPath === objectPath && objectPath && (
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-amber-500/80">
+                        <span className="inline-flex items-center gap-1.5">
+                          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                          Audio analysis unavailable. Retry to use Full track, or choose a specific duration.
+                        </span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-xs"
+                          onClick={() => {
+                            analyzeAudio.reset();
+                            setAnalysisForPath(objectPath);
+                            analyzeAudio.mutate({ data: { objectPath } });
+                          }}
+                        >
+                          Retry analysis
+                        </Button>
                       </div>
                     )}
                   </div>
@@ -2184,15 +2229,6 @@ export default function Generate() {
 
           {/* ── Generate ── */}
           {(() => {
-            const isAnalyzingAudio =
-              sourceType === CreateJobRequestAudioSourceType.upload &&
-              objectPath !== null &&
-              analysisForPath === objectPath &&
-              analyzeAudio.isPending;
-             const fullTrackNeedsAnalysis =
-               requestedDuration === CreateJobRequestRequestedDuration.full &&
-               sourceType === CreateJobRequestAudioSourceType.upload &&
-               !hasCurrentAudioAnalysis;
             return (
               <div className="space-y-2">
                 <Button
@@ -2200,16 +2236,16 @@ export default function Generate() {
                   className="w-full h-14 text-lg bg-gradient-electric text-white shadow-glow mt-2"
                   disabled={
                     createJob.isPending ||
-                    isAnalyzingAudio ||
-                     fullTrackNeedsAnalysis ||
-                     fullTrackOverLimit ||
+                    isCurrentAudioAnalysisPending ||
+                    fullTrackNeedsAnalysis ||
+                    fullTrackOverLimit ||
                     (sourceType !== CreateJobRequestAudioSourceType.none && !copyrightAcknowledged)
                   }
                   onClick={handleGenerate}
                 >
                   {createJob.isPending ? (
                     <Loader2 className="h-6 w-6 animate-spin" />
-                  ) : isAnalyzingAudio ? (
+                  ) : isCurrentAudioAnalysisPending ? (
                     <>
                       <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                       <span>Analysing audio…</span>
@@ -2460,6 +2496,25 @@ export default function Generate() {
             </div>
           </DialogDescription>
         </DialogHeader>
+        {(fullTrackNeedsAnalysis || fullTrackOverLimit) && (
+          <div
+            className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300"
+            role="status"
+          >
+            {isCurrentAudioAnalysisPending ? (
+              <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin" />
+            ) : (
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            )}
+            <span>
+              {fullTrackOverLimit
+                ? `This track is longer than the ${Math.floor(MAX_FULL_SECONDS / 60)}-minute Full track limit. Choose a specific duration.`
+                : isCurrentAudioAnalysisPending
+                  ? "Audio analysis is still running. Confirmation will unlock when it finishes."
+                  : "Audio analysis is unavailable. Close this window to retry or choose a specific duration."}
+            </span>
+          </div>
+        )}
         <DialogFooter className="flex-col sm:flex-row gap-2 mt-2">
           <Button
             variant="outline"
@@ -2470,11 +2525,8 @@ export default function Generate() {
           </Button>
           <Button
             className="bg-gradient-electric text-white shadow-glow border-0 sm:order-2"
-            disabled={createJob.isPending}
-            onClick={() => {
-              setConfirmOpen(false);
-              submitJob();
-            }}
+            disabled={createJob.isPending || fullTrackNeedsAnalysis || fullTrackOverLimit}
+            onClick={submitJob}
           >
             {createJob.isPending ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />

@@ -281,6 +281,12 @@ export const ListJobsResponse = zod.object({
             mood: zod.string().nullish(),
             durationSeconds: zod.number().nullish(),
             beatTimestamps: zod.array(zod.number()).optional(),
+            beatGrid: zod
+              .array(zod.number())
+              .optional()
+              .describe(
+                "Regular beat positions used to align generated cuts with the analyzed track",
+              ),
             sections: zod
               .array(
                 zod.object({
@@ -605,6 +611,12 @@ export const CreateJobBody = zod.object({
         mood: zod.string().nullish(),
         durationSeconds: zod.number().nullish(),
         beatTimestamps: zod.array(zod.number()).optional(),
+        beatGrid: zod
+          .array(zod.number())
+          .optional()
+          .describe(
+            "Regular beat positions used to align generated cuts with the analyzed track",
+          ),
         sections: zod
           .array(
             zod.object({
@@ -756,6 +768,12 @@ export const GetJobResponse = zod.object({
         mood: zod.string().nullish(),
         durationSeconds: zod.number().nullish(),
         beatTimestamps: zod.array(zod.number()).optional(),
+        beatGrid: zod
+          .array(zod.number())
+          .optional()
+          .describe(
+            "Regular beat positions used to align generated cuts with the analyzed track",
+          ),
         sections: zod
           .array(
             zod.object({
@@ -1578,6 +1596,12 @@ export const AnalyzeAudioResponse = zod.object({
   mood: zod.string().nullish(),
   durationSeconds: zod.number().nullish(),
   beatTimestamps: zod.array(zod.number()).optional(),
+  beatGrid: zod
+    .array(zod.number())
+    .optional()
+    .describe(
+      "Regular beat positions used to align generated cuts with the analyzed track",
+    ),
   sections: zod
     .array(
       zod.object({
@@ -1697,6 +1721,12 @@ export const GetDashboardStatsResponse = zod.object({
               mood: zod.string().nullish(),
               durationSeconds: zod.number().nullish(),
               beatTimestamps: zod.array(zod.number()).optional(),
+              beatGrid: zod
+                .array(zod.number())
+                .optional()
+                .describe(
+                  "Regular beat positions used to align generated cuts with the analyzed track",
+                ),
               sections: zod
                 .array(
                   zod.object({

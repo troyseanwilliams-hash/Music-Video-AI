@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CreateJobBody } from "@workspace/api-zod";
 import {
   signAudioAnalysisReceipt,
   verifyAudioAnalysisReceipt,
@@ -8,6 +9,8 @@ const analysis = {
   bpm: 120,
   durationSeconds: 180,
   mood: "energetic",
+  beatTimestamps: [0.5, 1, 1.5],
+  beatGrid: [0.5, 1, 1.5],
   sections: [{ startTime: 0, endTime: 180, label: "song", energy: 0.7 }],
 };
 
@@ -33,6 +36,39 @@ describe("audio analysis receipts", () => {
         userId: "user-1",
         objectPath: "/audio/song.mp3",
         analysis: { ...analysis, analysisReceipt: receipt },
+        receipt,
+        now: 2_000,
+      }),
+    ).toEqual(analysis);
+  });
+
+  it("preserves every signed field through job request parsing", () => {
+    const objectPath = "/audio/song.mp3";
+    const receipt = signAudioAnalysisReceipt({
+      userId: "user-1",
+      objectPath,
+      analysis,
+      now: 1_000,
+    });
+
+    const parsed = CreateJobBody.parse({
+      prompt: "Rainy cinematic mystery",
+      style: "cinematic",
+      audioSourceType: "upload",
+      audioObjectPath: objectPath,
+      requestedDuration: "full",
+      audioAnalysis: { ...analysis, analysisReceipt: receipt },
+    });
+
+    expect(parsed.audioAnalysis).toMatchObject({
+      ...analysis,
+      analysisReceipt: receipt,
+    });
+    expect(
+      verifyAudioAnalysisReceipt({
+        userId: "user-1",
+        objectPath,
+        analysis: parsed.audioAnalysis,
         receipt,
         now: 2_000,
       }),

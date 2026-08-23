@@ -157,6 +157,8 @@ export interface AudioAnalysis {
   /** @nullable */
   durationSeconds?: number | null;
   beatTimestamps?: number[];
+  /** Regular beat positions used to align generated cuts with the analyzed track */
+  beatGrid?: number[];
   sections?: AudioAnalysisSectionsItem[];
 }
 

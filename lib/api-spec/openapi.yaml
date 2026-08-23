@@ -1146,6 +1146,11 @@ components:
           type: array
           items:
             type: number
+        beatGrid:
+          type: array
+          description: Regular beat positions used to align generated cuts with the analyzed track
+          items:
+            type: number
         sections:
           type: array
           items:
