@@ -92,8 +92,7 @@ router.get("/admin/users", async (req, res) => {
           )
         : undefined,
     )
-    .orderBy(desc(usersTable.createdAt))
-    .limit(200);
+    .orderBy(desc(usersTable.createdAt));
 
   const userIds = allUsers.map((u) => u.id);
   const creditRows =
