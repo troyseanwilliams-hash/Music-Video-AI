@@ -12,6 +12,7 @@ import {
 import { getUserTier } from "../lib/tier.js";
 import { GENERATED_IMAGE_CREDITS_PER_VISUAL } from "../lib/creditCost.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { planImagePackScenes } from "../lib/shotPlan.js";
 
 const router = Router();
 const MAX_IMAGE_PACK_COUNT = 30;
@@ -90,6 +91,12 @@ router.post("/image-packs", async (req, res) => {
   if (!isAdmin) await getUserTier(user);
 
   const creditCost = imageCount * GENERATED_IMAGE_CREDITS_PER_VISUAL;
+  const scenes = planImagePackScenes({
+    prompt,
+    style,
+    imageCount,
+    hasCharacterReference: Boolean(referenceImagePath),
+  });
   await db
     .insert(creditsTable)
     .values({ id: randomUUID(), userId: req.user.id })
@@ -144,6 +151,7 @@ router.post("/image-packs", async (req, res) => {
           imagePack: {
             imageCount,
             referenceImagePath: referenceImagePath ?? null,
+            scenes,
           },
         },
       })

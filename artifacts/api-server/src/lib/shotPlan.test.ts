@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planShots } from "./shotPlan.js";
+import { planImagePackScenes, planShots } from "./shotPlan.js";
 
 const THREE_MINUTE_ANALYSIS = {
   bpm: 118,
@@ -64,7 +64,41 @@ describe("planShots montage planning", () => {
   });
 });
 
+describe("planImagePackScenes", () => {
+  it("creates one scene per requested image and selectively applies the character reference", () => {
+    const scenes = planImagePackScenes({
+      prompt: "A woman steps off a train. Then an empty train station waits in the rain. Finally sunrise fills the city skyline.",
+      style: "cinematic",
+      imageCount: 3,
+      hasCharacterReference: true,
+    });
+
+    expect(scenes).toHaveLength(3);
+    expect(scenes.find((scene) => scene.description.includes("woman steps off a train")))
+      .toMatchObject({ usesCharacterReference: true });
+    expect(scenes.find((scene) => scene.description.includes("empty train station")))
+      .toMatchObject({ usesCharacterReference: false });
+    expect(scenes.find((scene) => scene.description.includes("sunrise fills the city skyline")))
+      .toMatchObject({ usesCharacterReference: false });
+  });
+});
+
 describe("planShots narrative planning", () => {
+  it("only marks character-focused story scenes for the character reference", () => {
+    const plan = planShots({
+      prompt: "A woman steps off a train. Then an empty train station waits in the rain. Finally sunrise fills the city skyline.",
+      generationMode: "narrative",
+      requestedDuration: "30",
+    });
+
+    expect(plan.shots.find((shot) => shot.description.includes("woman steps off a train")))
+      .toMatchObject({ usesCharacterReference: true });
+    expect(plan.shots.find((shot) => shot.description.includes("empty train station")))
+      .toMatchObject({ usesCharacterReference: false });
+    expect(plan.shots.find((shot) => shot.description.includes("sunrise fills the city skyline")))
+      .toMatchObject({ usesCharacterReference: false });
+  });
+
   it("creates eighteen unique chronological scenes for a three-minute story", () => {
     const plan = planShots({
       prompt: "A rider enters the desert. Then a storm arrives. Finally sunrise breaks over the mountains.",

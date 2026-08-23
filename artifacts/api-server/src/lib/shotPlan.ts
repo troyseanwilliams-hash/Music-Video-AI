@@ -49,6 +49,7 @@ export interface PlannedShot {
   description: string;
   startTime: number;
   energy: number;
+  usesCharacterReference: boolean;
   prompt: string;
 }
 
@@ -146,6 +147,18 @@ const NARRATIVE_BEATS = [
   "final image",
 ];
 
+const CHARACTER_FOCUS_TERMS = /\b(?:character|person|people|human|woman|man|girl|boy|child|baby|singer|musician|performer|dancer|rider|driver|runner|walker|traveler|traveller|protagonist|hero|heroine|artist|actor|actress|model|subject|face|portrait|couple|family|mother|father|friend|soldier|detective|pilot|he|she|they|him|her|them|his|hers|their)\b/i;
+const ENVIRONMENT_FOCUS_TERMS = /\b(?:landscape|skyline|cityscape|mountain|forest|ocean|sea|river|lake|desert|road|street|building|architecture|room|interior|exterior|station|airport|vehicle|car|train|plane|ship|object|detail|texture|atmosphere|weather|storm|rain|cloud|sunrise|sunset|moon|stars|light|shadow)\b/i;
+const CHARACTER_MONTAGE_ROLES = new Set(["hero subject", "kinetic motion", "intimate close-up", "high-energy visual", "closing callback"]);
+const CHARACTER_NARRATIVE_BEATS = new Set([
+  "inciting moment",
+  "rising action",
+  "escalation",
+  "turning point",
+  "climax",
+  "resolution",
+]);
+
 function narrativeBeat(index: number, count: number): string {
   if (count <= 1) return "complete story moment";
   const position = index / (count - 1);
@@ -163,6 +176,14 @@ function sceneDescription(role: string, concept: string): string {
     : normalized;
   const title = role.charAt(0).toUpperCase() + role.slice(1);
   return `${title} — ${shortened || "cinematic music video imagery"}`;
+}
+
+function sceneUsesCharacterReference(input: ShotPlanInput, role: string, concept: string): boolean {
+  const currentScene = `${role} ${concept}`;
+  if (CHARACTER_FOCUS_TERMS.test(currentScene)) return true;
+  if (ENVIRONMENT_FOCUS_TERMS.test(currentScene)) return false;
+  if (!input.character || input.character === "none") return false;
+  return CHARACTER_MONTAGE_ROLES.has(role) || CHARACTER_NARRATIVE_BEATS.has(role);
 }
 
 function promptConcepts(prompt: string): string[] {
@@ -260,6 +281,7 @@ function buildPrompt(
   mood: string | null,
   concept: string,
   montageRole: string,
+  usesCharacterReference: boolean,
 ): string {
   const style = input.style ?? "cinematic";
   const styleDesc = STYLE_PROMPTS[style] ?? STYLE_PROMPTS.cinematic!;
@@ -275,7 +297,11 @@ function buildPrompt(
       : (bpm ?? 0) > 100
         ? "upbeat fluid transitions, dynamic movement"
         : "slow atmospheric panning, long smooth dissolves";
-  const characterDesc = input.character && input.character !== "none" ? `featuring ${input.character}` : "";
+  const characterDesc = usesCharacterReference
+    ? input.character && input.character !== "none"
+      ? `featuring ${input.character}`
+      : "featuring the recurring principal subject"
+    : "environmental or object-focused scene, no featured character unless required by this current visual idea";
   return [
     styleDesc,
     paceDesc,
@@ -299,6 +325,7 @@ function buildNarrativePrompt(
   beat: string,
   sceneIndex: number,
   sceneCount: number,
+  usesCharacterReference: boolean,
 ): string {
   const style = input.style ?? "cinematic";
   const styleDesc = STYLE_PROMPTS[style] ?? STYLE_PROMPTS.cinematic!;
@@ -314,13 +341,16 @@ function buildNarrativePrompt(
       : (bpm ?? 0) > 100
         ? "confident forward momentum"
         : "measured cinematic pacing";
-  const characterDesc = input.character && input.character !== "none"
-    ? `keep the same ${input.character} identity, face, wardrobe, and physical details established across every scene`
-    : "keep the same principal subject identity, wardrobe, and physical details established across every scene";
-  const continuity =
-    sceneIndex === 0
+  const characterDesc = usesCharacterReference
+    ? input.character && input.character !== "none"
+      ? `keep the same ${input.character} identity, face, wardrobe, and physical details established across character-focused scenes`
+      : "keep the same principal subject identity, wardrobe, and physical details established across character-focused scenes"
+    : "focus on the environment, objects, or atmosphere for this story beat; do not introduce the recurring person unless the current concept explicitly calls for them";
+  const continuity = usesCharacterReference
+    ? sceneIndex === 0
       ? "establish the recurring subject, world, lighting language, and visual rules for all following scenes"
-      : "continue directly from the previous scene with consistent subject identity, world, wardrobe, lighting language, and screen direction";
+      : "continue directly from the previous character-focused scene with consistent subject identity, world, wardrobe, lighting language, and screen direction"
+    : "continue the established world, lighting language, and screen direction without requiring the recurring person in this scene";
   const ending =
     sceneIndex === sceneCount - 1
       ? "deliver a clear visual resolution that completes the story"
@@ -369,21 +399,25 @@ export function planShots(input: ShotPlanInput): ShotPlan {
         orderedStoryConcepts.length - 1,
         Math.floor((index * orderedStoryConcepts.length) / numClips),
       );
+      const concept = orderedStoryConcepts[conceptIndex]!;
+      const usesCharacterReference = sceneUsesCharacterReference(input, beat, concept);
       return {
         index,
         label: beat,
-        description: sceneDescription(beat, orderedStoryConcepts[conceptIndex]!),
+        description: sceneDescription(beat, concept),
         startTime,
         energy: Math.round(section.energy * 100) / 100,
+        usesCharacterReference,
         prompt: buildNarrativePrompt(
           input,
           section,
           bpm,
           mood,
-          orderedStoryConcepts[conceptIndex]!,
+          concept,
           beat,
           index,
           numClips,
+          usesCharacterReference,
         ),
       };
     });
@@ -417,13 +451,16 @@ export function planShots(input: ShotPlanInput): ShotPlan {
   for (let i = 0; i < numClips; i++) {
     const s = motifSections[i]!;
     const role = MONTAGE_ROLES[i % MONTAGE_ROLES.length]!;
+    const concept = concepts[i]!;
+    const usesCharacterReference = sceneUsesCharacterReference(input, role, concept);
     shots.push({
       index: i,
       label: role,
-      description: sceneDescription(role, concepts[i]!),
+      description: sceneDescription(role, concept),
       startTime: s.startTime,
       energy: Math.round(s.energy * 100) / 100,
-      prompt: buildPrompt(input, s, bpm, mood, concepts[i]!, role),
+      usesCharacterReference,
+      prompt: buildPrompt(input, s, bpm, mood, concept, role, usesCharacterReference),
     });
   }
   const timeline = buildMontageTimeline(shots, sections, target, clipDurationSec);
@@ -438,4 +475,30 @@ export function planShots(input: ShotPlanInput): ShotPlan {
     reuseCount: Math.max(0, timeline.length - numClips),
     approximate: !hasReal,
   };
+}
+
+export function planImagePackScenes(input: {
+  prompt: string;
+  style?: string | null;
+  imageCount: number;
+  hasCharacterReference: boolean;
+}): PlannedShot[] {
+  const imageCount = Math.max(1, Math.min(30, Math.round(input.imageCount)));
+  const durationSeconds = imageCount * 10;
+  return planShots({
+    prompt: input.prompt,
+    style: input.style,
+    character: input.hasCharacterReference ? "recurring reference character" : null,
+    requestedDuration: String(durationSeconds),
+    generationMode: "narrative",
+    analysis: {
+      durationSeconds,
+      sections: [{
+        startTime: 0,
+        endTime: durationSeconds,
+        label: "image pack",
+        energy: 0.6,
+      }],
+    },
+  }).shots.slice(0, imageCount);
 }

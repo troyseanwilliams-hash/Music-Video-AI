@@ -75,6 +75,7 @@ type PersistedStoryboardShot = {
   label: string;
   startTime: number;
   energy: number;
+  usesCharacterReference?: boolean;
   prompt: string;
 };
 
@@ -245,9 +246,13 @@ async function prepareNarrativeImagesStage(job: JobRow): Promise<Record<string, 
         throw new Error(`${IMAGE_API_FAILURE}: A source-image request has an uncertain submission state`);
       }
       await assertJobOwned(job); // fence immediately before this paid image call
+      const referenceImageUrl = shot.usesCharacterReference && job.referenceImagePath
+        ? await storageService.getObjectEntitySignedUrl(job.referenceImagePath, 900)
+        : undefined;
       const providerUrl = await generateNarrativeImage({
         prompt: shot.prompt,
         aspectRatio: job.aspectRatio,
+        referenceImageUrl,
         existingPollUrl: existingRequest?.pollUrl,
         onSubmit: (info) => persistPendingImageRequest(job.id, shot.index, info),
         onUncertainSubmission: (info) => persistUncertainImageSubmission(job.id, shot.index, info),
@@ -289,7 +294,7 @@ async function prepareNarrativeImages(job: JobRow): Promise<Record<string, strin
 }
 
 type ImagePackMeta = AiJobMeta & {
-  imagePack?: { imageCount?: number };
+  imagePack?: { imageCount?: number; scenes?: PersistedStoryboardShot[] };
   imagePackRefunded?: boolean;
   imagePackChargedCredits?: number;
 };
@@ -370,15 +375,26 @@ async function processImagePackJob(job: JobRow): Promise<void> {
       .from(imageAssetsTable)
       .where(and(eq(imageAssetsTable.jobId, job.id), isNull(imageAssetsTable.deletedAt)));
     const completed = new Set(existing.map((asset) => asset.assetIndex));
+    const scenes = Array.isArray(meta.imagePack?.scenes) ? meta.imagePack.scenes : [];
+    const sceneByIndex = new Map(scenes.map((scene) => [scene.index, scene]));
     for (let index = 0; index < imageCount; index++) {
       if (completed.has(index)) continue;
       await assertJobOwned(job);
-      const prompt = [
-        `${imageAspectRatio === "16:9" ? "landscape 16:9" : "portrait 9:16"} editorial still`,
-        job.style ? `${job.style} visual style` : "cinematic visual style",
-        job.prompt?.trim() ?? "",
-      ].filter(Boolean).join(", ");
-      const referenceImageUrl = job.referenceImagePath
+      const scene = sceneByIndex.get(index);
+      const prompt = scene
+        ? [
+            `${imageAspectRatio === "16:9" ? "landscape 16:9" : "portrait 9:16"} editorial still`,
+            scene.prompt,
+          ].join(", ")
+        : [
+            `${imageAspectRatio === "16:9" ? "landscape 16:9" : "portrait 9:16"} editorial still`,
+            job.style ? `${job.style} visual style` : "cinematic visual style",
+            job.prompt?.trim() ?? "",
+          ].filter(Boolean).join(", ");
+      const shouldUseReference = scene
+        ? scene.usesCharacterReference === true
+        : Boolean(job.referenceImagePath);
+      const referenceImageUrl = shouldUseReference && job.referenceImagePath
         ? await storageService.getObjectEntitySignedUrl(job.referenceImagePath, 900)
         : undefined;
       const providerUrl = await generateNarrativeImage({
