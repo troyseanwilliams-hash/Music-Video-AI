@@ -3,6 +3,7 @@ export const IMAGE_API_FAILURE = "[IMAGE_API_FAILURE]";
 export interface NarrativeImageRequest {
   prompt: string;
   aspectRatio?: string | null;
+  referenceImageUrl?: string | null;
   existingPollUrl?: string | null;
   onSubmit?: (info: { requestId: string; pollUrl: string }) => void | Promise<void>;
   onUncertainSubmission?: (info: {
@@ -52,6 +53,7 @@ export async function generateNarrativeImage(req: NarrativeImageRequest): Promis
         body: JSON.stringify({
           prompt: req.prompt.slice(0, 3000),
           image_size: imageSizeForAspectRatio(req.aspectRatio),
+          input_image: req.referenceImageUrl?.trim() || undefined,
           safety_tolerance: "2",
           enable_safety_checker: true,
           output_format: "jpeg",

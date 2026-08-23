@@ -30,6 +30,13 @@ const createImagePackBody = z.object({
   ]).optional(),
   imageCount: z.coerce.number().int().min(1).max(MAX_IMAGE_PACK_COUNT),
   aspectRatio: z.enum(["9:16", "16:9"]).default("9:16"),
+  referenceImagePath: z
+    .string()
+    .trim()
+    .regex(/^\/objects\/uploads\/[^/]+$/)
+    .max(500)
+    .nullable()
+    .optional(),
 });
 
 router.post("/image-packs", async (req, res) => {
@@ -46,7 +53,17 @@ router.post("/image-packs", async (req, res) => {
     return;
   }
 
-  const { prompt, style, imageCount, aspectRatio } = parsed.data;
+  const { prompt, style, imageCount, aspectRatio, referenceImagePath } = parsed.data;
+  if (referenceImagePath) {
+    try {
+      await new ObjectStorageService().getObjectEntityFile(referenceImagePath);
+    } catch {
+      res.status(400).json({
+        error: "The selected reference image is no longer available. Upload it again and retry.",
+      });
+      return;
+    }
+  }
   const [user] = await db
     .select()
     .from(usersTable)
@@ -117,13 +134,17 @@ router.post("/image-packs", async (req, res) => {
         prompt,
         style,
         aspectRatio,
+        referenceImagePath: referenceImagePath ?? null,
         requestedDuration: String(imageCount),
         progressPercent: 0,
         manifest: {
           reservedCredits: creditCost,
           reservedSubscriptionCredits: subscriptionDebit,
           reservedTopupCredits: topupDebit,
-          imagePack: { imageCount },
+          imagePack: {
+            imageCount,
+            referenceImagePath: referenceImagePath ?? null,
+          },
         },
       })
       .returning();

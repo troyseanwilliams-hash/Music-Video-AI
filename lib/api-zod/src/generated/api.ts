@@ -765,6 +765,12 @@ export const CreateImagePackBody = zod.object({
     .enum(["9:16", "16:9"])
     .default(createImagePackBodyAspectRatioDefault)
     .describe("Output orientation. Portrait 9:16 is the default."),
+  referenceImagePath: zod
+    .string()
+    .nullish()
+    .describe(
+      "Optional private uploaded image used to keep the subject and visual identity consistent across the image pack.",
+    ),
 });
 
 /**

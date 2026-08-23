@@ -378,7 +378,14 @@ async function processImagePackJob(job: JobRow): Promise<void> {
         job.style ? `${job.style} visual style` : "cinematic visual style",
         job.prompt?.trim() ?? "",
       ].filter(Boolean).join(", ");
-      const providerUrl = await generateNarrativeImage({ prompt, aspectRatio: imageAspectRatio });
+      const referenceImageUrl = job.referenceImagePath
+        ? await storageService.getObjectEntitySignedUrl(job.referenceImagePath, 900)
+        : undefined;
+      const providerUrl = await generateNarrativeImage({
+        prompt,
+        aspectRatio: imageAspectRatio,
+        referenceImageUrl,
+      });
       const buffer = await downloadGeneratedImage(providerUrl);
       const objectPath = await storageService.uploadImagePackBuffer(buffer, job.id, index);
       await db.insert(imageAssetsTable).values({

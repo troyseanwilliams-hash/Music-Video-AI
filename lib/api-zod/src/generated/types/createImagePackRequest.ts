@@ -24,4 +24,6 @@ export interface CreateImagePackRequest {
   imageCount: number;
   /** Output orientation. Portrait 9:16 is the default. */
   aspectRatio?: CreateImagePackRequestAspectRatio;
+  /** Optional private uploaded image used to keep the subject and visual identity consistent across the image pack. */
+  referenceImagePath?: string | null;
 }

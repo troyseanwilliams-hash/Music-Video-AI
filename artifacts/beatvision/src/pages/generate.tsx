@@ -468,9 +468,15 @@ export default function Generate() {
     ? `Full track · ${formatDuration(songDurationSec)}`
     : "Full track";
 
-  // Fetch the storyboard preview whenever the confirm dialog opens (free, no render).
+  // Fetch a video storyboard only for video confirmation. Images only is an
+  // independent product and never needs the video planning route.
   useEffect(() => {
     if (!confirmOpen) return;
+    if (imagePackMode) {
+      setShotPlan(null);
+      setShotPlanLoading(false);
+      return;
+    }
     let active = true;
     setShotPlan(null);
     setShotPlanLoading(true);
@@ -499,7 +505,7 @@ export default function Generate() {
       .finally(() => { if (active) setShotPlanLoading(false); });
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [confirmOpen]);
+  }, [confirmOpen, imagePackMode]);
   // Quick-start: apply a template's prompt/style/aspect/duration in one click.
   function applyTemplate(t: (typeof TEMPLATES)[number]) {
     setPrompt(t.prompt);
@@ -940,6 +946,7 @@ export default function Generate() {
           style: selectedStyle,
           imageCount: imagePackCount,
           aspectRatio: imagePackAspectRatio,
+          referenceImagePath: refImageObjectPath ?? null,
         }),
       });
       const body = await response.json().catch(() => ({}));
@@ -1194,14 +1201,15 @@ export default function Generate() {
           </div>
         </div>
 
-        <div className="grid gap-5 sm:gap-8 p-4 sm:p-8 rounded-2xl bg-card border border-card-border shadow-lg">
-
-          <div className="rounded-xl border border-primary/20 bg-primary/[0.035] p-4">
+        <section
+          aria-labelledby="images-only-heading"
+          className="rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/[0.08] via-card to-accent/[0.045] p-4 shadow-lg sm:p-5"
+        >
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="flex items-center gap-2 text-sm font-semibold">
                   <Sparkles className="h-4 w-4 text-primary" />
-                  Images only
+                  <span id="images-only-heading">Images only</span>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
@@ -1218,7 +1226,7 @@ export default function Generate() {
                   </Tooltip>
                 </div>
                 <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  Generate reusable portrait or landscape AI stills without rendering a video, then arrange them in Remix Lab.
+                  Generate a standalone pack of reusable stills without audio or video rendering. Add an optional reference image below to keep the subject consistent across the pack.
                 </p>
               </div>
               <Button
@@ -1227,7 +1235,7 @@ export default function Generate() {
                 onClick={() => setImagePackMode((active) => !active)}
                 data-testid="toggle-image-pack-mode"
               >
-                {imagePackMode ? "Images only selected" : "Use images only"}
+                {imagePackMode ? "Return to video generator" : "Create images only"}
               </Button>
             </div>
             {imagePackMode && (
@@ -1282,9 +1290,11 @@ export default function Generate() {
                 </div>
               </div>
             )}
-          </div>
+        </section>
 
-          <div className="space-y-2">
+        <div className="grid gap-5 sm:gap-8 p-4 sm:p-8 rounded-2xl bg-card border border-card-border shadow-lg">
+
+          <div className={`space-y-2 ${imagePackMode ? "hidden" : ""}`}>
             <Label>Video structure</Label>
             <div className="grid gap-3 sm:grid-cols-2">
               <button
@@ -1379,7 +1389,7 @@ export default function Generate() {
           </div>
 
           {/* ── Settings Toolbar ── */}
-          <div className="rounded-xl border border-border/60 bg-background/40 overflow-hidden">
+          <div className={`rounded-xl border border-border/60 bg-background/40 overflow-hidden ${imagePackMode ? "hidden" : ""}`}>
             {/* Top bar */}
             <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/40 bg-background/20">
               <span className="text-xs text-muted-foreground font-medium">Video Settings</span>
@@ -1616,7 +1626,7 @@ export default function Generate() {
           </div>
 
           {/* ── Audio Source ── */}
-          <div ref={audioSectionRef}>
+          <div ref={audioSectionRef} className={imagePackMode ? "hidden" : undefined}>
           <Tabs
             value={sourceType}
             onValueChange={(v) => {
@@ -2116,8 +2126,14 @@ export default function Generate() {
             <div className="flex items-center justify-between px-4 py-3">
               <div className="flex items-center gap-2 min-w-0">
                 <ImageIcon className="h-4 w-4 text-primary shrink-0" />
-                <span className="text-sm font-medium">Character Lock</span>
-                <span className="text-xs text-muted-foreground hidden sm:inline">— optional · same character in every shot</span>
+                <span className="text-sm font-medium">
+                  {imagePackMode ? "Reference Image" : "Character Lock"}
+                </span>
+                <span className="text-xs text-muted-foreground hidden sm:inline">
+                  {imagePackMode
+                    ? "— optional · consistent subject across the image pack"
+                    : "— optional · same character in every shot"}
+                </span>
               </div>
               {refImageObjectPath && (
                 <button
@@ -2164,11 +2180,17 @@ export default function Generate() {
                   {isUploadingRefImage ? (
                     <p className="text-sm font-medium text-muted-foreground">Uploading…</p>
                   ) : refImageObjectPath ? (
-                    <p className="text-sm font-medium text-green-500">Character locked ✓</p>
+                    <p className="text-sm font-medium text-green-500">
+                      {imagePackMode ? "Reference image ready ✓" : "Character locked ✓"}
+                    </p>
                   ) : (
                     <p className="text-sm font-medium text-destructive">Upload failed — try again</p>
                   )}
-                  <p className="text-xs text-muted-foreground mt-0.5">This character anchors every shot in the video</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {imagePackMode
+                      ? "Every image in this pack will use this visual reference"
+                      : "This character anchors every shot in the video"}
+                  </p>
                   <button
                     onClick={() => refImageInputRef.current?.click()}
                     className="text-xs text-primary hover:underline mt-1"
@@ -2187,7 +2209,9 @@ export default function Generate() {
                   <Upload className="h-4 w-4" /> Upload a character (JPG, PNG, WebP)
                 </button>
                 <p className="text-xs text-muted-foreground mt-1.5">
-                  Upload a face or character and it anchors every generated shot, so the same character appears consistently across the whole video.
+                  {imagePackMode
+                    ? "Upload a subject or style reference and every image in the pack will use it for stronger visual consistency."
+                    : "Upload a face or character and it anchors every generated shot, so the same character appears consistently across the whole video."}
                 </p>
                 {refImageError && (
                   <p className="text-xs text-destructive mt-1.5 flex items-center gap-1">
@@ -2249,7 +2273,7 @@ export default function Generate() {
           </div>
 
           {/* ── Captions / Lyrics ── */}
-          <div className="rounded-xl border border-border bg-background/30 p-5 space-y-4">
+          <div className={`rounded-xl border border-border bg-background/30 p-5 space-y-4 ${imagePackMode ? "hidden" : ""}`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 min-w-0">
                 <FileText className="h-4 w-4 text-primary shrink-0" />
@@ -2408,7 +2432,7 @@ export default function Generate() {
           </div>
 
           {/* ── Settings Summary ── */}
-          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+          <div className={`flex flex-wrap gap-2 text-xs text-muted-foreground ${imagePackMode ? "hidden" : ""}`}>
             <span className="rounded-full border border-border/40 bg-secondary/30 px-2.5 py-1">
                {aspectRatio} · {resolution} · {
                  sourceType === CreateJobRequestAudioSourceType.none ? `Silent · ${formatDuration(silentFilmDurationSeconds)}`
@@ -2434,7 +2458,7 @@ export default function Generate() {
               </span>
             )}
           </div>
-          {fullTrackOverLimit && (
+          {!imagePackMode && fullTrackOverLimit && (
             <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
               <AlertTriangle className="h-4 w-4 shrink-0" />
               <span>
@@ -2444,7 +2468,7 @@ export default function Generate() {
           )}
 
           {/* ── Copyright Acknowledgment (not applicable to a silent "no audio" render) ── */}
-          {sourceType !== CreateJobRequestAudioSourceType.none && (
+          {!imagePackMode && sourceType !== CreateJobRequestAudioSourceType.none && (
             <label className="flex items-start gap-3 cursor-pointer group">
               <input
                 type="checkbox"
@@ -2467,16 +2491,20 @@ export default function Generate() {
                   className="w-full h-14 text-lg bg-gradient-electric text-white shadow-glow mt-2"
                   disabled={
                     createJob.isPending ||
-                    isCurrentAudioAnalysisPending ||
-                    fullTrackNeedsAnalysis ||
-                    fullTrackOverLimit ||
-                    (sourceType !== CreateJobRequestAudioSourceType.none && !copyrightAcknowledged)
+                    imagePackSubmitting ||
+                    isUploadingRefImage ||
+                    (!imagePackMode && (
+                      isCurrentAudioAnalysisPending ||
+                      fullTrackNeedsAnalysis ||
+                      fullTrackOverLimit ||
+                      (sourceType !== CreateJobRequestAudioSourceType.none && !copyrightAcknowledged)
+                    ))
                   }
                   onClick={handleGenerate}
                 >
-                  {createJob.isPending ? (
+                  {createJob.isPending || imagePackSubmitting ? (
                     <Loader2 className="h-6 w-6 animate-spin" />
-                  ) : isCurrentAudioAnalysisPending ? (
+                  ) : !imagePackMode && isCurrentAudioAnalysisPending ? (
                     <>
                       <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                       <span>Analysing audio…</span>
@@ -2484,8 +2512,12 @@ export default function Generate() {
                   ) : (
                     <>
                       <Sparkles className="mr-2 h-5 w-5" />
-                      <span className="hidden sm:inline">Generate Beat-Synced Video</span>
-                      <span className="sm:hidden">Generate Video</span>
+                      <span className="hidden sm:inline">
+                        {imagePackMode ? "Generate Image Pack" : "Generate Beat-Synced Video"}
+                      </span>
+                      <span className="sm:hidden">
+                        {imagePackMode ? "Generate Images" : "Generate Video"}
+                      </span>
                     </>
                   )}
                 </Button>
@@ -2496,7 +2528,7 @@ export default function Generate() {
                       <>Unlimited generation — admin account</>
                     ) : (
                       <>
-                        Costs <strong>{cost} credits</strong>
+                        Costs <strong>{activeCost} credits</strong>
                         {balance !== null && (
                           <> — you have <strong className={canAfford ? "" : "text-destructive"}>{balance} remaining</strong></>
                         )}
@@ -2510,12 +2542,22 @@ export default function Generate() {
                 <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
                   <Clock className="h-3.5 w-3.5" />
                   <span>
-                     Typically <strong>{generationEstimate.label}</strong>
-                     {" · "}{generationEstimate.unitCount} AI{" "}
-                     {generationMode === CreateJobRequestGenerationMode.narrative
-                       ? generationEstimate.unitCount === 1 ? "scene" : "unique scenes"
-                       : generationEstimate.unitCount === 1 ? "visual" : "visuals"}
-                     {" · "}credits reserved when the job starts
+                    {imagePackMode ? (
+                      <>
+                        {imagePackCount} standalone {imagePackCount === 1 ? "image" : "images"}
+                        {refImageObjectPath ? " · reference consistency on" : ""}
+                        {" · "}credits reserved when the job starts
+                      </>
+                    ) : (
+                      <>
+                        Typically <strong>{generationEstimate.label}</strong>
+                        {" · "}{generationEstimate.unitCount} AI{" "}
+                        {generationMode === CreateJobRequestGenerationMode.narrative
+                          ? generationEstimate.unitCount === 1 ? "scene" : "unique scenes"
+                          : generationEstimate.unitCount === 1 ? "visual" : "visuals"}
+                        {" · "}credits reserved when the job starts
+                      </>
+                    )}
                   </span>
                 </div>
               </div>
@@ -2644,10 +2686,18 @@ export default function Generate() {
                   <span className="font-medium capitalize">{STYLES.find((s) => s.id === selectedStyle)?.label ?? selectedStyle}</span>
                 </div>
                 {imagePackMode && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Images</span>
-                    <span className="font-medium">{imagePackCount} images · {imagePackAspectRatio}</span>
-                  </div>
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Images</span>
+                      <span className="font-medium">{imagePackCount} images · {imagePackAspectRatio}</span>
+                    </div>
+                    {refImageObjectPath && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Reference</span>
+                        <span className="font-medium text-primary">Consistency enabled</span>
+                      </div>
+                    )}
+                  </>
                 )}
                 {!imagePackMode && refImageObjectPath && (
                   <div className="flex justify-between">

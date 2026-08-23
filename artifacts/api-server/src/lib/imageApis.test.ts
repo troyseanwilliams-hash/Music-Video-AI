@@ -60,6 +60,39 @@ describe("generateNarrativeImage recovery", () => {
     }));
   });
 
+  it("sends the private reference as an image-editing input", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify({
+          request_id: "request-with-reference",
+          polling_url: "https://example.test/image-status/request-with-reference",
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: "COMPLETED",
+          output: { media_url: ["https://example.test/generated-with-reference.jpg"] },
+        }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = generateNarrativeImage({
+      prompt: "Keep the same character across the image pack",
+      aspectRatio: "9:16",
+      referenceImageUrl: "https://example.test/private-reference.jpg?signature=test",
+    });
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    await expect(result).resolves.toBe("https://example.test/generated-with-reference.jpg");
+    const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(requestInit.body))).toMatchObject({
+      input_image: "https://example.test/private-reference.jpg?signature=test",
+    });
+  });
+
   it("classifies a rejected saved-poll request as an image-stage failure", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("poll timeout")));

@@ -1384,6 +1384,10 @@ components:
           enum: ['9:16', '16:9']
           default: '9:16'
           description: Output orientation. Portrait 9:16 is the default.
+        referenceImagePath:
+          type: string
+          nullable: true
+          description: Optional private uploaded image used to keep the subject and visual identity consistent across the image pack.
 
     ImageAsset:
       type: object
