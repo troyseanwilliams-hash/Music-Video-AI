@@ -40,6 +40,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { SoundtrackPickerDialog } from "@/components/SoundtrackPickerDialog";
 import TopUpRequiredDialog from "@/components/TopUpRequiredDialog";
 import { TutorialTip } from "@/components/TutorialTip";
@@ -1202,10 +1207,11 @@ export default function Generate() {
           </div>
         </div>
 
-        <section
-          aria-labelledby="images-only-heading"
-          className="rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/[0.08] via-card to-accent/[0.045] p-4 shadow-lg sm:p-5"
-        >
+        <Collapsible open={imagePackMode} onOpenChange={setImagePackMode}>
+          <section
+            aria-labelledby="images-only-heading"
+            className="rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/[0.08] via-card to-accent/[0.045] p-4 shadow-lg sm:p-5"
+          >
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="flex items-center gap-2 text-sm font-semibold">
@@ -1227,19 +1233,22 @@ export default function Generate() {
                   </Tooltip>
                 </div>
                 <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  Generate a standalone pack of reusable stills without audio or video rendering. Add an optional reference image below to keep the subject consistent across the pack.
+                  Generate a standalone pack of reusable stills without audio or video rendering.
                 </p>
               </div>
-              <Button
-                type="button"
-                variant={imagePackMode ? "default" : "outline"}
-                onClick={() => setImagePackMode((active) => !active)}
-                data-testid="toggle-image-pack-mode"
-              >
-                {imagePackMode ? "Return to video generator" : "Create images only"}
-              </Button>
+              <CollapsibleTrigger asChild>
+                <Button
+                  type="button"
+                  variant={imagePackMode ? "default" : "outline"}
+                  data-testid="toggle-image-pack-mode"
+                  aria-label={imagePackMode ? "Hide Images only options and return to video generation" : "Show Images only options"}
+                >
+                  {imagePackMode ? "Images only enabled" : "Images only"}
+                  <ChevronDown className={`ml-2 h-4 w-4 transition-transform ${imagePackMode ? "rotate-180" : ""}`} />
+                </Button>
+              </CollapsibleTrigger>
             </div>
-            {imagePackMode && (
+            <CollapsibleContent>
               <div className="mt-4 grid gap-4 border-t border-primary/15 pt-4 sm:grid-cols-[minmax(0,1fr)_150px_220px] sm:items-end">
                 <div>
                   <Label htmlFor="image-pack-count">Images to generate</Label>
@@ -1290,8 +1299,9 @@ export default function Generate() {
                   </div>
                 </div>
               </div>
-            )}
-        </section>
+            </CollapsibleContent>
+          </section>
+        </Collapsible>
 
         <div className="grid gap-5 sm:gap-8 p-4 sm:p-8 rounded-2xl bg-card border border-card-border shadow-lg">
 
