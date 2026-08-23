@@ -5,20 +5,23 @@
  * BeatVision AI API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { CreateImagePackRequestAspectRatio } from "./createImagePackRequestAspectRatio";
 import type { VideoStyle } from "./videoStyle";
 
 export interface CreateImagePackRequest {
   /**
-   * Visual direction used for every generated still.
+   * Visual direction used for every generated image.
    * @minLength 1
    * @maxLength 1000
    */
   prompt: string;
   style?: VideoStyle;
   /**
-   * Number of vertical AI stills to generate. Each image costs 4 credits.
+   * Number of images to generate. Each image costs 4 credits.
    * @minimum 1
    * @maximum 30
    */
   imageCount: number;
+  /** Output orientation. Portrait 9:16 is the default. */
+  aspectRatio?: CreateImagePackRequestAspectRatio;
 }

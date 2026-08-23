@@ -288,7 +288,7 @@ paths:
     post:
       tags: [Jobs]
       operationId: createImagePack
-      summary: Generate a reusable pack of vertical AI images
+      summary: Generate a reusable pack of portrait or landscape AI images
       parameters:
         - $ref: '#/components/parameters/AuthorizationSessionHeader'
         - $ref: '#/components/parameters/SessionCookie'
@@ -1300,6 +1300,9 @@ components:
           type: [string, 'null']
         style:
           type: [string, 'null']
+        aspectRatio:
+          type: [string, 'null']
+          enum: ['16:9', '9:16', '1:1', '4:3', '21:9', null]
         audioAnalysis:
           oneOf:
             - $ref: '#/components/schemas/AudioAnalysis'
@@ -1362,14 +1365,19 @@ components:
           type: string
           minLength: 1
           maxLength: 1000
-          description: Visual direction used for every generated still.
+          description: Visual direction used for every generated image.
         style:
           $ref: '#/components/schemas/VideoStyle'
         imageCount:
           type: integer
           minimum: 1
           maximum: 30
-          description: Number of vertical AI stills to generate. Each image costs 4 credits.
+          description: Number of images to generate. Each image costs 4 credits.
+        aspectRatio:
+          type: string
+          enum: ['9:16', '16:9']
+          default: '9:16'
+          description: Output orientation. Portrait 9:16 is the default.
 
     ImageAsset:
       type: object

@@ -29,6 +29,7 @@ const createImagePackBody = z.object({
     "documentary",
   ]).optional(),
   imageCount: z.coerce.number().int().min(1).max(MAX_IMAGE_PACK_COUNT),
+  aspectRatio: z.enum(["9:16", "16:9"]).default("9:16"),
 });
 
 router.post("/image-packs", async (req, res) => {
@@ -45,7 +46,7 @@ router.post("/image-packs", async (req, res) => {
     return;
   }
 
-  const { prompt, style, imageCount } = parsed.data;
+  const { prompt, style, imageCount, aspectRatio } = parsed.data;
   const [user] = await db
     .select()
     .from(usersTable)
@@ -115,7 +116,7 @@ router.post("/image-packs", async (req, res) => {
         status: "queued",
         prompt,
         style,
-        aspectRatio: "9:16",
+        aspectRatio,
         requestedDuration: String(imageCount),
         progressPercent: 0,
         manifest: {

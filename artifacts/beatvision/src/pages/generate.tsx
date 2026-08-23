@@ -198,6 +198,7 @@ export default function Generate() {
   const [selectedStyle, setSelectedStyle] = useState<VideoStyle>(VideoStyle.cinematic);
   const [imagePackMode, setImagePackMode] = useState(false);
   const [imagePackCount, setImagePackCount] = useState(4);
+  const [imagePackAspectRatio, setImagePackAspectRatio] = useState<"9:16" | "16:9">("9:16");
   const [imagePackSubmitting, setImagePackSubmitting] = useState(false);
   const [generationMode, setGenerationMode] = useState<CreateJobRequestGenerationMode>(CreateJobRequestGenerationMode.montage);
   const [narrativeVisualSource, setNarrativeVisualSource] = useState<CreateJobRequestNarrativeVisualSource>(CreateJobRequestNarrativeVisualSource.video);
@@ -921,7 +922,7 @@ export default function Generate() {
       setErrorDialog({
         open: true,
         title: "Choose an image count",
-        message: "Image packs can contain between 1 and 30 vertical stills.",
+        message: "Image packs can contain between 1 and 30 images.",
       });
       return;
     }
@@ -936,6 +937,7 @@ export default function Generate() {
           prompt: prompt.trim(),
           style: selectedStyle,
           imageCount: imagePackCount,
+          aspectRatio: imagePackAspectRatio,
         }),
       });
       const body = await response.json().catch(() => ({}));
@@ -1198,9 +1200,23 @@ export default function Generate() {
                 <div className="flex items-center gap-2 text-sm font-semibold">
                   <Sparkles className="h-4 w-4 text-primary" />
                   Images only
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="rounded-full text-muted-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        aria-label="About Images only"
+                      >
+                        <Info className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-[260px] text-xs leading-relaxed">
+                      You only need a prompt to create an image pack. No audio track, video upload, or video render is required.
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
                 <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  Generate reusable vertical AI stills without rendering a video, then arrange them in Remix Lab.
+                  Generate reusable portrait or landscape AI stills without rendering a video, then arrange them in Remix Lab.
                 </p>
               </div>
               <Button
@@ -1213,11 +1229,11 @@ export default function Generate() {
               </Button>
             </div>
             {imagePackMode && (
-              <div className="mt-4 grid gap-3 border-t border-primary/15 pt-4 sm:grid-cols-[minmax(0,1fr)_150px] sm:items-end">
+              <div className="mt-4 grid gap-4 border-t border-primary/15 pt-4 sm:grid-cols-[minmax(0,1fr)_150px_220px] sm:items-end">
                 <div>
                   <Label htmlFor="image-pack-count">Images to generate</Label>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Each vertical still costs 4 credits. Failed images are refunded.
+                    Each image costs 4 credits. Failed images are refunded.
                   </p>
                 </div>
                 <div>
@@ -1233,6 +1249,34 @@ export default function Generate() {
                   <p className="mt-1 text-right text-xs font-medium text-primary">
                     {imagePackCost} credits
                   </p>
+                </div>
+                <div>
+                  <Label>Image size</Label>
+                  <div className="mt-2 grid grid-cols-2 gap-2" role="radiogroup" aria-label="Image size">
+                    {([
+                      ["9:16", "Portrait"],
+                      ["16:9", "Landscape"],
+                    ] as const).map(([ratio, label]) => {
+                      const selected = imagePackAspectRatio === ratio;
+                      return (
+                        <button
+                          key={ratio}
+                          type="button"
+                          role="radio"
+                          aria-checked={selected}
+                          onClick={() => setImagePackAspectRatio(ratio)}
+                          className={`rounded-lg border px-2 py-2 text-left text-xs font-medium transition-colors ${
+                            selected
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border bg-background hover:border-primary/50"
+                          }`}
+                        >
+                          <span className="block">{ratio}</span>
+                          <span className="text-[10px] font-normal text-muted-foreground">{label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             )}
@@ -2602,7 +2646,7 @@ export default function Generate() {
             <div className="text-left space-y-3 mt-1">
               <p className="text-sm text-muted-foreground leading-relaxed">
                 {imagePackMode
-                  ? "Review the image pack below. The saved vertical stills will be ready to add directly to Remix Lab."
+                  ? `Review the image pack below. The saved ${imagePackAspectRatio === "9:16" ? "portrait" : "landscape"} images will be ready to add directly to Remix Lab.`
                   : "Review the details below. Once confirmed, the job will be submitted for admin approval before processing begins."}
               </p>
               <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm space-y-1.5">
@@ -2612,8 +2656,8 @@ export default function Generate() {
                 </div>
                 {imagePackMode && (
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Vertical stills</span>
-                    <span className="font-medium">{imagePackCount} images · 9:16</span>
+                    <span className="text-muted-foreground">Images</span>
+                    <span className="font-medium">{imagePackCount} images · {imagePackAspectRatio}</span>
                   </div>
                 )}
                 {!imagePackMode && refImageObjectPath && (

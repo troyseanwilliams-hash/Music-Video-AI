@@ -278,6 +278,7 @@ async function processImagePackJob(job: JobRow): Promise<void> {
   }
   try {
     await updateJobStatus(job.id, { status: "generating", progressPercent: 5 });
+    const imageAspectRatio = job.aspectRatio === "16:9" ? "16:9" : "9:16";
     const existing = await db
       .select({ assetIndex: imageAssetsTable.assetIndex })
       .from(imageAssetsTable)
@@ -287,11 +288,11 @@ async function processImagePackJob(job: JobRow): Promise<void> {
       if (completed.has(index)) continue;
       await assertJobOwned(job);
       const prompt = [
-        "vertical 9:16 editorial still",
+        `${imageAspectRatio === "16:9" ? "landscape 16:9" : "portrait 9:16"} editorial still`,
         job.style ? `${job.style} visual style` : "cinematic visual style",
         job.prompt?.trim() ?? "",
       ].filter(Boolean).join(", ");
-      const providerUrl = await generateNarrativeImage({ prompt, aspectRatio: "9:16" });
+      const providerUrl = await generateNarrativeImage({ prompt, aspectRatio: imageAspectRatio });
       const buffer = await downloadGeneratedImage(providerUrl);
       const objectPath = await storageService.uploadImagePackBuffer(buffer, job.id, index);
       await db.insert(imageAssetsTable).values({

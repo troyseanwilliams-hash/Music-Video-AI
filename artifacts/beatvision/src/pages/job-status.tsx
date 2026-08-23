@@ -538,6 +538,7 @@ export default function JobStatus() {
   const imagePackAssets = (imagePackAssetsData?.assets ?? [])
     .filter((asset) => asset.jobId === job.id)
     .sort((a, b) => a.assetIndex - b.assetIndex);
+  const imagePackAspectRatio = job.aspectRatio === "16:9" ? "16:9" : "9:16";
   const imagePackAssetByIndex = new Map(
     imagePackAssets.map((asset) => [asset.assetIndex, asset]),
   );
@@ -877,6 +878,9 @@ export default function JobStatus() {
                 <Badge variant="secondary" className="font-mono">
                   {imagePackAssets.length}/{imagePackCount}
                 </Badge>
+                <Badge variant="outline" className="font-mono">
+                  {imagePackAspectRatio}
+                </Badge>
               </CardTitle>
               <p className="text-sm text-muted-foreground">
                 {isActive
@@ -895,7 +899,9 @@ export default function JobStatus() {
                       key={asset?.id ?? `pending-image-${index}`}
                       className="overflow-hidden rounded-xl border border-border bg-secondary/25"
                     >
-                      <div className="relative aspect-[9/16] overflow-hidden bg-muted">
+                      <div className={`relative overflow-hidden bg-muted ${
+                        imagePackAspectRatio === "16:9" ? "aspect-video" : "aspect-[9/16]"
+                      }`}>
                         {asset ? (
                           <motion.img
                             initial={{ opacity: 0, scale: 1.04 }}

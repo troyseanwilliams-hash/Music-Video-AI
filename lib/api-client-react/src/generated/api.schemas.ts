@@ -203,6 +203,21 @@ export const JobAudioSourceType = {
 } as const;
 
 /**
+ * @nullable
+ */
+export type JobAspectRatio =
+  | (typeof JobAspectRatio)[keyof typeof JobAspectRatio]
+  | null;
+
+export const JobAspectRatio = {
+  "16:9": "16:9",
+  "9:16": "9:16",
+  "1:1": "1:1",
+  "4:3": "4:3",
+  "21:9": "21:9",
+} as const;
+
+/**
  * Requested output video length
  * @nullable
  */
@@ -348,6 +363,8 @@ export interface Job {
   prompt?: string | null;
   /** @nullable */
   style?: string | null;
+  /** @nullable */
+  aspectRatio?: JobAspectRatio;
   audioAnalysis?: AudioAnalysis | null;
   /** @nullable */
   progressPercent?: number | null;
@@ -391,20 +408,33 @@ export interface Job {
   updatedAt: string;
 }
 
+/**
+ * Output orientation. Portrait 9:16 is the default.
+ */
+export type CreateImagePackRequestAspectRatio =
+  (typeof CreateImagePackRequestAspectRatio)[keyof typeof CreateImagePackRequestAspectRatio];
+
+export const CreateImagePackRequestAspectRatio = {
+  "9:16": "9:16",
+  "16:9": "16:9",
+} as const;
+
 export interface CreateImagePackRequest {
   /**
-   * Visual direction used for every generated still.
+   * Visual direction used for every generated image.
    * @minLength 1
    * @maxLength 1000
    */
   prompt: string;
   style?: VideoStyle;
   /**
-   * Number of vertical AI stills to generate. Each image costs 4 credits.
+   * Number of images to generate. Each image costs 4 credits.
    * @minimum 1
    * @maximum 30
    */
   imageCount: number;
+  /** Output orientation. Portrait 9:16 is the default. */
+  aspectRatio?: CreateImagePackRequestAspectRatio;
 }
 
 export interface ImageAsset {

@@ -913,7 +913,7 @@ export const useCreateJob = <
 };
 
 /**
- * @summary Generate a reusable pack of vertical AI images
+ * @summary Generate a reusable pack of portrait or landscape AI images
  */
 export const getCreateImagePackUrl = () => {
   return `/api/image-packs`;
@@ -976,7 +976,7 @@ export type CreateImagePackMutationBody = BodyType<CreateImagePackRequest>;
 export type CreateImagePackMutationError = ErrorType<ErrorEnvelope>;
 
 /**
- * @summary Generate a reusable pack of vertical AI images
+ * @summary Generate a reusable pack of portrait or landscape AI images
  */
 export const useCreateImagePack = <
   TError = ErrorType<ErrorEnvelope>,

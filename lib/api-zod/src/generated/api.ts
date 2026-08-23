@@ -265,6 +265,16 @@ export const ListJobsResponse = zod.object({
       audioSourceUrl: zod.string().nullish(),
       prompt: zod.string().nullish(),
       style: zod.string().nullish(),
+      aspectRatio: zod
+        .union([
+          zod.literal("16:9"),
+          zod.literal("9:16"),
+          zod.literal("1:1"),
+          zod.literal("4:3"),
+          zod.literal("21:9"),
+          zod.literal(null),
+        ])
+        .nullish(),
       audioAnalysis: zod
         .union([
           zod.object({
@@ -689,7 +699,7 @@ export const CreateJobBody = zod.object({
 });
 
 /**
- * @summary Generate a reusable pack of vertical AI images
+ * @summary Generate a reusable pack of portrait or landscape AI images
  */
 export const CreateImagePackHeader = zod.object({
   Authorization: zod
@@ -702,12 +712,14 @@ export const createImagePackBodyPromptMax = 1000;
 
 export const createImagePackBodyImageCountMax = 30;
 
+export const createImagePackBodyAspectRatioDefault = `9:16`;
+
 export const CreateImagePackBody = zod.object({
   prompt: zod
     .string()
     .min(1)
     .max(createImagePackBodyPromptMax)
-    .describe("Visual direction used for every generated still."),
+    .describe("Visual direction used for every generated image."),
   style: zod
     .enum([
       "realistic",
@@ -724,9 +736,11 @@ export const CreateImagePackBody = zod.object({
     .number()
     .min(1)
     .max(createImagePackBodyImageCountMax)
-    .describe(
-      "Number of vertical AI stills to generate. Each image costs 4 credits.",
-    ),
+    .describe("Number of images to generate. Each image costs 4 credits."),
+  aspectRatio: zod
+    .enum(["9:16", "16:9"])
+    .default(createImagePackBodyAspectRatioDefault)
+    .describe("Output orientation. Portrait 9:16 is the default."),
 });
 
 /**
@@ -871,6 +885,16 @@ export const GetJobResponse = zod.object({
   audioSourceUrl: zod.string().nullish(),
   prompt: zod.string().nullish(),
   style: zod.string().nullish(),
+  aspectRatio: zod
+    .union([
+      zod.literal("16:9"),
+      zod.literal("9:16"),
+      zod.literal("1:1"),
+      zod.literal("4:3"),
+      zod.literal("21:9"),
+      zod.literal(null),
+    ])
+    .nullish(),
   audioAnalysis: zod
     .union([
       zod.object({
@@ -1822,6 +1846,16 @@ export const GetDashboardStatsResponse = zod.object({
         audioSourceUrl: zod.string().nullish(),
         prompt: zod.string().nullish(),
         style: zod.string().nullish(),
+        aspectRatio: zod
+          .union([
+            zod.literal("16:9"),
+            zod.literal("9:16"),
+            zod.literal("1:1"),
+            zod.literal("4:3"),
+            zod.literal("21:9"),
+            zod.literal(null),
+          ])
+          .nullish(),
         audioAnalysis: zod
           .union([
             zod.object({

@@ -7,6 +7,7 @@
  */
 import type { AudioAnalysis } from "./audioAnalysis";
 import type { JobAiProvider } from "./jobAiProvider";
+import type { JobAspectRatio } from "./jobAspectRatio";
 import type { JobAudioSourceType } from "./jobAudioSourceType";
 import type { JobManifest } from "./jobManifest";
 import type { JobPreviewClips } from "./jobPreviewClips";
@@ -38,6 +39,8 @@ export interface Job {
   prompt?: string | null;
   /** @nullable */
   style?: string | null;
+  /** @nullable */
+  aspectRatio?: JobAspectRatio;
   audioAnalysis?: AudioAnalysis | null;
   /** @nullable */
   progressPercent?: number | null;
