@@ -12,7 +12,7 @@ import {
 } from "@/lib/jobEstimates";
 import { Tooltip as UiTooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useGetJob, getGetJobQueryKey, type Job } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +21,7 @@ import {
   Play, RefreshCw, Download, ExternalLink, Clock,
   AudioWaveform, Clapperboard, Scissors, Sparkles, RotateCcw, Info,
   WifiOff, Wifi, FileAudio, Server, Zap, Plus, Link2, Check, ShieldAlert,
-  TriangleAlert, X,
+  TriangleAlert, X, ImageIcon,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from "recharts";
 import { motion, AnimatePresence } from "framer-motion";
@@ -33,6 +33,14 @@ import GenerationFiller from "@/components/GenerationFiller";
 import GenerationStoryboard from "@/components/GenerationStoryboard";
 
 const TERMINAL_STATUSES = new Set(["ready", "failed"]);
+
+type ImagePackAsset = {
+  id: string;
+  jobId: string;
+  assetIndex: number;
+  objectPath: string;
+  prompt: string;
+};
 
 const STAGES = [
   {
@@ -338,6 +346,19 @@ export default function JobStatus() {
       },
     },
   });
+  const { data: imagePackAssetsData } = useQuery<{ assets: ImagePackAsset[] }>({
+    queryKey: ["image-pack-assets", id],
+    enabled: isAuthenticated && !!id && job?.jobType === "image_pack",
+    queryFn: async () => {
+      const response = await fetch("/api/image-assets?limit=60", { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to load generated images");
+      return response.json();
+    },
+    refetchInterval:
+      job && !TERMINAL_STATUSES.has(job.status ?? "")
+        ? 2500
+        : false,
+  });
 
   useEffect(() => {
     if (!isAuthenticated || !id) return;
@@ -351,6 +372,7 @@ export default function JobStatus() {
         queryClient.setQueryData(getGetJobQueryKey(id), (old: unknown) =>
           old && typeof old === "object" ? { ...(old as object), ...updated } : updated
         );
+        queryClient.invalidateQueries({ queryKey: ["image-pack-assets", id] });
         if (TERMINAL_STATUSES.has(updated.status)) { es.close(); setSseConnected(false); }
       } catch {}
     };
@@ -513,6 +535,12 @@ export default function JobStatus() {
     typeof (manifest.imagePack as { imageCount?: unknown }).imageCount === "number"
       ? (manifest.imagePack as { imageCount: number }).imageCount
       : 1;
+  const imagePackAssets = (imagePackAssetsData?.assets ?? [])
+    .filter((asset) => asset.jobId === job.id)
+    .sort((a, b) => a.assetIndex - b.assetIndex);
+  const imagePackAssetByIndex = new Map(
+    imagePackAssets.map((asset) => [asset.assetIndex, asset]),
+  );
   const numClips = isImagePackJob
     ? Math.max(1, imagePackCount)
     : isRemixJob
@@ -839,6 +867,75 @@ export default function JobStatus() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {isImagePackJob && (
+          <Card className="overflow-hidden border-primary/20 bg-card/60">
+            <CardHeader className="border-b border-border/60 pb-4">
+              <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+                <ImageIcon className="h-4 w-4 text-primary" />
+                Generated images
+                <Badge variant="secondary" className="font-mono">
+                  {imagePackAssets.length}/{imagePackCount}
+                </Badge>
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                {isActive
+                  ? "Each finished image appears here immediately while the remaining images are created."
+                  : isFailed
+                    ? "Images that finished successfully remain available for Remix Lab."
+                    : "Your completed images are ready to arrange in Remix Lab."}
+              </p>
+            </CardHeader>
+            <CardContent className="pt-5">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                {Array.from({ length: imagePackCount }).map((_, index) => {
+                  const asset = imagePackAssetByIndex.get(index);
+                  return (
+                    <div
+                      key={asset?.id ?? `pending-image-${index}`}
+                      className="overflow-hidden rounded-xl border border-border bg-secondary/25"
+                    >
+                      <div className="relative aspect-[9/16] overflow-hidden bg-muted">
+                        {asset ? (
+                          <motion.img
+                            initial={{ opacity: 0, scale: 1.04 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ duration: 0.35 }}
+                            src={`/api/storage${asset.objectPath}`}
+                            alt={`Generated image ${index + 1} of ${imagePackCount}`}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-3 text-center">
+                            {isActive ? (
+                              <>
+                                <Loader2 className="h-5 w-5 animate-spin text-primary/70" />
+                                <span className="text-xs text-muted-foreground">Creating image {index + 1}</span>
+                              </>
+                            ) : (
+                              <>
+                                <X className="h-5 w-5 text-muted-foreground/45" />
+                                <span className="text-xs text-muted-foreground">Not created</span>
+                              </>
+                            )}
+                          </div>
+                        )}
+                        <span className="absolute left-2 top-2 rounded-md bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                          {index + 1}
+                        </span>
+                      </div>
+                      <div className="min-h-12 p-2">
+                        <p className="line-clamp-2 text-xs text-muted-foreground">
+                          {asset ? asset.prompt : isActive ? "Waiting for this image" : "No image was saved"}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* ── Failed (not auto-retrying) ── */}
         <AnimatePresence>
