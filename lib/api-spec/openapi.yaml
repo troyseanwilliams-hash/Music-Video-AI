@@ -1396,6 +1396,11 @@ components:
           enum: [montage, narrative]
           default: montage
           description: Montage intentionally reuses a smaller visual library; Narrative renders one unique chronological scene per timeline slot.
+        narrativeVisualSource:
+          type: string
+          enum: [video, generated_images]
+          default: video
+          description: Narrative-only visual source. generated_images creates one persisted AI still per chronological scene and animates it into the final video.
         clipStartTime:
           type: [number, 'null']
           minimum: 0

@@ -273,6 +273,7 @@ router.post("/jobs", async (req, res) => {
     referenceImagePath,
     requestedDuration,
     generationMode,
+    narrativeVisualSource,
     clipStartTime,
     audioAnalysis,
     aiProvider,
@@ -284,6 +285,10 @@ router.post("/jobs", async (req, res) => {
     parseResult.data;
   const normalizedGenerationMode =
     generationMode === "narrative" ? "narrative" : "montage";
+  const normalizedNarrativeVisualSource =
+    normalizedGenerationMode === "montage" && narrativeVisualSource === "generated_images"
+      ? "generated_images"
+      : "video";
 
   // "No audio" jobs render a silent video (soundtrack added later in the
   // Editor) — there's no audio to attest ownership of, and no song to derive
@@ -583,6 +588,7 @@ router.post("/jobs", async (req, res) => {
         bundledLipSyncReservedSubscriptionCredits: lipSyncSubscriptionDebit,
         bundledLipSyncReservedTopupCredits: lipSyncTopupDebit,
         generationMode: normalizedGenerationMode,
+        narrativeVisualSource: normalizedNarrativeVisualSource,
         ...(bundledLipSyncChildId ? { bundledLipSyncChildId } : {}),
         storyboard,
       } as unknown as Record<string, unknown>,

@@ -279,6 +279,18 @@ export class ObjectStorageService {
     return `/objects/thumbnails/${videoId}.jpg`;
   }
 
+  // Persist a generated narrative still. Image sequences are job inputs on later
+  // recovery attempts, so keep them in private storage rather than depending on
+  // a provider-hosted URL that may expire.
+  async uploadNarrativeImageBuffer(buffer: Buffer, jobId: string, index: number): Promise<string> {
+    const privateObjectDir = this.getPrivateObjectDir();
+    const objectEntityPath = `${privateObjectDir}/narrative-images/${jobId}/${index}.jpg`;
+    const { bucketName, objectName } = parseObjectPath(objectEntityPath);
+    const file = objectStorageClient.bucket(bucketName).file(objectName);
+    await file.save(buffer, { contentType: "image/jpeg", resumable: buffer.length > 5 * 1024 * 1024 });
+    return `/objects/narrative-images/${jobId}/${index}.jpg`;
+  }
+
   // Persist a single generated clip so it can be reused by a later remix without
   // regenerating it. Returns the /objects/... path stored on videos.clips.
   async uploadClipBuffer(buffer: Buffer, videoId: string, index: number): Promise<string> {

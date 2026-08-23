@@ -10,6 +10,7 @@ import type { CreateJobRequestAiProvider } from "./createJobRequestAiProvider";
 import type { CreateJobRequestAspectRatio } from "./createJobRequestAspectRatio";
 import type { CreateJobRequestAudioSourceType } from "./createJobRequestAudioSourceType";
 import type { CreateJobRequestGenerationMode } from "./createJobRequestGenerationMode";
+import type { CreateJobRequestNarrativeVisualSource } from "./createJobRequestNarrativeVisualSource";
 import type { CreateJobRequestRequestedDuration } from "./createJobRequestRequestedDuration";
 import type { CreateJobRequestResolution } from "./createJobRequestResolution";
 import type { VideoStyle } from "./videoStyle";
@@ -60,6 +61,8 @@ export interface CreateJobRequest {
   requestedDuration?: CreateJobRequestRequestedDuration;
   /** Montage intentionally reuses a smaller visual library; Narrative renders one unique chronological scene per timeline slot. */
   generationMode?: CreateJobRequestGenerationMode;
+  /** Narrative-only visual source. generated_images creates one persisted AI still per chronological scene and animates it into the final video. */
+  narrativeVisualSource?: CreateJobRequestNarrativeVisualSource;
   /**
    * Audio clip start time in seconds; null or omit means start from the beginning
    * @minimum 0

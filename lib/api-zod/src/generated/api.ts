@@ -500,6 +500,7 @@ export const createJobBodyLyricsTextMax = 50000;
 export const createJobBodyCharacterMax = 100;
 
 export const createJobBodyGenerationModeDefault = `montage`;
+export const createJobBodyNarrativeVisualSourceDefault = `video`;
 export const createJobBodyClipStartTimeMin = 0;
 
 export const createJobBodyAudioAnalysisOneAnalysisReceiptMax = 512;
@@ -587,6 +588,12 @@ export const CreateJobBody = zod.object({
     .default(createJobBodyGenerationModeDefault)
     .describe(
       "Montage intentionally reuses a smaller visual library; Narrative renders one unique chronological scene per timeline slot.",
+    ),
+  narrativeVisualSource: zod
+    .enum(["video", "generated_images"])
+    .default(createJobBodyNarrativeVisualSourceDefault)
+    .describe(
+      "Narrative-only visual source. generated_images creates one persisted AI still per chronological scene and animates it into the final video.",
     ),
   clipStartTime: zod
     .number()

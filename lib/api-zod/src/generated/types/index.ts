@@ -26,6 +26,7 @@ export * from "./createJobRequestAiProvider";
 export * from "./createJobRequestAspectRatio";
 export * from "./createJobRequestAudioSourceType";
 export * from "./createJobRequestGenerationMode";
+export * from "./createJobRequestNarrativeVisualSource";
 export * from "./createJobRequestRequestedDuration";
 export * from "./createJobRequestResolution";
 export * from "./createPortalRequest";

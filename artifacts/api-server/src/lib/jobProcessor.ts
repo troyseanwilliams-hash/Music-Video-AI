@@ -14,6 +14,7 @@ import { notifyRenderReady, notifyRenderFailed, notifyAdminRenderFailed } from "
 import { ObjectStorageService } from "./objectStorage.js";
 import { analyzeAudioBuffer, type AudioAnalysis, type AudioSection } from "./audioAnalysis.js";
 import { generateClip, downloadClip, checkPixazoRequest, getActiveProvider, PROVIDER_API_FAILURE, PROVIDER_OUT_OF_CREDITS } from "./videoApis.js";
+import { generateNarrativeImage, downloadGeneratedImage, IMAGE_API_FAILURE } from "./imageApis.js";
 import { generateLipsync, lipsyncAvailable } from "./lipsync.js";
 import { stitchVideoClips, extractVideoThumbnail } from "./videoStitcher.js";
 import { stitchEditorTimeline } from "./editorStitcher.js";
@@ -94,6 +95,8 @@ type UncertainSubmission = {
 
 type AiJobMeta = {
   generationMode?: "montage" | "narrative";
+  narrativeVisualSource?: "video" | "generated_images";
+  narrativeImages?: Record<string, string>;
   reservedCredits?: number;
   reservedSubscriptionCredits?: number;
   reservedTopupCredits?: number;
@@ -134,6 +137,34 @@ function generationModeOf(job: JobRow): "montage" | "narrative" {
     || meta.storyboard?.generationMode === "narrative"
     ? "narrative"
     : "montage";
+}
+
+function usesGeneratedNarrativeImages(job: JobRow): boolean {
+  const meta = aiMetaOf(job);
+  return meta.narrativeVisualSource === "generated_images";
+}
+
+async function narrativeImageUrlFor(
+  job: JobRow,
+  index: number,
+  prompt: string,
+): Promise<string> {
+  const existing = aiMetaOf(job).narrativeImages?.[index];
+  if (existing) return storageService.getObjectEntitySignedUrl(existing, 3600);
+  await assertJobOwned(job);
+  const providerUrl = await generateNarrativeImage({ prompt, aspectRatio: job.aspectRatio });
+  const buffer = await downloadGeneratedImage(providerUrl);
+  const objectPath = await storageService.uploadNarrativeImageBuffer(buffer, job.id, index);
+  await db.execute(sql`
+    UPDATE jobs
+    SET manifest = jsonb_set(
+      COALESCE(manifest, '{}'::jsonb),
+      '{narrativeImages}',
+      COALESCE(manifest->'narrativeImages', '{}'::jsonb) || ${JSON.stringify({ [index]: objectPath })}::jsonb
+    ), updated_at = NOW()
+    WHERE id = ${job.id}
+  `);
+  return storageService.getObjectEntitySignedUrl(objectPath, 3600);
 }
 
 function storyboardShotsOf(job: JobRow): PersistedStoryboardShot[] {
@@ -766,11 +797,15 @@ async function generateClips(
     for (let attempt = 1; attempt <= clipAttempts; attempt++) {
       await assertJobOwned(job);
       try {
+        const imageIndex = generationMode === "narrative" ? i : (storyboardShot?.index ?? i);
+        const narrativeImageUrl = usesGeneratedNarrativeImages(job)
+          ? await narrativeImageUrlFor(job, imageIndex, prompt)
+          : refImageUrl ?? undefined;
         const result = await generateClip({
           prompt,
           durationSeconds: clipDuration,
           aspectRatio: job.aspectRatio ?? "16:9",
-          imageUrl: refImageUrl ?? undefined,
+          imageUrl: narrativeImageUrl,
           // Pin the user's chosen engine (so "Kling" actually renders on Kling)
           // and do not submit paid fallback requests to unrelated engines.
           provider,
@@ -809,7 +844,7 @@ async function generateClips(
           }
           throw e; // nothing rendered yet → normal provider-failure path
         }
-        if (msg.includes(PROVIDER_API_FAILURE) || /moderation|content policy|safety system/i.test(msg)) throw e;
+        if (msg.includes(PROVIDER_API_FAILURE) || msg.includes(IMAGE_API_FAILURE) || /moderation|content policy|safety system/i.test(msg)) throw e;
         if (attempt < clipAttempts) {
           logger.warn({ jobId: job.id, clip: i, attempt }, "Clip attempt failed — retrying this clip");
           await new Promise((r) => setTimeout(r, 3000));
