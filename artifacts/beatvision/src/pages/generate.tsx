@@ -1197,10 +1197,10 @@ export default function Generate() {
               <div>
                 <div className="flex items-center gap-2 text-sm font-semibold">
                   <Sparkles className="h-4 w-4 text-primary" />
-                  Generate reusable images
+                  Images only
                 </div>
                 <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  Create vertical AI stills without rendering a video, then arrange them in Remix Lab.
+                  Generate reusable vertical AI stills without rendering a video, then arrange them in Remix Lab.
                 </p>
               </div>
               <Button
@@ -1209,7 +1209,7 @@ export default function Generate() {
                 onClick={() => setImagePackMode((active) => !active)}
                 data-testid="toggle-image-pack-mode"
               >
-                {imagePackMode ? "Images only selected" : "Create image pack"}
+                {imagePackMode ? "Images only selected" : "Use images only"}
               </Button>
             </div>
             {imagePackMode && (
