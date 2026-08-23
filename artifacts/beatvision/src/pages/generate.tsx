@@ -1072,21 +1072,37 @@ export default function Generate() {
             AI Generator
           </div>
           <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight mb-2">
-            Create a <span className="text-gradient-electric">new video</span>
+            {imagePackMode ? (
+              <>Create an <span className="text-gradient-electric">image pack</span></>
+            ) : (
+              <>Create a <span className="text-gradient-electric">new video</span></>
+            )}
           </h1>
           <p className="text-sm sm:text-base text-muted-foreground max-w-xl">
-            Drop in a track — our AI reads its beat, energy, and mood, then generates a cinematic, beat-synced music video.
+            {imagePackMode
+              ? "Describe the visual direction and create reusable still images for your next story, slideshow, or Remix Lab timeline."
+              : "Drop in a track — our AI reads its beat, energy, and mood, then generates a cinematic, beat-synced music video."}
           </p>
         </div>
 
-        <TutorialTip id="generate" title="Making a video">
-          Add audio (upload, Suno link, or one of your Soundtracks), describe the look, pick your engine — <strong>Runway</strong> (premium)
-          or <strong>Kling</strong> (value) — and a length. For a spoken narrative or podcast, create a still image pack, then use Remix Lab
-          to place those images against your full audio and set each image&apos;s hold time to follow your timeline. We charge credits only when it succeeds.
+        <TutorialTip id="generate" title={imagePackMode ? "Making an image pack" : "Making a video"}>
+          {imagePackMode ? (
+            <>
+              Describe the visual direction, choose how many images you need, and optionally add a reference image for consistent character scenes.
+              Your saved images are ready to arrange in Remix Lab, where you can set each image&apos;s hold time to follow a spoken narrative or podcast.
+              We charge credits only when image generation succeeds.
+            </>
+          ) : (
+            <>
+              Add audio (upload, Suno link, or one of your Soundtracks), describe the look, pick your engine — <strong>Runway</strong> (premium)
+              or <strong>Kling</strong> (value) — and a length. For a spoken narrative or podcast, create a still image pack, then use Remix Lab
+              to place those images against your full audio and set each image&apos;s hold time to follow your timeline. We charge credits only when it succeeds.
+            </>
+          )}
         </TutorialTip>
 
         {/* ── Quick start: a compact mobile picker, full controls on larger screens ── */}
-        <div className="sm:hidden rounded-2xl border border-primary/25 bg-gradient-to-r from-primary/[0.09] to-accent/[0.06] p-3">
+        <div className={`sm:hidden rounded-2xl border border-primary/25 bg-gradient-to-r from-primary/[0.09] to-accent/[0.06] p-3 ${imagePackMode ? "hidden" : ""}`}>
           <div className="flex items-center gap-2">
             <div className="min-w-0 flex flex-1 items-center gap-2 max-[359px]:hidden">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
@@ -1149,7 +1165,7 @@ export default function Generate() {
           </div>
         </div>
 
-        <div className="hidden sm:block rounded-2xl border border-border/60 bg-background/30 p-5">
+        <div className={`hidden sm:block rounded-2xl border border-border/60 bg-background/30 p-5 ${imagePackMode ? "hidden" : ""}`}>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <span className="flex items-center gap-1.5 text-sm font-semibold">
               <Sparkles className="h-4 w-4 text-primary" /> Quick start
