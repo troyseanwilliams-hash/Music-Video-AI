@@ -1510,7 +1510,9 @@ export default function Editor() {
       <div className="mb-4">
         <TutorialTip id="remixlab" title="Remix Lab basics">
           Add your clips and photos, add music (upload, Suno, or one of your Soundtracks), then arrange them on the
-          timeline. Detect the beat to auto-sync photo cuts, set a transition, and export — free on trial and for subscribers.
+          timeline. To turn a narrated podcast or story into a still-image video, add the full audio, arrange your images in story order,
+          and set each image&apos;s hold time to match the narration. Detect the beat to auto-sync photo cuts, set a transition, and export —
+          free on trial and for subscribers.
         </TutorialTip>
       </div>
 
@@ -1808,15 +1810,9 @@ export default function Editor() {
                   <X className="h-3 w-3" />
                 </button>
                 {seg.kind === "photo" ? (
-                  <input
-                    type="number"
-                    min={0.5}
-                    step={0.5}
-                    value={seg.durationSec}
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={(e) => patchSegment(seg.id, { durationSec: Math.max(0.5, Number(e.target.value) || 3) })}
-                    className="border-border absolute bottom-1 right-1 w-10 rounded border bg-black/70 px-1 py-0.5 text-right text-[10px] text-white"
-                  />
+                  <span className="absolute bottom-1 right-1 rounded bg-black/60 px-1 text-[10px] text-white">
+                    {seg.durationSec.toFixed(1)}s
+                  </span>
                 ) : (
                   <span className="absolute bottom-1 right-1 rounded bg-black/60 px-1 text-[10px] text-white">
                     {Math.max(0, (seg.durationSec || 0) - (seg.trimStart || 0) - (seg.trimEnd || 0)).toFixed(1)}s
@@ -1827,6 +1823,60 @@ export default function Editor() {
             ))}
           </div>
         )}
+
+        {/* Duration panel for the selected image */}
+        {(() => {
+          const sel = segments[previewIndex];
+          if (!sel || sel.kind !== "photo") return null;
+          const setPhotoDuration = (value: number) => {
+            const safeValue = Number.isFinite(value) ? value : 3;
+            patchSegment(sel.id, { durationSec: Math.min(600, Math.max(0.5, safeValue)) });
+          };
+          return (
+            <div className="mt-3 rounded-lg border border-primary/25 bg-primary/[0.04] p-3">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <span className="flex items-center gap-1.5 text-xs font-medium">
+                  <Clock className="h-3.5 w-3.5 text-primary" /> Image duration
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Holds for {sel.durationSec.toFixed(1)} seconds
+                </span>
+              </div>
+              <label className="block text-xs text-muted-foreground">
+                Keep this image on screen for
+                <div className="mt-1 flex max-w-xs items-center gap-2">
+                  <input
+                    type="number"
+                    min={0.5}
+                    max={600}
+                    step={0.5}
+                    value={sel.durationSec}
+                    onChange={(event) => setPhotoDuration(Number(event.target.value))}
+                    className="w-24 rounded border border-border bg-background px-2 py-1 text-sm text-foreground"
+                    aria-label={`Duration for ${sel.name}`}
+                  />
+                  <span>seconds</span>
+                </div>
+              </label>
+              <div className="mt-3 flex flex-wrap gap-2" aria-label="Common image durations">
+                {[3, 5, 10, 15, 30].map((seconds) => (
+                  <Button
+                    key={seconds}
+                    type="button"
+                    size="sm"
+                    variant={Math.abs(sel.durationSec - seconds) < 0.01 ? "default" : "outline"}
+                    onClick={() => setPhotoDuration(seconds)}
+                  >
+                    {seconds}s
+                  </Button>
+                ))}
+              </div>
+              <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                Use this to match a line, scene, or section of your narration. The exported video keeps the selected duration.
+              </p>
+            </div>
+          );
+        })()}
 
         {/* Trim panel for the selected video clip */}
         {(() => {
@@ -1896,7 +1946,7 @@ export default function Editor() {
         })()}
 
         <p className="text-muted-foreground mt-3 text-xs">
-          Drag blocks to reorder · click to preview · trim the front/back of the selected clip · set a photo's seconds in its box
+          Drag blocks to reorder · click an image to set its hold time · trim the front/back of the selected clip
         </p>
       </Card>
 

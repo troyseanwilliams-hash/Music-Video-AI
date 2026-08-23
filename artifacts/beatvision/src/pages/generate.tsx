@@ -1081,7 +1081,8 @@ export default function Generate() {
 
         <TutorialTip id="generate" title="Making a video">
           Add audio (upload, Suno link, or one of your Soundtracks), describe the look, pick your engine — <strong>Runway</strong> (premium)
-          or <strong>Kling</strong> (value) — and a length. We charge credits only when it succeeds.
+          or <strong>Kling</strong> (value) — and a length. For a spoken narrative or podcast, create a still image pack, then use Remix Lab
+          to place those images against your full audio and set each image&apos;s hold time to follow your timeline. We charge credits only when it succeeds.
         </TutorialTip>
 
         {/* ── Quick start: a compact mobile picker, full controls on larger screens ── */}
