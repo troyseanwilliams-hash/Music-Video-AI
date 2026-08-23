@@ -123,7 +123,7 @@ describe("resolveClipProviderChain", () => {
         providerOnly: true,
         onUncertainSubmission,
       }),
-    ).rejects.toThrow("AI service 500");
+    ).rejects.toThrow("temporarily unavailable");
     expect(onUncertainSubmission).toHaveBeenCalledWith({
       provider: "kling",
       status: 500,

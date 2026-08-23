@@ -409,6 +409,11 @@ async function generateWithPixazo(
         activityId,
         reason: `AI service returned HTTP ${submit.status}`,
       });
+      const reference = activityId ? ` Reference ID: ${activityId}.` : "";
+      throw new Error(
+        `${PROVIDER_API_FAILURE} The AI video service is temporarily unavailable. ` +
+          `No automatic retry was attempted to prevent duplicate charges. Please try again later.${reference}`,
+      );
     }
     throw new Error(`${PROVIDER_API_FAILURE} AI service ${submit.status}: ${text.slice(0, 200)}`);
   }
