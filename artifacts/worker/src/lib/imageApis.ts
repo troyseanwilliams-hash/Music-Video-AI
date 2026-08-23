@@ -28,6 +28,18 @@ function imageSizeForAspectRatio(aspectRatio?: string | null): string {
   }
 }
 
+export function singleSceneImagePrompt(segmentPrompt: string): string {
+  const outputRule = [
+    "CRITICAL OUTPUT RULE: Generate exactly one image for exactly one requested segment.",
+    "Show one continuous moment in one setting from one camera view.",
+    "Do not combine multiple moments, scenes, locations, camera angles, or requested segments.",
+    "Do not create a collage, triptych, diptych, grid, contact sheet, split screen, panels, montage, storyboard, or multi-frame composition.",
+    "If the brief mentions other events, show only the single current segment for this request.",
+  ].join("\n");
+  const maxSegmentLength = Math.max(0, 3000 - outputRule.length - 2);
+  return [segmentPrompt.trim().slice(0, maxSegmentLength), outputRule].join("\n\n");
+}
+
 /**
  * Generate a single narrative still through Pixazo's Flux image endpoint.
  * The request id is persisted before polling so an interrupted job can recover
@@ -51,7 +63,7 @@ export async function generateNarrativeImage(req: NarrativeImageRequest): Promis
           "Ocp-Apim-Subscription-Key": key,
         },
         body: JSON.stringify({
-          prompt: req.prompt.slice(0, 3000),
+          prompt: singleSceneImagePrompt(req.prompt),
           image_size: imageSizeForAspectRatio(req.aspectRatio),
           input_image: req.referenceImageUrl?.trim() || undefined,
           safety_tolerance: "2",

@@ -3,6 +3,7 @@ import {
   downloadGeneratedImage,
   generateNarrativeImage,
   IMAGE_API_FAILURE,
+  singleSceneImagePrompt,
 } from "./imageApis.js";
 
 describe("generateNarrativeImage recovery", () => {
@@ -18,6 +19,14 @@ describe("generateNarrativeImage recovery", () => {
     vi.restoreAllMocks();
     if (originalKey === undefined) delete process.env.PIXAZO_API_KEY;
     else process.env.PIXAZO_API_KEY = originalKey;
+  });
+
+  it("keeps the single-scene rule intact when a long brief is truncated", () => {
+    const prompt = singleSceneImagePrompt("scene ".repeat(1_000));
+
+    expect(prompt).toHaveLength(3_000);
+    expect(prompt).toContain("Generate exactly one image for exactly one requested segment.");
+    expect(prompt).toContain("Do not create a collage, triptych, diptych, grid, contact sheet, split screen, panels, montage, storyboard, or multi-frame composition.");
   });
 
   it("polls a saved request without submitting another paid image request", async () => {
@@ -88,9 +97,13 @@ describe("generateNarrativeImage recovery", () => {
 
     await expect(result).resolves.toBe("https://example.test/generated-with-reference.jpg");
     const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit;
-    expect(JSON.parse(String(requestInit.body))).toMatchObject({
+    const submittedBody = JSON.parse(String(requestInit.body)) as { prompt?: string; input_image?: string };
+    expect(submittedBody).toMatchObject({
       input_image: "https://example.test/private-reference.jpg?signature=test",
     });
+    expect(submittedBody.prompt).toContain("Keep the same character across the image pack");
+    expect(submittedBody.prompt).toContain("Generate exactly one image for exactly one requested segment.");
+    expect(submittedBody.prompt).toContain("Do not create a collage, triptych, diptych, grid, contact sheet, split screen, panels, montage, storyboard, or multi-frame composition.");
   });
 
   it("classifies a rejected saved-poll request as an image-stage failure", async () => {
