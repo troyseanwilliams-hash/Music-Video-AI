@@ -232,6 +232,7 @@ export default function Generate() {
   }, [resolution]);
   const [character, setCharacter] = useState<CharacterValue>("none");
   const [requestedDuration, setRequestedDuration] = useState<CreateJobRequestRequestedDuration>(CreateJobRequestRequestedDuration.NUMBER_10);
+  const [silentFilmDurationSeconds, setSilentFilmDurationSeconds] = useState(180);
   const [aiProvider, setAiProvider] = useState<AiProvider>("runway");
   const [clipStartTime, setClipStartTime] = useState(0);
   // Full-track renders do not need a Lip Sync segment. This is intentionally
@@ -478,7 +479,9 @@ export default function Generate() {
         style: selectedStyle,
         generationMode,
         character,
-        requestedDuration,
+        requestedDuration: effectiveRequestedDuration,
+        silentFilmDurationSeconds:
+          sourceType === CreateJobRequestAudioSourceType.none ? silentFilmDurationSeconds : null,
         audioObjectPath: selectedAudioObjectPath,
         audioAnalysis:
           analyzeAudio.isSuccess && analysisForPath === selectedAudioObjectPath
@@ -664,15 +667,19 @@ export default function Generate() {
   // Karaoke lyric burn is a paid add-on — mirror of the server-side charge
   // (jobs.ts adds LYRIC_OVERLAY_COST when lyrics are present). Every price
   // surface on this page must include it so the shown cost equals the charge.
+  const effectiveRequestedDuration =
+    sourceType === CreateJobRequestAudioSourceType.none
+      ? String(silentFilmDurationSeconds) as CreateJobRequestRequestedDuration
+      : requestedDuration;
   const lyricAddon = lyricsText.trim() ? LYRIC_OVERLAY_COST : 0;
   const generatedImageCost = estimateGeneratedImageCost(
-    requestedDuration,
+    effectiveRequestedDuration,
     songDurationSec,
     generationMode as GenerationMode,
     narrativeVisualSource === CreateJobRequestNarrativeVisualSource.generated_images ? "generated_images" : "video",
   );
   const videoCost =
-    estimateCreditCost(requestedDuration, aiProvider, resolution, songDurationSec, generationMode as GenerationMode)
+    estimateCreditCost(effectiveRequestedDuration, aiProvider, resolution, songDurationSec, generationMode as GenerationMode)
     + generatedImageCost
     + lyricAddon;
   const lipSyncAddon =
@@ -681,7 +688,7 @@ export default function Generate() {
       : 0;
   const cost = videoCost + lipSyncAddon;
   const generationEstimate = getGenerationTimeEstimate(
-    requestedDuration,
+    effectiveRequestedDuration,
     aiProvider,
     resolution,
     songDurationSec,
@@ -826,7 +833,9 @@ export default function Generate() {
           resolution,
           character: character !== "none" ? character : null,
           referenceImagePath: refImageObjectPath ?? null,
-          requestedDuration,
+          requestedDuration: effectiveRequestedDuration,
+          silentFilmDurationSeconds:
+            sourceType === CreateJobRequestAudioSourceType.none ? silentFilmDurationSeconds : null,
           generationMode,
           narrativeVisualSource,
           aiProvider,
@@ -914,8 +923,11 @@ export default function Generate() {
     if (sourceType === CreateJobRequestAudioSourceType.suno && !sunoResolved) {
       errors.audio = sunoResolving ? "Loading track — wait a moment." : "Please load a Suno track first.";
     }
-    if (sourceType === CreateJobRequestAudioSourceType.none && requestedDuration === CreateJobRequestRequestedDuration.full) {
-      errors.audio = "Choose a specific length for a no-audio video.";
+    if (
+      sourceType === CreateJobRequestAudioSourceType.none
+      && (!Number.isInteger(silentFilmDurationSeconds) || silentFilmDurationSeconds < 5 || silentFilmDurationSeconds > MAX_FULL_SECONDS)
+    ) {
+      errors.audio = `Choose a silent-film length between 5 and ${MAX_FULL_SECONDS} seconds.`;
     }
     if (
       fullTrackNeedsAnalysis
@@ -960,9 +972,9 @@ export default function Generate() {
       return;
     }
 
-    const durSec = requestedDuration === CreateJobRequestRequestedDuration.full
+    const durSec = effectiveRequestedDuration === CreateJobRequestRequestedDuration.full
       ? null
-      : parseInt(requestedDuration as string, 10);
+      : parseInt(effectiveRequestedDuration as string, 10);
 
     if (durSec !== null && durSec >= 90) {
       setDurationWarningOpen(true);
@@ -1290,7 +1302,7 @@ export default function Generate() {
                         {PROVIDER_LABELS[p]}
                         <span className="text-muted-foreground"> · {p === "runway" ? "premium quality" : "value price"}</span>
                       </span>
-                      <span className="text-xs text-muted-foreground shrink-0">{estimateCreditCost(requestedDuration, p, resolution, songDurationSec, generationMode as GenerationMode) + lyricAddon} cr</span>
+                      <span className="text-xs text-muted-foreground shrink-0">{estimateCreditCost(effectiveRequestedDuration, p, resolution, songDurationSec, generationMode as GenerationMode) + lyricAddon} cr</span>
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
@@ -1304,10 +1316,10 @@ export default function Generate() {
                   <button className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 px-3 py-1.5 text-sm font-medium transition-colors">
                     <Clock className="h-3.5 w-3.5 text-muted-foreground" />
                     <span>{
-                      requestedDuration === CreateJobRequestRequestedDuration.full ? fullTrackLabel
+                       sourceType === CreateJobRequestAudioSourceType.none ? `Silent · ${formatDuration(silentFilmDurationSeconds)}`
+                         : requestedDuration === CreateJobRequestRequestedDuration.full ? fullTrackLabel
                         : (requestedDuration as string) === "300" ? "5 min"
                         : (requestedDuration as string) === "600" ? "10 min"
-                          : (requestedDuration as string) === "184" ? "3:04"
                         : `${durationToSeconds(requestedDuration)}s`
                     }</span>
                     <ChevronDown className="h-3 w-3 text-muted-foreground ml-0.5" />
@@ -1338,8 +1350,7 @@ export default function Generate() {
                     { value: CreateJobRequestRequestedDuration.NUMBER_45, label: "45 seconds" },
                     { value: CreateJobRequestRequestedDuration.NUMBER_60, label: "60 seconds" },
                     { value: CreateJobRequestRequestedDuration.NUMBER_90, label: "90 seconds" },
-                    { value: CreateJobRequestRequestedDuration.NUMBER_120, label: "120 seconds" },
-                     { value: CreateJobRequestRequestedDuration.NUMBER_184, label: "3:04 (DB Cooper practice)" },
+                     { value: CreateJobRequestRequestedDuration.NUMBER_120, label: "120 seconds" },
                     { value: CreateJobRequestRequestedDuration.NUMBER_300, label: "5 minutes" },
                     { value: CreateJobRequestRequestedDuration.NUMBER_600, label: "10 minutes" },
                   ] as const).map(({ value, label }) => {
@@ -1933,6 +1944,28 @@ export default function Generate() {
                   </p>
                 </div>
               </div>
+              <div className="mt-3 rounded-xl border border-border/60 bg-background/30 p-4">
+                <Label htmlFor="silent-film-duration" className="text-sm font-medium">
+                  Silent-film length
+                </Label>
+                <div className="mt-2 flex items-center gap-3">
+                  <Input
+                    id="silent-film-duration"
+                    type="number"
+                    min={5}
+                    max={MAX_FULL_SECONDS}
+                    step={1}
+                    value={silentFilmDurationSeconds}
+                    onChange={(event) => setSilentFilmDurationSeconds(Number(event.target.value))}
+                    className="max-w-36"
+                    aria-describedby="silent-film-duration-help"
+                  />
+                  <span className="text-sm text-muted-foreground">seconds · {formatDuration(silentFilmDurationSeconds)}</span>
+                </div>
+                <p id="silent-film-duration-help" className="mt-2 text-xs text-muted-foreground">
+                  Choose any whole-second length from 5 seconds to 10 minutes. This controls the scene plan, generation estimate, and credits before the render starts.
+                </p>
+              </div>
             </TabsContent>
           </Tabs>
           {fieldErrors.audio && (
@@ -2241,8 +2274,9 @@ export default function Generate() {
           {/* ── Settings Summary ── */}
           <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
             <span className="rounded-full border border-border/40 bg-secondary/30 px-2.5 py-1">
-              {aspectRatio} · {resolution} · {
-                requestedDuration === CreateJobRequestRequestedDuration.full ? fullTrackLabel
+               {aspectRatio} · {resolution} · {
+                 sourceType === CreateJobRequestAudioSourceType.none ? `Silent · ${formatDuration(silentFilmDurationSeconds)}`
+                   : requestedDuration === CreateJobRequestRequestedDuration.full ? fullTrackLabel
                   : (requestedDuration as string) === "300" ? "5 min"
                   : (requestedDuration as string) === "600" ? "10 min"
                   : `${durationToSeconds(requestedDuration)}s`
@@ -2357,15 +2391,15 @@ export default function Generate() {
 
     {/* ── Duration Warning Dialog ── */}
     {(() => {
-      const durSec = requestedDuration === CreateJobRequestRequestedDuration.full
+      const durSec = effectiveRequestedDuration === CreateJobRequestRequestedDuration.full
         ? null
-        : parseInt(requestedDuration as string, 10);
+        : parseInt(effectiveRequestedDuration as string, 10);
       const isLong = durSec !== null && durSec >= 90;
       if (!isLong) return null;
       const numClips = generationEstimate.unitCount;
       const estimatedMin = generationEstimate.label;
-       const durLabel = durSec === 184 ? "3:04" : durSec === 300 ? "5-minute" : durSec === 600 ? "10-minute" : `${durSec}-second`;
-      const creditCost = estimateCreditCost(requestedDuration, aiProvider, resolution, songDurationSec, generationMode as GenerationMode) + lyricAddon;
+       const durLabel = durSec === 300 ? "5-minute" : durSec === 600 ? "10-minute" : formatDuration(durSec);
+       const creditCost = estimateCreditCost(effectiveRequestedDuration, aiProvider, resolution, songDurationSec, generationMode as GenerationMode) + lyricAddon;
       return (
         <Dialog open={durationWarningOpen} onOpenChange={setDurationWarningOpen}>
           <DialogContent className="sm:max-w-md">
@@ -2478,7 +2512,9 @@ export default function Generate() {
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Duration</span>
                   <span className="font-medium">
-                    {requestedDuration === CreateJobRequestRequestedDuration.full
+                    {sourceType === CreateJobRequestAudioSourceType.none
+                      ? `Silent · ${formatDuration(silentFilmDurationSeconds)}`
+                      : requestedDuration === CreateJobRequestRequestedDuration.full
                       ? `${fullTrackLabel} · exact audio length`
                       : `${requestedDuration}s`}
                   </span>

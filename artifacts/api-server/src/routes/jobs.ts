@@ -164,6 +164,7 @@ router.post("/jobs/preview-shots", async (req, res) => {
       style,
       character,
       requestedDuration,
+      silentFilmDurationSeconds,
       generationMode,
       audioAnalysis,
       audioObjectPath,
@@ -179,11 +180,12 @@ router.post("/jobs/preview-shots", async (req, res) => {
           receipt: analysisReceipt,
         })
       : null;
+    const previewDuration = audioObjectPath ? requestedDuration : silentFilmDurationSeconds ?? requestedDuration;
     const plan = planShots({
       prompt: prompt as string | null,
       style: style as string | null,
       character: character as string | null,
-      requestedDuration: requestedDuration as string | null,
+      requestedDuration: previewDuration as string | null,
       generationMode: generationMode === "narrative" ? "narrative" : "montage",
       analysis: verifiedAnalysis as never,
     });
@@ -273,6 +275,7 @@ router.post("/jobs", async (req, res) => {
     character,
     referenceImagePath,
     requestedDuration,
+    silentFilmDurationSeconds,
     generationMode,
     narrativeVisualSource,
     clipStartTime,
@@ -295,6 +298,9 @@ router.post("/jobs", async (req, res) => {
   // Editor) — there's no audio to attest ownership of, and no song to derive
   // a "full length" from, so both requirements below are skipped for them.
   const noAudio = audioSourceType === "none";
+  const resolvedRequestedDuration = noAudio
+    ? String(silentFilmDurationSeconds ?? requestedDuration ?? "30")
+    : requestedDuration;
   const analysisReceipt = audioAnalysis && typeof audioAnalysis === "object"
     ? (audioAnalysis as Record<string, unknown>).analysisReceipt
     : null;
@@ -363,7 +369,7 @@ router.post("/jobs", async (req, res) => {
       return;
     }
   }
-  if (noAudio && (!requestedDuration || requestedDuration === "full")) {
+  if (noAudio && (!silentFilmDurationSeconds && (!requestedDuration || requestedDuration === "full"))) {
     res.status(400).json({
       error: "Choose a specific length for a no-audio video — there's no song to derive a \"full length\" from.",
     });
@@ -452,7 +458,7 @@ router.post("/jobs", async (req, res) => {
     prompt,
     style,
     character,
-    requestedDuration,
+    requestedDuration: resolvedRequestedDuration,
     generationMode: normalizedGenerationMode,
     analysis: verifiedAudioAnalysis as never,
   });
@@ -477,14 +483,14 @@ router.post("/jobs", async (req, res) => {
   const lyricAddon = lyricsText?.trim() ? LYRIC_OVERLAY_COST : 0;
   const baseCreditCost =
     calculateCreditCost(
-      requestedDuration,
+      resolvedRequestedDuration,
       resolution,
       songDurationSec,
       engine,
       normalizedGenerationMode,
     )
     + calculateGeneratedImageCost(
-      requestedDuration,
+      resolvedRequestedDuration,
       songDurationSec,
       normalizedGenerationMode,
       normalizedNarrativeVisualSource,
@@ -577,8 +583,8 @@ router.post("/jobs", async (req, res) => {
       resolution: resolution ?? null,
       character: character ?? null,
       referenceImagePath: referenceImagePath ?? null,
-      requestedDuration: requestedDuration ?? "full",
-      clipStartTime: requestedDuration === "full" ? null : (clipStartTime ?? null),
+      requestedDuration: resolvedRequestedDuration ?? "full",
+      clipStartTime: resolvedRequestedDuration === "full" ? null : (clipStartTime ?? null),
       audioAnalysis: verifiedAudioAnalysis,
       aiProvider: engine,
       watermark,
@@ -597,6 +603,7 @@ router.post("/jobs", async (req, res) => {
         bundledLipSyncReservedTopupCredits: lipSyncTopupDebit,
         generationMode: normalizedGenerationMode,
         narrativeVisualSource: normalizedNarrativeVisualSource,
+        ...(noAudio ? { silentFilmDurationSeconds: Number(resolvedRequestedDuration) } : {}),
         ...(bundledLipSyncChildId ? { bundledLipSyncChildId } : {}),
         storyboard,
       } as unknown as Record<string, unknown>,

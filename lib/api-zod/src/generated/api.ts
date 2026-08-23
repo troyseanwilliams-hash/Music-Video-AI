@@ -347,7 +347,6 @@ export const ListJobsResponse = zod.object({
           zod.literal("60"),
           zod.literal("90"),
           zod.literal("120"),
-          zod.literal("184"),
           zod.literal("300"),
           zod.literal("600"),
           zod.literal("full"),
@@ -500,6 +499,9 @@ export const createJobBodyLyricsTextMax = 50000;
 
 export const createJobBodyCharacterMax = 100;
 
+export const createJobBodySilentFilmDurationSecondsMin = 5;
+export const createJobBodySilentFilmDurationSecondsMax = 600;
+
 export const createJobBodyGenerationModeDefault = `montage`;
 export const createJobBodyNarrativeVisualSourceDefault = `video`;
 export const createJobBodyClipStartTimeMin = 0;
@@ -575,7 +577,6 @@ export const CreateJobBody = zod.object({
       zod.literal("60"),
       zod.literal("90"),
       zod.literal("120"),
-      zod.literal("184"),
       zod.literal("300"),
       zod.literal("600"),
       zod.literal("full"),
@@ -584,6 +585,14 @@ export const CreateJobBody = zod.object({
     .nullish()
     .describe(
       "Requested output video length. '5'\/'8'\/'10' = short clip, '30'\/'60'\/'90'\/'120' = multi-clip stitch, 'full' = full audio length (default; not valid when audioSourceType is \"none\", since there is no audio to derive a length from)",
+    ),
+  silentFilmDurationSeconds: zod
+    .number()
+    .min(createJobBodySilentFilmDurationSecondsMin)
+    .max(createJobBodySilentFilmDurationSecondsMax)
+    .nullish()
+    .describe(
+      "Configurable output duration in seconds for a no-audio video. Used instead of requestedDuration when audioSourceType is none.",
     ),
   generationMode: zod
     .enum(["montage", "narrative"])
@@ -839,7 +848,6 @@ export const GetJobResponse = zod.object({
       zod.literal("60"),
       zod.literal("90"),
       zod.literal("120"),
-      zod.literal("184"),
       zod.literal("300"),
       zod.literal("600"),
       zod.literal("full"),
@@ -1799,7 +1807,6 @@ export const GetDashboardStatsResponse = zod.object({
             zod.literal("60"),
             zod.literal("90"),
             zod.literal("120"),
-            zod.literal("184"),
             zod.literal("300"),
             zod.literal("600"),
             zod.literal("full"),

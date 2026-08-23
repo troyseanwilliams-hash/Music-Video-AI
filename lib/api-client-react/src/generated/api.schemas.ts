@@ -219,7 +219,6 @@ export const JobRequestedDuration = {
   NUMBER_60: "60",
   NUMBER_90: "90",
   NUMBER_120: "120",
-  NUMBER_184: "184",
   NUMBER_300: "300",
   NUMBER_600: "600",
   full: "full",
@@ -449,7 +448,6 @@ export const CreateJobRequestRequestedDuration = {
   NUMBER_60: "60",
   NUMBER_90: "90",
   NUMBER_120: "120",
-  NUMBER_184: "184",
   NUMBER_300: "300",
   NUMBER_600: "600",
   full: "full",
@@ -535,6 +533,13 @@ export interface CreateJobRequest {
    * @nullable
    */
   requestedDuration?: CreateJobRequestRequestedDuration;
+  /**
+   * Configurable output duration in seconds for a no-audio video. Used instead of requestedDuration when audioSourceType is none.
+   * @minimum 5
+   * @maximum 600
+   * @nullable
+   */
+  silentFilmDurationSeconds?: number | null;
   /** Montage intentionally reuses a smaller visual library; Narrative renders one unique chronological scene per timeline slot. */
   generationMode?: CreateJobRequestGenerationMode;
   /** Narrative-only visual source. generated_images creates one persisted AI still per chronological scene and animates it into the final video. */
