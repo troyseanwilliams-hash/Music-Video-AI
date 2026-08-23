@@ -13,11 +13,13 @@ import {
   CreateJobRequestResolution,
   CreateJobRequestRequestedDuration,
   CreateJobRequestGenerationMode,
+  CreateJobRequestNarrativeVisualSource,
   VideoStyle,
   type CreateJobRequest,
 } from "@workspace/api-client-react";
 import {
   estimateCreditCost,
+  estimateGeneratedImageCost,
   calculateLipsyncCost,
   canAffordCredits,
   LIPSYNC_DEFAULT_SECONDS,
@@ -195,6 +197,7 @@ export default function Generate() {
   }>({});
   const [selectedStyle, setSelectedStyle] = useState<VideoStyle>(VideoStyle.cinematic);
   const [generationMode, setGenerationMode] = useState<CreateJobRequestGenerationMode>(CreateJobRequestGenerationMode.montage);
+  const [narrativeVisualSource, setNarrativeVisualSource] = useState<CreateJobRequestNarrativeVisualSource>(CreateJobRequestNarrativeVisualSource.video);
   const [lyricsEnabled, setLyricsEnabled] = useState(false);
   const [lyricsText, setLyricsText] = useState("");
   // Auto-sync: AI listens to the uploaded track and returns word-timed lyrics.
@@ -650,8 +653,16 @@ export default function Generate() {
   // (jobs.ts adds LYRIC_OVERLAY_COST when lyrics are present). Every price
   // surface on this page must include it so the shown cost equals the charge.
   const lyricAddon = lyricsText.trim() ? LYRIC_OVERLAY_COST : 0;
+  const generatedImageCost = estimateGeneratedImageCost(
+    requestedDuration,
+    songDurationSec,
+    generationMode as GenerationMode,
+    narrativeVisualSource === CreateJobRequestNarrativeVisualSource.generated_images ? "generated_images" : "video",
+  );
   const videoCost =
-    estimateCreditCost(requestedDuration, aiProvider, resolution, songDurationSec, generationMode as GenerationMode) + lyricAddon;
+    estimateCreditCost(requestedDuration, aiProvider, resolution, songDurationSec, generationMode as GenerationMode)
+    + generatedImageCost
+    + lyricAddon;
   const lipSyncAddon =
     fullTrackSelected && fullTrackLipSyncEnabled
       ? calculateLipsyncCost(fullTrackLipSyncSeconds)
@@ -805,6 +816,7 @@ export default function Generate() {
           referenceImagePath: refImageObjectPath ?? null,
           requestedDuration,
           generationMode,
+          narrativeVisualSource,
           aiProvider,
           fullTrackLipSyncEnabled: fullTrackSelected && fullTrackLipSyncEnabled,
           fullTrackLipSyncSeconds,
@@ -1169,6 +1181,41 @@ export default function Generate() {
                 </div>
               </button>
             </div>
+            {generationMode === CreateJobRequestGenerationMode.montage && (
+              <div className="mt-3 rounded-xl border border-border/60 bg-background/40 p-3.5">
+                <div className="flex items-start gap-3">
+                  <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                    narrativeVisualSource === CreateJobRequestNarrativeVisualSource.generated_images
+                      ? "bg-primary/15 text-primary"
+                      : "bg-secondary text-muted-foreground"
+                  }`}>
+                    <ImageIcon className="h-4 w-4" />
+                  </span>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold">Generate vertical AI stills</p>
+                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                          Creates a consistent set of 9:16 story images for the montage, then animates them as timed visual motifs.
+                        </p>
+                      </div>
+                      <Switch
+                        checked={narrativeVisualSource === CreateJobRequestNarrativeVisualSource.generated_images}
+                        onCheckedChange={(checked) => {
+                          setNarrativeVisualSource(
+                            checked
+                              ? CreateJobRequestNarrativeVisualSource.generated_images
+                              : CreateJobRequestNarrativeVisualSource.video,
+                          );
+                          if (checked) setAspectRatio(CreateJobRequestAspectRatio["9:16"]);
+                        }}
+                        aria-label="Generate vertical AI stills"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* ── Settings Toolbar ── */}

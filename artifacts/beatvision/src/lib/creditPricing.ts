@@ -80,6 +80,7 @@ const SHORT_MARKUP = 2;
 const LONG_MARKUP = 1.5;
 const KLING_LONG_MARKUP = 1.75; // Kling multi-clip markup (Runway stays 1.5×)
 export const MAX_FULL_SECONDS = 600;
+export const GENERATED_IMAGE_CREDITS_PER_VISUAL = 4;
 
 function fullClipCount(songDurationSec?: number | null): number {
   const secs = songDurationSec && songDurationSec > 0 ? songDurationSec : MAX_FULL_SECONDS;
@@ -162,6 +163,17 @@ export function estimateCreditCost(
   const costCredits = (numClips * clipDurationSec * usdPerSecondFor(provider)) / USD_PER_CREDIT;
   const markup = numClips <= 1 ? SHORT_MARKUP : provider === "kling" ? KLING_LONG_MARKUP : LONG_MARKUP;
   return Math.ceil(costCredits * markup * resolutionMultiplier(resolution));
+}
+
+export function estimateGeneratedImageCost(
+  requestedDuration: CreateJobRequestRequestedDuration | null | undefined,
+  songDurationSec: number | null | undefined,
+  generationMode: GenerationMode,
+  visualSource: "video" | "generated_images",
+): number {
+  if (generationMode !== "montage" || visualSource !== "generated_images") return 0;
+  return getGenerationClipPlan(requestedDuration, songDurationSec, generationMode).numClips
+    * GENERATED_IMAGE_CREDITS_PER_VISUAL;
 }
 
 // Shared affordability check — mirrors the inline logic used across submission

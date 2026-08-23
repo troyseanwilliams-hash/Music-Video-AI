@@ -45,6 +45,10 @@ export const PRICE_MULTIPLIER = 2;
 // length: ~1 clip per 30s, min 3, max 20.
 export const MAX_FULL_SECONDS = 600;
 export type GenerationMode = "montage" | "narrative";
+export type NarrativeVisualSource = "video" | "generated_images";
+// Covers one 9:16 Flux still per planned Montage visual. Keep in sync with the
+// Generate page: these are separate paid provider requests from video renders.
+export const GENERATED_IMAGE_CREDITS_PER_VISUAL = 4;
 
 function targetDurationSeconds(
   requestedDuration: string | null | undefined,
@@ -164,6 +168,17 @@ export function calculateCreditCost(
       markupFor(requestedDuration, songDurationSec, provider, generationMode) *
       resolutionMultiplier(resolution),
   );
+}
+
+export function calculateGeneratedImageCost(
+  requestedDuration: string | null | undefined,
+  songDurationSec: number | null | undefined,
+  generationMode: GenerationMode,
+  visualSource: NarrativeVisualSource | null | undefined,
+): number {
+  if (generationMode !== "montage" || visualSource !== "generated_images") return 0;
+  return getClipPlan(requestedDuration, songDurationSec, generationMode).numClips
+    * GENERATED_IMAGE_CREDITS_PER_VISUAL;
 }
 
 // Free monthly "Soundtracks" (instrumental) allowance by subscription tier —

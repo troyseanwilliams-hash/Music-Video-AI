@@ -14,6 +14,7 @@ import {
 } from "@workspace/api-zod";
 import {
   calculateCreditCost,
+  calculateGeneratedImageCost,
   calculateLipsyncCost,
   calculateRemixCost,
   getClipPlan,
@@ -481,7 +482,14 @@ router.post("/jobs", async (req, res) => {
       songDurationSec,
       engine,
       normalizedGenerationMode,
-    ) + lyricAddon;
+    )
+    + calculateGeneratedImageCost(
+      requestedDuration,
+      songDurationSec,
+      normalizedGenerationMode,
+      normalizedNarrativeVisualSource,
+    )
+    + lyricAddon;
   const bundledLipSyncCost = bundledLipSyncEnabled
     ? calculateLipsyncCost(bundledLipSyncSeconds)
     : 0;
