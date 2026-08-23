@@ -371,6 +371,18 @@ export default function Generate() {
 
   const handleFileSelect = async (file: File) => {
     if (!file) return;
+    const extension = file.name.toLowerCase().split(".").pop() ?? "";
+    // Some browsers report an empty or generic MIME type for local files.
+    // Preserve the extension so the upload service and ffmpeg can still
+    // identify MP3/MP4 correctly.
+    const contentType =
+      file.type && file.type !== "application/octet-stream"
+        ? file.type
+        : extension === "mp4"
+          ? "video/mp4"
+          : extension === "mp3"
+            ? "audio/mpeg"
+            : file.type || "application/octet-stream";
     setUploadedFile(file);
     setClipStartTime(0);
     setUploadError(null);
@@ -382,7 +394,7 @@ export default function Generate() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+        body: JSON.stringify({ name: file.name, size: file.size, contentType }),
       });
       if (!res.ok) throw new Error("Failed to get upload URL");
       const data = await res.json();
@@ -395,7 +407,7 @@ export default function Generate() {
         xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload failed: ${xhr.status}`)));
         xhr.onerror = () => reject(new Error("Network error during upload"));
         xhr.open("PUT", data.uploadURL);
-        xhr.setRequestHeader("Content-Type", file.type);
+        xhr.setRequestHeader("Content-Type", contentType);
         xhr.send(file);
       });
 
@@ -1514,7 +1526,7 @@ export default function Generate() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="audio/*,.mp3,.wav,.flac,.ogg,.m4a,.aac"
+                 accept="audio/*,video/mp4,.mp3,.mp4,.wav,.flac,.ogg,.m4a,.aac"
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
@@ -1542,7 +1554,7 @@ export default function Generate() {
                     <div>
                       <p className="font-medium text-base sm:text-lg">Drop your audio here</p>
                       <p className="text-sm text-muted-foreground mt-1">or click to browse files</p>
-                      <p className="text-xs text-muted-foreground/60 mt-1">MP3, WAV, FLAC, AAC · up to 50 MB</p>
+                       <p className="text-xs text-muted-foreground/60 mt-1">MP3, MP4, WAV, FLAC, AAC · up to 50 MB</p>
                     </div>
                     {uploadError && (
                       <div className="flex items-center gap-2 text-sm text-destructive">
