@@ -308,6 +308,16 @@ export interface JobStoryboard {
   shots: JobStoryboardShot[];
 }
 
+/**
+ * Present when every video scene is animated from a persisted source-image plan.
+ */
+export type JobManifestImageFirstVersion =
+  (typeof JobManifestImageFirstVersion)[keyof typeof JobManifestImageFirstVersion];
+
+export const JobManifestImageFirstVersion = {
+  NUMBER_1: 1,
+} as const;
+
 export type JobManifestSegmentsItem = {
   kind?: JobManifestSegmentsItemKind;
   durationSec?: number;
@@ -322,6 +332,11 @@ export type JobManifestTransition = {
   [key: string]: unknown;
 };
 
+/**
+ * Planned visual index to owner-protected source-image object path.
+ */
+export type JobManifestNarrativeImages = { [key: string]: string };
+
 export interface JobManifest {
   segments?: JobManifestSegmentsItem[];
   transition?: JobManifestTransition;
@@ -330,6 +345,14 @@ export interface JobManifest {
   lyricsText?: string | null;
   clipIndexes?: number[];
   storyboard?: JobStoryboard;
+  /** Present when every video scene is animated from a persisted source-image plan. */
+  imageFirstVersion?: JobManifestImageFirstVersion;
+  /** @minimum 0 */
+  imageCreditCost?: number;
+  /** @minimum 0 */
+  videoCreditCost?: number;
+  /** Planned visual index to owner-protected source-image object path. */
+  narrativeImages?: JobManifestNarrativeImages;
   bundledLipSyncChildId?: string;
   bundledLipSyncEnabled?: boolean;
   /** @minimum 0 */
@@ -1070,6 +1093,10 @@ export type ListImageAssetsParams = {
    * @maximum 60
    */
   limit?: number;
+  /**
+   * Optionally return only generated images from this owner-scoped job.
+   */
+  jobId?: string;
 };
 
 export type ListVideosParams = {

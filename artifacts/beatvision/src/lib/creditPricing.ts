@@ -169,9 +169,8 @@ export function estimateGeneratedImageCost(
   requestedDuration: CreateJobRequestRequestedDuration | null | undefined,
   songDurationSec: number | null | undefined,
   generationMode: GenerationMode,
-  visualSource: "video" | "generated_images",
+  _visualSource?: "video" | "generated_images",
 ): number {
-  if (generationMode !== "montage" || visualSource !== "generated_images") return 0;
   return getGenerationClipPlan(requestedDuration, songDurationSec, generationMode).numClips
     * GENERATED_IMAGE_CREDITS_PER_VISUAL;
 }

@@ -40,12 +40,13 @@ export function getGenerationTimeEstimate(
     resolution === "4k" || resolution === "2160p" ? 1.3 : resolution === "1080p" ? 1.08 : 1;
 
   // AI providers do not expose reliable completion ETAs. Use a deliberately
-  // broad range based on the number of sequential clip requests plus analysis,
-  // stitching, and upload overhead. This is a planning range, not a countdown.
+  // broad range based on the sequential image-first stage, clip requests,
+  // analysis, stitching, and upload overhead. This is a planning range, not a
+  // countdown.
   const minimumSeconds =
-    (75 + plan.numClips * 50 + plan.targetDurationSec * 0.05) * providerFactor * resolutionFactor;
+    (75 + plan.numClips * 70 + plan.targetDurationSec * 0.05) * providerFactor * resolutionFactor;
   const maximumSeconds =
-    (150 + plan.numClips * 120 + plan.targetDurationSec * 0.15) * providerFactor * resolutionFactor;
+    (150 + plan.numClips * 180 + plan.targetDurationSec * 0.15) * providerFactor * resolutionFactor;
   return {
     ...roundedMinuteRange(minimumSeconds, maximumSeconds),
     unitCount: plan.numClips,

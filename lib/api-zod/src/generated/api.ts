@@ -212,6 +212,10 @@ export const listJobsResponseJobsItemManifestOneStoryboardShotsItemStartTimeMin 
 export const listJobsResponseJobsItemManifestOneStoryboardShotsItemEnergyMin = 0;
 export const listJobsResponseJobsItemManifestOneStoryboardShotsItemEnergyMax = 1;
 
+export const listJobsResponseJobsItemManifestOneImageCreditCostMin = 0;
+
+export const listJobsResponseJobsItemManifestOneVideoCreditCostMin = 0;
+
 export const listJobsResponseJobsItemManifestOneBaseCreditCostMin = 0;
 
 export const listJobsResponseJobsItemManifestOneBundledLipSyncCostMin = 0;
@@ -453,6 +457,26 @@ export const ListJobsResponse = zod.object({
                 ),
               })
               .optional(),
+            imageFirstVersion: zod
+              .literal(1)
+              .optional()
+              .describe(
+                "Present when every video scene is animated from a persisted source-image plan.",
+              ),
+            imageCreditCost: zod
+              .number()
+              .min(listJobsResponseJobsItemManifestOneImageCreditCostMin)
+              .optional(),
+            videoCreditCost: zod
+              .number()
+              .min(listJobsResponseJobsItemManifestOneVideoCreditCostMin)
+              .optional(),
+            narrativeImages: zod
+              .record(zod.string(), zod.string())
+              .optional()
+              .describe(
+                "Planned visual index to owner-protected source-image object path.",
+              ),
             bundledLipSyncChildId: zod.string().optional(),
             bundledLipSyncEnabled: zod.boolean().optional(),
             baseCreditCost: zod
@@ -758,6 +782,13 @@ export const ListImageAssetsQueryParams = zod.object({
     .min(1)
     .max(listImageAssetsQueryLimitMax)
     .default(listImageAssetsQueryLimitDefault),
+  jobId: zod.coerce
+    .string()
+    .uuid()
+    .optional()
+    .describe(
+      "Optionally return only generated images from this owner-scoped job.",
+    ),
 });
 
 export const ListImageAssetsHeader = zod.object({
@@ -833,6 +864,10 @@ export const getJobResponseManifestOneStoryboardShotsItemStartTimeMin = 0;
 
 export const getJobResponseManifestOneStoryboardShotsItemEnergyMin = 0;
 export const getJobResponseManifestOneStoryboardShotsItemEnergyMax = 1;
+
+export const getJobResponseManifestOneImageCreditCostMin = 0;
+
+export const getJobResponseManifestOneVideoCreditCostMin = 0;
 
 export const getJobResponseManifestOneBaseCreditCostMin = 0;
 
@@ -1055,6 +1090,26 @@ export const GetJobResponse = zod.object({
             ),
           })
           .optional(),
+        imageFirstVersion: zod
+          .literal(1)
+          .optional()
+          .describe(
+            "Present when every video scene is animated from a persisted source-image plan.",
+          ),
+        imageCreditCost: zod
+          .number()
+          .min(getJobResponseManifestOneImageCreditCostMin)
+          .optional(),
+        videoCreditCost: zod
+          .number()
+          .min(getJobResponseManifestOneVideoCreditCostMin)
+          .optional(),
+        narrativeImages: zod
+          .record(zod.string(), zod.string())
+          .optional()
+          .describe(
+            "Planned visual index to owner-protected source-image object path.",
+          ),
         bundledLipSyncChildId: zod.string().optional(),
         bundledLipSyncEnabled: zod.boolean().optional(),
         baseCreditCost: zod
@@ -1784,6 +1839,10 @@ export const getDashboardStatsResponseRecentJobsItemManifestOneStoryboardShotsIt
 export const getDashboardStatsResponseRecentJobsItemManifestOneStoryboardShotsItemEnergyMin = 0;
 export const getDashboardStatsResponseRecentJobsItemManifestOneStoryboardShotsItemEnergyMax = 1;
 
+export const getDashboardStatsResponseRecentJobsItemManifestOneImageCreditCostMin = 0;
+
+export const getDashboardStatsResponseRecentJobsItemManifestOneVideoCreditCostMin = 0;
+
 export const getDashboardStatsResponseRecentJobsItemManifestOneBaseCreditCostMin = 0;
 
 export const getDashboardStatsResponseRecentJobsItemManifestOneBundledLipSyncCostMin = 0;
@@ -2038,6 +2097,30 @@ export const GetDashboardStatsResponse = zod.object({
                   ),
                 })
                 .optional(),
+              imageFirstVersion: zod
+                .literal(1)
+                .optional()
+                .describe(
+                  "Present when every video scene is animated from a persisted source-image plan.",
+                ),
+              imageCreditCost: zod
+                .number()
+                .min(
+                  getDashboardStatsResponseRecentJobsItemManifestOneImageCreditCostMin,
+                )
+                .optional(),
+              videoCreditCost: zod
+                .number()
+                .min(
+                  getDashboardStatsResponseRecentJobsItemManifestOneVideoCreditCostMin,
+                )
+                .optional(),
+              narrativeImages: zod
+                .record(zod.string(), zod.string())
+                .optional()
+                .describe(
+                  "Planned visual index to owner-protected source-image object path.",
+                ),
               bundledLipSyncChildId: zod.string().optional(),
               bundledLipSyncEnabled: zod.boolean().optional(),
               baseCreditCost: zod

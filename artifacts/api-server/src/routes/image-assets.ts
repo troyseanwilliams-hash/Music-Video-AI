@@ -155,9 +155,18 @@ router.get("/image-assets", async (req, res) => {
   const parsed = z.object({
     page: z.coerce.number().int().min(1).default(1),
     limit: z.coerce.number().int().min(1).max(60).default(30),
+    jobId: z.string().uuid().optional(),
   }).safeParse(req.query);
-  const { page, limit } = parsed.success ? parsed.data : { page: 1, limit: 30 };
-  const where = and(eq(imageAssetsTable.userId, req.user.id), isNull(imageAssetsTable.deletedAt));
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid generated-image query." });
+    return;
+  }
+  const { page, limit, jobId } = parsed.data;
+  const where = and(
+    eq(imageAssetsTable.userId, req.user.id),
+    isNull(imageAssetsTable.deletedAt),
+    jobId ? eq(imageAssetsTable.jobId, jobId) : undefined,
+  );
   const [assets, total] = await Promise.all([
     db
       .select()

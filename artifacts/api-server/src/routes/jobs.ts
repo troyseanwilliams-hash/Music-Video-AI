@@ -289,10 +289,10 @@ router.post("/jobs", async (req, res) => {
     parseResult.data;
   const normalizedGenerationMode =
     generationMode === "narrative" ? "narrative" : "montage";
-  const normalizedNarrativeVisualSource =
-    normalizedGenerationMode === "montage" && narrativeVisualSource === "generated_images"
-      ? "generated_images"
-      : "video";
+  // Every ordinary AI video starts from its planned stills. Keep the submitted
+  // value in the request contract for old clients, but image packs remain a
+  // separate job type and never come through this route.
+  const normalizedNarrativeVisualSource = "generated_images";
 
   // "No audio" jobs render a silent video (soundtrack added later in the
   // Editor) — there's no audio to attest ownership of, and no song to derive
@@ -603,6 +603,20 @@ router.post("/jobs", async (req, res) => {
         bundledLipSyncReservedTopupCredits: lipSyncTopupDebit,
         generationMode: normalizedGenerationMode,
         narrativeVisualSource: normalizedNarrativeVisualSource,
+        imageFirstVersion: 1,
+        imageCreditCost: calculateGeneratedImageCost(
+          resolvedRequestedDuration,
+          songDurationSec,
+          normalizedGenerationMode,
+          normalizedNarrativeVisualSource,
+        ),
+        videoCreditCost: calculateCreditCost(
+          resolvedRequestedDuration,
+          resolution,
+          songDurationSec,
+          engine,
+          normalizedGenerationMode,
+        ),
         ...(noAudio ? { silentFilmDurationSeconds: Number(resolvedRequestedDuration) } : {}),
         ...(bundledLipSyncChildId ? { bundledLipSyncChildId } : {}),
         storyboard,

@@ -1,10 +1,10 @@
 ---
-name: Montage generated-still source
-description: Product decision for optional vertical AI stills in long-form visual generation.
+name: Image-first video foundations
+description: Product and billing rules for automatic persisted source images in standard video generation.
 ---
 
-Generated vertical AI stills are an optional **Visual Montage** source, not a Narrative Story source. Create and retain one image for each planned Montage visual, then use the normal Montage sequencing to recall it across the timeline.
+Every ordinary **Visual Montage** and **Narrative Story** video begins with an immutable, owner-protected source-image plan. Montage creates one reusable image per planned visual motif; Narrative creates one distinct image per chronological scene. The separate Images only product remains independently selectable.
 
-**Why:** A Montage is explicitly designed around a bounded, coherent visual library with controlled reuse. A 3:04 example therefore needs a smaller set of strong 9:16 motifs rather than a new paid image for every chronological timeline segment.
+**Why:** Generating video from a predefined image foundation keeps settings and subjects coherent across segments. Montage remains affordable by reusing its bounded motif library, while Narrative’s story promise requires one non-repeating visual per scene.
 
-**How to apply:** Keep the source opt-in, force 9:16 when selected, add the image-generation charge to the preflight reservation, and persist the images before the matching image-to-video requests. Do not expose provider names in product copy.
+**How to apply:** Reserve and show 4 credits per unique planned image separately from animation cost. Persist every image and its path before video provider calls; use Montage’s timeline only when sequencing completed motif clips, never while choosing which unique clip to animate. Make images visible on job status and usable in Remix Lab. Do not expose provider names in product copy.

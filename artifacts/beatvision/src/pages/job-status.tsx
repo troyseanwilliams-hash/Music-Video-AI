@@ -90,6 +90,8 @@ function inferClipProgress(
     numClips: number;
     completedClips?: number;
     timelineItems?: number;
+    imageCount?: number;
+    completedImages?: number;
   },
 ): string | null {
   if (plan.jobType === "editor_render") {
@@ -107,6 +109,14 @@ function inferClipProgress(
     return `Creating image ${Math.min(plan.numClips, completed + 1)} of ${plan.numClips}…`;
   }
   if (status !== "generating") return null;
+  if (
+    (plan.imageCount ?? 0) > 0
+    && (plan.completedImages ?? 0) < (plan.imageCount ?? 0)
+    && pct < 30
+  ) {
+    const completed = Math.max(0, plan.completedImages ?? 0);
+    return `Creating source image ${Math.min(plan.imageCount ?? 1, completed + 1)} of ${plan.imageCount}…`;
+  }
   const n = Math.max(1, plan.numClips);
   if (plan.jobType === "remix") {
     const processed = Math.min(n - 1, Math.max(0, Math.floor(((pct - 10) / 60) * n)));
@@ -346,11 +356,18 @@ export default function JobStatus() {
       },
     },
   });
+  const imageFirstEnabled =
+    (job?.manifest as { imageFirstVersion?: number } | null | undefined)?.imageFirstVersion === 1;
   const { data: imagePackAssetsData } = useQuery<{ assets: ImagePackAsset[] }>({
     queryKey: ["image-pack-assets", id],
-    enabled: isAuthenticated && !!id && job?.jobType === "image_pack",
+    enabled:
+      isAuthenticated
+      && !!id
+      && (job?.jobType === "image_pack" || imageFirstEnabled),
     queryFn: async () => {
-      const response = await fetch("/api/image-assets?limit=60", { credentials: "include" });
+      const response = await fetch(`/api/image-assets?jobId=${encodeURIComponent(id!)}&limit=60`, {
+        credentials: "include",
+      });
       if (!response.ok) throw new Error("Failed to load generated images");
       return response.json();
     },
@@ -513,6 +530,7 @@ export default function JobStatus() {
     job.jobType == null ||
     job.jobType === "ai_video";
   const manifest = job.manifest ?? {};
+  const imageFirstVideoJob = isGenerateJob && manifest.imageFirstVersion === 1;
   const storyboard = manifest.storyboard;
   const bundledLipSyncChildId =
     typeof manifest.bundledLipSyncChildId === "string"
@@ -528,22 +546,38 @@ export default function JobStatus() {
     .map(Number)
     .filter((index) => Number.isInteger(index) && index >= 0);
   const completedClips = completedClipIndexes.length;
-  const imagePackCount =
+  const standaloneImagePackCount =
     isImagePackJob &&
     manifest.imagePack &&
     typeof manifest.imagePack === "object" &&
     typeof (manifest.imagePack as { imageCount?: unknown }).imageCount === "number"
       ? (manifest.imagePack as { imageCount: number }).imageCount
       : 1;
+  const storyboardImageCount =
+    storyboard && Array.isArray(storyboard.shots)
+      ? storyboard.shots.length
+      : 0;
+  const visualImageCount = isImagePackJob
+    ? Math.max(1, standaloneImagePackCount)
+    : imageFirstVideoJob
+      ? Math.max(1, storyboardImageCount)
+      : 0;
   const imagePackAssets = (imagePackAssetsData?.assets ?? [])
-    .filter((asset) => asset.jobId === job.id)
     .sort((a, b) => a.assetIndex - b.assetIndex);
   const imagePackAspectRatio = job.aspectRatio === "16:9" ? "16:9" : "9:16";
   const imagePackAssetByIndex = new Map(
     imagePackAssets.map((asset) => [asset.assetIndex, asset]),
   );
+  const storyboardReferenceImages = imageFirstVideoJob
+    ? Object.fromEntries(
+        imagePackAssets.map((asset) => [
+          asset.assetIndex,
+          { objectPath: asset.objectPath, prompt: asset.prompt },
+        ]),
+      )
+    : undefined;
   const numClips = isImagePackJob
-    ? Math.max(1, imagePackCount)
+    ? visualImageCount
     : isRemixJob
     ? 1
     : isClipRemixJob
@@ -554,6 +588,8 @@ export default function JobStatus() {
     numClips,
     completedClips,
     timelineItems,
+    imageCount: imageFirstVideoJob ? visualImageCount : undefined,
+    completedImages: imageFirstVideoJob ? imagePackAssets.length : undefined,
   });
   // Never render fewer slots than scenes already received, even if an older
   // estimate or plan was stale.
@@ -753,6 +789,8 @@ export default function JobStatus() {
                         status={job.status ?? "queued"}
                         bpm={analysisBpm}
                         mood={analysisMood}
+                        referenceImages={storyboardReferenceImages}
+                        aspectRatio={imagePackAspectRatio}
                       />
                     ) : (
                       <GenerationFiller />
@@ -869,30 +907,40 @@ export default function JobStatus() {
           )}
         </AnimatePresence>
 
-        {isImagePackJob && (
+        {(isImagePackJob || imageFirstVideoJob) && (
           <Card className="overflow-hidden border-primary/20 bg-card/60">
             <CardHeader className="border-b border-border/60 pb-4">
               <CardTitle className="flex flex-wrap items-center gap-2 text-base">
                 <ImageIcon className="h-4 w-4 text-primary" />
-                Generated images
+                {isImagePackJob ? "Generated images" : "Image foundation"}
                 <Badge variant="secondary" className="font-mono">
-                  {imagePackAssets.length}/{imagePackCount}
+                  {imagePackAssets.length}/{visualImageCount}
                 </Badge>
                 <Badge variant="outline" className="font-mono">
                   {imagePackAspectRatio}
                 </Badge>
               </CardTitle>
               <p className="text-sm text-muted-foreground">
-                {isActive
-                  ? "Each finished image appears here immediately while the remaining images are created."
-                  : isFailed
-                    ? "Images that finished successfully remain available for Remix Lab."
-                    : "Your completed images are ready to arrange in Remix Lab."}
+                {isImagePackJob
+                  ? isActive
+                    ? "Each finished image appears here immediately while the remaining images are created."
+                    : isFailed
+                      ? "Images that finished successfully remain available for Remix Lab."
+                      : "Your completed images are ready to arrange in Remix Lab."
+                  : isActive && imagePackAssets.length < visualImageCount
+                    ? "The complete source-image pack is created first. Scene animation begins only after every planned image is ready."
+                    : isActive
+                      ? "The image foundation is complete. Each video segment is now animated from its assigned source image."
+                      : isFailed
+                        ? "Finished source images remain available in Generated images and Remix Lab."
+                        : "These are the source images used to keep the finished video visually consistent."}
               </p>
             </CardHeader>
             <CardContent className="pt-5">
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                {Array.from({ length: imagePackCount }).map((_, index) => {
+              <div className={`grid grid-cols-2 gap-3 ${
+                imagePackAspectRatio === "16:9" ? "sm:grid-cols-2 lg:grid-cols-3" : "sm:grid-cols-3 lg:grid-cols-5"
+              }`}>
+                {Array.from({ length: visualImageCount }).map((_, index) => {
                   const asset = imagePackAssetByIndex.get(index);
                   return (
                     <div
@@ -908,7 +956,7 @@ export default function JobStatus() {
                             animate={{ opacity: 1, scale: 1 }}
                             transition={{ duration: 0.35 }}
                             src={`/api/storage${asset.objectPath}`}
-                            alt={`Generated image ${index + 1} of ${imagePackCount}`}
+                            alt={`Generated image ${index + 1} of ${visualImageCount}`}
                             className="h-full w-full object-cover"
                           />
                         ) : (
@@ -1049,7 +1097,7 @@ export default function JobStatus() {
                 <div>
                   <div className="flex items-center gap-2 font-semibold">
                     <Sparkles className="h-5 w-5 text-primary" />
-                    {imagePackCount} vertical {imagePackCount === 1 ? "image is" : "images are"} ready
+                    {visualImageCount} {imagePackAspectRatio} {visualImageCount === 1 ? "image is" : "images are"} ready
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">
                     Your saved AI stills are ready to add as photo segments in Remix Lab.

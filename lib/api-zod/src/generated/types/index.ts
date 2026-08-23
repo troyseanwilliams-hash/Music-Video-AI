@@ -50,6 +50,8 @@ export * from "./jobAspectRatio";
 export * from "./jobAudioSourceType";
 export * from "./jobListResponse";
 export * from "./jobManifest";
+export * from "./jobManifestImageFirstVersion";
+export * from "./jobManifestNarrativeImages";
 export * from "./jobManifestSegmentsItem";
 export * from "./jobManifestSegmentsItemKind";
 export * from "./jobManifestTransition";

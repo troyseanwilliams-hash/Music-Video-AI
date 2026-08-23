@@ -174,9 +174,8 @@ export function calculateGeneratedImageCost(
   requestedDuration: string | null | undefined,
   songDurationSec: number | null | undefined,
   generationMode: GenerationMode,
-  visualSource: NarrativeVisualSource | null | undefined,
+  _visualSource?: NarrativeVisualSource | null | undefined,
 ): number {
-  if (generationMode !== "montage" || visualSource !== "generated_images") return 0;
   return getClipPlan(requestedDuration, songDurationSec, generationMode).numClips
     * GENERATED_IMAGE_CREDITS_PER_VISUAL;
 }

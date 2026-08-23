@@ -128,10 +128,25 @@ type UncertainSubmission = {
   occurredAt: string;
 };
 
+type PendingImageRequest = {
+  requestId: string;
+  pollUrl: string;
+};
+
+type UncertainImageSubmission = {
+  status?: number;
+  activityId?: string;
+  reason: string;
+  occurredAt: string;
+};
+
 type AiJobMeta = {
   generationMode?: "montage" | "narrative";
   narrativeVisualSource?: "video" | "generated_images";
   narrativeImages?: Record<string, string>;
+  pendingImageRequests?: Record<string, PendingImageRequest>;
+  uncertainImageSubmissions?: Record<string, UncertainImageSubmission>;
+  imageFirstVersion?: number;
   reservedCredits?: number;
   reservedSubscriptionCredits?: number;
   reservedTopupCredits?: number;
@@ -176,30 +191,132 @@ function generationModeOf(job: JobRow): "montage" | "narrative" {
 
 function usesGeneratedNarrativeImages(job: JobRow): boolean {
   const meta = aiMetaOf(job);
-  return meta.narrativeVisualSource === "generated_images";
+  return meta.imageFirstVersion === 1 && meta.narrativeVisualSource === "generated_images";
 }
 
-async function narrativeImageUrlFor(
-  job: JobRow,
-  index: number,
-  prompt: string,
-): Promise<string> {
-  const existing = aiMetaOf(job).narrativeImages?.[index];
-  if (existing) return storageService.getObjectEntitySignedUrl(existing, 3600);
-  await assertJobOwned(job);
-  const providerUrl = await generateNarrativeImage({ prompt, aspectRatio: job.aspectRatio });
-  const buffer = await downloadGeneratedImage(providerUrl);
-  const objectPath = await storageService.uploadNarrativeImageBuffer(buffer, job.id, index);
+async function persistNarrativeImages(jobId: string, paths: Record<string, string>): Promise<void> {
   await db.execute(sql`
     UPDATE jobs
     SET manifest = jsonb_set(
       COALESCE(manifest, '{}'::jsonb),
       '{narrativeImages}',
-      COALESCE(manifest->'narrativeImages', '{}'::jsonb) || ${JSON.stringify({ [index]: objectPath })}::jsonb
+       COALESCE(manifest->'narrativeImages', '{}'::jsonb) || ${JSON.stringify(paths)}::jsonb
     ), updated_at = NOW()
-    WHERE id = ${job.id}
+    WHERE id = ${jobId}
   `);
-  return storageService.getObjectEntitySignedUrl(objectPath, 3600);
+}
+
+async function persistPendingImageRequest(
+  jobId: string,
+  index: number,
+  info: PendingImageRequest,
+): Promise<void> {
+  await db.execute(sql`
+    UPDATE jobs
+    SET manifest = jsonb_set(
+      COALESCE(manifest, '{}'::jsonb),
+      '{pendingImageRequests}',
+      COALESCE(manifest->'pendingImageRequests', '{}'::jsonb)
+        || ${JSON.stringify({ [index]: info })}::jsonb
+    ), updated_at = NOW()
+    WHERE id = ${jobId}
+  `);
+}
+
+async function persistUncertainImageSubmission(
+  jobId: string,
+  index: number,
+  info: Omit<UncertainImageSubmission, "occurredAt">,
+): Promise<void> {
+  await db.execute(sql`
+    UPDATE jobs
+    SET manifest = jsonb_set(
+      COALESCE(manifest, '{}'::jsonb),
+      '{uncertainImageSubmissions}',
+      COALESCE(manifest->'uncertainImageSubmissions', '{}'::jsonb)
+        || ${JSON.stringify({ [index]: { ...info, occurredAt: new Date().toISOString() } })}::jsonb
+    ), updated_at = NOW()
+    WHERE id = ${jobId}
+  `);
+}
+
+async function clearImageSubmissionState(jobId: string, index: number): Promise<void> {
+  const key = String(index);
+  await db.execute(sql`
+    UPDATE jobs
+    SET manifest = jsonb_set(
+      jsonb_set(
+        COALESCE(manifest, '{}'::jsonb),
+        '{pendingImageRequests}',
+        COALESCE(manifest->'pendingImageRequests', '{}'::jsonb) - ${key}
+      ),
+      '{uncertainImageSubmissions}',
+      COALESCE(manifest->'uncertainImageSubmissions', '{}'::jsonb) - ${key}
+    ), updated_at = NOW()
+    WHERE id = ${jobId}
+  `);
+}
+
+async function prepareNarrativeImagesStage(job: JobRow): Promise<Record<string, string>> {
+  if (!usesGeneratedNarrativeImages(job)) return {};
+  const shots = storyboardShotsOf(job);
+  if (!shots.length) throw new Error(`${IMAGE_API_FAILURE}: Image-first job has no planned visuals`);
+  const stored = await db.select({ assetIndex: imageAssetsTable.assetIndex, objectPath: imageAssetsTable.objectPath })
+    .from(imageAssetsTable).where(eq(imageAssetsTable.jobId, job.id));
+  const liveMeta = await readAiMeta(job.id);
+  const paths: Record<string, string> = { ...(liveMeta.narrativeImages ?? {}) };
+  const pending = liveMeta.pendingImageRequests ?? {};
+  const uncertain = liveMeta.uncertainImageSubmissions ?? {};
+  for (const asset of stored) paths[asset.assetIndex] = asset.objectPath;
+  await updateJobStatus(job.id, { status: "generating", progressPercent: 5 });
+  for (let position = 0; position < shots.length; position++) {
+    const shot = shots[position]!;
+    if (!paths[shot.index]) {
+      const existingRequest = pending[shot.index];
+      if (uncertain[shot.index] && !existingRequest?.pollUrl) {
+        throw new Error(`${IMAGE_API_FAILURE}: A source-image request has an uncertain submission state`);
+      }
+      await assertJobOwned(job);
+      const providerUrl = await generateNarrativeImage({
+        prompt: shot.prompt,
+        aspectRatio: job.aspectRatio,
+        existingPollUrl: existingRequest?.pollUrl,
+        onSubmit: (info) => persistPendingImageRequest(job.id, shot.index, info),
+        onUncertainSubmission: (info) => persistUncertainImageSubmission(job.id, shot.index, info),
+      });
+      await assertJobOwned(job);
+      const buffer = await downloadGeneratedImage(providerUrl);
+      await assertJobOwned(job);
+      const objectPath = await storageService.uploadNarrativeImageBuffer(buffer, job.id, shot.index);
+      await db.insert(imageAssetsTable).values({
+        id: randomUUID(), userId: job.userId, jobId: job.id, assetIndex: shot.index,
+        objectPath, prompt: shot.prompt, style: job.style,
+      }).onConflictDoNothing();
+      const [asset] = await db.select({ objectPath: imageAssetsTable.objectPath }).from(imageAssetsTable)
+        .where(and(eq(imageAssetsTable.jobId, job.id), eq(imageAssetsTable.assetIndex, shot.index))).limit(1);
+      paths[shot.index] = asset?.objectPath ?? objectPath;
+      await persistNarrativeImages(job.id, { [shot.index]: paths[shot.index]! });
+      await clearImageSubmissionState(job.id, shot.index);
+    } else if (pending[shot.index] || uncertain[shot.index]) {
+      await clearImageSubmissionState(job.id, shot.index);
+    }
+    await updateJobStatus(job.id, { progressPercent: 5 + Math.round(((position + 1) / shots.length) * 23) });
+  }
+  await persistNarrativeImages(job.id, paths);
+  if (shots.some((shot) => !paths[shot.index])) throw new Error(`${IMAGE_API_FAILURE}: Required planned visuals are unavailable`);
+  return paths;
+}
+
+async function prepareNarrativeImages(job: JobRow): Promise<Record<string, string>> {
+  if (!usesGeneratedNarrativeImages(job)) return {};
+  try {
+    return await prepareNarrativeImagesStage(job);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    if (detail.includes(OWNERSHIP_LOST) || detail.includes(IMAGE_API_FAILURE)) throw error;
+    logger.error({ err: error, jobId: job.id }, "Source-image foundation stage failed");
+    throw new Error(`${IMAGE_API_FAILURE} The source-image pack could not be safely completed.`);
+  }
 }
 
 type ImagePackMeta = AiJobMeta & {
@@ -813,6 +930,7 @@ async function generateClips(
   job: JobRow,
   analysis: AudioAnalysis,
   plan: GenerationPlan,
+  preparedImages: Record<string, string>,
   onProgress: (pct: number) => Promise<void>,
 ): Promise<{
   clips: GeneratedClip[];
@@ -867,6 +985,11 @@ async function generateClips(
           energy: storyboardShot.energy,
         }
       : sections[i]!;
+    // Generate exactly one animation per immutable storyboard image. Montage
+    // reuse happens later through storyboard.timeline during stitching; using
+    // the timeline here would animate duplicate motifs and skip others.
+    const visualIndex = storyboardShot?.index ?? i;
+    const visualShot = storyboardShot;
     const targetDuration = clipDurationSec;
     const clipDuration = clipDurationSec;
 
@@ -874,14 +997,14 @@ async function generateClips(
 
     // Build the prompt regardless of provider so it can be persisted as clip
     // metadata (and reused as the basis for a future remix of this clip).
-    const prompt = storyboardShot?.prompt ?? buildSectionPrompt(job, analysis, section);
+    const prompt = visualShot?.prompt ?? buildSectionPrompt(job, analysis, section);
 
     // 1) Reuse a previously-rendered clip if we have one (salvage on retry).
     if (persisted[i]) {
       try {
         const url = await storageService.getObjectEntitySignedUrl(persisted[i]!, 3600);
         const buf = await downloadClip(url);
-        clips[i] = { buffer: buf, targetDuration, prompt, visualIndex: i };
+        clips[i] = { buffer: buf, targetDuration, prompt, visualIndex };
         logger.info({ jobId: job.id, clip: i }, "Reused previously-rendered clip (salvage)");
         continue;
       } catch (e) {
@@ -898,7 +1021,7 @@ async function generateClips(
       if (check.state === "completed") {
         try {
           const buf = await downloadClip(check.mediaUrl);
-          clips[i] = { buffer: buf, targetDuration, prompt, visualIndex: i };
+          clips[i] = { buffer: buf, targetDuration, prompt, visualIndex };
           try {
             const path = await storageService.uploadClipBuffer(buf, `job-${job.id}`, i);
             persisted[i] = path;
@@ -942,7 +1065,7 @@ async function generateClips(
         buffer: await createSimulationClip(clipDuration),
         targetDuration,
         prompt,
-        visualIndex: i,
+          visualIndex,
       };
       continue;
     }
@@ -958,9 +1081,12 @@ async function generateClips(
     for (let attempt = 1; attempt <= clipAttempts; attempt++) {
       await assertJobOwned(job);
       try {
-        const imageIndex = generationMode === "narrative" ? i : (storyboardShot?.index ?? i);
-        const narrativeImageUrl = usesGeneratedNarrativeImages(job)
-          ? await narrativeImageUrlFor(job, imageIndex, prompt)
+        const imagePath = preparedImages[visualIndex];
+        if (usesGeneratedNarrativeImages(job) && !imagePath) {
+          throw new Error(`${IMAGE_API_FAILURE}: Required planned visual is unavailable`);
+        }
+        const narrativeImageUrl = imagePath
+          ? await storageService.getObjectEntitySignedUrl(imagePath, 3600)
           : refImageUrl ?? undefined;
         const result = await generateClip({
           prompt,
@@ -1023,7 +1149,7 @@ async function generateClips(
       logger.warn({ jobId: job.id, clip: i, err: e }, "Could not persist salvage copy of clip (non-fatal)");
     }
 
-    clips[i] = { buffer: clipBuffer, targetDuration, prompt, visualIndex: i };
+    clips[i] = { buffer: clipBuffer, targetDuration, prompt, visualIndex };
   }
 
   if (finalizeOnly) {
@@ -1143,6 +1269,22 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
         "Your prompt was rejected by the AI provider's content policy. Please edit your prompt and try again.",
     });
     void notifyRenderFailed(job, "The AI provider's content policy rejected the prompt.");
+    return;
+  }
+
+  // Source-image calls are paid and an interrupted submit may still be
+  // uncertain. Never auto-resubmit blindly. Refund the idempotent
+  // reservation and let the user explicitly start a fresh attempt; any images
+  // that completed remain available in their generated-image library.
+  if (errMsg.includes(IMAGE_API_FAILURE)) {
+    const cleanMsg = errMsg.replace(IMAGE_API_FAILURE, "").replace(/^:\s*/, "").trim();
+    logger.warn({ jobId: job.id }, "Permanent failure: source-image stage error — not retrying");
+    await refundReservation(job.id, job.userId, "image-foundation-failure");
+    await updateJobStatus(job.id, {
+      status: "failed",
+      errorMessage: `${cleanMsg || "The source-image pack could not be completed."} Your reserved credits were returned. No automatic retry was attempted.`,
+    });
+    void notifyAdminRenderFailed(job, cleanMsg || "Source-image stage failed.");
     return;
   }
 
@@ -1963,6 +2105,7 @@ async function processJob(job: JobRow): Promise<void> {
       };
     }
 
+    const preparedImages = await prepareNarrativeImages(job);
     await updateJobStatus(job.id, {
       status: "generating",
       audioAnalysis: analysis as unknown as Record<string, unknown>,
@@ -1983,7 +2126,7 @@ async function processJob(job: JobRow): Promise<void> {
       "Generation plan built",
     );
 
-    const { clips, shortfallNotice } = await generateClips(job, analysis, plan, (pct) =>
+    const { clips, shortfallNotice } = await generateClips(job, analysis, plan, preparedImages, (pct) =>
       updateJobStatus(job.id, { progressPercent: pct }),
     );
 

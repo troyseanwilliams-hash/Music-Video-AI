@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   calculateCreditCost,
+  calculateGeneratedImageCost,
   calculateLipsyncCost,
   calculateLipsyncCostFromSourceVideo,
   getClipPlan,
@@ -35,6 +36,18 @@ describe("Narrative Story provider work and pricing", () => {
       numClips: 1,
       clipDurationSec: 5,
     });
+  });
+});
+
+describe("image-first video pricing", () => {
+  it("charges every unique Montage motif image even when an older client submits video mode", () => {
+    expect(calculateGeneratedImageCost("180", null, "montage", "video")).toBe(9 * 4);
+    expect(calculateGeneratedImageCost("180", null, "montage", "generated_images")).toBe(9 * 4);
+  });
+
+  it("charges one source image for every chronological Narrative scene", () => {
+    expect(calculateGeneratedImageCost("180", null, "narrative", "video")).toBe(18 * 4);
+    expect(calculateGeneratedImageCost("full", 600, "narrative", "generated_images")).toBe(60 * 4);
   });
 });
 

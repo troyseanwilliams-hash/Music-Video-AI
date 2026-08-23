@@ -16,4 +16,8 @@ export type ListImageAssetsParams = {
    * @maximum 60
    */
   limit?: number;
+  /**
+   * Optionally return only generated images from this owner-scoped job.
+   */
+  jobId?: string;
 };

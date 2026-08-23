@@ -345,6 +345,12 @@ paths:
             minimum: 1
             maximum: 60
             default: 30
+        - name: jobId
+          in: query
+          description: Optionally return only generated images from this owner-scoped job.
+          schema:
+            type: string
+            format: uuid
       responses:
         '200':
           description: Generated images owned by the current user.
@@ -1454,6 +1460,21 @@ components:
             type: integer
         storyboard:
           $ref: '#/components/schemas/JobStoryboard'
+        imageFirstVersion:
+          type: integer
+          enum: [1]
+          description: Present when every video scene is animated from a persisted source-image plan.
+        imageCreditCost:
+          type: integer
+          minimum: 0
+        videoCreditCost:
+          type: integer
+          minimum: 0
+        narrativeImages:
+          type: object
+          description: Planned visual index to owner-protected source-image object path.
+          additionalProperties:
+            type: string
         bundledLipSyncChildId:
           type: string
         bundledLipSyncEnabled:

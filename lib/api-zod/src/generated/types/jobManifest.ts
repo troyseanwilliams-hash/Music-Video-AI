@@ -5,6 +5,8 @@
  * BeatVision AI API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { JobManifestImageFirstVersion } from "./jobManifestImageFirstVersion";
+import type { JobManifestNarrativeImages } from "./jobManifestNarrativeImages";
 import type { JobManifestSegmentsItem } from "./jobManifestSegmentsItem";
 import type { JobManifestTransition } from "./jobManifestTransition";
 import type { JobStoryboard } from "./jobStoryboard";
@@ -17,6 +19,14 @@ export interface JobManifest {
   lyricsText?: string | null;
   clipIndexes?: number[];
   storyboard?: JobStoryboard;
+  /** Present when every video scene is animated from a persisted source-image plan. */
+  imageFirstVersion?: JobManifestImageFirstVersion;
+  /** @minimum 0 */
+  imageCreditCost?: number;
+  /** @minimum 0 */
+  videoCreditCost?: number;
+  /** Planned visual index to owner-protected source-image object path. */
+  narrativeImages?: JobManifestNarrativeImages;
   bundledLipSyncChildId?: string;
   bundledLipSyncEnabled?: boolean;
   /** @minimum 0 */
