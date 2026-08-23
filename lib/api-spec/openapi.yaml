@@ -1218,7 +1218,7 @@ components:
           description: Object storage path for an optional reference image
         requestedDuration:
           type: [string, 'null']
-          enum: ['5', '8', '10', '30', '45', '60', '90', '120', '300', '600', 'full', null]
+          enum: ['5', '8', '10', '30', '45', '60', '90', '120', '184', '300', '600', 'full', null]
           description: Requested output video length
         clipStartTime:
           type: [number, 'null']
@@ -1389,7 +1389,7 @@ components:
           description: Object storage path for an optional reference image used as Runway starting frame
         requestedDuration:
           type: [string, 'null']
-          enum: ['5', '8', '10', '30', '45', '60', '90', '120', '300', '600', 'full', null]
+          enum: ['5', '8', '10', '30', '45', '60', '90', '120', '184', '300', '600', 'full', null]
           description: Requested output video length. '5'/'8'/'10' = short clip, '30'/'60'/'90'/'120' = multi-clip stitch, 'full' = full audio length (default; not valid when audioSourceType is "none", since there is no audio to derive a length from)
         generationMode:
           type: string

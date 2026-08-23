@@ -1307,6 +1307,7 @@ export default function Generate() {
                       requestedDuration === CreateJobRequestRequestedDuration.full ? fullTrackLabel
                         : (requestedDuration as string) === "300" ? "5 min"
                         : (requestedDuration as string) === "600" ? "10 min"
+                          : (requestedDuration as string) === "184" ? "3:04"
                         : `${durationToSeconds(requestedDuration)}s`
                     }</span>
                     <ChevronDown className="h-3 w-3 text-muted-foreground ml-0.5" />
@@ -1338,6 +1339,7 @@ export default function Generate() {
                     { value: CreateJobRequestRequestedDuration.NUMBER_60, label: "60 seconds" },
                     { value: CreateJobRequestRequestedDuration.NUMBER_90, label: "90 seconds" },
                     { value: CreateJobRequestRequestedDuration.NUMBER_120, label: "120 seconds" },
+                     { value: CreateJobRequestRequestedDuration.NUMBER_184, label: "3:04 (DB Cooper practice)" },
                     { value: CreateJobRequestRequestedDuration.NUMBER_300, label: "5 minutes" },
                     { value: CreateJobRequestRequestedDuration.NUMBER_600, label: "10 minutes" },
                   ] as const).map(({ value, label }) => {
@@ -2362,7 +2364,7 @@ export default function Generate() {
       if (!isLong) return null;
       const numClips = generationEstimate.unitCount;
       const estimatedMin = generationEstimate.label;
-      const durLabel = durSec === 300 ? "5-minute" : durSec === 600 ? "10-minute" : `${durSec}-second`;
+       const durLabel = durSec === 184 ? "3:04" : durSec === 300 ? "5-minute" : durSec === 600 ? "10-minute" : `${durSec}-second`;
       const creditCost = estimateCreditCost(requestedDuration, aiProvider, resolution, songDurationSec, generationMode as GenerationMode) + lyricAddon;
       return (
         <Dialog open={durationWarningOpen} onOpenChange={setDurationWarningOpen}>
