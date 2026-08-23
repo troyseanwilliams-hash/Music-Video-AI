@@ -17,6 +17,16 @@ export interface ClipRequest {
    * recovered later instead of being paid for twice.
    */
   onSubmit?: (info: { provider: string; requestId: string; pollUrl: string }) => void | Promise<void>;
+  /**
+   * Called when submission may have reached the provider but no durable request
+   * id was returned. The caller must persist this before exposing a retry.
+   */
+  onUncertainSubmission?: (info: {
+    provider: string;
+    status?: number;
+    activityId?: string;
+    reason: string;
+  }) => void | Promise<void>;
 }
 
 export interface ClipResult {
@@ -335,31 +345,118 @@ async function generateWithPixazo(req: ClipRequest, t2vOverride?: string, i2vOve
     else if (r === "720p") body.resolution = "720p";
   }
 
-  const submit = await fetch(`https://gateway.pixazo.ai/${model}/v1/${model}-request`, {
-    method: "POST",
-    headers: {
-      "Ocp-Apim-Subscription-Key": key,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-    // Submission can slow down during provider traffic spikes. Give the
-    // request enough time to return its durable request id; aborting too early
-    // leaves an ambiguous paid request that cannot be safely recovered.
-    signal: AbortSignal.timeout(PIXAZO_SUBMIT_TIMEOUT_MS),
-  });
-  if (!submit.ok) throw new Error(`${PROVIDER_API_FAILURE} Pixazo ${submit.status}: ${(await submit.text()).slice(0, 200)}`);
-  const submitData = (await submit.json()) as { request_id?: string; polling_url?: string };
-  const requestId = submitData.request_id;
-  if (!requestId) throw new Error(`${PROVIDER_API_FAILURE} Pixazo: no request_id returned`);
-  const pollUrl = submitData.polling_url ?? `https://gateway.pixazo.ai/v2/requests/status/${requestId}`;
+  const uncertainProvider = req.provider ?? "pixazo";
+  let submit: Response;
+  try {
+    submit = await fetch(`https://gateway.pixazo.ai/${model}/v1/${model}-request`, {
+      method: "POST",
+      headers: {
+        "Ocp-Apim-Subscription-Key": key,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      // Submission can slow down during provider traffic spikes. Give the
+      // request enough time to return its durable request id; aborting too early
+      // leaves an ambiguous paid request that cannot be safely recovered.
+      signal: AbortSignal.timeout(PIXAZO_SUBMIT_TIMEOUT_MS),
+    });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    await req.onUncertainSubmission?.({
+      provider: uncertainProvider,
+      reason: `Submission transport error: ${reason}`.slice(0, 240),
+    });
+    throw new Error(`${PROVIDER_API_FAILURE} The AI service did not confirm the scene request.`);
+  }
+  let submitText: string;
+  try {
+    submitText = await submit.text();
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    await req.onUncertainSubmission?.({
+      provider: uncertainProvider,
+      status: submit.status,
+      reason: `Could not read submission response: ${reason}`.slice(0, 240),
+    });
+    throw new Error(`${PROVIDER_API_FAILURE} The AI service response could not be verified.`);
+  }
+  if (!submit.ok) {
+    const text = submitText.slice(0, 500);
+    if (submit.status >= 500) {
+      let activityId: string | undefined;
+      try {
+        const parsed = JSON.parse(text) as { activityId?: unknown };
+        if (typeof parsed.activityId === "string") activityId = parsed.activityId.slice(0, 120);
+      } catch {
+        // Non-JSON provider errors still remain uncertain by status.
+      }
+      await req.onUncertainSubmission?.({
+        provider: uncertainProvider,
+        status: submit.status,
+        activityId,
+        reason: `AI service returned HTTP ${submit.status}`,
+      });
+    }
+    throw new Error(`${PROVIDER_API_FAILURE} AI service ${submit.status}: ${text.slice(0, 200)}`);
+  }
+  let parsedSubmitData: unknown;
+  try {
+    parsedSubmitData = JSON.parse(submitText);
+  } catch {
+    await req.onUncertainSubmission?.({
+      provider: uncertainProvider,
+      status: submit.status,
+      reason: "AI service returned an unreadable success response",
+    });
+    throw new Error(`${PROVIDER_API_FAILURE} The AI service response could not be verified.`);
+  }
+  if (
+    !parsedSubmitData ||
+    typeof parsedSubmitData !== "object" ||
+    Array.isArray(parsedSubmitData)
+  ) {
+    await req.onUncertainSubmission?.({
+      provider: uncertainProvider,
+      status: submit.status,
+      reason: "AI service returned an invalid success response",
+    });
+    throw new Error(`${PROVIDER_API_FAILURE} The AI service response could not be verified.`);
+  }
+  const submitData = parsedSubmitData as {
+    request_id?: unknown;
+    polling_url?: unknown;
+  };
+  const requestId =
+    typeof submitData.request_id === "string"
+      ? submitData.request_id.trim()
+      : "";
+  if (!requestId) {
+    await req.onUncertainSubmission?.({
+      provider: uncertainProvider,
+      reason: "AI service returned success without a request id",
+    });
+    throw new Error(`${PROVIDER_API_FAILURE} The AI service did not return a scene request id.`);
+  }
+  const pollUrl =
+    typeof submitData.polling_url === "string" &&
+    submitData.polling_url.trim().length > 0
+      ? submitData.polling_url
+      : `https://gateway.pixazo.ai/v2/requests/status/${requestId}`;
 
   // Persist the request id/poll URL before polling starts, so a clip that
   // completes after we stop polling is recoverable (never block the render on
   // a persistence hiccup, though).
   try {
-    await req.onSubmit?.({ provider: "pixazo", requestId, pollUrl });
+    await req.onSubmit?.({ provider: uncertainProvider, requestId, pollUrl });
   } catch {
-    /* non-fatal */
+    await req.onUncertainSubmission?.({
+      provider: uncertainProvider,
+      activityId: requestId.slice(0, 120),
+      reason: "Accepted scene request could not be saved for recovery",
+    });
+    throw new Error(
+      `${PROVIDER_API_FAILURE} The AI service accepted the scene request, but its recovery state could not be saved.`,
+    );
   }
 
   for (let i = 0; i < 120; i++) {

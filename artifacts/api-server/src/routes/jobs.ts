@@ -962,6 +962,7 @@ router.post("/jobs/:id/retry", async (req, res) => {
           refunded?: boolean;
           bundledLipSyncEnabled?: boolean;
           bundledLipSyncActivated?: boolean;
+          uncertainSubmissions?: Record<string, unknown>;
         })
       : {};
   if (
@@ -986,6 +987,28 @@ router.post("/jobs/:id/retry", async (req, res) => {
     return;
   }
 
+  const acknowledgeUncertainSubmission =
+    req.body?.acknowledgeUncertainSubmission === true;
+  const hasPersistedUncertainty =
+    Object.keys(retryMeta.uncertainSubmissions ?? {}).length > 0;
+  // Backward compatibility for failures recorded before uncertainSubmissions
+  // existed. These messages all mean submission ended without a request id.
+  const hasLegacyUncertainty =
+    /aborted due to timeout|ai service 5\d\d|pixazo 5\d\d|internal server error/i.test(
+      job.errorMessage ?? "",
+    );
+  if (
+    (hasPersistedUncertainty || hasLegacyUncertainty) &&
+    !acknowledgeUncertainSubmission
+  ) {
+    res.status(409).json({
+      error:
+        "The AI service did not confirm whether the previous scene request was accepted. Submitting again may create an additional provider request.",
+      code: "UNCERTAIN_PROVIDER_SUBMISSION",
+    });
+    return;
+  }
+
   const [updated] = await db
     .update(jobsTable)
     .set({
@@ -994,6 +1017,7 @@ router.post("/jobs/:id/retry", async (req, res) => {
       errorMessage: null,
       retryCount: 0,
       claimedAt: null,
+      manifest: sql`COALESCE(${jobsTable.manifest}, '{}'::jsonb) - 'uncertainSubmissions'`,
       updatedAt: new Date(),
     })
     .where(

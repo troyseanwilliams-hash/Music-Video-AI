@@ -4,6 +4,7 @@ import { generateClip, resolveClipProviderChain } from "./videoApis.js";
 describe("resolveClipProviderChain", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
   });
 
   it("routes a selected Runway render through the normal production provider chain", () => {
@@ -46,5 +47,89 @@ describe("resolveClipProviderChain", () => {
         providerOnly: true,
       }),
     ).rejects.toThrow("selected AI video engine is unavailable");
+  });
+
+  it("records a 5xx submission as uncertain before failing the clip", async () => {
+    vi.stubEnv("PIXAZO_API_KEY", "test-key");
+    const onUncertainSubmission = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            statusCode: 500,
+            message: "Internal server error",
+            activityId: "activity-123",
+          }),
+          { status: 500 },
+        ),
+      ),
+    );
+
+    await expect(
+      generateClip({
+        prompt: "cinematic rain",
+        durationSeconds: 5,
+        provider: "kling",
+        providerOnly: true,
+        onUncertainSubmission,
+      }),
+    ).rejects.toThrow("AI service 500");
+    expect(onUncertainSubmission).toHaveBeenCalledWith({
+      provider: "kling",
+      status: 500,
+      activityId: "activity-123",
+      reason: "AI service returned HTTP 500",
+    });
+  });
+
+  it("records a malformed success response as uncertain", async () => {
+    vi.stubEnv("PIXAZO_API_KEY", "test-key");
+    const onUncertainSubmission = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response("<html>upstream error</html>", { status: 200 }),
+      ),
+    );
+
+    await expect(
+      generateClip({
+        prompt: "cinematic rain",
+        durationSeconds: 5,
+        provider: "kling",
+        providerOnly: true,
+        onUncertainSubmission,
+      }),
+    ).rejects.toThrow("response could not be verified");
+    expect(onUncertainSubmission).toHaveBeenCalledWith({
+      provider: "kling",
+      status: 200,
+      reason: "AI service returned an unreadable success response",
+    });
+  });
+
+  it("records a null success response as uncertain", async () => {
+    vi.stubEnv("PIXAZO_API_KEY", "test-key");
+    const onUncertainSubmission = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("null", { status: 200 })),
+    );
+
+    await expect(
+      generateClip({
+        prompt: "cinematic rain",
+        durationSeconds: 5,
+        provider: "kling",
+        providerOnly: true,
+        onUncertainSubmission,
+      }),
+    ).rejects.toThrow("response could not be verified");
+    expect(onUncertainSubmission).toHaveBeenCalledWith({
+      provider: "kling",
+      status: 200,
+      reason: "AI service returned an invalid success response",
+    });
   });
 });

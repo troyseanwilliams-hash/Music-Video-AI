@@ -178,6 +178,10 @@ function isAutoRetrying(msg: string | null | undefined): boolean {
   return /retry \d+\/\d+ in \d+m/.test(msg ?? "");
 }
 
+function sanitizeTechnicalError(msg: string): string {
+  return msg.replace(/pixazo/gi, "AI service");
+}
+
 // Wall-clock elapsed since the job was created (ISO timestamp), ticking every
 // second while active. Counting from job.createdAt (not page load) means the
 // timer shows the true time the job has been running and survives refreshes.
@@ -297,10 +301,12 @@ export default function JobStatus() {
   const [warningDismissed, setWarningDismissed] = useState(false);
   const [resubmitting, setResubmitting] = useState(false);
   const [resubmitError, setResubmitError] = useState<string | null>(null);
+  const [uncertainRetryWarning, setUncertainRetryWarning] = useState<string | null>(null);
 
   useEffect(() => {
     setWarningDismissed(false);
     setResubmitError(null);
+    setUncertainRetryWarning(null);
   }, [id]);
 
   const { data: job, isLoading } = useGetJob(id as string, {
@@ -341,20 +347,33 @@ export default function JobStatus() {
     }
   }, [isAuthenticated, isAuthLoading, setLocation]);
 
-  const handleRetry = async () => {
+  const handleRetry = async (acknowledgeUncertainSubmission = false) => {
     if (!id || resubmitting) return;
     setResubmitting(true);
     setResubmitError(null);
     try {
-      const res = await fetch(`/api/jobs/${id}/retry`, { method: "POST", credentials: "include" });
+      const res = await fetch(`/api/jobs/${id}/retry`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ acknowledgeUncertainSubmission }),
+      });
       const payload = await res.json().catch(() => null) as
-        | (Job & { error?: string })
-        | { error?: string }
+        | (Job & { error?: string; code?: string })
+        | { error?: string; code?: string }
         | null;
       if (!res.ok) {
+        if (payload?.code === "UNCERTAIN_PROVIDER_SUBMISSION") {
+          setUncertainRetryWarning(
+            payload.error ??
+              "The previous scene request was not confirmed. Submitting again may create an additional provider request.",
+          );
+          return;
+        }
         throw new Error(payload?.error ?? "This job could not be resubmitted.");
       }
-      queryClient.setQueryData(getGetJobQueryKey(id), payload);
+      setUncertainRetryWarning(null);
+      queryClient.setQueryData(getGetJobQueryKey(id), payload as Job);
     } catch (error) {
       setResubmitError(
         error instanceof Error
@@ -814,7 +833,7 @@ export default function JobStatus() {
                             Show technical details
                           </summary>
                           <pre className="mt-2 text-[11px] bg-secondary/60 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-all text-muted-foreground leading-relaxed">
-                            {job.errorMessage}
+                            {sanitizeTechnicalError(job.errorMessage)}
                           </pre>
                         </details>
                       )}
@@ -825,7 +844,7 @@ export default function JobStatus() {
                           <Button
                             variant="outline"
                             className="border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
-                            onClick={handleRetry}
+                            onClick={() => handleRetry(false)}
                             disabled={resubmitting}
                           >
                             {resubmitting ? (
@@ -847,6 +866,34 @@ export default function JobStatus() {
                         <p className="mt-3 text-sm text-destructive" role="alert">
                           {resubmitError}
                         </p>
+                      )}
+                      {uncertainRetryWarning && (
+                        <div
+                          className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm"
+                          role="alert"
+                        >
+                          <p className="font-medium text-amber-700 dark:text-amber-300">
+                            Previous submission could not be confirmed
+                          </p>
+                          <p className="mt-1 text-muted-foreground">
+                            {uncertainRetryWarning} Your existing app-credit reservation will be reused, but the AI service may count this as another provider request.
+                          </p>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="mt-3 border-amber-500/30"
+                            disabled={resubmitting}
+                            onClick={() => handleRetry(true)}
+                          >
+                            {resubmitting ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <RefreshCw className="mr-2 h-4 w-4" />
+                            )}
+                            I understand — submit another attempt
+                          </Button>
+                        </div>
                       )}
                     </div>
                   </div>

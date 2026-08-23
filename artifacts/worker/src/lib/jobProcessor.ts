@@ -118,6 +118,14 @@ type GeneratedClip = {
   visualIndex: number;
 };
 
+type UncertainSubmission = {
+  provider: string;
+  status?: number;
+  activityId?: string;
+  reason: string;
+  occurredAt: string;
+};
+
 type AiJobMeta = {
   generationMode?: "montage" | "narrative";
   reservedCredits?: number;
@@ -127,6 +135,7 @@ type AiJobMeta = {
   lipSyncPollUrl?: string;
   partialClips?: Record<string, string>; // clip index -> object storage path
   pendingRequests?: Record<string, string>; // clip index -> provider poll URL (submitted, not yet downloaded)
+  uncertainSubmissions?: Record<string, UncertainSubmission>; // clip index -> ambiguous submit outcome requiring explicit acknowledgement
   retryAfter?: number; // epoch ms — queued job must not be claimed before this
   finalizeWithPartial?: boolean; // admin: stitch whatever clips exist, never call the provider
   storyboard?: {
@@ -263,9 +272,37 @@ async function persistPendingRequest(jobId: string, index: number, pollUrl: stri
   await db.execute(sql`
     UPDATE jobs
     SET manifest = jsonb_set(
+          jsonb_set(
+            COALESCE(manifest, '{}'::jsonb),
+            '{pendingRequests}',
+            COALESCE(manifest->'pendingRequests', '{}'::jsonb) || ${JSON.stringify({ [index]: pollUrl })}::jsonb
+          ),
+          '{uncertainSubmissions}',
+          COALESCE(manifest->'uncertainSubmissions', '{}'::jsonb) - ${String(index)}
+        ),
+        updated_at = NOW()
+    WHERE id = ${jobId}
+  `);
+}
+
+async function persistUncertainSubmission(
+  jobId: string,
+  index: number,
+  info: Omit<UncertainSubmission, "occurredAt">,
+): Promise<void> {
+  const entry: UncertainSubmission = {
+    provider: info.provider.slice(0, 40),
+    status: info.status,
+    activityId: info.activityId?.slice(0, 120),
+    reason: info.reason.slice(0, 240),
+    occurredAt: new Date().toISOString(),
+  };
+  await db.execute(sql`
+    UPDATE jobs
+    SET manifest = jsonb_set(
           COALESCE(manifest, '{}'::jsonb),
-          '{pendingRequests}',
-          COALESCE(manifest->'pendingRequests', '{}'::jsonb) || ${JSON.stringify({ [index]: pollUrl })}::jsonb
+          '{uncertainSubmissions}',
+          COALESCE(manifest->'uncertainSubmissions', '{}'::jsonb) || ${JSON.stringify({ [index]: entry })}::jsonb
         ),
         updated_at = NOW()
     WHERE id = ${jobId}
@@ -782,6 +819,7 @@ async function generateClips(
           // Persist the provider request id before polling starts so this clip
           // is recoverable if the server dies mid-poll.
           onSubmit: (info) => persistPendingRequest(job.id, i, info.pollUrl),
+          onUncertainSubmission: (info) => persistUncertainSubmission(job.id, i, info),
         });
         clipBuffer = result ? await downloadClip(result.videoUrl) : await createSimulationClip(clipDuration);
         if (result) {
