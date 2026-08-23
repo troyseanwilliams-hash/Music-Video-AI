@@ -196,6 +196,9 @@ export default function Generate() {
     lyrics?: string;
   }>({});
   const [selectedStyle, setSelectedStyle] = useState<VideoStyle>(VideoStyle.cinematic);
+  const [imagePackMode, setImagePackMode] = useState(false);
+  const [imagePackCount, setImagePackCount] = useState(4);
+  const [imagePackSubmitting, setImagePackSubmitting] = useState(false);
   const [generationMode, setGenerationMode] = useState<CreateJobRequestGenerationMode>(CreateJobRequestGenerationMode.montage);
   const [narrativeVisualSource, setNarrativeVisualSource] = useState<CreateJobRequestNarrativeVisualSource>(CreateJobRequestNarrativeVisualSource.video);
   const [lyricsEnabled, setLyricsEnabled] = useState(false);
@@ -687,6 +690,8 @@ export default function Generate() {
       ? calculateLipsyncCost(fullTrackLipSyncSeconds)
       : 0;
   const cost = videoCost + lipSyncAddon;
+  const imagePackCost = imagePackCount * 4;
+  const activeCost = imagePackMode ? imagePackCost : cost;
   const generationEstimate = getGenerationTimeEstimate(
     effectiveRequestedDuration,
     aiProvider,
@@ -695,7 +700,7 @@ export default function Generate() {
     generationMode as GenerationMode
   );
   const balance = statsData?.creditsRemaining ?? null;
-  const canAfford = canAffordCredits(cost, balance, isAdmin);
+  const canAfford = canAffordCredits(activeCost, balance, isAdmin);
 
   const characterLabel = CHARACTERS.find((c) => c.value === character)?.label ?? "None";
 
@@ -787,6 +792,10 @@ export default function Generate() {
   };
 
   const submitJob = () => {
+    if (imagePackMode) {
+      void submitImagePack();
+      return;
+    }
     if (
       lyricsEnabled &&
       lyricsText.trim().length > MAX_LYRICS_LENGTH
@@ -906,6 +915,53 @@ export default function Generate() {
     );
   };
 
+  const submitImagePack = async () => {
+    if (!Number.isInteger(imagePackCount) || imagePackCount < 1 || imagePackCount > 30) {
+      setConfirmOpen(false);
+      setErrorDialog({
+        open: true,
+        title: "Choose an image count",
+        message: "Image packs can contain between 1 and 30 vertical stills.",
+      });
+      return;
+    }
+    setConfirmOpen(false);
+    setImagePackSubmitting(true);
+    try {
+      const response = await fetch("/api/image-packs", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: prompt.trim(),
+          style: selectedStyle,
+          imageCount: imagePackCount,
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setErrorDialog({
+          open: true,
+          title: body.code === "INSUFFICIENT_CREDITS" ? "Not enough credits" : "Image pack unavailable",
+          message: body.error ?? "Could not start the image pack. Please try again.",
+          code: body.code,
+          creditsRequired: body.creditsRequired,
+          creditsRemaining: body.creditsRemaining,
+        });
+        return;
+      }
+      setLocation(`/jobs/${body.id}`);
+    } catch {
+      setErrorDialog({
+        open: true,
+        title: "Image pack unavailable",
+        message: "A network error prevented the image pack from starting. No job was created.",
+      });
+    } finally {
+      setImagePackSubmitting(false);
+    }
+  };
+
   const handleGenerate = () => {
     const errors: {
       prompt?: string;
@@ -917,28 +973,29 @@ export default function Generate() {
     if (!prompt.trim()) {
       errors.prompt = "Please describe the visuals you want.";
     }
-    if (sourceType === CreateJobRequestAudioSourceType.upload && !objectPath) {
+    if (imagePackMode && (!Number.isInteger(imagePackCount) || imagePackCount < 1 || imagePackCount > 30)) {
+      errors.prompt = "Choose between 1 and 30 images for this pack.";
+    }
+    if (!imagePackMode && sourceType === CreateJobRequestAudioSourceType.upload && !objectPath) {
       errors.audio = isUploading ? "Still uploading — wait a moment." : "Please upload an audio file.";
     }
-    if (sourceType === CreateJobRequestAudioSourceType.suno && !sunoResolved) {
+    if (!imagePackMode && sourceType === CreateJobRequestAudioSourceType.suno && !sunoResolved) {
       errors.audio = sunoResolving ? "Loading track — wait a moment." : "Please load a Suno track first.";
     }
     if (
-      sourceType === CreateJobRequestAudioSourceType.none
+      !imagePackMode && sourceType === CreateJobRequestAudioSourceType.none
       && (!Number.isInteger(silentFilmDurationSeconds) || silentFilmDurationSeconds < 5 || silentFilmDurationSeconds > MAX_FULL_SECONDS)
     ) {
       errors.audio = `Choose a silent-film length between 5 and ${MAX_FULL_SECONDS} seconds.`;
     }
-    if (
-      fullTrackNeedsAnalysis
-    ) {
+    if (!imagePackMode && fullTrackNeedsAnalysis) {
       errors.audio = "Wait for audio analysis to finish before creating a full-track video.";
     }
-    if (requestedDuration === CreateJobRequestRequestedDuration.full && fullTrackOverLimit) {
+    if (!imagePackMode && requestedDuration === CreateJobRequestRequestedDuration.full && fullTrackOverLimit) {
       errors.audio = `Full-track videos support audio up to ${Math.floor(MAX_FULL_SECONDS / 60)} minutes. Choose a shorter track or a specific duration.`;
     }
     if (
-      fullTrackSelected &&
+      !imagePackMode && fullTrackSelected &&
       fullTrackLipSyncEnabled &&
       (!lipSyncImageObjectPath || isUploadingLipSyncImage)
     ) {
@@ -1134,6 +1191,52 @@ export default function Generate() {
         </div>
 
         <div className="grid gap-5 sm:gap-8 p-4 sm:p-8 rounded-2xl bg-card border border-card-border shadow-lg">
+
+          <div className="rounded-xl border border-primary/20 bg-primary/[0.035] p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  Generate reusable images
+                </div>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  Create vertical AI stills without rendering a video, then arrange them in Remix Lab.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant={imagePackMode ? "default" : "outline"}
+                onClick={() => setImagePackMode((active) => !active)}
+                data-testid="toggle-image-pack-mode"
+              >
+                {imagePackMode ? "Images only selected" : "Create image pack"}
+              </Button>
+            </div>
+            {imagePackMode && (
+              <div className="mt-4 grid gap-3 border-t border-primary/15 pt-4 sm:grid-cols-[minmax(0,1fr)_150px] sm:items-end">
+                <div>
+                  <Label htmlFor="image-pack-count">Images to generate</Label>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Each vertical still costs 4 credits. Failed images are refunded.
+                  </p>
+                </div>
+                <div>
+                  <Input
+                    id="image-pack-count"
+                    type="number"
+                    min={1}
+                    max={30}
+                    value={imagePackCount}
+                    onChange={(event) => setImagePackCount(Number(event.target.value))}
+                    aria-label="Images to generate"
+                  />
+                  <p className="mt-1 text-right text-xs font-medium text-primary">
+                    {imagePackCost} credits
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
 
           <div className="space-y-2">
             <Label>Video structure</Label>
@@ -2487,29 +2590,39 @@ export default function Generate() {
     <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <div className="flex items-center gap-3 mb-1">
+            <div className="flex items-center gap-3 mb-1">
             <div className="h-10 w-10 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
               <ShieldAlert className="h-5 w-5 text-primary" />
             </div>
-            <DialogTitle className="text-left">Confirm Video Generation</DialogTitle>
+              <DialogTitle className="text-left">
+                {imagePackMode ? "Confirm Image Pack" : "Confirm Video Generation"}
+              </DialogTitle>
           </div>
           <DialogDescription asChild>
             <div className="text-left space-y-3 mt-1">
               <p className="text-sm text-muted-foreground leading-relaxed">
-                Review the details below. Once confirmed, the job will be submitted for admin approval before processing begins.
+                {imagePackMode
+                  ? "Review the image pack below. The saved vertical stills will be ready to add directly to Remix Lab."
+                  : "Review the details below. Once confirmed, the job will be submitted for admin approval before processing begins."}
               </p>
               <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm space-y-1.5">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Style</span>
                   <span className="font-medium capitalize">{STYLES.find((s) => s.id === selectedStyle)?.label ?? selectedStyle}</span>
                 </div>
-                {refImageObjectPath && (
+                {imagePackMode && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Vertical stills</span>
+                    <span className="font-medium">{imagePackCount} images · 9:16</span>
+                  </div>
+                )}
+                {!imagePackMode && refImageObjectPath && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Character</span>
                     <span className="font-medium text-primary">🔒 Locked across all shots</span>
                   </div>
                 )}
-                <div className="flex justify-between">
+                {!imagePackMode && <div className="flex justify-between">
                   <span className="text-muted-foreground">Duration</span>
                   <span className="font-medium">
                     {sourceType === CreateJobRequestAudioSourceType.none
@@ -2518,12 +2631,12 @@ export default function Generate() {
                       ? `${fullTrackLabel} · exact audio length`
                       : `${requestedDuration}s`}
                   </span>
-                </div>
+                </div>}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Credit cost</span>
-                  <span className="font-medium">{cost} credits</span>
+                  <span className="font-medium">{activeCost} credits</span>
                 </div>
-                {lipSyncAddon > 0 && (
+                {!imagePackMode && lipSyncAddon > 0 && (
                   <>
                     <div className="flex justify-between text-xs">
                       <span className="text-muted-foreground">Video generation</span>
@@ -2541,7 +2654,7 @@ export default function Generate() {
               </div>
 
               {/* Storyboard preview — the shots we'll generate, before you spend credits */}
-              <div className="rounded-lg border border-border bg-muted/20 p-3">
+              {!imagePackMode && <div className="rounded-lg border border-border bg-muted/20 p-3">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium flex items-center gap-1.5 text-foreground">
                     <Clapperboard className="h-4 w-4 text-primary" />
@@ -2589,11 +2702,11 @@ export default function Generate() {
                     </div>
                   </>
                 )}
-              </div>
+              </div>}
             </div>
           </DialogDescription>
         </DialogHeader>
-        {(fullTrackNeedsAnalysis || fullTrackOverLimit) && (
+        {!imagePackMode && (fullTrackNeedsAnalysis || fullTrackOverLimit) && (
           <div
             className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300"
             role="status"
@@ -2622,15 +2735,15 @@ export default function Generate() {
           </Button>
           <Button
             className="bg-gradient-electric text-white shadow-glow border-0 sm:order-2"
-            disabled={createJob.isPending || fullTrackNeedsAnalysis || fullTrackOverLimit}
+            disabled={createJob.isPending || imagePackSubmitting || (!imagePackMode && (fullTrackNeedsAnalysis || fullTrackOverLimit))}
             onClick={submitJob}
           >
-            {createJob.isPending ? (
+            {createJob.isPending || imagePackSubmitting ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <ShieldAlert className="mr-2 h-4 w-4" />
             )}
-            Confirm &amp; Generate
+            {imagePackMode ? "Confirm & Generate Images" : "Confirm & Generate"}
           </Button>
         </DialogFooter>
       </DialogContent>

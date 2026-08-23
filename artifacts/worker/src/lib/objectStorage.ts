@@ -160,6 +160,21 @@ export class ObjectStorageService {
     return `/objects/narrative-images/${jobId}/${index}.jpg`;
   }
 
+  // Persist a reusable still from an images-only job. These objects are later
+  // added directly to a Remix Lab timeline as photo segments.
+  async uploadImagePackBuffer(buffer: Buffer, jobId: string, index: number): Promise<string> {
+    const privateObjectDir = this.getPrivateObjectDir();
+    const objectEntityPath = `${privateObjectDir}/image-packs/${jobId}/${index}.jpg`;
+    const { bucketName, objectName } = parseObjectPath(objectEntityPath);
+    const file = objectStorageClient.bucket(bucketName).file(objectName);
+    await file.save(buffer, {
+      contentType: "image/jpeg",
+      resumable: false,
+      metadata: { cacheControl: "private, max-age=3600" },
+    });
+    return `/objects/image-packs/${jobId}/${index}.jpg`;
+  }
+
   // Persist a single generated clip so it can be reused by a later remix without
   // regenerating it. Returns the /objects/... path stored on videos.clips.
   async uploadClipBuffer(buffer: Buffer, videoId: string, index: number): Promise<string> {

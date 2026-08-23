@@ -329,7 +329,7 @@ export interface Job {
   id: string;
   userId: string;
   /**
-   * Processing flow used for this job, such as editor_render for a Remix Lab export
+   * Processing flow used for this job, such as editor_render for a Remix Lab export or image_pack for a reusable still set
    * @nullable
    */
   jobType?: string | null;
@@ -389,6 +389,42 @@ export interface Job {
   hasAudio?: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CreateImagePackRequest {
+  /**
+   * Visual direction used for every generated still.
+   * @minLength 1
+   * @maxLength 1000
+   */
+  prompt: string;
+  style?: VideoStyle;
+  /**
+   * Number of vertical AI stills to generate. Each image costs 4 credits.
+   * @minimum 1
+   * @maximum 30
+   */
+  imageCount: number;
+}
+
+export interface ImageAsset {
+  id: string;
+  userId: string;
+  jobId: string;
+  assetIndex: number;
+  /** Private object storage path usable as a Remix photo segment. */
+  objectPath: string;
+  prompt: string;
+  /** @nullable */
+  style?: string | null;
+  createdAt: string;
+}
+
+export interface ImageAssetListResponse {
+  assets: ImageAsset[];
+  total: number;
+  page: number;
+  limit: number;
 }
 
 export type CreateJobRequestAudioSourceType =
@@ -990,6 +1026,18 @@ export type ListJobsParams = {
   /**
    * @minimum 1
    * @maximum 50
+   */
+  limit?: number;
+};
+
+export type ListImageAssetsParams = {
+  /**
+   * @minimum 1
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 60
    */
   limit?: number;
 };

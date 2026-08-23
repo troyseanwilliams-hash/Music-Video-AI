@@ -6,6 +6,8 @@ import {
 } from "@workspace/api-zod";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
 import { ObjectPermission } from "../lib/objectAcl.js";
+import { db, imageAssetsTable } from "@workspace/db";
+import { and, eq, isNull } from "drizzle-orm";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -118,6 +120,28 @@ router.get("/storage/objects/*path", async (req: Request, res: Response) => {
   try {
     const raw = req.params.path;
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
+
+    // Image packs are private, user-owned Remix inputs. Unlike legacy upload
+    // paths, never serve them merely because the opaque object path is known.
+    if (wildcardPath.startsWith("image-packs/")) {
+      if (!req.isAuthenticated()) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      const [asset] = await db
+        .select({ id: imageAssetsTable.id })
+        .from(imageAssetsTable)
+        .where(and(
+          eq(imageAssetsTable.userId, req.user.id),
+          eq(imageAssetsTable.objectPath, `/objects/${wildcardPath}`),
+          isNull(imageAssetsTable.deletedAt),
+        ))
+        .limit(1);
+      if (!asset) {
+        res.status(404).json({ error: "Object not found" });
+        return;
+      }
+    }
 
     // For video files: redirect to a signed GCS URL so the browser can stream
     // directly from GCS (supports Range requests natively, no server proxying).

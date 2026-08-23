@@ -284,6 +284,110 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
 
+  /image-packs:
+    post:
+      tags: [Jobs]
+      operationId: createImagePack
+      summary: Generate a reusable pack of vertical AI images
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateImagePackRequest'
+      responses:
+        '201':
+          description: Image pack created and queued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '400':
+          description: Invalid image pack request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '402':
+          description: Insufficient credits.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /image-assets:
+    get:
+      tags: [Jobs]
+      operationId: listImageAssets
+      summary: List reusable generated images for the current user
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 60
+            default: 30
+      responses:
+        '200':
+          description: Generated images owned by the current user.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImageAssetListResponse'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /image-assets/{id}:
+    delete:
+      tags: [Jobs]
+      operationId: deleteImageAsset
+      summary: Delete a reusable generated image
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Image deleted.
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Image not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
   /jobs/{id}:
     get:
       tags: [Jobs]
@@ -1176,7 +1280,7 @@ components:
           type: string
         jobType:
           type: [string, 'null']
-          description: Processing flow used for this job, such as editor_render for a Remix Lab export
+          description: Processing flow used for this job, such as editor_render for a Remix Lab export or image_pack for a reusable still set
         aiProvider:
           type: [string, 'null']
           enum: [runway, kling, luma, null]
@@ -1249,6 +1353,61 @@ components:
         updatedAt:
           type: string
           format: date-time
+
+    CreateImagePackRequest:
+      type: object
+      required: [prompt, imageCount]
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: Visual direction used for every generated still.
+        style:
+          $ref: '#/components/schemas/VideoStyle'
+        imageCount:
+          type: integer
+          minimum: 1
+          maximum: 30
+          description: Number of vertical AI stills to generate. Each image costs 4 credits.
+
+    ImageAsset:
+      type: object
+      required: [id, userId, jobId, assetIndex, objectPath, prompt, createdAt]
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        jobId:
+          type: string
+        assetIndex:
+          type: integer
+        objectPath:
+          type: string
+          description: Private object storage path usable as a Remix photo segment.
+        prompt:
+          type: string
+        style:
+          type: [string, 'null']
+        createdAt:
+          type: string
+          format: date-time
+
+    ImageAssetListResponse:
+      type: object
+      required: [assets, total, page, limit]
+      properties:
+        assets:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImageAsset'
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
 
     JobManifest:
       type: object

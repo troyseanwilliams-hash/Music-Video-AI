@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, creditsTable, usersTable } from "@workspace/db";
-import { eq, and, gte, ne, count, sql } from "drizzle-orm";
+import { jobsTable, creditsTable, usersTable, imageAssetsTable } from "@workspace/db";
+import { eq, and, gte, ne, count, sql, inArray, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import { FREE_EDITOR_EXPORTS_PER_MONTH, EDITOR_OVERAGE_COST, TRIAL_LYRIC_EXPORTS } from "../lib/editorCost.js";
@@ -146,6 +146,29 @@ router.post("/studio/render", async (req, res) => {
     return;
   }
   const input = parsed.data;
+
+  // Only the owner of a generated image can use it as a Remix photo segment.
+  // The storage read route repeats this check when previewing the image; doing
+  // it here also blocks a forged timeline manifest from reaching the worker.
+  const generatedImagePaths = [...new Set(
+    input.segments
+      .filter((segment) => segment.kind === "photo" && segment.objectPath.startsWith("/objects/image-packs/"))
+      .map((segment) => segment.objectPath),
+  )];
+  if (generatedImagePaths.length > 0) {
+    const ownedAssets = await db
+      .select({ objectPath: imageAssetsTable.objectPath })
+      .from(imageAssetsTable)
+      .where(and(
+        eq(imageAssetsTable.userId, req.user.id),
+        isNull(imageAssetsTable.deletedAt),
+        inArray(imageAssetsTable.objectPath, generatedImagePaths),
+      ));
+    if (ownedAssets.length !== generatedImagePaths.length) {
+      res.status(403).json({ error: "One or more selected generated images are unavailable." });
+      return;
+    }
+  }
 
   // Require the copyright/ownership attestation before rendering uploaded clips.
   if (input.acceptCopyright !== true) {

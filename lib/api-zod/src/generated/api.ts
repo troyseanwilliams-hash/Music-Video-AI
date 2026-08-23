@@ -225,7 +225,7 @@ export const ListJobsResponse = zod.object({
         .string()
         .nullish()
         .describe(
-          "Processing flow used for this job, such as editor_render for a Remix Lab export",
+          "Processing flow used for this job, such as editor_render for a Remix Lab export or image_pack for a reusable still set",
         ),
       aiProvider: zod
         .union([
@@ -689,6 +689,107 @@ export const CreateJobBody = zod.object({
 });
 
 /**
+ * @summary Generate a reusable pack of vertical AI images
+ */
+export const CreateImagePackHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const createImagePackBodyPromptMax = 1000;
+
+export const createImagePackBodyImageCountMax = 30;
+
+export const CreateImagePackBody = zod.object({
+  prompt: zod
+    .string()
+    .min(1)
+    .max(createImagePackBodyPromptMax)
+    .describe("Visual direction used for every generated still."),
+  style: zod
+    .enum([
+      "realistic",
+      "anime",
+      "cinematic",
+      "abstract",
+      "neon",
+      "vintage",
+      "fantasy",
+      "documentary",
+    ])
+    .optional(),
+  imageCount: zod
+    .number()
+    .min(1)
+    .max(createImagePackBodyImageCountMax)
+    .describe(
+      "Number of vertical AI stills to generate. Each image costs 4 credits.",
+    ),
+});
+
+/**
+ * @summary List reusable generated images for the current user
+ */
+export const listImageAssetsQueryPageDefault = 1;
+
+export const listImageAssetsQueryLimitDefault = 30;
+export const listImageAssetsQueryLimitMax = 60;
+
+export const ListImageAssetsQueryParams = zod.object({
+  page: zod.coerce.number().min(1).default(listImageAssetsQueryPageDefault),
+  limit: zod.coerce
+    .number()
+    .min(1)
+    .max(listImageAssetsQueryLimitMax)
+    .default(listImageAssetsQueryLimitDefault),
+});
+
+export const ListImageAssetsHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const ListImageAssetsResponse = zod.object({
+  assets: zod.array(
+    zod.object({
+      id: zod.string(),
+      userId: zod.string(),
+      jobId: zod.string(),
+      assetIndex: zod.number(),
+      objectPath: zod
+        .string()
+        .describe(
+          "Private object storage path usable as a Remix photo segment.",
+        ),
+      prompt: zod.string(),
+      style: zod.string().nullish(),
+      createdAt: zod.coerce.date(),
+    }),
+  ),
+  total: zod.number(),
+  page: zod.number(),
+  limit: zod.number(),
+});
+
+/**
+ * @summary Delete a reusable generated image
+ */
+export const DeleteImageAssetParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const DeleteImageAssetHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+/**
  * @summary Get job status and details
  */
 export const GetJobParams = zod.object({
@@ -730,7 +831,7 @@ export const GetJobResponse = zod.object({
     .string()
     .nullish()
     .describe(
-      "Processing flow used for this job, such as editor_render for a Remix Lab export",
+      "Processing flow used for this job, such as editor_render for a Remix Lab export or image_pack for a reusable still set",
     ),
   aiProvider: zod
     .union([
@@ -1681,7 +1782,7 @@ export const GetDashboardStatsResponse = zod.object({
           .string()
           .nullish()
           .describe(
-            "Processing flow used for this job, such as editor_render for a Remix Lab export",
+            "Processing flow used for this job, such as editor_render for a Remix Lab export or image_pack for a reusable still set",
           ),
         aiProvider: zod
           .union([

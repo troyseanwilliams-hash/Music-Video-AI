@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useLocation, Link } from "wouter";
 import SignupTeaser from "@/components/SignupTeaser";
 import { useAuth } from "@/hooks/useAuth";
@@ -74,6 +75,14 @@ interface Segment {
   trimStart?: number; // seconds trimmed off the front (video only)
   trimEnd?: number; // seconds trimmed off the back (video only)
   sourceVideoId?: string; // owned Gallery video used for audio/lyrics lookup
+}
+
+interface ImageAsset {
+  id: string;
+  objectPath: string;
+  prompt: string;
+  assetIndex: number;
+  createdAt: string;
 }
 
 const MIN_VIDEO_KEEP_SECONDS = 0.3;
@@ -360,6 +369,8 @@ export default function Editor() {
   const [topUpOpen, setTopUpOpen] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [selectedGalleryVideoIds, setSelectedGalleryVideoIds] = useState<string[]>([]);
+  const [imageAssetsOpen, setImageAssetsOpen] = useState(false);
+  const [selectedImageAssetIds, setSelectedImageAssetIds] = useState<string[]>([]);
   const { data: galleryData, isLoading: galleryLoading } = useListVideos(
     { limit: 50 },
     {
@@ -369,6 +380,17 @@ export default function Editor() {
       },
     },
   );
+  const { data: imageAssetsData, isLoading: imageAssetsLoading } = useQuery<{
+    assets: ImageAsset[];
+  }>({
+    queryKey: ["/api/image-assets"],
+    enabled: isAuthenticated && imageAssetsOpen,
+    queryFn: async () => {
+      const response = await fetch("/api/image-assets?limit=60", { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to load generated images");
+      return response.json();
+    },
+  });
 
   // Preview state
   const [playing, setPlaying] = useState(false);
@@ -1052,6 +1074,46 @@ export default function Editor() {
     });
   }
 
+  function toggleImageAsset(id: string) {
+    setSelectedImageAssetIds((selected) =>
+      selected.includes(id) ? selected.filter((assetId) => assetId !== id) : [...selected, id],
+    );
+  }
+
+  function addSelectedImageAssets() {
+    const assets = imageAssetsData?.assets ?? [];
+    const newSegments: Segment[] = selectedImageAssetIds.flatMap((id) => {
+      const asset = assets.find((candidate) => candidate.id === id);
+      if (!asset) return [];
+      const objectUrl = `/api/storage${asset.objectPath}`;
+      return [{
+        id: uid(),
+        name: `Generated image ${asset.assetIndex + 1}`,
+        kind: "photo" as const,
+        localUrl: objectUrl,
+        objectPath: asset.objectPath,
+        durationSec: 3,
+        thumb: objectUrl,
+        uploading: false,
+      }];
+    });
+    if (newSegments.length === 0) {
+      toast({
+        title: "No images selected",
+        description: "Choose one or more generated images to add to your timeline.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setSegments((previous) => [...previous, ...newSegments]);
+    setImageAssetsOpen(false);
+    setSelectedImageAssetIds([]);
+    toast({
+      title: "Generated images added",
+      description: `${newSegments.length} ${newSegments.length === 1 ? "image was" : "images were"} added as photo segments.`,
+    });
+  }
+
   async function addMusic(files: FileList | null) {
     const file = files?.[0];
     if (!file) return;
@@ -1468,6 +1530,16 @@ export default function Editor() {
         >
           <Film className="mr-2 h-4 w-4 text-primary" /> From Gallery
         </Button>
+        <Button
+          variant="outline"
+          onClick={() => {
+            setSelectedImageAssetIds([]);
+            setImageAssetsOpen(true);
+          }}
+          data-testid="add-generated-images"
+        >
+          <ImageIcon className="mr-2 h-4 w-4 text-primary" /> Generated images
+        </Button>
         <input ref={musicInputRef} type="file" accept="audio/*" hidden onChange={(e) => addMusic(e.target.files)} />
         <Button variant="outline" onClick={() => musicInputRef.current?.click()}>
           <Music className="mr-2 h-4 w-4" /> {music ? "Change music" : "Add music"}
@@ -1593,6 +1665,95 @@ export default function Editor() {
                 data-testid="add-selected-gallery-videos"
               >
                 Add selected{selectedGalleryVideoIds.length > 0 ? ` (${selectedGalleryVideoIds.length})` : ""}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={imageAssetsOpen}
+        onOpenChange={(open) => {
+          setImageAssetsOpen(open);
+          if (!open) setSelectedImageAssetIds([]);
+        }}
+      >
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Choose generated images</DialogTitle>
+            <DialogDescription>
+              Select saved vertical AI stills to add as photo segments. You can change each image duration on the timeline.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[65vh] overflow-y-auto pr-1">
+            {imageAssetsLoading ? (
+              <div className="flex min-h-48 items-center justify-center">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            ) : imageAssetsData?.assets?.length ? (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                {imageAssetsData.assets.map((asset) => {
+                  const selected = selectedImageAssetIds.includes(asset.id);
+                  return (
+                    <button
+                      key={asset.id}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => toggleImageAsset(asset.id)}
+                      className={`group relative overflow-hidden rounded-xl border bg-card text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                        selected ? "border-primary ring-2 ring-primary/30" : "border-border hover:border-primary/60"
+                      }`}
+                    >
+                      {selected && (
+                        <span className="absolute right-2 top-2 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
+                          <Check className="h-4 w-4" aria-hidden="true" />
+                          <span className="sr-only">Selected</span>
+                        </span>
+                      )}
+                      <img
+                        src={`/api/storage${asset.objectPath}`}
+                        alt=""
+                        className="aspect-[9/16] w-full bg-muted object-cover transition-transform group-hover:scale-[1.02]"
+                      />
+                      <div className="p-2.5">
+                        <p className="line-clamp-2 text-xs text-muted-foreground">{asset.prompt}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex min-h-48 flex-col items-center justify-center rounded-xl border border-dashed border-border px-6 text-center">
+                <ImageIcon className="mb-3 h-8 w-8 text-muted-foreground/60" />
+                <p className="font-medium">No generated images yet</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Create an image pack from Generate, then return here to add the images.
+                </p>
+              </div>
+            )}
+          </div>
+          <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">
+              {selectedImageAssetIds.length === 0
+                ? "No images selected"
+                : `${selectedImageAssetIds.length} ${selectedImageAssetIds.length === 1 ? "image" : "images"} selected`}
+            </p>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setSelectedImageAssetIds([])}
+                disabled={selectedImageAssetIds.length === 0}
+              >
+                Clear selection
+              </Button>
+              <Button
+                type="button"
+                onClick={addSelectedImageAssets}
+                disabled={selectedImageAssetIds.length === 0}
+                data-testid="add-selected-generated-images"
+              >
+                Add selected{selectedImageAssetIds.length > 0 ? ` (${selectedImageAssetIds.length})` : ""}
               </Button>
             </div>
           </div>

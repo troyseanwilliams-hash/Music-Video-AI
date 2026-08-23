@@ -45,6 +45,7 @@ export const PRICE_MULTIPLIER = 2;
 // length: ~1 clip per 30s, min 3, max 20.
 export const MAX_FULL_SECONDS = 600;
 export type GenerationMode = "montage" | "narrative";
+export const GENERATED_IMAGE_CREDITS_PER_VISUAL = 4;
 
 function targetDurationSeconds(
   requestedDuration: string | null | undefined,

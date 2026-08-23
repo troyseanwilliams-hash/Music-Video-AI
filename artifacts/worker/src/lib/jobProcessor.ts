@@ -1,7 +1,8 @@
 import { db } from "@workspace/db";
-import { jobsTable, videosTable, creditsTable } from "@workspace/db";
+import { jobsTable, videosTable, creditsTable, imageAssetsTable } from "@workspace/db";
 import type { VideoClipMeta } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, count, isNull } from "drizzle-orm";
+import { GENERATED_IMAGE_CREDITS_PER_VISUAL } from "./creditCost.js";
 import { randomUUID } from "crypto";
 import { exec } from "child_process";
 import { promisify } from "util";
@@ -199,6 +200,125 @@ async function narrativeImageUrlFor(
     WHERE id = ${job.id}
   `);
   return storageService.getObjectEntitySignedUrl(objectPath, 3600);
+}
+
+type ImagePackMeta = AiJobMeta & {
+  imagePack?: { imageCount?: number };
+  imagePackRefunded?: boolean;
+  imagePackChargedCredits?: number;
+};
+
+async function refundImagePackRemainder(job: JobRow): Promise<number> {
+  return db.transaction(async (tx) => {
+    const [stored] = await tx
+      .select({ manifest: jobsTable.manifest })
+      .from(jobsTable)
+      .where(eq(jobsTable.id, job.id))
+      .limit(1)
+      .for("update");
+    const meta = (stored?.manifest ?? {}) as ImagePackMeta;
+    if (meta.imagePackRefunded) return 0;
+    const totalImages = meta.imagePack?.imageCount ?? 0;
+    const reserved = Math.max(0, meta.reservedCredits ?? 0);
+    const [completed] = await tx
+      .select({ count: count() })
+      .from(imageAssetsTable)
+      // Soft-deleting a library asset must not make an already-created image
+      // refundable. Billing follows persisted provider output, not visibility.
+      .where(eq(imageAssetsTable.jobId, job.id));
+    const charged = Math.min(
+      reserved,
+      Math.min(totalImages, Number(completed?.count ?? 0)) * GENERATED_IMAGE_CREDITS_PER_VISUAL,
+    );
+    const originalSubscription = Math.max(0, meta.reservedSubscriptionCredits ?? 0);
+    const originalTopUp = Math.max(0, meta.reservedTopupCredits ?? 0);
+    const subscriptionRefund = Math.max(0, originalSubscription - Math.min(charged, originalSubscription));
+    const topUpRefund = Math.max(
+      0,
+      originalTopUp - Math.max(0, charged - originalSubscription),
+    );
+    const refund = subscriptionRefund + topUpRefund;
+    if (refund > 0) {
+      await tx
+        .update(creditsTable)
+        .set({
+          subscriptionCredits: sql`subscription_credits + ${subscriptionRefund}`,
+          topupCredits: sql`topup_credits + ${topUpRefund}`,
+          creditsRemaining: sql`credits_remaining + ${refund}`,
+          creditsUsed: sql`GREATEST(credits_used - ${refund}, 0)`,
+          updatedAt: new Date(),
+        })
+        .where(eq(creditsTable.userId, job.userId));
+    }
+    await tx
+      .update(jobsTable)
+      .set({
+        manifest: {
+          ...meta,
+          imagePackRefunded: true,
+          imagePackChargedCredits: charged,
+        } as unknown as Record<string, unknown>,
+        updatedAt: new Date(),
+      })
+      .where(eq(jobsTable.id, job.id));
+    return refund;
+  });
+}
+
+async function processImagePackJob(job: JobRow): Promise<void> {
+  const meta = aiMetaOf(job) as ImagePackMeta;
+  const imageCount = meta.imagePack?.imageCount ?? 0;
+  if (!Number.isInteger(imageCount) || imageCount < 1 || imageCount > 30) {
+    await refundImagePackRemainder(job);
+    await updateJobStatus(job.id, {
+      status: "failed",
+      errorMessage: "This image pack has an invalid image count. Any reservation was returned.",
+    });
+    return;
+  }
+  try {
+    await updateJobStatus(job.id, { status: "generating", progressPercent: 5 });
+    const existing = await db
+      .select({ assetIndex: imageAssetsTable.assetIndex })
+      .from(imageAssetsTable)
+      .where(and(eq(imageAssetsTable.jobId, job.id), isNull(imageAssetsTable.deletedAt)));
+    const completed = new Set(existing.map((asset) => asset.assetIndex));
+    for (let index = 0; index < imageCount; index++) {
+      if (completed.has(index)) continue;
+      await assertJobOwned(job);
+      const prompt = [
+        "vertical 9:16 editorial still",
+        job.style ? `${job.style} visual style` : "cinematic visual style",
+        job.prompt?.trim() ?? "",
+      ].filter(Boolean).join(", ");
+      const providerUrl = await generateNarrativeImage({ prompt, aspectRatio: "9:16" });
+      const buffer = await downloadGeneratedImage(providerUrl);
+      const objectPath = await storageService.uploadImagePackBuffer(buffer, job.id, index);
+      await db.insert(imageAssetsTable).values({
+        id: randomUUID(),
+        userId: job.userId,
+        jobId: job.id,
+        assetIndex: index,
+        objectPath,
+        prompt,
+        style: job.style,
+      }).onConflictDoNothing();
+      await updateJobStatus(job.id, {
+        progressPercent: Math.min(95, 5 + Math.round(((index + 1) / imageCount) * 90)),
+      });
+    }
+    await updateJobStatus(job.id, { status: "ready", progressPercent: 100 });
+    await notifyJobUpdate(job.id);
+    logger.info({ jobId: job.id, imageCount }, "Image pack completed");
+  } catch (err) {
+    const refunded = await refundImagePackRemainder(job);
+    const detail = err instanceof Error ? err.message.replace(IMAGE_API_FAILURE, "").trim() : "Image generation could not finish.";
+    await updateJobStatus(job.id, {
+      status: "failed",
+      errorMessage: `${detail || "Image generation could not finish."} ${refunded > 0 ? "Credits for images that were not created were returned." : ""}`.trim(),
+    });
+    logger.error({ err, jobId: job.id, refunded }, "Image pack failed");
+  }
 }
 
 function storyboardShotsOf(job: JobRow): PersistedStoryboardShot[] {
@@ -1758,6 +1878,10 @@ async function processRunwayLipSyncJob(job: JobRow): Promise<void> {
 }
 
 async function processJob(job: JobRow): Promise<void> {
+  if (job.jobType === "image_pack") {
+    await processImagePackJob(job);
+    return;
+  }
   // Studio timeline renders take a completely different path from AI generation.
   if (job.jobType === "editor_render") {
     await processEditorJob(job);

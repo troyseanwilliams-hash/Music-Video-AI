@@ -8,6 +8,7 @@ import {
   pgEnum,
   boolean,
   primaryKey,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -34,7 +35,7 @@ export const audioSourceTypeEnum = pgEnum("audio_source_type", [
 // "runway_lipsync" = the admin-only Runway Lip Sync Generator: a single,
 // audio-driven character render, direct-Runway-only, no fallback to any
 // other provider. See jobProcessor.ts processRunwayLipSyncJob.
-export const jobTypeEnum = pgEnum("job_type", ["ai", "editor_render", "remix", "runway_lipsync"]);
+export const jobTypeEnum = pgEnum("job_type", ["ai", "editor_render", "remix", "runway_lipsync", "image_pack"]);
 
 export const videoStyleEnum = pgEnum("video_style", [
   "realistic",
@@ -127,6 +128,36 @@ export const videosTable = pgTable("videos", {
     .notNull()
     .defaultNow(),
 });
+
+// Reusable AI-generated stills. These are intentionally separate from videos:
+// users can create a visual library first, then arrange the images in Remix Lab
+// without running an image-to-video render.
+export const imageAssetsTable = pgTable(
+  "image_assets",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    jobId: text("job_id")
+      .notNull()
+      .references(() => jobsTable.id, { onDelete: "cascade" }),
+    assetIndex: integer("asset_index").notNull(),
+    objectPath: text("object_path").notNull(),
+    prompt: text("prompt").notNull(),
+    style: videoStyleEnum("style"),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    oneAssetPerJobPosition: uniqueIndex("image_assets_job_index_unique").on(
+      table.jobId,
+      table.assetIndex,
+    ),
+  }),
+);
 
 // Per-user likes on public videos. Composite PK prevents double-counting.
 export const videoLikesTable = pgTable(

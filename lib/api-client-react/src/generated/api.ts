@@ -24,6 +24,7 @@ import type {
   BillingSubscriptionResponse,
   CreateCheckoutRequest,
   CreateCheckoutResponse,
+  CreateImagePackRequest,
   CreateJobRequest,
   CreatePortalRequest,
   CreatePortalResponse,
@@ -33,10 +34,12 @@ import type {
   ErrorEnvelope,
   GalleryListResponse,
   HealthStatus,
+  ImageAssetListResponse,
   Job,
   JobListResponse,
   LikeResponse,
   ListGalleryParams,
+  ListImageAssetsParams,
   ListJobsParams,
   ListVideosParams,
   LoginRequest,
@@ -907,6 +910,270 @@ export const useCreateJob = <
   TContext
 > => {
   return useMutation(getCreateJobMutationOptions(options));
+};
+
+/**
+ * @summary Generate a reusable pack of vertical AI images
+ */
+export const getCreateImagePackUrl = () => {
+  return `/api/image-packs`;
+};
+
+export const createImagePack = async (
+  createImagePackRequest: CreateImagePackRequest,
+  options?: RequestInit,
+): Promise<Job> => {
+  return customFetch<Job>(getCreateImagePackUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createImagePackRequest),
+  });
+};
+
+export const getCreateImagePackMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createImagePack>>,
+    TError,
+    { data: BodyType<CreateImagePackRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createImagePack>>,
+  TError,
+  { data: BodyType<CreateImagePackRequest> },
+  TContext
+> => {
+  const mutationKey = ["createImagePack"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createImagePack>>,
+    { data: BodyType<CreateImagePackRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createImagePack(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateImagePackMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createImagePack>>
+>;
+export type CreateImagePackMutationBody = BodyType<CreateImagePackRequest>;
+export type CreateImagePackMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Generate a reusable pack of vertical AI images
+ */
+export const useCreateImagePack = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createImagePack>>,
+    TError,
+    { data: BodyType<CreateImagePackRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createImagePack>>,
+  TError,
+  { data: BodyType<CreateImagePackRequest> },
+  TContext
+> => {
+  return useMutation(getCreateImagePackMutationOptions(options));
+};
+
+/**
+ * @summary List reusable generated images for the current user
+ */
+export const getListImageAssetsUrl = (params?: ListImageAssetsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/image-assets?${stringifiedParams}`
+    : `/api/image-assets`;
+};
+
+export const listImageAssets = async (
+  params?: ListImageAssetsParams,
+  options?: RequestInit,
+): Promise<ImageAssetListResponse> => {
+  return customFetch<ImageAssetListResponse>(getListImageAssetsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListImageAssetsQueryKey = (params?: ListImageAssetsParams) => {
+  return [`/api/image-assets`, ...(params ? [params] : [])] as const;
+};
+
+export const getListImageAssetsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listImageAssets>>,
+  TError = ErrorType<ErrorEnvelope>,
+>(
+  params?: ListImageAssetsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listImageAssets>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListImageAssetsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listImageAssets>>> = ({
+    signal,
+  }) => listImageAssets(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listImageAssets>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListImageAssetsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listImageAssets>>
+>;
+export type ListImageAssetsQueryError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary List reusable generated images for the current user
+ */
+
+export function useListImageAssets<
+  TData = Awaited<ReturnType<typeof listImageAssets>>,
+  TError = ErrorType<ErrorEnvelope>,
+>(
+  params?: ListImageAssetsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listImageAssets>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListImageAssetsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Delete a reusable generated image
+ */
+export const getDeleteImageAssetUrl = (id: string) => {
+  return `/api/image-assets/${id}`;
+};
+
+export const deleteImageAsset = async (
+  id: string,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteImageAssetUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteImageAssetMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteImageAsset>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteImageAsset>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["deleteImageAsset"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteImageAsset>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteImageAsset(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteImageAssetMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteImageAsset>>
+>;
+
+export type DeleteImageAssetMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Delete a reusable generated image
+ */
+export const useDeleteImageAsset = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteImageAsset>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteImageAsset>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getDeleteImageAssetMutationOptions(options));
 };
 
 /**

@@ -19,7 +19,7 @@ export interface Job {
   id: string;
   userId: string;
   /**
-   * Processing flow used for this job, such as editor_render for a Remix Lab export
+   * Processing flow used for this job, such as editor_render for a Remix Lab export or image_pack for a reusable still set
    * @nullable
    */
   jobType?: string | null;

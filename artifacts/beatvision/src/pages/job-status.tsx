@@ -93,6 +93,11 @@ function inferClipProgress(
     );
     return `Rendering timeline item ${Math.min((plan.timelineItems ?? 1), completed + 1)} of ${plan.timelineItems}…`;
   }
+  if (plan.jobType === "image_pack") {
+    if (status !== "generating") return null;
+    const completed = Math.min(plan.numClips, Math.max(0, Math.floor(((pct - 5) / 90) * plan.numClips)));
+    return `Creating image ${Math.min(plan.numClips, completed + 1)} of ${plan.numClips}…`;
+  }
   if (status !== "generating") return null;
   const n = Math.max(1, plan.numClips);
   if (plan.jobType === "remix") {
@@ -480,6 +485,7 @@ export default function JobStatus() {
   // Remix Lab renders one final output video regardless of its timeline size.
   const isRemixJob = job.jobType === "editor_render";
   const isClipRemixJob = job.jobType === "remix";
+  const isImagePackJob = job.jobType === "image_pack";
   const isGenerateJob =
     job.jobType === "ai" ||
     job.jobType == null ||
@@ -500,7 +506,16 @@ export default function JobStatus() {
     .map(Number)
     .filter((index) => Number.isInteger(index) && index >= 0);
   const completedClips = completedClipIndexes.length;
-  const numClips = isRemixJob
+  const imagePackCount =
+    isImagePackJob &&
+    manifest.imagePack &&
+    typeof manifest.imagePack === "object" &&
+    typeof (manifest.imagePack as { imageCount?: unknown }).imageCount === "number"
+      ? (manifest.imagePack as { imageCount: number }).imageCount
+      : 1;
+  const numClips = isImagePackJob
+    ? Math.max(1, imagePackCount)
+    : isRemixJob
     ? 1
     : isClipRemixJob
       ? Math.max(1, selectedRemixClips)
@@ -548,7 +563,11 @@ export default function JobStatus() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight mb-2">
-              {isComplete ? "Video Ready" : isFailed && !autoRetrying ? "Generation Failed" : "Processing Video"}
+              {isComplete
+                ? (isImagePackJob ? "Image Pack Ready" : "Video Ready")
+                : isFailed && !autoRetrying
+                  ? "Generation Failed"
+                  : (isImagePackJob ? "Creating Image Pack" : "Processing Video")}
             </h1>
             <div className="flex items-center gap-3 flex-wrap">
               <span className="text-muted-foreground text-sm">
@@ -558,12 +577,12 @@ export default function JobStatus() {
                 sseConnected ? (
                   <span className="inline-flex items-center gap-1.5 text-xs font-mono text-green-400">
                     <Wifi className="h-3 w-3 shrink-0" />
-                     {job.status === "queued" ? "Queued" : "Processing"} · {elapsed}
+                        {job.status === "queued" ? "Queued" : (isImagePackJob ? "Creating images" : "Processing")} · {elapsed}
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 text-xs font-mono text-muted-foreground">
                     <WifiOff className="h-3 w-3 shrink-0" />
-                     {job.status === "queued" ? "Queued" : "Processing"} · {elapsed}
+                     {job.status === "queued" ? "Queued" : (isImagePackJob ? "Creating images" : "Processing")} · {elapsed}
                   </span>
                 )
               )}
@@ -626,7 +645,7 @@ export default function JobStatus() {
                     </div>
                     {job.status === "queued" ? (
                       <div className="text-muted-foreground text-right text-xs tabular-nums">
-                        Typical total time {jobEstimate.label} once processing starts
+                        {isImagePackJob ? "Your images will be saved to Remix Lab as they finish." : `Typical total time ${jobEstimate.label} once processing starts`}
                       </div>
                     ) : remainingEstimate ? (
                       <div className="text-muted-foreground text-right text-xs tabular-nums">
@@ -853,7 +872,8 @@ export default function JobStatus() {
 
                       <div className="flex flex-wrap gap-3">
                         {errInfo.canRetry &&
-                          (job as { jobType?: string }).jobType !== "runway_lipsync" && (
+                          (job as { jobType?: string }).jobType !== "runway_lipsync" &&
+                          (job as { jobType?: string }).jobType !== "image_pack" && (
                           <Button
                             variant="outline"
                             className="border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
@@ -915,6 +935,30 @@ export default function JobStatus() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {isComplete && isImagePackJob && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.97 }}
+            animate={{ opacity: 1, scale: 1 }}
+          >
+            <Card className="border-primary/30 bg-primary/[0.04]">
+              <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="flex items-center gap-2 font-semibold">
+                    <Sparkles className="h-5 w-5 text-primary" />
+                    {imagePackCount} vertical {imagePackCount === 1 ? "image is" : "images are"} ready
+                  </div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Your saved AI stills are ready to add as photo segments in Remix Lab.
+                  </p>
+                </div>
+                <Button onClick={() => setLocation("/editor")} className="shrink-0">
+                  <Scissors className="mr-2 h-4 w-4" /> Open Remix Lab
+                </Button>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
 
         {/* ── Complete: video player ── */}
         <AnimatePresence>
