@@ -25,6 +25,7 @@ export interface ClipResult {
 }
 
 type Provider = "runway" | "luma" | "kling" | "pixazo";
+const PIXAZO_SUBMIT_TIMEOUT_MS = 90_000;
 
 function providerAvailable(p: Provider): boolean {
   if (p === "luma") return !!process.env.LUMA_API_KEY;
@@ -341,7 +342,10 @@ async function generateWithPixazo(req: ClipRequest, t2vOverride?: string, i2vOve
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(30_000),
+    // Submission can slow down during provider traffic spikes. Give the
+    // request enough time to return its durable request id; aborting too early
+    // leaves an ambiguous paid request that cannot be safely recovered.
+    signal: AbortSignal.timeout(PIXAZO_SUBMIT_TIMEOUT_MS),
   });
   if (!submit.ok) throw new Error(`${PROVIDER_API_FAILURE} Pixazo ${submit.status}: ${(await submit.text()).slice(0, 200)}`);
   const submitData = (await submit.json()) as { request_id?: string; polling_url?: string };
@@ -404,12 +408,15 @@ async function callProvider(provider: Provider, req: ClipRequest): Promise<strin
 export function resolveClipProviderChain(
   req: Pick<ClipRequest, "provider" | "providerOnly">,
 ): Provider[] {
+  const pinned = req.provider?.toLowerCase() as Provider | undefined;
+  if (req.providerOnly) {
+    return pinned && providerAvailable(pinned) ? [pinned] : [];
+  }
+
   let chain = getProviderChain();
   // Honor a user-chosen engine: pin it first, keeping the rest as fallback.
-  const pinned = req.provider?.toLowerCase() as Provider | undefined;
   if (pinned && providerAvailable(pinned)) {
     chain = [pinned, ...chain.filter((p) => p !== pinned)];
-    if (req.providerOnly) chain = [pinned];
   }
   return chain;
 }
@@ -418,7 +425,14 @@ export function resolveClipProviderChain(
 // (e.g. Runway credits exhausted → Pixazo). Returns the first success.
 export async function generateClip(req: ClipRequest): Promise<ClipResult | null> {
   const chain = resolveClipProviderChain(req);
-  if (chain.length === 0) return null;
+  if (chain.length === 0) {
+    if (req.providerOnly) {
+      throw new Error(
+        `${PROVIDER_API_FAILURE} The selected AI video engine is unavailable. Choose another engine and submit again.`,
+      );
+    }
+    return null;
+  }
 
   let lastErr: unknown;
   for (let i = 0; i < chain.length; i++) {

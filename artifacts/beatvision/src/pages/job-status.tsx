@@ -295,8 +295,13 @@ export default function JobStatus() {
   const [sseConnected, setSseConnected] = useState(false);
   const [copied, setCopied] = useState(false);
   const [warningDismissed, setWarningDismissed] = useState(false);
+  const [resubmitting, setResubmitting] = useState(false);
+  const [resubmitError, setResubmitError] = useState<string | null>(null);
 
-  useEffect(() => { setWarningDismissed(false); }, [id]);
+  useEffect(() => {
+    setWarningDismissed(false);
+    setResubmitError(null);
+  }, [id]);
 
   const { data: job, isLoading } = useGetJob(id as string, {
     query: {
@@ -337,11 +342,28 @@ export default function JobStatus() {
   }, [isAuthenticated, isAuthLoading, setLocation]);
 
   const handleRetry = async () => {
-    if (!id) return;
+    if (!id || resubmitting) return;
+    setResubmitting(true);
+    setResubmitError(null);
     try {
       const res = await fetch(`/api/jobs/${id}/retry`, { method: "POST", credentials: "include" });
-      if (res.ok) queryClient.setQueryData(getGetJobQueryKey(id), await res.json());
-    } catch {}
+      const payload = await res.json().catch(() => null) as
+        | (Job & { error?: string })
+        | { error?: string }
+        | null;
+      if (!res.ok) {
+        throw new Error(payload?.error ?? "This job could not be resubmitted.");
+      }
+      queryClient.setQueryData(getGetJobQueryKey(id), payload);
+    } catch (error) {
+      setResubmitError(
+        error instanceof Error
+          ? error.message
+          : "This job could not be resubmitted.",
+      );
+    } finally {
+      setResubmitting(false);
+    }
   };
 
   const durVal = job?.requestedDuration;
@@ -804,8 +826,14 @@ export default function JobStatus() {
                             variant="outline"
                             className="border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
                             onClick={handleRetry}
+                            disabled={resubmitting}
                           >
-                            <RefreshCw className="mr-2 h-4 w-4" /> Retry this job
+                            {resubmitting ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <RefreshCw className="mr-2 h-4 w-4" />
+                            )}
+                            {resubmitting ? "Resubmitting…" : "Resubmit this job"}
                           </Button>
                         )}
                         <Button variant="outline" onClick={() => setLocation("/generate")}>
@@ -815,6 +843,11 @@ export default function JobStatus() {
                           Dashboard
                         </Button>
                       </div>
+                      {resubmitError && (
+                        <p className="mt-3 text-sm text-destructive" role="alert">
+                          {resubmitError}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </CardContent>

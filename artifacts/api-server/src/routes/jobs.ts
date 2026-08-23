@@ -996,8 +996,22 @@ router.post("/jobs/:id/retry", async (req, res) => {
       claimedAt: null,
       updatedAt: new Date(),
     })
-    .where(eq(jobsTable.id, jobId))
+    .where(
+      and(
+        eq(jobsTable.id, jobId),
+        eq(jobsTable.userId, req.user.id),
+        eq(jobsTable.status, "failed"),
+      ),
+    )
     .returning();
+
+  if (!updated) {
+    res.status(409).json({
+      error: "This job was already resubmitted or is no longer in a failed state.",
+      code: "JOB_ALREADY_RESUBMITTED",
+    });
+    return;
+  }
 
   res.json(updated);
 });

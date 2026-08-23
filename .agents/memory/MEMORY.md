@@ -24,3 +24,4 @@
 - [Generate provider routing](generate-provider-routing.md) — standard Generate jobs must use the same provider route for admins and customers; keep direct experiments isolated.
 - [Generation-mode sequencing](visual-montage-sequencing.md) — Montage reuses motifs; Narrative renders one immutable chronological scene per slot and fails on any shortfall.
 - [Authoritative full-track analysis](authoritative-full-track-analysis.md) — full-track runtime and credits must use server-verified analysis bound to the exact stored audio.
+- [Provider resubmit safety](provider-resubmit-safety.md) — preserve accepted requests, pin the selected engine, and gate failed-to-queued transitions atomically.

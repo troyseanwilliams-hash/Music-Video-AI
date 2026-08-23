@@ -572,7 +572,8 @@ async function generateClips(
   clips: GeneratedClip[];
   shortfallNotice?: string;
 }> {
-  const provider = getActiveProvider((job as JobRow & { aiProvider?: string | null }).aiProvider ?? undefined);
+  const selectedProvider = (job as JobRow & { aiProvider?: string | null }).aiProvider?.trim().toLowerCase();
+  const provider = selectedProvider || getActiveProvider();
   const requestedDur = (job as JobRow & { requestedDuration?: string | null }).requestedDuration;
   const generationMode = generationModeOf(job);
 
@@ -680,15 +681,21 @@ async function generateClips(
           delete pending[i];
           continue;
         } catch (e) {
-          logger.warn({ jobId: job.id, clip: i, err: e }, "Stranded clip download failed — regenerating");
+          logger.warn({ jobId: job.id, clip: i, err: e }, "Stranded clip download failed — preserving request for recovery");
+          throw new Error(
+            `${PROVIDER_API_FAILURE} A completed AI scene is temporarily unavailable. Resubmit this job to recover it without starting a new request.`,
+          );
         }
       } else if (check.state === "gone") {
         logger.info({ jobId: job.id, clip: i }, "Pending provider request expired/failed — regenerating");
+        delete pending[i];
+        await clearPendingRequest(job.id, i).catch(() => {});
       } else {
-        logger.info({ jobId: job.id, clip: i }, "Pending provider request still in flight — regenerating anyway");
+        logger.info({ jobId: job.id, clip: i }, "Pending provider request still in flight — preserving it instead of resubmitting");
+        throw new Error(
+          `${PROVIDER_API_FAILURE} An existing AI scene request is still processing. Wait a few minutes, then resubmit this job.`,
+        );
       }
-      delete pending[i];
-      await clearPendingRequest(job.id, i).catch(() => {});
     }
 
     // 3) Finalize-only mode: never generate new clips — skip anything that
@@ -728,8 +735,9 @@ async function generateClips(
           aspectRatio: job.aspectRatio ?? "16:9",
           imageUrl: refImageUrl ?? undefined,
           // Pin the user's chosen engine (so "Kling" actually renders on Kling)
-          // and pass resolution so Kling selects the right model tier / output.
+          // and do not submit paid fallback requests to unrelated engines.
           provider,
+          providerOnly: true,
           resolution: (job as JobRow & { resolution?: string | null }).resolution,
           // Persist the provider request id before polling starts so this clip
           // is recoverable if the server dies mid-poll.

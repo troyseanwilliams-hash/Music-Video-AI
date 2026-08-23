@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { resolveClipProviderChain } from "./videoApis.js";
+import { generateClip, resolveClipProviderChain } from "./videoApis.js";
 
 describe("resolveClipProviderChain", () => {
   afterEach(() => {
@@ -27,5 +27,24 @@ describe("resolveClipProviderChain", () => {
     expect(
       resolveClipProviderChain({ provider: "runway", providerOnly: true }),
     ).toEqual(["runway"]);
+  });
+
+  it("fails a provider-only request instead of silently using another engine", async () => {
+    vi.stubEnv("PIXAZO_API_KEY", "");
+    vi.stubEnv("PIXAZO_RUNWAY_MODEL", "");
+    vi.stubEnv("LUMA_API_KEY", "test-luma-key");
+    vi.stubEnv("VIDEO_API_CHAIN", "luma");
+
+    expect(
+      resolveClipProviderChain({ provider: "runway", providerOnly: true }),
+    ).toEqual([]);
+    await expect(
+      generateClip({
+        prompt: "cinematic rain",
+        durationSeconds: 5,
+        provider: "runway",
+        providerOnly: true,
+      }),
+    ).rejects.toThrow("selected AI video engine is unavailable");
   });
 });
