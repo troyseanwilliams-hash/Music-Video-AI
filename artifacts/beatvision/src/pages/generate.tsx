@@ -29,6 +29,7 @@ import {
   LYRIC_OVERLAY_COST,
   MAX_FULL_SECONDS,
   PROVIDER_LABELS,
+  GENERATED_IMAGE_CREDITS_PER_VISUAL,
   type AiProvider,
   type GenerationMode,
 } from "@/lib/creditPricing";
@@ -699,7 +700,7 @@ export default function Generate() {
       ? calculateLipsyncCost(fullTrackLipSyncSeconds)
       : 0;
   const cost = videoCost + lipSyncAddon;
-  const imagePackCost = imagePackCount * 4;
+  const imagePackCost = imagePackCount * GENERATED_IMAGE_CREDITS_PER_VISUAL;
   const activeCost = imagePackMode ? imagePackCost : cost;
   const generationEstimate = getGenerationTimeEstimate(
     effectiveRequestedDuration,
@@ -1243,7 +1244,7 @@ export default function Generate() {
                 <div>
                   <Label htmlFor="image-pack-count">Images to generate</Label>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Each image costs 4 credits. Failed images are refunded.
+                    Each image costs {GENERATED_IMAGE_CREDITS_PER_VISUAL} credits. Failed images are refunded.
                   </p>
                 </div>
                 <div>

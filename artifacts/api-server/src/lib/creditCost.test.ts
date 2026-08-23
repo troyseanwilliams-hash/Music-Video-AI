@@ -4,6 +4,7 @@ import {
   calculateGeneratedImageCost,
   calculateLipsyncCost,
   calculateLipsyncCostFromSourceVideo,
+  GENERATED_IMAGE_CREDITS_PER_VISUAL,
   getClipPlan,
   LIPSYNC_MIN_SECONDS,
   LIPSYNC_MAX_SECONDS,
@@ -40,14 +41,18 @@ describe("Narrative Story provider work and pricing", () => {
 });
 
 describe("image-first video pricing", () => {
+  it("prices each source image from its $0.70 provider cost at a 1.5× markup", () => {
+    expect(GENERATED_IMAGE_CREDITS_PER_VISUAL).toBe(70);
+  });
+
   it("charges every unique Montage motif image even when an older client submits video mode", () => {
-    expect(calculateGeneratedImageCost("180", null, "montage", "video")).toBe(9 * 4);
-    expect(calculateGeneratedImageCost("180", null, "montage", "generated_images")).toBe(9 * 4);
+    expect(calculateGeneratedImageCost("180", null, "montage", "video")).toBe(9 * 70);
+    expect(calculateGeneratedImageCost("180", null, "montage", "generated_images")).toBe(9 * 70);
   });
 
   it("charges one source image for every chronological Narrative scene", () => {
-    expect(calculateGeneratedImageCost("180", null, "narrative", "video")).toBe(18 * 4);
-    expect(calculateGeneratedImageCost("full", 600, "narrative", "generated_images")).toBe(60 * 4);
+    expect(calculateGeneratedImageCost("180", null, "narrative", "video")).toBe(18 * 70);
+    expect(calculateGeneratedImageCost("full", 600, "narrative", "generated_images")).toBe(60 * 70);
   });
 });
 
