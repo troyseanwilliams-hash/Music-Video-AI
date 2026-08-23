@@ -307,7 +307,12 @@ export const PROVIDER_OUT_OF_CREDITS = "[PROVIDER_OUT_OF_CREDITS]";
 // i2vOverride — image-to-video model slug used when req.imageUrl is present
 //               (e.g. PIXAZO_RUNWAY_I2V_MODEL). Falls back to Kling i2v defaults
 //               when absent so existing Kling callers are unaffected.
-async function generateWithPixazo(req: ClipRequest, t2vOverride?: string, i2vOverride?: string): Promise<string> {
+async function generateWithPixazo(
+  req: ClipRequest,
+  t2vOverride?: string,
+  i2vOverride?: string,
+  provider: "kling" | "runway" = "kling",
+): Promise<string> {
   const key = process.env.PIXAZO_API_KEY!;
   const duration = req.durationSeconds <= 5 ? "5" : "10";
   const r = (req.resolution ?? "").toLowerCase();
@@ -330,25 +335,33 @@ async function generateWithPixazo(req: ClipRequest, t2vOverride?: string, i2vOve
     model = t2vOverride || process.env.PIXAZO_MODEL?.trim() || "kling-video-v3-turbo-pro-text-to-video";
   }
 
-  const body: Record<string, unknown> = {
-    prompt: req.prompt.slice(0, 2500),
-    duration,
-  };
-  if (hasImage) {
-    // Image-to-video: feed the reference image (aspect ratio comes from the image).
-    body.image_url = req.imageUrl;
+  const body: Record<string, unknown> = { prompt: req.prompt.slice(0, 2500) };
+  let endpoint: string;
+  if (provider === "runway") {
+    // Runway Gen-4.5 has provider-specific Pixazo routes and accepts the
+    // documented prompt payload rather than Kling's duration/resolution fields.
+    endpoint =
+      `https://gateway.pixazo.ai/${model}/v1/gen-4.5/` +
+      `${hasImage ? "image-to-video" : "text-to-video"}`;
+    if (hasImage) body.image_url = req.imageUrl;
   } else {
-    // Text-to-video: pass aspect ratio + resolution hint (4K also via model slug).
-    body.aspect_ratio = req.aspectRatio ?? "16:9";
-    if (r === "1080p") body.resolution = "1080p";
-    else if (is4k) body.resolution = "4k";
-    else if (r === "720p") body.resolution = "720p";
+    body.duration = duration;
+    if (hasImage) {
+      // Image-to-video: feed the reference image (aspect ratio comes from the image).
+      body.image_url = req.imageUrl;
+    } else {
+      // Text-to-video: pass aspect ratio + resolution hint (4K also via model slug).
+      body.aspect_ratio = req.aspectRatio ?? "16:9";
+      if (r === "1080p") body.resolution = "1080p";
+      else if (is4k) body.resolution = "4k";
+      else if (r === "720p") body.resolution = "720p";
+    }
   }
 
   const uncertainProvider = req.provider ?? "pixazo";
   let submit: Response;
   try {
-    submit = await fetch(`https://gateway.pixazo.ai/${model}/v1/${model}-request`, {
+    submit = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Ocp-Apim-Subscription-Key": key,
@@ -490,6 +503,7 @@ async function callProvider(provider: Provider, req: ClipRequest): Promise<strin
         req,
         process.env.PIXAZO_RUNWAY_MODEL!.trim(),
         process.env.PIXAZO_RUNWAY_I2V_MODEL?.trim(),
+        "runway",
       );
     case "luma":
       return generateWithLuma(req);
@@ -519,7 +533,8 @@ export function resolveClipProviderChain(
 }
 
 // Try providers in order, automatically falling back to the next on failure
-// (e.g. Runway credits exhausted → Pixazo). Returns the first success.
+// when the caller has not pinned an engine. Kling and Runway remain Pixazo-backed;
+// providerOnly is used for paid jobs to prevent duplicate cross-engine submits.
 export async function generateClip(req: ClipRequest): Promise<ClipResult | null> {
   const chain = resolveClipProviderChain(req);
   if (chain.length === 0) {
