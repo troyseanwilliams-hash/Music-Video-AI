@@ -134,6 +134,19 @@ function categoriseError(msg: string | null | undefined): {
       canRetry: false,
     };
   }
+  if (
+    m.includes("temporarily unavailable") ||
+    m.includes("internal server error") ||
+    /ai service 5\d\d/.test(m)
+  ) {
+    return {
+      category: "api",
+      headline: "Service temporarily unavailable",
+      detail:
+        "The video service is having a temporary problem. We stopped safely without an automatic retry to prevent duplicate charges. Please wait a little while and try again.",
+      canRetry: true,
+    };
+  }
   if (m.includes("runway") || m.includes("api error") || m.includes("api key")) {
     return {
       category: "api",

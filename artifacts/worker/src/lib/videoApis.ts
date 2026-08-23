@@ -411,7 +411,7 @@ async function generateWithPixazo(
       });
       const reference = activityId ? ` Reference ID: ${activityId}.` : "";
       throw new Error(
-        `${PROVIDER_API_FAILURE} The AI video service is temporarily unavailable. ` +
+        `${PROVIDER_API_FAILURE} Service temporarily unavailable. ` +
           `No automatic retry was attempted to prevent duplicate charges. Please try again later.${reference}`,
       );
     }
