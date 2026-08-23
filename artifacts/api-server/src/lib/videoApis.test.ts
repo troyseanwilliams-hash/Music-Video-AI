@@ -30,6 +30,55 @@ describe("resolveClipProviderChain", () => {
     ).toEqual(["runway"]);
   });
 
+  it("submits Runway through Pixazo's Gen-4.5 endpoint", async () => {
+    vi.stubEnv("PIXAZO_API_KEY", "test-key");
+    vi.stubEnv("PIXAZO_RUNWAY_MODEL", "runway-gen-4-5");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            request_id: "runway-request-123",
+            polling_url: "https://gateway.pixazo.ai/v2/requests/status/runway-request-123",
+          }),
+          { status: 202 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            status: "COMPLETED",
+            output: { media_url: ["https://cdn.example.com/runway.mp4"] },
+          }),
+          { status: 200 },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      generateClip({
+        prompt: "cinematic rain",
+        durationSeconds: 10,
+        aspectRatio: "16:9",
+        resolution: "720p",
+        provider: "runway",
+        providerOnly: true,
+      }),
+    ).resolves.toEqual({
+      videoUrl: "https://cdn.example.com/runway.mp4",
+      provider: "runway",
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "https://gateway.pixazo.ai/runway-gen-4-5/v1/gen-4.5/text-to-video",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ prompt: "cinematic rain" }),
+      }),
+    );
+  }, 10_000);
+
   it("fails a provider-only request instead of silently using another engine", async () => {
     vi.stubEnv("PIXAZO_API_KEY", "");
     vi.stubEnv("PIXAZO_RUNWAY_MODEL", "");

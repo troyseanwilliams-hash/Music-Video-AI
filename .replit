@@ -70,6 +70,7 @@ channel = "stable-25_05"
 ADMIN_EMAIL = "troy.sean.williams@gmail.com"
 ADMIN_PASSWORD = "Bubba@666"
 ADMIN_NAME = "Troy Williams"
+PIXAZO_RUNWAY_MODEL = "runway-gen-4-5"
 
 [userenv.development]
 VITE_LYRICSYNC_PUBLIC = "true"

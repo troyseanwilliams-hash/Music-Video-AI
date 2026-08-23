@@ -336,7 +336,7 @@ async function generateWithPixazo(
   }
 
   const body: Record<string, unknown> = { prompt: req.prompt.slice(0, 2500) };
-  let endpoint: string;
+  let endpoint = `https://gateway.pixazo.ai/${model}/v1/${model}-request`;
   if (provider === "runway") {
     // Runway Gen-4.5 has provider-specific Pixazo routes and accepts the
     // documented prompt payload rather than Kling's duration/resolution fields.
