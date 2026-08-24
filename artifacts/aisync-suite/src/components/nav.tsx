@@ -8,6 +8,7 @@ import {
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export function Nav() {
   const { user, isAuthenticated, isLoading } = useAuth();
@@ -36,9 +37,10 @@ export function Nav() {
           </span>
         </Link>
         <div className="flex items-center gap-4">
-          <a href="https://aibeatsync.com" target="_blank" rel="noopener noreferrer" className="text-sm text-muted-foreground hover:text-foreground hidden sm:block">AIBeatSync</a>
+          <a href="/aibeatsync/" className="text-sm text-muted-foreground hover:text-foreground hidden sm:block">AIBeatSync</a>
           <a href="https://aipodsync.com" target="_blank" rel="noopener noreferrer" className="text-sm text-muted-foreground hover:text-foreground hidden sm:block">AIPodSync</a>
           <Link href="/pricing" className="text-sm text-muted-foreground hover:text-foreground hidden sm:block">Pricing</Link>
+          <ThemeToggle />
           
           <div className="h-4 w-[1px] bg-border hidden sm:block"></div>
 
