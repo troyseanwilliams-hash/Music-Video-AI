@@ -1121,7 +1121,7 @@ export default function JobStatus() {
             <motion.div
               initial={{ opacity: 0, scale: 0.97 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="rounded-2xl border border-primary/30 bg-black overflow-hidden shadow-2xl shadow-primary/10"
+              className="mx-auto w-full max-w-3xl overflow-hidden rounded-2xl border border-primary/30 bg-black shadow-2xl shadow-primary/10"
             >
               <VideoPlayer jobId={job.id} videoId={job.videoId} videoUrl={job.videoUrl} />
               <DownloadBar jobId={job.id} prompt={job.prompt} />

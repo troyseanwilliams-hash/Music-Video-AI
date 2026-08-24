@@ -601,7 +601,7 @@ export default function Explore() {
           </div>
           {/* Full player with sound — opened by clicking a card. */}
           <Dialog open={!!activeVideo} onOpenChange={(open) => !open && setActiveVideo(null)}>
-            <DialogContent className="max-w-4xl border-card-border bg-black p-0 sm:rounded-xl overflow-hidden">
+            <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-3xl overflow-hidden border-card-border bg-black p-0 sm:rounded-xl">
               <DialogTitle className="sr-only">
                 {activeVideo?.title || "AI music video"}
               </DialogTitle>
@@ -612,7 +612,7 @@ export default function Explore() {
                   controls
                   autoPlay
                   playsInline
-                  className="max-h-[80vh] w-full bg-black"
+                  className="mx-auto max-h-[calc(100dvh-4rem)] max-w-full object-contain"
                 />
               )}
             </DialogContent>

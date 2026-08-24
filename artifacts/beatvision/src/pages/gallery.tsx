@@ -887,7 +887,10 @@ export default function Gallery() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
           onClick={() => setPlayer(null)}
         >
-          <div className="relative w-full max-w-3xl" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="relative flex max-h-[calc(100dvh-2rem)] w-full max-w-3xl flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="mb-2 flex items-center justify-between text-white">
               <span className="truncate text-sm font-medium">{player.title}</span>
               <button onClick={() => setPlayer(null)} aria-label="Close" className="text-white/70 hover:text-white">
@@ -895,7 +898,13 @@ export default function Gallery() {
               </button>
             </div>
             {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-            <video src={player.url} controls autoPlay className="w-full rounded-xl bg-black" />
+            <video
+              src={player.url}
+              controls
+              autoPlay
+              playsInline
+              className="mx-auto max-h-[calc(100dvh-5rem)] max-w-full rounded-xl bg-black object-contain"
+            />
           </div>
         </div>
       )}
