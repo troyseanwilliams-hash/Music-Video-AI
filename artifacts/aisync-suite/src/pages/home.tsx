@@ -284,7 +284,7 @@ export default function Home({ pricingPage = false }: HomeProps) {
                 </li>
               ))}
             </ul>
-            <a href="/aibeatsync/" className="block w-full">
+            <a href="https://aibeatsync.com/" className="block w-full">
               <Button variant="outline" className="w-full border-primary/20 hover:bg-primary/5 text-primary h-12 text-base font-semibold">
                 Visit AIBeatSync <ExternalLink className="ml-2 h-4 w-4" />
               </Button>

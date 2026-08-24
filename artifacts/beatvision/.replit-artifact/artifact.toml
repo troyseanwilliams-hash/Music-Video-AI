@@ -1,5 +1,5 @@
 kind = "web"
-previewPath = "/aibeatsync/"
+previewPath = "/"
 title = "AiBeatSync.com"
 version = "1.0.0"
 id = "artifacts/beatvision"
@@ -11,7 +11,7 @@ version = "1.0.0"
 
 [[services]]
 name = "web"
-paths = [ "/aibeatsync/" ]
+paths = [ "/" ]
 localPort = 24312
 
 [services.development]
@@ -28,4 +28,4 @@ to = "/index.html"
 
 [services.env]
 PORT = "24312"
-BASE_PATH = "/aibeatsync/"
+BASE_PATH = "/"

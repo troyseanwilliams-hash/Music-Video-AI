@@ -17,7 +17,7 @@ export function Footer() {
           <div>
             <h4 className="font-semibold mb-4">Products</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
-              <li><a href="/aibeatsync/" className="hover:text-primary transition-colors">AIBeatSync</a></li>
+              <li><a href="https://aibeatsync.com/" className="hover:text-primary transition-colors">AIBeatSync</a></li>
               <li><a href="https://aipodsync.com" className="hover:text-accent transition-colors">AIPodSync</a></li>
             </ul>
           </div>
