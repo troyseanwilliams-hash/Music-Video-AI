@@ -46,13 +46,13 @@ export const PRICE_MULTIPLIER = 2;
 export const MAX_FULL_SECONDS = 600;
 export type GenerationMode = "montage" | "narrative";
 export type NarrativeVisualSource = "video" | "generated_images";
-// One generated still costs $0.70. Price each one at the requested 1.5×
+// One generated still costs $0.07. Price each one at the requested 1.5×
 // markup, using the conservative credit value that protects the margin across
 // every available subscription and credit pack.
-export const GENERATED_IMAGE_USD_PER_VISUAL = 0.70;
+export const GENERATED_IMAGE_USD_PER_VISUAL = 0.07;
 export const GENERATED_IMAGE_MARKUP = 1.5;
 export const GENERATED_IMAGE_CREDITS_PER_VISUAL = Math.ceil(
-  (GENERATED_IMAGE_USD_PER_VISUAL * GENERATED_IMAGE_MARKUP) / USD_PER_CREDIT,
+  (GENERATED_IMAGE_USD_PER_VISUAL * GENERATED_IMAGE_MARKUP) / USD_PER_CREDIT - 1e-9,
 );
 
 function targetDurationSeconds(

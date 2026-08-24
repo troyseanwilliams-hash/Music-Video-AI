@@ -80,10 +80,10 @@ const SHORT_MARKUP = 2;
 const LONG_MARKUP = 1.5;
 const KLING_LONG_MARKUP = 1.75; // Kling multi-clip markup (Runway stays 1.5×)
 export const MAX_FULL_SECONDS = 600;
-export const GENERATED_IMAGE_USD_PER_VISUAL = 0.70;
+export const GENERATED_IMAGE_USD_PER_VISUAL = 0.07;
 export const GENERATED_IMAGE_MARKUP = 1.5;
 export const GENERATED_IMAGE_CREDITS_PER_VISUAL = Math.ceil(
-  (GENERATED_IMAGE_USD_PER_VISUAL * GENERATED_IMAGE_MARKUP) / USD_PER_CREDIT,
+  (GENERATED_IMAGE_USD_PER_VISUAL * GENERATED_IMAGE_MARKUP) / USD_PER_CREDIT - 1e-9,
 );
 
 function fullClipCount(songDurationSec?: number | null): number {

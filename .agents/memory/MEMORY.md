@@ -27,4 +27,5 @@
 - [Configurable silent-film runtime](configurable-silent-film-runtime.md) — no-audio videos use a user-selected whole-second duration, never a prompt-specific preset.
 - [Authoritative full-track analysis](authoritative-full-track-analysis.md) — full-track runtime and credits must use server-verified analysis bound to the exact stored audio.
 - [Provider resubmit safety](provider-resubmit-safety.md) — preserve accepted requests, pin the selected engine, and gate failed-to-queued transitions atomically.
-- [Generated image pricing](generated-image-pricing.md) — image packs and video image foundations are priced from a $0.70 cost at 1.5× markup, converted conservatively to credits.
+- [Generated image pricing](generated-image-pricing.md) — image packs and video image foundations use a $0.07 cost at 1.5× markup, converted conservatively to credits.
+- [Numbered image-pack story scripts](numbered-image-pack-story-scripts.md) — authored one-scene-per-line scripts are the reliable standalone story-image path; this does not extend automatically to video.

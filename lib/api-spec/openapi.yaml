@@ -1378,7 +1378,7 @@ components:
           type: integer
           minimum: 1
           maximum: 30
-          description: Number of images to generate. Each image costs 70 credits.
+          description: Number of images to generate. Each image costs 7 credits.
         aspectRatio:
           type: string
           enum: ['9:16', '16:9']

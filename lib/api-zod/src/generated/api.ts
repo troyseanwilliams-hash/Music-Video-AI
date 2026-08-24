@@ -760,7 +760,7 @@ export const CreateImagePackBody = zod.object({
     .number()
     .min(1)
     .max(createImagePackBodyImageCountMax)
-    .describe("Number of images to generate. Each image costs 70 credits."),
+    .describe("Number of images to generate. Each image costs 7 credits."),
   aspectRatio: zod
     .enum(["9:16", "16:9"])
     .default(createImagePackBodyAspectRatioDefault)

@@ -451,7 +451,7 @@ export interface CreateImagePackRequest {
   prompt: string;
   style?: VideoStyle;
   /**
-   * Number of images to generate. Each image costs 70 credits.
+   * Number of images to generate. Each image costs 7 credits.
    * @minimum 1
    * @maximum 30
    */
