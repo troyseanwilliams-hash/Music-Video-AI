@@ -19,6 +19,7 @@ import Gallery from "@/pages/gallery";
 import Soundtracks from "@/pages/soundtracks";
 import SharedSoundtrack from "@/pages/shared-soundtrack";
 import Explore from "@/pages/explore";
+import PublicImageDetail from "@/pages/public-image";
 import JobStatus from "@/pages/job-status";
 import Pricing from "@/pages/pricing";
 import Admin from "@/pages/admin";
@@ -45,6 +46,8 @@ import ResetPassword from "@/pages/reset-password";
 import Redeem from "@/pages/redeem";
 import Suite from "@/pages/suite";
 import Comparison from "@/pages/comparison";
+
+import TutorialScriptToVideo from "@/pages/tutorial-script-to-video";
 
 const queryClient = new QueryClient();
 
@@ -86,6 +89,7 @@ function Router() {
           {LYRICSYNC_PUBLIC && <Route path="/lyric-sync" component={LyricSyncPage} />}
           <Route path="/s/:token" component={SharedSoundtrack} />
           <Route path="/explore" component={Explore} />
+          <Route path="/image/:id" component={PublicImageDetail} />
           <Route path="/jobs/:id" component={JobStatus} />
           <Route path="/pricing" component={Pricing} />
           <Route path="/redeem" component={Redeem} />
@@ -104,6 +108,7 @@ function Router() {
           <Route path="/ai-lyric-video" component={LyricVideoLanding} />
           <Route path="/instrumental-generator" component={InstrumentalLanding} />
           <Route path="/suno-to-video" component={SunoToVideoLanding} />
+          <Route path="/tutorial/script-to-video" component={TutorialScriptToVideo} />
           <Route path="/podcast-to-video" component={PodcastToVideoLanding} />
           <Route path="/hip-hop-music-video-generator" component={HipHopMusicVideoLanding} />
           <Route path="/edm-music-video-generator" component={EdmMusicVideoLanding} />

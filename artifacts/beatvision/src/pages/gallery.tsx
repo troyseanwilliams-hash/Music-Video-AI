@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
 import { useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
-import { useListVideos, useDeleteVideo, getListVideosQueryKey, getGetDashboardStatsQueryKey } from "@workspace/api-client-react";
+import { useToast } from "@/hooks/use-toast";
+import {
+  useListVideos,
+  useDeleteVideo,
+  getListVideosQueryKey,
+  getGetDashboardStatsQueryKey,
+  useUpdateImageAssetVisibility,
+} from "@workspace/api-client-react";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import LipSyncPanel from "@/components/LipSyncPanel";
@@ -31,6 +38,8 @@ interface ImageAsset extends ImageRemixAsset {
   id: string;
   jobId: string;
   createdAt: string;
+  isPublic: boolean;
+  isCreatorAnonymous: boolean;
 }
 
 interface ImageAssetsPage {
@@ -70,6 +79,7 @@ async function getSignedVideoUrl(jobId: string): Promise<string> {
 export default function Gallery() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { toast } = useToast();
   const queryClient = useQueryClient();
   const [galleryView, setGalleryView] = useState<"videos" | "images">("videos");
   const [loadingAction, setLoadingAction] = useState<Record<string, "watch" | "download" | undefined>>({});
@@ -194,7 +204,11 @@ export default function Gallery() {
       if (!response.ok) throw new Error("Unable to update Explore settings");
       queryClient.invalidateQueries({ queryKey: getListVideosQueryKey() });
     } catch {
-      /* ignore */
+      toast({
+        title: "Update failed",
+        description: "Could not update the video's visibility.",
+        variant: "destructive"
+      });
     } finally {
       setTogglingId(null);
     }
@@ -278,6 +292,39 @@ export default function Gallery() {
     }
   });
 
+  const updateImageVisibility = useUpdateImageAssetVisibility({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ["generated-image-gallery"] });
+      }
+    }
+  });
+
+  async function toggleImageVisibility(
+    imageId: string,
+    isPublic: boolean,
+    isCreatorAnonymous?: boolean,
+  ) {
+    setTogglingId(imageId);
+    try {
+      await updateImageVisibility.mutateAsync({
+        id: imageId,
+        data: {
+          isPublic,
+          ...(isCreatorAnonymous !== undefined ? { isCreatorAnonymous } : {}),
+        },
+      });
+    } catch {
+      toast({
+        title: "Update failed",
+        description: "Could not update the image's visibility.",
+        variant: "destructive"
+      });
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
   useEffect(() => {
     if (!isAuthLoading && !isAuthenticated) {
       setLocation("/login");
@@ -297,7 +344,7 @@ export default function Gallery() {
               : "Every saved image you have generated, ready for Remix Lab."}
           </p>
         </div>
-        
+
         <Link href="/generate">
           <Button className="bg-gradient-electric text-white shadow-glow">
             Create new
@@ -686,7 +733,7 @@ export default function Gallery() {
                         </div>
                       )}
                     </button>
-                    <div className="space-y-3 p-3">
+                      <div className="flex flex-col gap-3 p-3">
                       <p className="line-clamp-2 min-h-10 text-xs leading-relaxed text-muted-foreground" title={asset.prompt}>
                         {asset.prompt}
                       </p>
@@ -694,6 +741,44 @@ export default function Gallery() {
                         <span>{new Date(asset.createdAt).toLocaleDateString()}</span>
                         <span>Image pack</span>
                       </div>
+
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          onClick={() => toggleImageVisibility(asset.id, !asset.isPublic)}
+                          disabled={togglingId === asset.id}
+                          title={asset.isPublic ? "Remove from Explore" : "Post to Explore"}
+                          className={`text-[10px] font-medium px-2 py-1 rounded-md inline-flex items-center gap-1 transition-colors ${
+                            asset.isPublic ? "bg-primary/15 text-primary" : "bg-secondary text-secondary-foreground hover:text-foreground"
+                          }`}
+                          data-testid={`toggle-image-visibility-${asset.id}`}
+                        >
+                          {togglingId === asset.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Globe className="h-3 w-3" />
+                          )}
+                          {asset.isPublic ? "On Explore" : "Post to Explore"}
+                        </button>
+                        <button
+                          onClick={() => toggleImageVisibility(asset.id, !!asset.isPublic, !asset.isCreatorAnonymous)}
+                          disabled={togglingId === asset.id}
+                          title={
+                            asset.isCreatorAnonymous
+                              ? "This post does not expose your profile name. Click to turn anonymity off."
+                              : "Post this image anonymously on Explore"
+                          }
+                          className={`text-[10px] font-medium px-2 py-1 rounded-md inline-flex items-center gap-1 transition-colors ${
+                            asset.isCreatorAnonymous
+                              ? "bg-primary/15 text-primary"
+                              : "bg-secondary text-secondary-foreground hover:text-foreground"
+                          }`}
+                          data-testid={`toggle-image-anonymous-${asset.id}`}
+                        >
+                          <UserRound className="h-3 w-3" />
+                          {asset.isCreatorAnonymous ? "Anonymous" : "Post anonymously"}
+                        </button>
+                      </div>
+
                       <div className="flex items-center gap-2">
                         <Button
                           variant={selected ? "default" : "outline"}

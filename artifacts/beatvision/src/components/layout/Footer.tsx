@@ -9,6 +9,7 @@ const COLUMNS: { title: string; links: { label: string; href: string; external?:
       { label: "Make Music", href: "/soundtracks" },
       { label: "Remix Lab", href: "/editor" },
       { label: "Explore", href: "/explore" },
+      { label: "Script to Video Tutorial", href: "/tutorial/script-to-video" },
     ],
   },
   {

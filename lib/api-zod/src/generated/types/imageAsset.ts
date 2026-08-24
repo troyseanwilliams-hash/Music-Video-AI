@@ -16,5 +16,8 @@ export interface ImageAsset {
   prompt: string;
   /** @nullable */
   style?: string | null;
+  isPublic: boolean;
+  isCreatorAnonymous: boolean;
+  likeCount: number;
   createdAt: Date;
 }

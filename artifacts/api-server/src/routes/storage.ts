@@ -7,7 +7,7 @@ import {
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
 import { ObjectPermission } from "../lib/objectAcl.js";
 import { db, imageAssetsTable } from "@workspace/db";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -121,20 +121,24 @@ router.get("/storage/objects/*path", async (req: Request, res: Response) => {
     const raw = req.params.path;
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
 
-    // Image packs are private, user-owned Remix inputs. Unlike legacy upload
-    // paths, never serve them merely because the opaque object path is known.
-    if (wildcardPath.startsWith("image-packs/")) {
-      if (!req.isAuthenticated()) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
-      }
+    // Image packs remain private unless explicitly published. A public row is
+    // the ACL; knowing an opaque path alone never grants access.
+    if (
+      wildcardPath.startsWith("image-packs/")
+      || wildcardPath.startsWith("narrative-images/")
+    ) {
       const [asset] = await db
         .select({ id: imageAssetsTable.id })
         .from(imageAssetsTable)
         .where(and(
-          eq(imageAssetsTable.userId, req.user.id),
           eq(imageAssetsTable.objectPath, `/objects/${wildcardPath}`),
           isNull(imageAssetsTable.deletedAt),
+          or(
+            eq(imageAssetsTable.isPublic, true),
+            req.isAuthenticated()
+              ? eq(imageAssetsTable.userId, req.user.id)
+              : undefined,
+          ),
         ))
         .limit(1);
       if (!asset) {

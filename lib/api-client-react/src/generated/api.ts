@@ -33,16 +33,23 @@ import type {
   DashboardStats,
   ErrorEnvelope,
   GalleryListResponse,
+  GeneratedImageVisibility,
+  GeneratedImageVisibilityUpdate,
   HealthStatus,
   ImageAssetListResponse,
+  ImagePackPlan,
+  ImagePackPlanRequest,
   Job,
   JobListResponse,
   LikeResponse,
   ListGalleryParams,
   ListImageAssetsParams,
   ListJobsParams,
+  ListPublicImageAssetsParams,
   ListVideosParams,
   LoginRequest,
+  PublicImageAsset,
+  PublicImageAssetListResponse,
   ReferralInfoResponse,
   RegisterRequest,
   RemixJobRequest,
@@ -999,6 +1006,93 @@ export const useCreateImagePack = <
 };
 
 /**
+ * Returns the exact ordered scene prompts to approve before creating a charged image pack.
+ * @summary Plan an editable generated-image storyboard without reserving credits
+ */
+export const getPlanImagePackUrl = () => {
+  return `/api/image-packs/plan`;
+};
+
+export const planImagePack = async (
+  imagePackPlanRequest: ImagePackPlanRequest,
+  options?: RequestInit,
+): Promise<ImagePackPlan> => {
+  return customFetch<ImagePackPlan>(getPlanImagePackUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(imagePackPlanRequest),
+  });
+};
+
+export const getPlanImagePackMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof planImagePack>>,
+    TError,
+    { data: BodyType<ImagePackPlanRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof planImagePack>>,
+  TError,
+  { data: BodyType<ImagePackPlanRequest> },
+  TContext
+> => {
+  const mutationKey = ["planImagePack"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof planImagePack>>,
+    { data: BodyType<ImagePackPlanRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return planImagePack(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PlanImagePackMutationResult = NonNullable<
+  Awaited<ReturnType<typeof planImagePack>>
+>;
+export type PlanImagePackMutationBody = BodyType<ImagePackPlanRequest>;
+export type PlanImagePackMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Plan an editable generated-image storyboard without reserving credits
+ */
+export const usePlanImagePack = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof planImagePack>>,
+    TError,
+    { data: BodyType<ImagePackPlanRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof planImagePack>>,
+  TError,
+  { data: BodyType<ImagePackPlanRequest> },
+  TContext
+> => {
+  return useMutation(getPlanImagePackMutationOptions(options));
+};
+
+/**
  * @summary List reusable generated images for the current user
  */
 export const getListImageAssetsUrl = (params?: ListImageAssetsParams) => {
@@ -1175,6 +1269,455 @@ export const useDeleteImageAsset = <
 > => {
   return useMutation(getDeleteImageAssetMutationOptions(options));
 };
+
+/**
+ * @summary Publish or unpublish a generated image (owner or admin)
+ */
+export const getUpdateImageAssetVisibilityUrl = (id: string) => {
+  return `/api/image-assets/${id}/visibility`;
+};
+
+export const updateImageAssetVisibility = async (
+  id: string,
+  generatedImageVisibilityUpdate: GeneratedImageVisibilityUpdate,
+  options?: RequestInit,
+): Promise<GeneratedImageVisibility> => {
+  return customFetch<GeneratedImageVisibility>(
+    getUpdateImageAssetVisibilityUrl(id),
+    {
+      ...options,
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(generatedImageVisibilityUpdate),
+    },
+  );
+};
+
+export const getUpdateImageAssetVisibilityMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateImageAssetVisibility>>,
+    TError,
+    { id: string; data: BodyType<GeneratedImageVisibilityUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateImageAssetVisibility>>,
+  TError,
+  { id: string; data: BodyType<GeneratedImageVisibilityUpdate> },
+  TContext
+> => {
+  const mutationKey = ["updateImageAssetVisibility"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateImageAssetVisibility>>,
+    { id: string; data: BodyType<GeneratedImageVisibilityUpdate> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateImageAssetVisibility(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateImageAssetVisibilityMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateImageAssetVisibility>>
+>;
+export type UpdateImageAssetVisibilityMutationBody =
+  BodyType<GeneratedImageVisibilityUpdate>;
+export type UpdateImageAssetVisibilityMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Publish or unpublish a generated image (owner or admin)
+ */
+export const useUpdateImageAssetVisibility = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateImageAssetVisibility>>,
+    TError,
+    { id: string; data: BodyType<GeneratedImageVisibilityUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateImageAssetVisibility>>,
+  TError,
+  { id: string; data: BodyType<GeneratedImageVisibilityUpdate> },
+  TContext
+> => {
+  return useMutation(getUpdateImageAssetVisibilityMutationOptions(options));
+};
+
+/**
+ * @summary Like a public generated image
+ */
+export const getLikeImageAssetUrl = (id: string) => {
+  return `/api/image-assets/${id}/like`;
+};
+
+export const likeImageAsset = async (
+  id: string,
+  options?: RequestInit,
+): Promise<LikeResponse> => {
+  return customFetch<LikeResponse>(getLikeImageAssetUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getLikeImageAssetMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof likeImageAsset>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof likeImageAsset>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["likeImageAsset"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof likeImageAsset>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return likeImageAsset(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type LikeImageAssetMutationResult = NonNullable<
+  Awaited<ReturnType<typeof likeImageAsset>>
+>;
+
+export type LikeImageAssetMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Like a public generated image
+ */
+export const useLikeImageAsset = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof likeImageAsset>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof likeImageAsset>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getLikeImageAssetMutationOptions(options));
+};
+
+/**
+ * @summary Remove a like from a generated image
+ */
+export const getUnlikeImageAssetUrl = (id: string) => {
+  return `/api/image-assets/${id}/like`;
+};
+
+export const unlikeImageAsset = async (
+  id: string,
+  options?: RequestInit,
+): Promise<LikeResponse> => {
+  return customFetch<LikeResponse>(getUnlikeImageAssetUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getUnlikeImageAssetMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof unlikeImageAsset>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof unlikeImageAsset>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["unlikeImageAsset"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof unlikeImageAsset>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return unlikeImageAsset(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UnlikeImageAssetMutationResult = NonNullable<
+  Awaited<ReturnType<typeof unlikeImageAsset>>
+>;
+
+export type UnlikeImageAssetMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Remove a like from a generated image
+ */
+export const useUnlikeImageAsset = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof unlikeImageAsset>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof unlikeImageAsset>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getUnlikeImageAssetMutationOptions(options));
+};
+
+/**
+ * @summary List public generated images (no authentication required)
+ */
+export const getListPublicImageAssetsUrl = (
+  params?: ListPublicImageAssetsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/image-gallery?${stringifiedParams}`
+    : `/api/image-gallery`;
+};
+
+export const listPublicImageAssets = async (
+  params?: ListPublicImageAssetsParams,
+  options?: RequestInit,
+): Promise<PublicImageAssetListResponse> => {
+  return customFetch<PublicImageAssetListResponse>(
+    getListPublicImageAssetsUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListPublicImageAssetsQueryKey = (
+  params?: ListPublicImageAssetsParams,
+) => {
+  return [`/api/image-gallery`, ...(params ? [params] : [])] as const;
+};
+
+export const getListPublicImageAssetsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPublicImageAssets>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListPublicImageAssetsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPublicImageAssets>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListPublicImageAssetsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listPublicImageAssets>>
+  > = ({ signal }) =>
+    listPublicImageAssets(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPublicImageAssets>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPublicImageAssetsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPublicImageAssets>>
+>;
+export type ListPublicImageAssetsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List public generated images (no authentication required)
+ */
+
+export function useListPublicImageAssets<
+  TData = Awaited<ReturnType<typeof listPublicImageAssets>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListPublicImageAssetsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPublicImageAssets>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPublicImageAssetsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get stable public generated-image detail
+ */
+export const getGetPublicImageAssetUrl = (id: string) => {
+  return `/api/image-gallery/${id}`;
+};
+
+export const getPublicImageAsset = async (
+  id: string,
+  options?: RequestInit,
+): Promise<PublicImageAsset> => {
+  return customFetch<PublicImageAsset>(getGetPublicImageAssetUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetPublicImageAssetQueryKey = (id: string) => {
+  return [`/api/image-gallery/${id}`] as const;
+};
+
+export const getGetPublicImageAssetQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPublicImageAsset>>,
+  TError = ErrorType<ErrorEnvelope>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPublicImageAsset>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetPublicImageAssetQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getPublicImageAsset>>
+  > = ({ signal }) => getPublicImageAsset(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getPublicImageAsset>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetPublicImageAssetQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPublicImageAsset>>
+>;
+export type GetPublicImageAssetQueryError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Get stable public generated-image detail
+ */
+
+export function useGetPublicImageAsset<
+  TData = Awaited<ReturnType<typeof getPublicImageAsset>>,
+  TError = ErrorType<ErrorEnvelope>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPublicImageAsset>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPublicImageAssetQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Get job status and details

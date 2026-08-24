@@ -1,14 +1,31 @@
 import { Router } from "express";
 import { randomUUID } from "crypto";
-import { and, count, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   creditsTable,
   db,
+  imageAssetLikesTable,
   imageAssetsTable,
   jobsTable,
   usersTable,
 } from "@workspace/db";
+import {
+  CreateImagePackBody,
+  GetPublicImageAssetParams,
+  GetPublicImageAssetResponse,
+  LikeImageAssetParams,
+  LikeImageAssetResponse,
+  ListPublicImageAssetsQueryParams,
+  ListPublicImageAssetsResponse,
+  PlanImagePackBody,
+  PlanImagePackResponse,
+  UnlikeImageAssetParams,
+  UnlikeImageAssetResponse,
+  UpdateImageAssetVisibilityBody,
+  UpdateImageAssetVisibilityParams,
+  UpdateImageAssetVisibilityResponse,
+} from "@workspace/api-zod";
 import { getUserTier } from "../lib/tier.js";
 import { GENERATED_IMAGE_CREDITS_PER_VISUAL } from "../lib/creditCost.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
@@ -20,6 +37,38 @@ import {
 
 const router = Router();
 const MAX_IMAGE_PACK_COUNT = 30;
+
+function isAdminEmail(email?: string | null): boolean {
+  return !!(
+    process.env.ADMIN_EMAIL
+    && email
+    && email.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase()
+  );
+}
+
+type PublicImageRow = {
+  id: string;
+  objectPath: string;
+  assetIndex: number;
+  style: string | null;
+  likeCount: number;
+  createdAt: Date;
+  creatorName: string | null;
+};
+
+/** Public DTO allowlist. Keep prompts, job IDs, and owner IDs out by construction. */
+export function toPublicImageAsset(row: PublicImageRow, liked: boolean) {
+  return {
+    id: row.id,
+    objectPath: row.objectPath,
+    assetIndex: row.assetIndex,
+    style: row.style,
+    likeCount: row.likeCount,
+    liked,
+    creatorName: row.creatorName,
+    createdAt: row.createdAt,
+  };
+}
 
 const createImagePackBody = z.object({
   prompt: z.string().trim().min(1).max(1000),
@@ -42,7 +91,75 @@ const createImagePackBody = z.object({
     .max(500)
     .nullable()
     .optional(),
+  approvedScenes: z.array(z.object({
+    index: z.coerce.number().int().min(0),
+    prompt: z.string().trim().min(1).max(1000),
+  })).min(1).max(MAX_IMAGE_PACK_COUNT).optional(),
 });
+
+type ApprovedImageScene = { index: number; prompt: string };
+
+export function buildImagePackPlan(input: {
+  prompt: string;
+  style?: string | null;
+  imageCount: number;
+  hasCharacterReference: boolean;
+}): ApprovedImageScene[] {
+  const numberedScript = parseNumberedImagePackScript(input.prompt);
+  if (hasNumberedImagePackScript(input.prompt) && !numberedScript) {
+    throw new Error("Number every scene consecutively from 1, with exactly one complete scene on each line.");
+  }
+  if (numberedScript) {
+    if (numberedScript.scenes.length !== input.imageCount) {
+      throw new Error(`Your script contains ${numberedScript.scenes.length} numbered scenes. Set Images to generate to ${numberedScript.scenes.length} so every line produces exactly one image.`);
+    }
+    return numberedScript.scenes.map((prompt, index) => ({ index, prompt }));
+  }
+  return planImagePackScenes(input).map((scene) => ({
+    index: scene.index,
+    prompt: scene.prompt.trim(),
+  }));
+}
+
+export function validateApprovedImageScenes(
+  scenes: ApprovedImageScene[],
+  imageCount: number,
+): ApprovedImageScene[] {
+  if (scenes.length !== imageCount) {
+    throw new Error(`Approve exactly ${imageCount} scenes before creating this image pack.`);
+  }
+  const uniquePrompts = new Set<string>();
+  return scenes.map((scene, expectedIndex) => {
+    if (!Number.isInteger(scene.index) || scene.index !== expectedIndex) {
+      throw new Error("Approved scenes must be in unique chronological order starting at 0.");
+    }
+    const prompt = scene.prompt.trim();
+    if (!prompt || prompt.length > 1000) {
+      throw new Error("Each approved scene prompt must be between 1 and 1000 characters.");
+    }
+    const fingerprint = prompt.replace(/\s+/g, " ").toLocaleLowerCase();
+    if (uniquePrompts.has(fingerprint)) throw new Error("Approved scene prompts must be unique.");
+    uniquePrompts.add(fingerprint);
+    return { index: scene.index, prompt };
+  });
+}
+
+export function toPersistedImagePackScenes(
+  scenes: ApprovedImageScene[],
+  referenceImagePath?: string | null,
+) {
+  const usesCharacterReference = Boolean(referenceImagePath);
+  return scenes.map((scene) => ({
+    ...scene,
+    label: `scene ${scene.index + 1}`,
+    startTime: scene.index * 10,
+    energy: 0.6,
+    // Both server and worker processors only send referenceImagePath to the
+    // provider when this intent flag is true. A supplied pack-level reference
+    // must therefore be carried into every approved scene.
+    usesCharacterReference,
+  }));
+}
 
 router.post("/image-packs", async (req, res) => {
   if (!req.isAuthenticated()) {
@@ -50,29 +167,23 @@ router.post("/image-packs", async (req, res) => {
     return;
   }
 
+  const contract = CreateImagePackBody.safeParse(req.body);
   const parsed = createImagePackBody.safeParse(req.body);
-  if (!parsed.success) {
+  if (!contract.success || !parsed.success) {
     res.status(400).json({
       error: `Provide a visual prompt and choose between 1 and ${MAX_IMAGE_PACK_COUNT} images.`,
     });
     return;
   }
 
-  const { prompt, style, imageCount, aspectRatio, referenceImagePath } = parsed.data;
-  const numberedScript = parseNumberedImagePackScript(prompt);
-  if (hasNumberedImagePackScript(prompt) && !numberedScript) {
-    res.status(400).json({
-      error: "Number every scene consecutively from 1, with exactly one complete scene on each line.",
-      code: "INVALID_NUMBERED_IMAGE_SCRIPT",
-    });
-    return;
-  }
-  if (numberedScript && numberedScript.scenes.length !== imageCount) {
-    res.status(400).json({
-      error: `Your script contains ${numberedScript.scenes.length} numbered scenes. Set Images to generate to ${numberedScript.scenes.length} so every line produces exactly one image.`,
-      code: "IMAGE_COUNT_SCRIPT_MISMATCH",
-      sceneCount: numberedScript.scenes.length,
-    });
+  const { prompt, style, imageCount, aspectRatio, referenceImagePath, approvedScenes } = parsed.data;
+  let scenes: ApprovedImageScene[];
+  try {
+    scenes = approvedScenes
+      ? validateApprovedImageScenes(approvedScenes, imageCount)
+      : buildImagePackPlan({ prompt, style, imageCount, hasCharacterReference: Boolean(referenceImagePath) });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "Invalid approved image scenes." });
     return;
   }
   if (referenceImagePath) {
@@ -111,12 +222,6 @@ router.post("/image-packs", async (req, res) => {
   if (!isAdmin) await getUserTier(user);
 
   const creditCost = imageCount * GENERATED_IMAGE_CREDITS_PER_VISUAL;
-  const scenes = planImagePackScenes({
-    prompt,
-    style,
-    imageCount,
-    hasCharacterReference: Boolean(referenceImagePath),
-  });
   await db
     .insert(creditsTable)
     .values({ id: randomUUID(), userId: req.user.id })
@@ -171,7 +276,7 @@ router.post("/image-packs", async (req, res) => {
           imagePack: {
             imageCount,
             referenceImagePath: referenceImagePath ?? null,
-            scenes,
+            scenes: toPersistedImagePackScenes(scenes, referenceImagePath),
           },
         },
       })
@@ -194,6 +299,46 @@ router.post("/image-packs", async (req, res) => {
     "Image pack queued with credits reserved",
   );
   res.status(201).json(reservation.job);
+});
+
+router.post("/image-packs/plan", async (req, res): Promise<void> => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const contract = PlanImagePackBody.safeParse(req.body);
+  const parsed = createImagePackBody.safeParse(req.body);
+  if (!contract.success || !parsed.success) {
+    res.status(400).json({
+      error: `Provide a visual prompt and choose between 1 and ${MAX_IMAGE_PACK_COUNT} images.`,
+    });
+    return;
+  }
+  const { prompt, style, imageCount, referenceImagePath } = parsed.data;
+  if (referenceImagePath) {
+    try {
+      await new ObjectStorageService().getObjectEntityFile(referenceImagePath);
+    } catch {
+      res.status(400).json({
+        error: "The selected reference image is no longer available. Upload it again and retry.",
+      });
+      return;
+    }
+  }
+  try {
+    const scenes = buildImagePackPlan({
+      prompt,
+      style,
+      imageCount,
+      hasCharacterReference: Boolean(referenceImagePath),
+    });
+    // Planning is deliberately DB-write-free: credits are reserved only by POST /image-packs.
+    res.json(PlanImagePackResponse.parse({ scenes }));
+  } catch (error) {
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "Unable to plan image pack scenes.",
+    });
+  }
 });
 
 router.get("/image-assets", async (req, res) => {
@@ -229,6 +374,237 @@ router.get("/image-assets", async (req, res) => {
   res.json({ assets, total: total[0]?.count ?? 0, page, limit });
 });
 
+const publicImageSelection = {
+  id: imageAssetsTable.id,
+  objectPath: imageAssetsTable.objectPath,
+  assetIndex: imageAssetsTable.assetIndex,
+  style: imageAssetsTable.style,
+  likeCount: imageAssetsTable.likeCount,
+  createdAt: imageAssetsTable.createdAt,
+  creatorName: sql<string | null>`CASE
+    WHEN ${imageAssetsTable.isCreatorAnonymous} THEN 'Anonymous'
+    ELSE ${usersTable.firstName}
+  END`,
+};
+
+router.get("/image-gallery", async (req, res): Promise<void> => {
+  const parsed = ListPublicImageAssetsQueryParams.safeParse(req.query);
+  const page = parsed.success ? (parsed.data.page ?? 1) : 1;
+  const limit = parsed.success ? (parsed.data.limit ?? 24) : 24;
+  const publicOnly = and(eq(imageAssetsTable.isPublic, true), isNull(imageAssetsTable.deletedAt));
+  const [rows, totalResult] = await Promise.all([
+    db
+      .select(publicImageSelection)
+      .from(imageAssetsTable)
+      .leftJoin(usersTable, eq(usersTable.id, imageAssetsTable.userId))
+      .where(publicOnly)
+      .orderBy(desc(imageAssetsTable.likeCount), desc(imageAssetsTable.createdAt))
+      .limit(limit)
+      .offset((page - 1) * limit),
+    db.select({ count: count() }).from(imageAssetsTable).where(publicOnly),
+  ]);
+
+  let likedIds = new Set<string>();
+  if (req.isAuthenticated() && rows.length > 0) {
+    const likes = await db
+      .select({ imageAssetId: imageAssetLikesTable.imageAssetId })
+      .from(imageAssetLikesTable)
+      .where(and(
+        eq(imageAssetLikesTable.userId, req.user.id),
+        inArray(imageAssetLikesTable.imageAssetId, rows.map((row) => row.id)),
+      ));
+    likedIds = new Set(likes.map((like) => like.imageAssetId));
+  }
+  res.json(ListPublicImageAssetsResponse.parse({
+    assets: rows.map((row) => toPublicImageAsset(row, likedIds.has(row.id))),
+    total: totalResult[0]?.count ?? 0,
+    page,
+    limit,
+  }));
+});
+
+router.get("/image-gallery/:id", async (req, res): Promise<void> => {
+  const params = GetPublicImageAssetParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(404).json({ error: "Generated image not found." });
+    return;
+  }
+  const [row] = await db
+    .select(publicImageSelection)
+    .from(imageAssetsTable)
+    .leftJoin(usersTable, eq(usersTable.id, imageAssetsTable.userId))
+    .where(and(
+      eq(imageAssetsTable.id, params.data.id),
+      eq(imageAssetsTable.isPublic, true),
+      isNull(imageAssetsTable.deletedAt),
+    ))
+    .limit(1);
+  if (!row) {
+    res.status(404).json({ error: "Generated image not found." });
+    return;
+  }
+  let liked = false;
+  if (req.isAuthenticated()) {
+    const [like] = await db
+      .select({ imageAssetId: imageAssetLikesTable.imageAssetId })
+      .from(imageAssetLikesTable)
+      .where(and(
+        eq(imageAssetLikesTable.userId, req.user.id),
+        eq(imageAssetLikesTable.imageAssetId, row.id),
+      ))
+      .limit(1);
+    liked = Boolean(like);
+  }
+  res.json(GetPublicImageAssetResponse.parse(toPublicImageAsset(row, liked)));
+});
+
+router.patch("/image-assets/:id/visibility", async (req, res): Promise<void> => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const params = UpdateImageAssetVisibilityParams.safeParse(req.params);
+  const body = UpdateImageAssetVisibilityBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    res.status(400).json({ error: "Invalid generated-image visibility request." });
+    return;
+  }
+  const [asset] = await db
+    .select()
+    .from(imageAssetsTable)
+    .where(and(eq(imageAssetsTable.id, params.data.id), isNull(imageAssetsTable.deletedAt)))
+    .limit(1);
+  if (!asset) {
+    res.status(404).json({ error: "Generated image not found." });
+    return;
+  }
+  if (asset.userId !== req.user.id) {
+    const [user] = await db
+      .select({ email: usersTable.email })
+      .from(usersTable)
+      .where(eq(usersTable.id, req.user.id))
+      .limit(1);
+    if (!isAdminEmail(user?.email)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+  }
+  const [updated] = await db
+    .update(imageAssetsTable)
+    .set({
+      isPublic: body.data.isPublic,
+      ...(body.data.isCreatorAnonymous === undefined
+        ? {}
+        : { isCreatorAnonymous: body.data.isCreatorAnonymous }),
+    })
+    .where(eq(imageAssetsTable.id, asset.id))
+    .returning({
+      isPublic: imageAssetsTable.isPublic,
+      isCreatorAnonymous: imageAssetsTable.isCreatorAnonymous,
+    });
+  req.log.info(
+    { imageAssetId: asset.id, actorUserId: req.user.id, isPublic: body.data.isPublic },
+    "Generated image visibility updated",
+  );
+  res.json(UpdateImageAssetVisibilityResponse.parse({
+    id: asset.id,
+    isPublic: updated?.isPublic ?? body.data.isPublic,
+    isCreatorAnonymous: updated?.isCreatorAnonymous ?? asset.isCreatorAnonymous,
+  }));
+});
+
+router.post("/image-assets/:id/like", async (req, res): Promise<void> => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const params = LikeImageAssetParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(404).json({ error: "Generated image not found." });
+    return;
+  }
+  const [asset] = await db
+    .select({ id: imageAssetsTable.id })
+    .from(imageAssetsTable)
+    .where(and(
+      eq(imageAssetsTable.id, params.data.id),
+      eq(imageAssetsTable.isPublic, true),
+      isNull(imageAssetsTable.deletedAt),
+    ))
+    .limit(1);
+  if (!asset) {
+    res.status(404).json({ error: "Generated image not found." });
+    return;
+  }
+  const likeCount = await db.transaction(async (tx) => {
+    const inserted = await tx
+      .insert(imageAssetLikesTable)
+      .values({ userId: req.user.id, imageAssetId: asset.id })
+      .onConflictDoNothing()
+      .returning({ imageAssetId: imageAssetLikesTable.imageAssetId });
+    if (inserted.length > 0) {
+      await tx
+        .update(imageAssetsTable)
+        .set({ likeCount: sql`${imageAssetsTable.likeCount} + 1` })
+        .where(eq(imageAssetsTable.id, asset.id));
+    }
+    const [current] = await tx
+      .select({ likeCount: imageAssetsTable.likeCount })
+      .from(imageAssetsTable)
+      .where(eq(imageAssetsTable.id, asset.id))
+      .limit(1);
+    return current?.likeCount ?? 0;
+  });
+  res.json(LikeImageAssetResponse.parse({ liked: true, likeCount }));
+});
+
+router.delete("/image-assets/:id/like", async (req, res): Promise<void> => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const params = UnlikeImageAssetParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(404).json({ error: "Generated image not found." });
+    return;
+  }
+  const [asset] = await db
+    .select({ id: imageAssetsTable.id })
+    .from(imageAssetsTable)
+    .where(and(
+      eq(imageAssetsTable.id, params.data.id),
+      eq(imageAssetsTable.isPublic, true),
+      isNull(imageAssetsTable.deletedAt),
+    ))
+    .limit(1);
+  if (!asset) {
+    res.status(404).json({ error: "Generated image not found." });
+    return;
+  }
+  const likeCount = await db.transaction(async (tx) => {
+    const deleted = await tx
+      .delete(imageAssetLikesTable)
+      .where(and(
+        eq(imageAssetLikesTable.userId, req.user.id),
+        eq(imageAssetLikesTable.imageAssetId, asset.id),
+      ))
+      .returning({ imageAssetId: imageAssetLikesTable.imageAssetId });
+    if (deleted.length > 0) {
+      await tx
+        .update(imageAssetsTable)
+        .set({ likeCount: sql`GREATEST(${imageAssetsTable.likeCount} - 1, 0)` })
+        .where(eq(imageAssetsTable.id, asset.id));
+    }
+    const [current] = await tx
+      .select({ likeCount: imageAssetsTable.likeCount })
+      .from(imageAssetsTable)
+      .where(eq(imageAssetsTable.id, asset.id))
+      .limit(1);
+    return current?.likeCount ?? 0;
+  });
+  res.json(UnlikeImageAssetResponse.parse({ liked: false, likeCount }));
+});
+
 router.delete("/image-assets/:id", async (req, res) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: "Unauthorized" });
@@ -254,7 +630,7 @@ router.delete("/image-assets/:id", async (req, res) => {
   }
   await db
     .update(imageAssetsTable)
-    .set({ deletedAt: new Date() })
+    .set({ deletedAt: new Date(), isPublic: false })
     .where(eq(imageAssetsTable.id, asset.id));
   await new ObjectStorageService().deleteObject(asset.objectPath).catch(() => {});
   res.status(204).end();

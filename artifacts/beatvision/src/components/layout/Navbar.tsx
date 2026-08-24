@@ -48,6 +48,7 @@ export function Navbar() {
   const publicLinks = [
     { href: "/explore", label: "Explore", icon: Compass },
     { href: "/soundtracks", label: "Make Music", icon: Music2 },
+    { href: "/tutorial/script-to-video", label: "Tutorial", icon: Film },
     { href: "/pricing", label: "Pricing", icon: CreditCard },
   ];
   // Top bar: flat member links + public links.

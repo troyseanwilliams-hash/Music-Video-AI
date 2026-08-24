@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CreateImagePackRequestAspectRatio } from "./createImagePackRequestAspectRatio";
+import type { ImagePackScene } from "./imagePackScene";
 import type { VideoStyle } from "./videoStyle";
 
 export interface CreateImagePackRequest {
@@ -26,4 +27,10 @@ export interface CreateImagePackRequest {
   aspectRatio?: CreateImagePackRequestAspectRatio;
   /** Optional private uploaded image used to keep the subject and visual identity consistent across the image pack. */
   referenceImagePath?: string | null;
+  /**
+   * Exact ordered scene prompts approved by the user from the no-charge planning step.
+   * @minItems 1
+   * @maxItems 30
+   */
+  approvedScenes?: ImagePackScene[];
 }

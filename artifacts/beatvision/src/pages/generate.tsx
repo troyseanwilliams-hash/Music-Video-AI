@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { AudioWaveformSelector } from "@/components/AudioWaveformSelector";
 import SignupTeaser from "@/components/SignupTeaser";
@@ -8,6 +8,8 @@ import {
   useCreateJob,
   useAnalyzeAudio,
   useGetDashboardStats,
+  usePlanImagePack,
+  useCreateImagePack,
   CreateJobRequestAudioSourceType,
   CreateJobRequestAspectRatio,
   CreateJobRequestResolution,
@@ -16,6 +18,7 @@ import {
   CreateJobRequestNarrativeVisualSource,
   VideoStyle,
   type CreateJobRequest,
+  type ImagePackScene,
 } from "@workspace/api-client-react";
 import {
   estimateCreditCost,
@@ -304,6 +307,18 @@ export default function Generate() {
   } | null>(null);
   const [shotPlanLoading, setShotPlanLoading] = useState(false);
 
+  // Image Pack Planning
+  const planImagePack = usePlanImagePack();
+  const createImagePack = useCreateImagePack();
+  const [imagePackScenes, setImagePackScenes] = useState<ImagePackScene[] | null>(null);
+  const [imagePackPlanLoading, setImagePackPlanLoading] = useState(false);
+
+  const numberedImageSceneAnalysis = imagePackMode
+    ? analyzeNumberedImageScenes(prompt)
+    : { count: null, invalid: false };
+  const numberedImageSceneCount = numberedImageSceneAnalysis.count;
+  const effectiveImagePackCount = numberedImageSceneCount ?? imagePackCount;
+
   // Reference image
   const refImageInputRef = useRef<HTMLInputElement>(null);
   const [refImageObjectPath, setRefImageObjectPath] = useState<string | null>(null);
@@ -537,6 +552,48 @@ export default function Generate() {
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [confirmOpen, imagePackMode]);
+
+  useEffect(() => {
+    if (imagePackMode) {
+      setImagePackScenes(null);
+    }
+  }, [prompt, selectedStyle, effectiveImagePackCount, imagePackAspectRatio, refImageObjectPath, imagePackMode]);
+
+  useEffect(() => {
+    if (!confirmOpen) return;
+    if (!imagePackMode) return;
+    if (imagePackScenes) return; // already planned
+
+    setImagePackPlanLoading(true);
+    planImagePack.mutate(
+      {
+        data: {
+          prompt: prompt.trim() || "Generated images",
+          style: selectedStyle,
+          imageCount: effectiveImagePackCount,
+          aspectRatio: imagePackAspectRatio as any,
+          referenceImagePath: refImageObjectPath ?? null,
+        }
+      },
+      {
+        onSuccess: (data) => {
+          setImagePackScenes(data.scenes);
+        },
+        onError: () => {
+          const defaultScenes = Array.from({ length: effectiveImagePackCount }).map((_, i) => ({
+            index: i,
+            prompt: "",
+          }));
+          setImagePackScenes(defaultScenes);
+        },
+        onSettled: () => {
+          setImagePackPlanLoading(false);
+        }
+      }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [confirmOpen, imagePackMode, imagePackScenes, prompt, selectedStyle, effectiveImagePackCount, imagePackAspectRatio, refImageObjectPath]);
+
   // Quick-start: apply a template's prompt/style/aspect/duration in one click.
   function applyTemplate(t: (typeof TEMPLATES)[number]) {
     setPrompt(t.prompt);
@@ -730,11 +787,6 @@ export default function Generate() {
       ? calculateLipsyncCost(fullTrackLipSyncSeconds)
       : 0;
   const cost = videoCost + lipSyncAddon;
-  const numberedImageSceneAnalysis = imagePackMode
-    ? analyzeNumberedImageScenes(prompt)
-    : { count: null, invalid: false };
-  const numberedImageSceneCount = numberedImageSceneAnalysis.count;
-  const effectiveImagePackCount = numberedImageSceneCount ?? imagePackCount;
   const imagePackCost = effectiveImagePackCount * GENERATED_IMAGE_CREDITS_PER_VISUAL;
   const activeCost = imagePackMode ? imagePackCost : cost;
   const generationEstimate = getGenerationTimeEstimate(
@@ -960,7 +1012,17 @@ export default function Generate() {
     );
   };
 
-  const submitImagePack = async () => {
+  const isImagePackPlanValid = useMemo(() => {
+    if (!imagePackMode) return true;
+    if (!imagePackScenes) return false;
+    if (imagePackScenes.length !== effectiveImagePackCount) return false;
+    const prompts = imagePackScenes.map(s => s.prompt.trim());
+    if (prompts.some(p => p === "")) return false;
+    if (new Set(prompts).size !== prompts.length) return false;
+    return true;
+  }, [imagePackMode, imagePackScenes, effectiveImagePackCount]);
+
+  const submitImagePack = () => {
     if (
       numberedImageSceneAnalysis.invalid
       ||
@@ -976,43 +1038,42 @@ export default function Generate() {
       });
       return;
     }
+
+    if (!isImagePackPlanValid) {
+      return;
+    }
+
     setConfirmOpen(false);
     setImagePackSubmitting(true);
-    try {
-      const response = await fetch("/api/image-packs", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: prompt.trim(),
-          style: selectedStyle,
-          imageCount: effectiveImagePackCount,
-          aspectRatio: imagePackAspectRatio,
-          referenceImagePath: refImageObjectPath ?? null,
-        }),
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) {
+
+    createImagePack.mutate({
+      data: {
+        prompt: prompt.trim() || "Generated images",
+        style: selectedStyle,
+        imageCount: effectiveImagePackCount,
+        aspectRatio: imagePackAspectRatio as any,
+        referenceImagePath: refImageObjectPath ?? null,
+        approvedScenes: imagePackScenes ?? undefined,
+      }
+    }, {
+      onSuccess: (job) => {
+        setImagePackSubmitting(false);
+        setLocation(`/jobs/${job.id}`);
+      },
+      onError: (err: any) => {
+        setImagePackSubmitting(false);
+        const code = err?.response?.data?.code;
+        const msg = err?.response?.data?.error ?? err.message ?? "Could not start the image pack. Please try again.";
         setErrorDialog({
           open: true,
-          title: body.code === "INSUFFICIENT_CREDITS" ? "Not enough credits" : "Image pack unavailable",
-          message: body.error ?? "Could not start the image pack. Please try again.",
-          code: body.code,
-          creditsRequired: body.creditsRequired,
-          creditsRemaining: body.creditsRemaining,
+          title: code === "INSUFFICIENT_CREDITS" ? "Not enough credits" : "Image pack unavailable",
+          message: msg,
+          code,
+          creditsRequired: err?.response?.data?.creditsRequired,
+          creditsRemaining: err?.response?.data?.creditsRemaining,
         });
-        return;
       }
-      setLocation(`/jobs/${body.id}`);
-    } catch {
-      setErrorDialog({
-        open: true,
-        title: "Image pack unavailable",
-        message: "A network error prevented the image pack from starting. No job was created.",
-      });
-    } finally {
-      setImagePackSubmitting(false);
-    }
+    });
   };
 
   const handleGenerate = () => {
@@ -1135,13 +1196,15 @@ export default function Generate() {
             <>
               Describe the visual direction, choose how many images you need, and optionally add a reference image for consistent character scenes.
               Your saved images are ready to arrange in Remix Lab, where you can set each image&apos;s hold time to follow a spoken narrative or podcast.
+              Need help writing prompts from a script? <Link href="/tutorial/script-to-video" className="underline text-primary hover:text-primary/80">Read the Script-to-Video Tutorial</Link>.
               We charge credits only when image generation succeeds.
             </>
           ) : (
             <>
               Add audio (upload, Suno link, or one of your Soundtracks), describe the look, pick your engine — <strong>Runway</strong> (premium)
               or <strong>Kling</strong> (value) — and a length. For a spoken narrative or podcast, create a still image pack, then use Remix Lab
-              to place those images against your full audio and set each image&apos;s hold time to follow your timeline. We charge credits only when it succeeds.
+              to place those images against your full audio and set each image&apos;s hold time to follow your timeline.
+              <Link href="/tutorial/script-to-video" className="ml-1 underline text-primary hover:text-primary/80">Learn how</Link>. We charge credits only when it succeeds.
             </>
           )}
         </TutorialTip>
@@ -2832,6 +2895,46 @@ export default function Generate() {
                 )}
               </div>
 
+              {/* Image Pack Plan Preview */}
+              {imagePackMode && (
+                <div className="rounded-lg border border-border bg-muted/20 p-3 flex flex-col space-y-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm font-medium flex items-center gap-1.5 text-foreground">
+                      <ImageIcon className="h-4 w-4 text-primary" />
+                      Scene plan
+                    </span>
+                    <span className="text-xs text-muted-foreground">Credits charged only when creating images, not planning</span>
+                  </div>
+                  {imagePackPlanLoading ? (
+                    <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin text-primary" />
+                      Planning scenes...
+                    </div>
+                  ) : (
+                    <div className="flex flex-col space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                      {imagePackScenes?.map((scene, i) => (
+                         <div key={i} className="flex gap-2 items-start">
+                           <div className="flex items-center justify-center h-6 w-6 shrink-0 bg-primary/10 text-primary rounded-full text-xs font-semibold mt-1">
+                             {i + 1}
+                           </div>
+                           <Textarea
+                             value={scene.prompt}
+                             onChange={(e) => {
+                               const updated = [...imagePackScenes];
+                               updated[i] = { ...updated[i], prompt: e.target.value };
+                               setImagePackScenes(updated);
+                             }}
+                             className="min-h-16 text-sm bg-background flex-1"
+                             placeholder={`Prompt for scene ${i + 1}`}
+                             data-testid={`input-image-pack-scene-${i}`}
+                           />
+                         </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Storyboard preview — the shots we'll generate, before you spend credits */}
               {!imagePackMode && <div className="rounded-lg border border-border bg-muted/20 p-3">
                 <div className="flex items-center justify-between mb-2">
@@ -2904,6 +3007,13 @@ export default function Generate() {
             </span>
           </div>
         )}
+        {imagePackMode && !isImagePackPlanValid && !imagePackPlanLoading && imagePackScenes && (
+          <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+            <span>
+              Please ensure all {effectiveImagePackCount} prompts are non-empty and unique.
+            </span>
+          </div>
+        )}
         <DialogFooter className="flex-col sm:flex-row gap-2 mt-2">
           <Button
             variant="outline"
@@ -2914,7 +3024,12 @@ export default function Generate() {
           </Button>
           <Button
             className="bg-gradient-electric text-white shadow-glow border-0 sm:order-2"
-            disabled={createJob.isPending || imagePackSubmitting || (!imagePackMode && (fullTrackNeedsAnalysis || fullTrackOverLimit))}
+            disabled={
+              createJob.isPending ||
+              imagePackSubmitting ||
+              (!imagePackMode && (fullTrackNeedsAnalysis || fullTrackOverLimit)) ||
+              (imagePackMode && (!isImagePackPlanValid || imagePackPlanLoading))
+            }
             onClick={submitJob}
           >
             {createJob.isPending || imagePackSubmitting ? (

@@ -737,6 +737,11 @@ export const createImagePackBodyPromptMax = 1000;
 export const createImagePackBodyImageCountMax = 30;
 
 export const createImagePackBodyAspectRatioDefault = `9:16`;
+export const createImagePackBodyApprovedScenesItemIndexMin = 0;
+
+export const createImagePackBodyApprovedScenesItemPromptMax = 1000;
+
+export const createImagePackBodyApprovedScenesMax = 30;
 
 export const CreateImagePackBody = zod.object({
   prompt: zod
@@ -771,6 +776,83 @@ export const CreateImagePackBody = zod.object({
     .describe(
       "Optional private uploaded image used to keep the subject and visual identity consistent across the image pack.",
     ),
+  approvedScenes: zod
+    .array(
+      zod.object({
+        index: zod
+          .number()
+          .min(createImagePackBodyApprovedScenesItemIndexMin)
+          .describe("Zero-based chronological scene position."),
+        prompt: zod
+          .string()
+          .min(1)
+          .max(createImagePackBodyApprovedScenesItemPromptMax),
+      }),
+    )
+    .min(1)
+    .max(createImagePackBodyApprovedScenesMax)
+    .optional()
+    .describe(
+      "Exact ordered scene prompts approved by the user from the no-charge planning step.",
+    ),
+});
+
+/**
+ * Returns the exact ordered scene prompts to approve before creating a charged image pack.
+ * @summary Plan an editable generated-image storyboard without reserving credits
+ */
+export const PlanImagePackHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const planImagePackBodyPromptMax = 1000;
+
+export const planImagePackBodyImageCountMax = 30;
+
+export const planImagePackBodyAspectRatioDefault = `9:16`;
+
+export const PlanImagePackBody = zod.object({
+  prompt: zod
+    .string()
+    .min(1)
+    .max(planImagePackBodyPromptMax)
+    .describe("Visual direction or a consecutively numbered scene script."),
+  style: zod
+    .enum([
+      "realistic",
+      "anime",
+      "cinematic",
+      "abstract",
+      "neon",
+      "vintage",
+      "fantasy",
+      "documentary",
+    ])
+    .optional(),
+  imageCount: zod.number().min(1).max(planImagePackBodyImageCountMax),
+  aspectRatio: zod
+    .enum(["9:16", "16:9"])
+    .default(planImagePackBodyAspectRatioDefault),
+  referenceImagePath: zod.string().nullish(),
+});
+
+export const planImagePackResponseScenesItemIndexMin = 0;
+
+export const planImagePackResponseScenesItemPromptMax = 1000;
+
+export const PlanImagePackResponse = zod.object({
+  scenes: zod.array(
+    zod.object({
+      index: zod
+        .number()
+        .min(planImagePackResponseScenesItemIndexMin)
+        .describe("Zero-based chronological scene position."),
+      prompt: zod.string().min(1).max(planImagePackResponseScenesItemPromptMax),
+    }),
+  ),
 });
 
 /**
@@ -818,6 +900,9 @@ export const ListImageAssetsResponse = zod.object({
         ),
       prompt: zod.string(),
       style: zod.string().nullish(),
+      isPublic: zod.boolean(),
+      isCreatorAnonymous: zod.boolean(),
+      likeCount: zod.number(),
       createdAt: zod.coerce.date(),
     }),
   ),
@@ -839,6 +924,143 @@ export const DeleteImageAssetHeader = zod.object({
     .optional()
     .describe("Opaque session token — `Bearer <sid>`."),
 });
+
+/**
+ * @summary Publish or unpublish a generated image (owner or admin)
+ */
+export const UpdateImageAssetVisibilityParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const UpdateImageAssetVisibilityHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const UpdateImageAssetVisibilityBody = zod.object({
+  isPublic: zod.boolean(),
+  isCreatorAnonymous: zod
+    .boolean()
+    .optional()
+    .describe("Hide the creator's profile name on public Explore surfaces."),
+});
+
+export const UpdateImageAssetVisibilityResponse = zod.object({
+  id: zod.string(),
+  isPublic: zod.boolean(),
+  isCreatorAnonymous: zod.boolean(),
+});
+
+/**
+ * @summary Like a public generated image
+ */
+export const LikeImageAssetParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const LikeImageAssetHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const LikeImageAssetResponse = zod.object({
+  liked: zod.boolean(),
+  likeCount: zod.number(),
+});
+
+/**
+ * @summary Remove a like from a generated image
+ */
+export const UnlikeImageAssetParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const UnlikeImageAssetHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const UnlikeImageAssetResponse = zod.object({
+  liked: zod.boolean(),
+  likeCount: zod.number(),
+});
+
+/**
+ * @summary List public generated images (no authentication required)
+ */
+
+export const listPublicImageAssetsQueryLimitMax = 48;
+
+export const ListPublicImageAssetsQueryParams = zod.object({
+  page: zod.coerce.number().min(1).optional(),
+  limit: zod.coerce
+    .number()
+    .min(1)
+    .max(listPublicImageAssetsQueryLimitMax)
+    .optional(),
+});
+
+export const ListPublicImageAssetsResponse = zod.object({
+  assets: zod.array(
+    zod
+      .object({
+        id: zod.string(),
+        objectPath: zod
+          .string()
+          .describe("Object path readable while this image remains public."),
+        assetIndex: zod
+          .number()
+          .describe(
+            "Zero-based chronological scene position in the source generation.",
+          ),
+        style: zod.string().nullish(),
+        likeCount: zod.number(),
+        liked: zod.boolean(),
+        creatorName: zod.string().nullish(),
+        createdAt: zod.coerce.date(),
+      })
+      .describe(
+        "Stable public generated-image data. Private generation prompts and owner IDs are intentionally omitted.",
+      ),
+  ),
+  total: zod.number(),
+  page: zod.number(),
+  limit: zod.number(),
+});
+
+/**
+ * @summary Get stable public generated-image detail
+ */
+export const GetPublicImageAssetParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const GetPublicImageAssetResponse = zod
+  .object({
+    id: zod.string(),
+    objectPath: zod
+      .string()
+      .describe("Object path readable while this image remains public."),
+    assetIndex: zod
+      .number()
+      .describe(
+        "Zero-based chronological scene position in the source generation.",
+      ),
+    style: zod.string().nullish(),
+    likeCount: zod.number(),
+    liked: zod.boolean(),
+    creatorName: zod.string().nullish(),
+    createdAt: zod.coerce.date(),
+  })
+  .describe(
+    "Stable public generated-image data. Private generation prompts and owner IDs are intentionally omitted.",
+  );
 
 /**
  * @summary Get job status and details

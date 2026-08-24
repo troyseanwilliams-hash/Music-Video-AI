@@ -18,6 +18,8 @@ tags:
     description: Music video generation jobs
   - name: Videos
     description: Generated videos gallery
+  - name: Generated Images
+    description: Private generated-image library and public Explore gallery
   - name: Credits
     description: User credits and usage
   - name: Billing
@@ -324,6 +326,41 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
 
+  /image-packs/plan:
+    post:
+      tags: [Jobs]
+      operationId: planImagePack
+      summary: Plan an editable generated-image storyboard without reserving credits
+      description: Returns the exact ordered scene prompts to approve before creating a charged image pack.
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImagePackPlanRequest'
+      responses:
+        '200':
+          description: Image storyboard planned; no credits have been reserved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImagePackPlan'
+        '400':
+          description: Invalid planning request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
   /image-assets:
     get:
       tags: [Jobs]
@@ -393,6 +430,149 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+
+  /image-assets/{id}/visibility:
+    patch:
+      tags: [Generated Images]
+      operationId: updateImageAssetVisibility
+      summary: Publish or unpublish a generated image (owner or admin)
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GeneratedImageVisibilityUpdate'
+      responses:
+        '200':
+          description: Visibility updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeneratedImageVisibility'
+        '400':
+          description: Invalid request.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '403':
+          description: Forbidden.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '404':
+          description: Generated image not found.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /image-assets/{id}/like:
+    post:
+      tags: [Generated Images]
+      operationId: likeImageAsset
+      summary: Like a public generated image
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Liked (idempotent).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LikeResponse' }
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '404':
+          description: Public generated image not found.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    delete:
+      tags: [Generated Images]
+      operationId: unlikeImageAsset
+      summary: Remove a like from a generated image
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Unliked (idempotent).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LikeResponse' }
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '404':
+          description: Public generated image not found.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /image-gallery:
+    get:
+      tags: [Generated Images]
+      operationId: listPublicImageAssets
+      summary: List public generated images (no authentication required)
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 48 }
+      responses:
+        '200':
+          description: Public generated images sorted by likes then recency.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicImageAssetListResponse' }
+
+  /image-gallery/{id}:
+    get:
+      tags: [Generated Images]
+      operationId: getPublicImageAsset
+      summary: Get stable public generated-image detail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Public generated image detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicImageAsset' }
+        '404':
+          description: Public generated image not found.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
 
   /jobs/{id}:
     get:
@@ -1388,10 +1568,62 @@ components:
           type: string
           nullable: true
           description: Optional private uploaded image used to keep the subject and visual identity consistent across the image pack.
+        approvedScenes:
+          type: array
+          minItems: 1
+          maxItems: 30
+          description: Exact ordered scene prompts approved by the user from the no-charge planning step.
+          items:
+            $ref: '#/components/schemas/ImagePackScene'
+
+    ImagePackPlanRequest:
+      type: object
+      required: [prompt, imageCount]
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: Visual direction or a consecutively numbered scene script.
+        style:
+          $ref: '#/components/schemas/VideoStyle'
+        imageCount:
+          type: integer
+          minimum: 1
+          maximum: 30
+        aspectRatio:
+          type: string
+          enum: ['9:16', '16:9']
+          default: '9:16'
+        referenceImagePath:
+          type: string
+          nullable: true
+
+    ImagePackScene:
+      type: object
+      required: [index, prompt]
+      properties:
+        index:
+          type: integer
+          minimum: 0
+          description: Zero-based chronological scene position.
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 1000
+
+    ImagePackPlan:
+      type: object
+      required: [scenes]
+      properties:
+        scenes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImagePackScene'
 
     ImageAsset:
       type: object
-      required: [id, userId, jobId, assetIndex, objectPath, prompt, createdAt]
+      required: [id, userId, jobId, assetIndex, objectPath, prompt, isPublic, isCreatorAnonymous, likeCount, createdAt]
       properties:
         id:
           type: string
@@ -1408,6 +1640,12 @@ components:
           type: string
         style:
           type: [string, 'null']
+        isPublic:
+          type: boolean
+        isCreatorAnonymous:
+          type: boolean
+        likeCount:
+          type: integer
         createdAt:
           type: string
           format: date-time
@@ -1426,6 +1664,55 @@ components:
           type: integer
         limit:
           type: integer
+
+    PublicImageAsset:
+      type: object
+      description: Stable public generated-image data. Private generation prompts and owner IDs are intentionally omitted.
+      required: [id, objectPath, assetIndex, likeCount, liked, createdAt]
+      properties:
+        id: { type: string }
+        objectPath:
+          type: string
+          description: Object path readable while this image remains public.
+        assetIndex:
+          type: integer
+          description: Zero-based chronological scene position in the source generation.
+        style:
+          type: [string, 'null']
+        likeCount: { type: integer }
+        liked: { type: boolean }
+        creatorName: { type: [string, 'null'] }
+        createdAt:
+          type: string
+          format: date-time
+
+    PublicImageAssetListResponse:
+      type: object
+      required: [assets, total, page, limit]
+      properties:
+        assets:
+          type: array
+          items: { $ref: '#/components/schemas/PublicImageAsset' }
+        total: { type: integer }
+        page: { type: integer }
+        limit: { type: integer }
+
+    GeneratedImageVisibilityUpdate:
+      type: object
+      required: [isPublic]
+      properties:
+        isPublic: { type: boolean }
+        isCreatorAnonymous:
+          type: boolean
+          description: Hide the creator's profile name on public Explore surfaces.
+
+    GeneratedImageVisibility:
+      type: object
+      required: [id, isPublic, isCreatorAnonymous]
+      properties:
+        id: { type: string }
+        isPublic: { type: boolean }
+        isCreatorAnonymous: { type: boolean }
 
     JobManifest:
       type: object

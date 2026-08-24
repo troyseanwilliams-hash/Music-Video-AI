@@ -146,6 +146,11 @@ export const imageAssetsTable = pgTable(
     objectPath: text("object_path").notNull(),
     prompt: text("prompt").notNull(),
     style: videoStyleEnum("style"),
+    // Generated images are private Remix inputs until their owner explicitly
+    // publishes them. Public responses must never include prompt.
+    isPublic: boolean("is_public").notNull().default(false),
+    isCreatorAnonymous: boolean("is_creator_anonymous").notNull().default(false),
+    likeCount: integer("like_count").notNull().default(0),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -158,6 +163,28 @@ export const imageAssetsTable = pgTable(
     ),
   }),
 );
+
+// Per-user likes on public generated images. Composite PK makes like/unlike
+// idempotent and keeps the denormalized counter safe from duplicate requests.
+export const imageAssetLikesTable = pgTable(
+  "image_asset_likes",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    imageAssetId: text("image_asset_id")
+      .notNull()
+      .references(() => imageAssetsTable.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.imageAssetId] }),
+  }),
+);
+
+export type ImageAssetLike = typeof imageAssetLikesTable.$inferSelect;
 
 // Per-user likes on public videos. Composite PK prevents double-counting.
 export const videoLikesTable = pgTable(

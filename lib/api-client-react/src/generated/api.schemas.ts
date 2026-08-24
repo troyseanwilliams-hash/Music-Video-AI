@@ -442,6 +442,19 @@ export const CreateImagePackRequestAspectRatio = {
   "16:9": "16:9",
 } as const;
 
+export interface ImagePackScene {
+  /**
+   * Zero-based chronological scene position.
+   * @minimum 0
+   */
+  index: number;
+  /**
+   * @minLength 1
+   * @maxLength 1000
+   */
+  prompt: string;
+}
+
 export interface CreateImagePackRequest {
   /**
    * Visual direction used for every generated image.
@@ -460,6 +473,41 @@ export interface CreateImagePackRequest {
   aspectRatio?: CreateImagePackRequestAspectRatio;
   /** Optional private uploaded image used to keep the subject and visual identity consistent across the image pack. */
   referenceImagePath?: string | null;
+  /**
+   * Exact ordered scene prompts approved by the user from the no-charge planning step.
+   * @minItems 1
+   * @maxItems 30
+   */
+  approvedScenes?: ImagePackScene[];
+}
+
+export type ImagePackPlanRequestAspectRatio =
+  (typeof ImagePackPlanRequestAspectRatio)[keyof typeof ImagePackPlanRequestAspectRatio];
+
+export const ImagePackPlanRequestAspectRatio = {
+  "9:16": "9:16",
+  "16:9": "16:9",
+} as const;
+
+export interface ImagePackPlanRequest {
+  /**
+   * Visual direction or a consecutively numbered scene script.
+   * @minLength 1
+   * @maxLength 1000
+   */
+  prompt: string;
+  style?: VideoStyle;
+  /**
+   * @minimum 1
+   * @maximum 30
+   */
+  imageCount: number;
+  aspectRatio?: ImagePackPlanRequestAspectRatio;
+  referenceImagePath?: string | null;
+}
+
+export interface ImagePackPlan {
+  scenes: ImagePackScene[];
 }
 
 export interface ImageAsset {
@@ -472,6 +520,9 @@ export interface ImageAsset {
   prompt: string;
   /** @nullable */
   style?: string | null;
+  isPublic: boolean;
+  isCreatorAnonymous: boolean;
+  likeCount: number;
   createdAt: string;
 }
 
@@ -480,6 +531,43 @@ export interface ImageAssetListResponse {
   total: number;
   page: number;
   limit: number;
+}
+
+/**
+ * Stable public generated-image data. Private generation prompts and owner IDs are intentionally omitted.
+ */
+export interface PublicImageAsset {
+  id: string;
+  /** Object path readable while this image remains public. */
+  objectPath: string;
+  /** Zero-based chronological scene position in the source generation. */
+  assetIndex: number;
+  /** @nullable */
+  style?: string | null;
+  likeCount: number;
+  liked: boolean;
+  /** @nullable */
+  creatorName?: string | null;
+  createdAt: string;
+}
+
+export interface PublicImageAssetListResponse {
+  assets: PublicImageAsset[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface GeneratedImageVisibilityUpdate {
+  isPublic: boolean;
+  /** Hide the creator's profile name on public Explore surfaces. */
+  isCreatorAnonymous?: boolean;
+}
+
+export interface GeneratedImageVisibility {
+  id: string;
+  isPublic: boolean;
+  isCreatorAnonymous: boolean;
 }
 
 export type CreateJobRequestAudioSourceType =
@@ -1099,6 +1187,18 @@ export type ListImageAssetsParams = {
    * Optionally return only generated images from this owner-scoped job.
    */
   jobId?: string;
+};
+
+export type ListPublicImageAssetsParams = {
+  /**
+   * @minimum 1
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 48
+   */
+  limit?: number;
 };
 
 export type ListVideosParams = {

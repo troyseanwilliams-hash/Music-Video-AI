@@ -169,7 +169,7 @@ export default function Home() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 text-left">
               {[
                 { icon: Music, title: "1 · Bring or make music", body: "Upload a song, paste a Suno link, or create an original vocal song or instrumental from a prompt—use it in your video or as music on its own." },
-                { icon: Sparkles, title: "2 · AI beat-synced video", body: "The engine reads your track's beat, energy, and mood and renders cinematic, on-beat visuals." },
+                { icon: Sparkles, title: "2 · Generate video or images", body: "The engine reads your track's beat for auto-synced video, or use Images mode to generate consistent sequences for a script or podcast." },
                 { icon: Scissors, title: "3 · Make it yours", body: "Fine-tune on the Remix Lab timeline — or build a slideshow from your own photos. Trim, sync music, add transitions, preview live. A simple CapCut alternative for weddings, work, socials, and just for fun." },
                 { icon: Share2, title: "4 · Export everywhere", body: "One-click Release Kit gives you TikTok, Reels, Shorts, and Spotify Canvas cuts, ready to post." },
               ].map((s) => (
@@ -271,16 +271,17 @@ export default function Home() {
                 <div className="h-12 w-12 rounded-xl bg-primary/15 flex items-center justify-center mb-5 transition-transform group-hover:scale-110">
                   <Sparkles className="h-6 w-6 text-primary" />
                 </div>
-                <h3 className="text-xl font-bold mb-2">AI Generator</h3>
+                <h3 className="text-xl font-bold mb-2">AI Video & Images</h3>
                 <p className="text-muted-foreground mb-6 flex-1">
-                  Upload a song and our AI analyzes its beat, energy, and mood to generate cinematic, beat-synced
-                  visuals in 8 styles — automatically.
+                  Upload a song for auto-beat-synced visuals, or generate numbered image sequences to tell a story or match a podcast. Then bring them into Remix Lab.
                 </p>
-                <Link href="/generate">
-                  <Button variant="outline" className="border-primary/40 hover:bg-primary/10 hover:text-primary">
-                    Generate with AI
-                  </Button>
-                </Link>
+                <div className="flex gap-2">
+                  <Link href="/generate" className="flex-1">
+                    <Button variant="outline" className="w-full border-primary/40 hover:bg-primary/10 hover:text-primary">
+                      Open Generator
+                    </Button>
+                  </Link>
+                </div>
               </div>
               <div className="group rounded-2xl border border-card-border bg-card p-8 flex flex-col transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-glow">
                 <div className="h-12 w-12 rounded-xl bg-primary/15 flex items-center justify-center mb-5 transition-transform group-hover:scale-110">
