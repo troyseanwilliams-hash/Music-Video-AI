@@ -31,6 +31,7 @@ import LipSyncPanel from "@/components/LipSyncPanel";
 import ReferEarnCard from "@/components/ReferEarnCard";
 import GenerationFiller from "@/components/GenerationFiller";
 import GenerationStoryboard from "@/components/GenerationStoryboard";
+import { shouldShowVideoScenePreviews } from "@/lib/jobStatusDisplay";
 
 const TERMINAL_STATUSES = new Set(["ready", "failed"]);
 
@@ -598,8 +599,11 @@ export default function JobStatus() {
     .filter((index) => !Number.isNaN(index));
   const highestKnownIndex = knownClipIndexes.length ? Math.max(...knownClipIndexes) : -1;
   const gridSlots = Math.max(numClips, highestKnownIndex + 1);
-  const showScenePreviews =
-    (job.status === "generating" || job.status === "stitching") && gridSlots > 0;
+  const showScenePreviews = shouldShowVideoScenePreviews(
+    job.jobType,
+    job.status,
+    gridSlots,
+  );
 
   function copyLink() {
     navigator.clipboard.writeText(window.location.href).then(() => {
