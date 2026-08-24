@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useLocation } from "wouter";
-import { Mic, Video, Sparkles, AlertTriangle, Check, Loader2, Link2, Coins, Zap } from "lucide-react";
+import { Mic, Video, Sparkles, AlertTriangle, Check, Loader2, Link2, Coins, Zap, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -223,21 +223,123 @@ export default function Home() {
         </div>
       )}
 
-      <div className="text-center max-w-3xl mx-auto mb-16 mt-4 animate-in fade-in zoom-in duration-700 delay-150 fill-mode-both">
+      <div className="text-center max-w-4xl mx-auto mb-20 mt-8 animate-in fade-in zoom-in duration-700 delay-150 fill-mode-both">
         <Badge className="mb-6 border-primary/30 bg-primary/10 text-primary py-1.5 px-4 text-sm rounded-full">
           <Sparkles className="mr-2 h-4 w-4" aria-hidden="true" />
           The AISync Suite
         </Badge>
-        <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight mb-6 leading-tight">
+        <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-8 leading-tight">
           Two studios. <br className="sm:hidden" />
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary via-[#7c6bf5] to-accent">
-            One subscription.
+            One unified subscription.
           </span>
         </h1>
-        <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-          Get dedicated monthly credits for both AIBeatSync and AIPodSync without managing two separate bills.
-          Your video credits never compete with your podcast credits.
+        <p className="text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed">
+          The shared front door for creators. Turn music into polished visual content with AIBeatSync, and transform scripts into narrated, auto-captioned episodes with AIPodSync.
         </p>
+      </div>
+
+      {/* Product Capabilities */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-24 max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-8 duration-700 delay-300 fill-mode-both">
+        {/* AIBeatSync Card */}
+        <Card className="p-8 border-primary/20 bg-card overflow-hidden relative flex flex-col">
+          <div className="absolute top-0 right-0 p-8 opacity-[0.03] pointer-events-none">
+            <Video className="w-48 h-48" />
+          </div>
+          <div className="relative z-10 flex-1 flex flex-col">
+            <Badge className="mb-6 bg-primary/10 text-primary border-primary/20 w-fit">AIBeatSync</Badge>
+            <h2 className="text-3xl font-bold mb-4">Visuals for your music</h2>
+            <p className="text-muted-foreground mb-8 text-lg">Turn audio tracks into captivating, beat-synced videos with our advanced music visualization engine.</p>
+
+            <ul className="space-y-4 mb-8 flex-1">
+              {[
+                "Create or upload music (vocal songs & instrumentals)",
+                "Beat, energy, and structure analysis",
+                "Original scenes & Narrative Story mode",
+                "Reusable generated image packs (reference-image consistency)",
+                "Personal Gallery with full-resolution downloads",
+                "Remix Lab: ordered photos/clips, narration timing, music sync, transitions, live preview",
+                "1080p no-watermark exports, social cuts & Spotify Canvas"
+              ].map((feature, i) => (
+                <li key={i} className="flex items-start gap-3 text-sm">
+                  <Check className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                  <span>{feature}</span>
+                </li>
+              ))}
+            </ul>
+            <a href="https://aibeatsync.com" target="_blank" rel="noopener noreferrer" className="block w-full">
+              <Button variant="outline" className="w-full border-primary/20 hover:bg-primary/5 text-primary h-12 text-base font-semibold">
+                Visit AIBeatSync <ExternalLink className="ml-2 h-4 w-4" />
+              </Button>
+            </a>
+          </div>
+        </Card>
+
+        {/* AIPodSync Card */}
+        <Card className="p-8 border-accent/20 bg-card overflow-hidden relative flex flex-col">
+          <div className="absolute top-0 right-0 p-8 opacity-[0.03] pointer-events-none">
+            <Mic className="w-48 h-48" />
+          </div>
+          <div className="relative z-10 flex-1 flex flex-col">
+            <Badge className="mb-6 bg-accent/10 text-accent border-accent/20 w-fit">AIPodSync</Badge>
+            <h2 className="text-3xl font-bold mb-4">Visuals for your voice</h2>
+            <p className="text-muted-foreground mb-8 text-lg">Transform scripts and voice recordings into engaging, auto-captioned video podcasts.</p>
+
+            <ul className="space-y-4 mb-8 flex-1">
+              {[
+                "Script or recording to narrated episodes",
+                "Narration and audio mixing",
+                "Auto-captioned visual episodes",
+                "Podcast and narration clip highlights"
+              ].map((feature, i) => (
+                <li key={i} className="flex items-start gap-3 text-sm">
+                  <Check className="h-5 w-5 text-accent shrink-0 mt-0.5" />
+                  <span>{feature}</span>
+                </li>
+              ))}
+            </ul>
+            <a href="https://aipodsync.com" target="_blank" rel="noopener noreferrer" className="block w-full">
+              <Button variant="outline" className="w-full border-accent/20 hover:bg-accent/5 text-accent h-12 text-base font-semibold">
+                Visit AIPodSync <ExternalLink className="ml-2 h-4 w-4" />
+              </Button>
+            </a>
+          </div>
+        </Card>
+      </div>
+
+      <div className="text-center max-w-xl mx-auto mb-10">
+        <h2 className="text-3xl font-bold mb-4">Shared Suite Benefits</h2>
+        <p className="text-base text-muted-foreground">
+          Subscribe once and get access to both platforms without the hassle of managing multiple accounts or subscriptions.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto mb-24">
+        {[
+          {
+            icon: Zap,
+            title: "Instant provisioning",
+            body: "Subscribe once and both balances fill up immediately. Log into either app and your credits are waiting.",
+          },
+          {
+            icon: Coins,
+            title: "Clear, separated credits",
+            body: "Podcast rendering takes different resources than music video rendering. Two balances means you never have to guess conversion rates.",
+          },
+          {
+            icon: Link2,
+            title: "One unified bill",
+            body: "A single charge from AISync Suite on your card. Upgrade, downgrade, or cancel everything from one central subscription management portal.",
+          },
+        ].map((v, i) => (
+          <Card key={v.title} className="p-6 border-border/50 bg-card/30 hover:bg-card/50 transition-colors animate-in fade-in slide-in-from-bottom-8 fill-mode-both" style={{ animationDelay: `${800 + i * 100}ms`}}>
+            <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 mb-5 text-primary shadow-glow">
+              <v.icon className="h-6 w-6" aria-hidden="true" />
+            </span>
+            <h3 className="font-semibold text-lg mb-2">{v.title}</h3>
+            <p className="text-sm text-muted-foreground leading-relaxed">{v.body}</p>
+          </Card>
+        ))}
       </div>
 
       {activeSuite && (
@@ -283,7 +385,7 @@ export default function Home() {
       )}
 
       {!activeSuite && (
-        <div className="flex justify-center items-center gap-3 mb-12 animate-in fade-in slide-in-from-bottom-8 duration-500 delay-300 fill-mode-both">
+        <div className="flex justify-center items-center gap-3 mb-12 animate-in fade-in slide-in-from-bottom-8 duration-500 delay-300 fill-mode-both" id="pricing">
           <span className={`text-sm font-medium transition-colors ${interval === "month" ? "text-foreground" : "text-muted-foreground"}`}>Monthly</span>
           <button
             type="button"
@@ -390,42 +492,6 @@ export default function Home() {
                       : "Link AIPodSync to continue"}
               </Button>
             </div>
-          </Card>
-        ))}
-      </div>
-
-      <div className="text-center max-w-xl mx-auto mb-10">
-        <h2 className="text-3xl font-bold mb-4">How it works</h2>
-        <p className="text-base text-muted-foreground">
-          AIBeatSync and AIPodSync are built and run the same way — simple credit-based pricing, no bait-and-switch
-          trials, and a habit of shipping the features you actually asked for.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto mb-20">
-        {[
-          {
-            icon: Zap,
-            title: "Instant provisioning",
-            body: "Subscribe once and both balances fill up immediately. Log into either app and your credits are waiting.",
-          },
-          {
-            icon: Coins,
-            title: "Clear, separated credits",
-            body: "Podcast rendering takes different resources than 4K video rendering. Two balances means you never have to guess conversion rates.",
-          },
-          {
-            icon: Link2,
-            title: "One unified bill",
-            body: "A single charge from AISync Suite on your card. Upgrade, downgrade, or cancel everything from one central dashboard.",
-          },
-        ].map((v, i) => (
-          <Card key={v.title} className="p-6 border-border/50 bg-card/30 hover:bg-card/50 transition-colors animate-in fade-in slide-in-from-bottom-8 fill-mode-both" style={{ animationDelay: `${800 + i * 100}ms`}}>
-            <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 mb-5 text-primary shadow-glow">
-              <v.icon className="h-6 w-6" aria-hidden="true" />
-            </span>
-            <h3 className="font-semibold text-lg mb-2">{v.title}</h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">{v.body}</p>
           </Card>
         ))}
       </div>
