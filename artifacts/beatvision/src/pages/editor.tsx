@@ -54,6 +54,10 @@ import {
   HYBRID_REMIX_KIND,
 } from "@/lib/hybridRemixHandoff";
 import {
+  IMAGE_REMIX_KIND,
+  isValidImageRemixHandoff,
+} from "@/lib/imageRemixHandoff";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -535,6 +539,37 @@ export default function Editor() {
       if (!raw) return;
       sessionStorage.removeItem("editor:init");
       const init = JSON.parse(raw);
+
+      if (init?.kind === IMAGE_REMIX_KIND) {
+        if (!isValidImageRemixHandoff(init)) {
+          toast({
+            title: "Couldn't add the selected images",
+            description: "That image selection was incomplete or out of date, so Remix Lab opened empty instead.",
+            variant: "destructive",
+          });
+          return;
+        }
+        setSegments(
+          init.images.map((image) => {
+            const objectUrl = `/api/storage${image.objectPath}`;
+            return {
+              id: uid(),
+              name: `Generated image ${image.assetIndex + 1}`,
+              kind: "photo" as const,
+              localUrl: objectUrl,
+              objectPath: image.objectPath,
+              durationSec: 3,
+              thumb: objectUrl,
+              uploading: false,
+            };
+          }),
+        );
+        toast({
+          title: "Generated images added",
+          description: `${init.images.length} ${init.images.length === 1 ? "image is" : "images are"} ready in your timeline.`,
+        });
+        return;
+      }
 
       if (init?.kind === HYBRID_REMIX_KIND) {
         // Fail closed on any malformed/stale/corrupted payload rather than

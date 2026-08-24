@@ -2,11 +2,14 @@ import { useEffect, useState } from "react";
 import { useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { useListVideos, useDeleteVideo, getListVideosQueryKey, getGetDashboardStatsQueryKey } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import LipSyncPanel from "@/components/LipSyncPanel";
 import { LIPSYNC_MIN_SECONDS } from "@/lib/creditPricing";
-import { Loader2, Trash2, Play, Film, Download, Scissors, Globe, Pencil, X, Music, UserRound, Smile } from "lucide-react";
+import {
+  Loader2, Trash2, Play, Film, Download, Scissors, Globe, Pencil, X, Music,
+  UserRound, Smile, Image as ImageIcon, Check,
+} from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,6 +22,23 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { motion } from "framer-motion";
+import {
+  IMAGE_REMIX_KIND,
+  type ImageRemixAsset,
+} from "@/lib/imageRemixHandoff";
+
+interface ImageAsset extends ImageRemixAsset {
+  id: string;
+  jobId: string;
+  createdAt: string;
+}
+
+interface ImageAssetsPage {
+  assets: ImageAsset[];
+  total: number;
+  page: number;
+  limit: number;
+}
 
 function VideoThumbnail({ src, alt }: { src: string; alt: string }) {
   const [error, setError] = useState(false);
@@ -51,6 +71,7 @@ export default function Gallery() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const queryClient = useQueryClient();
+  const [galleryView, setGalleryView] = useState<"videos" | "images">("videos");
   const [loadingAction, setLoadingAction] = useState<Record<string, "watch" | "download" | undefined>>({});
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -61,6 +82,78 @@ export default function Gallery() {
     title: string;
     durationSeconds: number;
   } | null>(null);
+  const [selectedImageIds, setSelectedImageIds] = useState<string[]>([]);
+  const [previewImage, setPreviewImage] = useState<ImageAsset | null>(null);
+  const [deletingImageId, setDeletingImageId] = useState<string | null>(null);
+  const [imageActionError, setImageActionError] = useState<string | null>(null);
+
+  const imageAssetsQuery = useInfiniteQuery({
+    queryKey: ["generated-image-gallery"],
+    initialPageParam: 1,
+    enabled: isAuthenticated && galleryView === "images",
+    queryFn: async ({ pageParam }) => {
+      const response = await fetch(
+        `/api/image-assets?page=${pageParam}&limit=24`,
+        { credentials: "include" },
+      );
+      if (!response.ok) throw new Error("Failed to load generated images");
+      return response.json() as Promise<ImageAssetsPage>;
+    },
+    getNextPageParam: (lastPage) =>
+      lastPage.page * lastPage.limit < lastPage.total
+        ? lastPage.page + 1
+        : undefined,
+  });
+  const generatedImages = imageAssetsQuery.data?.pages.flatMap((page) => page.assets) ?? [];
+  const selectedImages = selectedImageIds.flatMap((id) => {
+    const asset = generatedImages.find((candidate) => candidate.id === id);
+    return asset ? [asset] : [];
+  });
+
+  function toggleImageSelection(id: string) {
+    setSelectedImageIds((selected) =>
+      selected.includes(id)
+        ? selected.filter((imageId) => imageId !== id)
+        : [...selected, id],
+    );
+  }
+
+  function addSelectedImagesToRemix() {
+    if (selectedImages.length === 0) return;
+    sessionStorage.setItem(
+      "editor:init",
+      JSON.stringify({
+        kind: IMAGE_REMIX_KIND,
+        images: selectedImages.map(({ objectPath, prompt, assetIndex }) => ({
+          objectPath,
+          prompt,
+          assetIndex,
+        })),
+      }),
+    );
+    setLocation("/editor");
+  }
+
+  async function deleteImage(asset: ImageAsset) {
+    setDeletingImageId(asset.id);
+    setImageActionError(null);
+    try {
+      const response = await fetch(`/api/image-assets/${asset.id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Could not delete this image.");
+      setSelectedImageIds((selected) => selected.filter((id) => id !== asset.id));
+      if (previewImage?.id === asset.id) setPreviewImage(null);
+      await queryClient.invalidateQueries({ queryKey: ["generated-image-gallery"] });
+    } catch (error) {
+      setImageActionError(
+        error instanceof Error ? error.message : "Could not delete this image.",
+      );
+    } finally {
+      setDeletingImageId(null);
+    }
+  }
 
   async function saveRename(videoId: string) {
     const title = renameValue.trim();
@@ -170,17 +263,50 @@ export default function Gallery() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 sm:mb-10 gap-4">
         <div>
           <h1 className="text-2xl sm:text-4xl font-bold tracking-tight">Your Gallery</h1>
-          <p className="text-sm sm:text-base text-muted-foreground mt-1">All your generated AI music videos.</p>
+          <p className="text-sm sm:text-base text-muted-foreground mt-1">
+            {galleryView === "videos"
+              ? "All your generated AI music videos."
+              : "Every saved image you have generated, ready for Remix Lab."}
+          </p>
         </div>
         
         <Link href="/generate">
           <Button className="bg-gradient-electric text-white shadow-glow">
-            New Video
+            Create new
           </Button>
         </Link>
       </div>
 
-      {isLoading ? (
+      <div className="mb-6 flex w-fit rounded-lg border border-border bg-card/60 p-1" role="tablist" aria-label="Gallery content">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={galleryView === "videos"}
+          onClick={() => setGalleryView("videos")}
+          className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+            galleryView === "videos"
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Film className="h-4 w-4" /> Videos
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={galleryView === "images"}
+          onClick={() => setGalleryView("images")}
+          className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+            galleryView === "images"
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <ImageIcon className="h-4 w-4" /> Images
+        </button>
+      </div>
+
+      {galleryView === "videos" && (isLoading ? (
         <div className="flex items-center justify-center py-32">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
@@ -397,8 +523,12 @@ export default function Gallery() {
 
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive" aria-label="Delete video">
-                        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors" aria-label="Delete video">
+                        {deleteVideo.isPending && deleteVideo.variables?.id === video.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                        )}
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
@@ -443,6 +573,184 @@ export default function Gallery() {
             </Button>
           </Link>
         </div>
+      ))}
+
+      {galleryView === "images" && (
+        imageAssetsQuery.isLoading ? (
+          <div className="flex items-center justify-center py-32">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : imageAssetsQuery.isError ? (
+          <div className="text-center py-16 border border-dashed border-border rounded-2xl bg-card/30">
+            <p className="font-medium">Couldn't load your generated images.</p>
+            <Button variant="outline" className="mt-4" onClick={() => imageAssetsQuery.refetch()}>
+              Try again
+            </Button>
+          </div>
+        ) : generatedImages.length > 0 ? (
+          <div className="space-y-5">
+            <div className="flex flex-col gap-3 rounded-xl border border-primary/20 bg-primary/[0.04] p-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-muted-foreground">
+                {selectedImageIds.length
+                  ? `${selectedImageIds.length} ${selectedImageIds.length === 1 ? "image selected" : "images selected"}`
+                  : "Select images to build a Remix timeline."}
+              </p>
+              <div className="flex gap-2">
+                {selectedImageIds.length > 0 && (
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedImageIds([])}>
+                    Clear selection
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  className="bg-gradient-electric text-white shadow-glow"
+                  disabled={selectedImages.length === 0}
+                  onClick={addSelectedImagesToRemix}
+                >
+                  <Scissors className="mr-2 h-4 w-4" />
+                  Add to Remix Lab
+                </Button>
+              </div>
+            </div>
+
+            {imageActionError && (
+              <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {imageActionError}
+              </p>
+            )}
+
+            <div className="columns-2 sm:columns-3 lg:columns-4 xl:columns-5 gap-4 space-y-4">
+              {generatedImages.map((asset, index) => {
+                const selectedIndex = selectedImageIds.indexOf(asset.id);
+                const selected = selectedIndex !== -1;
+                return (
+                  <motion.article
+                    key={asset.id}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: Math.min(index, 12) * 0.03 }}
+                    className={`break-inside-avoid overflow-hidden rounded-xl border bg-card shadow-sm transition-colors ${
+                      selected ? "border-primary ring-1 ring-primary/50" : "border-card-border hover:border-primary/40"
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setPreviewImage(asset)}
+                      className="group relative block w-full overflow-hidden bg-muted/30 text-left"
+                      aria-label={`Open generated image ${asset.assetIndex + 1}`}
+                    >
+                      <img
+                        src={`/api/storage${asset.objectPath}`}
+                        alt={asset.prompt || `Generated image ${asset.assetIndex + 1}`}
+                        loading="lazy"
+                        className="w-full h-auto object-contain transition-transform duration-300 group-hover:scale-[1.03]"
+                      />
+                      <div className="absolute top-2 left-2 flex flex-col items-start gap-1.5">
+                        <span className="rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white backdrop-blur-md">
+                          Scene {asset.assetIndex + 1}
+                        </span>
+                      </div>
+                      {selected && (
+                        <div className="absolute inset-0 ring-inset ring-2 ring-primary bg-primary/10 flex items-center justify-center">
+                          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground shadow-lg shadow-black/20 ring-2 ring-background">
+                            {selectedIndex + 1}
+                          </span>
+                        </div>
+                      )}
+                    </button>
+                    <div className="space-y-3 p-3">
+                      <p className="line-clamp-2 min-h-10 text-xs leading-relaxed text-muted-foreground" title={asset.prompt}>
+                        {asset.prompt}
+                      </p>
+                      <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                        <span>{new Date(asset.createdAt).toLocaleDateString()}</span>
+                        <span>Image pack</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant={selected ? "default" : "outline"}
+                          size="sm"
+                          className={`h-8 flex-1 text-xs transition-colors ${selected ? "bg-primary text-primary-foreground" : ""}`}
+                          onClick={() => toggleImageSelection(asset.id)}
+                          aria-pressed={selected}
+                        >
+                          {selected ? (
+                            <span className="mr-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary-foreground/20 text-[9px] font-bold">
+                              {selectedIndex + 1}
+                            </span>
+                          ) : null}
+                          {selected ? "Selected" : "Select"}
+                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                              aria-label={`Delete generated image ${asset.assetIndex + 1}`}
+                              disabled={deletingImageId === asset.id}
+                            >
+                              {deletingImageId === asset.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-3.5 w-3.5" />
+                              )}
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete this generated image?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This removes the image from your gallery and Remix Lab. This cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => void deleteImage(asset)}
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                              >
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </div>
+                  </motion.article>
+                );
+              })}
+            </div>
+
+            {imageAssetsQuery.hasNextPage && (
+              <div className="flex justify-center pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => imageAssetsQuery.fetchNextPage()}
+                  disabled={imageAssetsQuery.isFetchingNextPage}
+                >
+                  {imageAssetsQuery.isFetchingNextPage ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : null}
+                  Load older images
+                </Button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="text-center py-16 sm:py-32 border border-dashed border-border rounded-2xl bg-card/30">
+            <ImageIcon className="h-12 w-12 sm:h-16 sm:w-16 text-muted-foreground mx-auto mb-4 sm:mb-6 opacity-20" />
+            <h3 className="text-xl font-medium mb-2">No generated images yet</h3>
+            <p className="text-muted-foreground mb-8 max-w-md mx-auto">
+              Create an Images-only pack and every finished image will appear here.
+            </p>
+            <Link href="/generate">
+              <Button size="lg" className="bg-gradient-electric text-white shadow-glow">
+                Generate Images
+              </Button>
+            </Link>
+          </div>
+        )
       )}
 
       {/* Inline video player */}
@@ -460,6 +768,57 @@ export default function Gallery() {
             </div>
             {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
             <video src={player.url} controls autoPlay className="w-full rounded-xl bg-black" />
+          </div>
+        </div>
+      )}
+
+      {previewImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div
+            className="relative flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-background shadow-2xl md:flex-row"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex min-h-64 flex-1 items-center justify-center bg-black">
+              <img
+                src={`/api/storage${previewImage.objectPath}`}
+                alt={previewImage.prompt || `Generated image ${previewImage.assetIndex + 1}`}
+                className="max-h-[70vh] max-w-full object-contain"
+              />
+            </div>
+            <div className="w-full border-t border-border p-5 md:w-80 md:border-l md:border-t-0">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold">Generated image {previewImage.assetIndex + 1}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {new Date(previewImage.createdAt).toLocaleString()}
+                  </p>
+                </div>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setPreviewImage(null)} aria-label="Close image preview">
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="mt-5 text-sm leading-relaxed text-muted-foreground">{previewImage.prompt}</p>
+              <Button
+                className={`mt-6 w-full ${selectedImageIds.includes(previewImage.id) ? "" : "bg-gradient-electric text-white shadow-glow"}`}
+                variant={selectedImageIds.includes(previewImage.id) ? "outline" : "default"}
+                onClick={() => {
+                  toggleImageSelection(previewImage.id);
+                  // Don't auto-close so the user sees the state change
+                }}
+              >
+                {selectedImageIds.includes(previewImage.id) ? (
+                  <>
+                    <Check className="mr-2 h-4 w-4" />
+                    Selected for Remix (Click to unselect)
+                  </>
+                ) : (
+                  "Select for Remix"
+                )}
+              </Button>
+            </div>
           </div>
         </div>
       )}
