@@ -401,17 +401,35 @@ async function processImagePackJob(job: JobRow): Promise<void> {
   try {
     await updateJobStatus(job.id, { status: "generating", progressPercent: 5 });
     const imageAspectRatio = job.aspectRatio === "16:9" ? "16:9" : "9:16";
+    const scenes = Array.isArray(meta.imagePack?.scenes) ? meta.imagePack.scenes : [];
+    const sceneByIndex = new Map(scenes.map((scene) => [scene.index, scene]));
     const existing = await db
-      .select({ assetIndex: imageAssetsTable.assetIndex })
+      .select({
+        assetIndex: imageAssetsTable.assetIndex,
+        objectPath: imageAssetsTable.objectPath,
+      })
       .from(imageAssetsTable)
       .where(and(eq(imageAssetsTable.jobId, job.id), isNull(imageAssetsTable.deletedAt)));
     const completed = new Set(existing.map((asset) => asset.assetIndex));
-    const scenes = Array.isArray(meta.imagePack?.scenes) ? meta.imagePack.scenes : [];
-    const sceneByIndex = new Map(scenes.map((scene) => [scene.index, scene]));
+    const liveMeta = await readAiMeta(job.id);
+    const pending = liveMeta.pendingImageRequests ?? {};
+    const uncertain = liveMeta.uncertainImageSubmissions ?? {};
+    let generatedCharacterAnchorPath = existing
+      .filter((asset) => sceneByIndex.get(asset.assetIndex)?.usesCharacterReference === true)
+      .sort((a, b) => a.assetIndex - b.assetIndex)[0]?.objectPath;
     for (let index = 0; index < imageCount; index++) {
-      if (completed.has(index)) continue;
+      if (completed.has(index)) {
+        if (pending[index] || uncertain[index]) {
+          await clearImageSubmissionState(job.id, index);
+        }
+        continue;
+      }
       await assertJobOwned(job);
       const scene = sceneByIndex.get(index);
+      const existingRequest = pending[index];
+      if (uncertain[index] && !existingRequest?.pollUrl) {
+        throw new Error(`${IMAGE_API_FAILURE} An image request has an uncertain submission state.`);
+      }
       const prompt = scene
         ? [
             `${imageAspectRatio === "16:9" ? "landscape 16:9" : "portrait 9:16"} editorial still`,
@@ -425,15 +443,23 @@ async function processImagePackJob(job: JobRow): Promise<void> {
       const shouldUseReference = scene
         ? scene.usesCharacterReference === true
         : Boolean(job.referenceImagePath);
-      const referenceImageUrl = shouldUseReference && job.referenceImagePath
-        ? await storageService.getObjectEntitySignedUrl(job.referenceImagePath, 900)
+      const referenceImagePath = shouldUseReference
+        ? job.referenceImagePath ?? generatedCharacterAnchorPath
+        : undefined;
+      const referenceImageUrl = referenceImagePath
+        ? await storageService.getObjectEntitySignedUrl(referenceImagePath, 900)
         : undefined;
       const providerUrl = await generateNarrativeImage({
         prompt,
         aspectRatio: imageAspectRatio,
         referenceImageUrl,
+        existingPollUrl: existingRequest?.pollUrl,
+        onSubmit: (info) => persistPendingImageRequest(job.id, index, info),
+        onUncertainSubmission: (info) => persistUncertainImageSubmission(job.id, index, info),
       });
+      await assertJobOwned(job);
       const buffer = await downloadGeneratedImage(providerUrl);
+      await assertJobOwned(job);
       const objectPath = await storageService.uploadImagePackBuffer(buffer, job.id, index);
       await db.insert(imageAssetsTable).values({
         id: randomUUID(),
@@ -444,6 +470,14 @@ async function processImagePackJob(job: JobRow): Promise<void> {
         prompt,
         style: job.style,
       }).onConflictDoNothing();
+      await clearImageSubmissionState(job.id, index);
+      if (
+        !job.referenceImagePath
+        && !generatedCharacterAnchorPath
+        && scene?.usesCharacterReference === true
+      ) {
+        generatedCharacterAnchorPath = objectPath;
+      }
       await updateJobStatus(job.id, {
         progressPercent: Math.min(95, 5 + Math.round(((index + 1) / imageCount) * 90)),
       });

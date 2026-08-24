@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { planImagePackScenes, planShots } from "./shotPlan.js";
+import {
+  parseNumberedImagePackScript,
+  planImagePackScenes,
+  planShots,
+} from "./shotPlan.js";
 
 const THREE_MINUTE_ANALYSIS = {
   bpm: 118,
@@ -80,6 +84,68 @@ describe("planImagePackScenes", () => {
       .toMatchObject({ usesCharacterReference: false });
     expect(scenes.find((scene) => scene.description.includes("sunrise fills the city skyline")))
       .toMatchObject({ usesCharacterReference: false });
+  });
+
+  it("maps each numbered script line to exactly one ordered scene", () => {
+    const prompt = [
+      "Consistent mid-40s man in a dark suit. Moody 1970s grain, rain, and fog.",
+      "1 (0-18s): Man walks toward the rainy airport terminal.",
+      "2 (18-36s): He pays cash at the ticket counter.",
+      "3 (36-54s): Empty cabin with a black tie on the seat.",
+    ].join("\n");
+    const parsed = parseNumberedImagePackScript(prompt);
+    const scenes = planImagePackScenes({
+      prompt,
+      style: "vintage",
+      imageCount: 3,
+      hasCharacterReference: false,
+    });
+
+    expect(parsed).toEqual({
+      seriesDirection: "Consistent mid-40s man in a dark suit. Moody 1970s grain, rain, and fog.",
+      scenes: [
+        "Man walks toward the rainy airport terminal.",
+        "He pays cash at the ticket counter.",
+        "Empty cabin with a black tie on the seat.",
+      ],
+    });
+    expect(scenes.map((scene) => scene.description)).toEqual([
+      "Scene 1 — Man walks toward the rainy airport terminal.",
+      "Scene 2 — He pays cash at the ticket counter.",
+      "Scene 3 — Empty cabin with a black tie on the seat.",
+    ]);
+    expect(scenes[0]!.prompt).toContain("show exactly this scene and no other script beat");
+    expect(scenes[0]!.prompt).not.toContain("He pays cash");
+    expect(scenes[1]!.prompt).not.toContain("Empty cabin");
+    expect(scenes[0]).toMatchObject({ usesCharacterReference: true });
+    expect(scenes[1]).toMatchObject({ usesCharacterReference: true });
+    expect(scenes[2]).toMatchObject({ usesCharacterReference: false });
+    expect(scenes[0]!.prompt).toContain("becomes the identity and wardrobe reference");
+    expect(scenes[1]!.prompt).toContain("match the established principal character reference exactly");
+  });
+
+  it("rejects gaps in a numbered scene list instead of silently reordering it", () => {
+    expect(parseNumberedImagePackScript([
+      "Keep one consistent character.",
+      "1. Opening scene.",
+      "3. Final scene.",
+    ].join("\n"))).toBeNull();
+  });
+
+  it("accepts standard minute-second timecodes and rejects unnumbered lines after scene one", () => {
+    expect(parseNumberedImagePackScript([
+      "1970s visual direction.",
+      "1 (00:00–00:18): Opening at the airport.",
+      "2 (00:18–00:36): The man pays cash.",
+    ].join("\n"))?.scenes).toEqual([
+      "Opening at the airport.",
+      "The man pays cash.",
+    ]);
+    expect(parseNumberedImagePackScript([
+      "1. Opening at the airport.",
+      "This accidental line must not be silently dropped.",
+      "2. The man pays cash.",
+    ].join("\n"))).toBeNull();
   });
 });
 

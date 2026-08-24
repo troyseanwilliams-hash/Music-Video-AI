@@ -147,7 +147,7 @@ const NARRATIVE_BEATS = [
   "final image",
 ];
 
-const CHARACTER_FOCUS_TERMS = /\b(?:character|person|people|human|woman|man|girl|boy|child|baby|singer|musician|performer|dancer|rider|driver|runner|walker|traveler|traveller|protagonist|hero|heroine|artist|actor|actress|model|subject|face|portrait|couple|family|mother|father|friend|soldier|detective|pilot|he|she|they|him|her|them|his|hers|their)\b/i;
+const CHARACTER_FOCUS_TERMS = /\b(?:character|person|people|human|woman|man|girl|boy|child|baby|figure|silhouette|singer|musician|performer|dancer|rider|driver|runner|walker|traveler|traveller|protagonist|hero|heroine|artist|actor|actress|model|subject|face|portrait|couple|family|mother|father|friend|soldier|detective|pilot|he|she|they|him|her|them|his|hers|their)\b/i;
 const ENVIRONMENT_FOCUS_TERMS = /\b(?:landscape|skyline|cityscape|mountain|forest|ocean|sea|river|lake|desert|road|street|building|architecture|room|interior|exterior|station|airport|vehicle|car|train|plane|ship|object|detail|texture|atmosphere|weather|storm|rain|cloud|sunrise|sunset|moon|stars|light|shadow)\b/i;
 const CHARACTER_MONTAGE_ROLES = new Set(["hero subject", "kinetic motion", "intimate close-up", "high-energy visual", "closing callback"]);
 const CHARACTER_NARRATIVE_BEATS = new Set([
@@ -202,6 +202,49 @@ function promptConcepts(prompt: string): string[] {
   }
 
   return parts;
+}
+
+export interface NumberedImagePackScript {
+  seriesDirection: string;
+  scenes: string[];
+}
+
+const NUMBERED_SCENE_LINE =
+  /^\s*(?:scene\s+)?(\d{1,2})\s*(?:(?:[.):])\s*|\s+)(?:\(\s*(?:\d+(?:\.\d+)?s?|\d{1,2}:\d{2}(?::\d{2})?)\s*[-–—]\s*(?:\d+(?:\.\d+)?s?|\d{1,2}:\d{2}(?::\d{2})?)\s*\)\s*[:\-]?\s*)?(.+?)\s*$/i;
+
+export function hasNumberedImagePackScript(prompt: string): boolean {
+  return prompt
+    .split(/\r?\n/)
+    .some((line) => line.match(NUMBERED_SCENE_LINE)?.[1] === "1");
+}
+
+export function parseNumberedImagePackScript(prompt: string): NumberedImagePackScript | null {
+  const lines = prompt
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const firstSceneIndex = lines.findIndex((line) => {
+    const match = line.match(NUMBERED_SCENE_LINE);
+    return match?.[1] === "1";
+  });
+  if (firstSceneIndex < 0) return null;
+
+  const scenes: string[] = [];
+  let expectedNumber = 1;
+  for (const line of lines.slice(firstSceneIndex)) {
+    const match = line.match(NUMBERED_SCENE_LINE);
+    if (!match) return null;
+    const sceneNumber = Number(match[1]);
+    if (sceneNumber !== expectedNumber || !match[2]?.trim()) return null;
+    scenes.push(match[2].trim());
+    expectedNumber += 1;
+  }
+  if (scenes.length === 0) return null;
+
+  return {
+    seriesDirection: lines.slice(0, firstSceneIndex).join(" ").trim(),
+    scenes,
+  };
 }
 
 function splitPromptIntoConcepts(prompt: string, count: number): string[] {
@@ -484,6 +527,57 @@ export function planImagePackScenes(input: {
   hasCharacterReference: boolean;
 }): PlannedShot[] {
   const imageCount = Math.max(1, Math.min(30, Math.round(input.imageCount)));
+  const numberedScript = parseNumberedImagePackScript(input.prompt);
+  if (numberedScript && numberedScript.scenes.length === imageCount) {
+    const planInput: ShotPlanInput = {
+      prompt: input.prompt,
+      style: input.style,
+      character: input.hasCharacterReference ? "recurring reference character" : "recurring principal subject",
+      generationMode: "narrative",
+    };
+    const usesReference = numberedScript.scenes.map((concept, index) =>
+      sceneUsesCharacterReference(planInput, narrativeBeat(index, imageCount), concept)
+    );
+    const firstCharacterSceneIndex = usesReference.findIndex(Boolean);
+    const style = input.style ?? "cinematic";
+    const styleDesc = STYLE_PROMPTS[style] ?? STYLE_PROMPTS.cinematic!;
+
+    return numberedScript.scenes.map((concept, index) => {
+      const usesCharacterReference = usesReference[index]!;
+      const characterContinuity = usesCharacterReference
+        ? input.hasCharacterReference
+          ? "match the uploaded character reference exactly: same identity, face, age, hair, wardrobe, and physical details"
+          : index === firstCharacterSceneIndex
+            ? "establish the recurring principal character clearly; this image becomes the identity and wardrobe reference for later character scenes"
+            : "match the established principal character reference exactly: same identity, face, age, hair, wardrobe, and physical details"
+        : "focus only on this scene's environment, objects, or atmosphere; do not add the recurring character unless explicitly requested";
+      const seriesDirection = numberedScript.seriesDirection
+        ? `series-wide visual direction: ${numberedScript.seriesDirection}`
+        : "keep one cohesive visual world, period, palette, lighting language, and camera language across the entire image pack";
+
+      return {
+        index,
+        label: `scene ${index + 1}`,
+        description: `Scene ${index + 1} — ${concept}`,
+        startTime: index * 10,
+        energy: 0.6,
+        usesCharacterReference,
+        prompt: [
+          styleDesc,
+          seriesDirection,
+          `strict numbered script scene ${index + 1} of ${imageCount}`,
+          `show exactly this scene and no other script beat: ${concept}`,
+          characterContinuity,
+          index === imageCount - 1
+            ? "compose this as the final chronological image"
+            : "preserve chronological continuity for the next image without depicting the next event",
+          "one still composition, one moment, one setting, and one camera view",
+          "no collage, split screen, panels, storyboard, text, captions, or multiple moments",
+        ].join(", "),
+      };
+    });
+  }
+
   const durationSeconds = imageCount * 10;
   return planShots({
     prompt: input.prompt,

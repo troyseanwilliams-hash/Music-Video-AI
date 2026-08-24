@@ -34,6 +34,31 @@ import {
   type GenerationMode,
 } from "@/lib/creditPricing";
 import { getGenerationTimeEstimate } from "@/lib/jobEstimates";
+
+const NUMBERED_IMAGE_SCENE_LINE =
+  /^\s*(?:scene\s+)?(\d{1,2})\s*(?:(?:[.):])\s*|\s+)(?:\(\s*(?:\d+(?:\.\d+)?s?|\d{1,2}:\d{2}(?::\d{2})?)\s*[-–—]\s*(?:\d+(?:\.\d+)?s?|\d{1,2}:\d{2}(?::\d{2})?)\s*\)\s*[:\-]?\s*)?(.+?)\s*$/i;
+
+function analyzeNumberedImageScenes(script: string): {
+  count: number | null;
+  invalid: boolean;
+} {
+  const lines = script.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const firstSceneIndex = lines.findIndex((line) => line.match(NUMBERED_IMAGE_SCENE_LINE)?.[1] === "1");
+  if (firstSceneIndex < 0) return { count: null, invalid: false };
+
+  let expected = 1;
+  for (const line of lines.slice(firstSceneIndex)) {
+    const match = line.match(NUMBERED_IMAGE_SCENE_LINE);
+    if (!match || Number(match[1]) !== expected || !match[2]?.trim()) {
+      return { count: null, invalid: true };
+    }
+    expected += 1;
+  }
+  const count = expected - 1;
+  return count >= 1 && count <= 30
+    ? { count, invalid: false }
+    : { count: null, invalid: true };
+}
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -705,7 +730,12 @@ export default function Generate() {
       ? calculateLipsyncCost(fullTrackLipSyncSeconds)
       : 0;
   const cost = videoCost + lipSyncAddon;
-  const imagePackCost = imagePackCount * GENERATED_IMAGE_CREDITS_PER_VISUAL;
+  const numberedImageSceneAnalysis = imagePackMode
+    ? analyzeNumberedImageScenes(prompt)
+    : { count: null, invalid: false };
+  const numberedImageSceneCount = numberedImageSceneAnalysis.count;
+  const effectiveImagePackCount = numberedImageSceneCount ?? imagePackCount;
+  const imagePackCost = effectiveImagePackCount * GENERATED_IMAGE_CREDITS_PER_VISUAL;
   const activeCost = imagePackMode ? imagePackCost : cost;
   const generationEstimate = getGenerationTimeEstimate(
     effectiveRequestedDuration,
@@ -931,7 +961,13 @@ export default function Generate() {
   };
 
   const submitImagePack = async () => {
-    if (!Number.isInteger(imagePackCount) || imagePackCount < 1 || imagePackCount > 30) {
+    if (
+      numberedImageSceneAnalysis.invalid
+      ||
+      !Number.isInteger(effectiveImagePackCount)
+      || effectiveImagePackCount < 1
+      || effectiveImagePackCount > 30
+    ) {
       setConfirmOpen(false);
       setErrorDialog({
         open: true,
@@ -950,7 +986,7 @@ export default function Generate() {
         body: JSON.stringify({
           prompt: prompt.trim(),
           style: selectedStyle,
-          imageCount: imagePackCount,
+          imageCount: effectiveImagePackCount,
           aspectRatio: imagePackAspectRatio,
           referenceImagePath: refImageObjectPath ?? null,
         }),
@@ -990,8 +1026,17 @@ export default function Generate() {
     if (!prompt.trim()) {
       errors.prompt = "Please describe the visuals you want.";
     }
-    if (imagePackMode && (!Number.isInteger(imagePackCount) || imagePackCount < 1 || imagePackCount > 30)) {
-      errors.prompt = "Choose between 1 and 30 images for this pack.";
+    if (
+      imagePackMode
+      && (
+        !Number.isInteger(effectiveImagePackCount)
+        || effectiveImagePackCount < 1
+        || effectiveImagePackCount > 30
+      )
+    ) {
+      errors.prompt = numberedImageSceneAnalysis.invalid
+        ? "Number every scene consecutively from 1, with one complete scene on each line."
+        : "Choose between 1 and 30 images for this pack.";
     }
     if (!imagePackMode && sourceType === CreateJobRequestAudioSourceType.upload && !objectPath) {
       errors.audio = isUploading ? "Still uploading — wait a moment." : "Please upload an audio file.";
@@ -1270,7 +1315,11 @@ export default function Generate() {
                 <div>
                   <Label htmlFor="image-pack-count">Images to generate</Label>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Each image costs {GENERATED_IMAGE_CREDITS_PER_VISUAL} credits. Failed images are refunded.
+                    {numberedImageSceneAnalysis.invalid
+                      ? "Numbered scripts need one complete, consecutively numbered scene per line."
+                      : numberedImageSceneCount
+                      ? `${numberedImageSceneCount} numbered scenes detected. Each line will generate one image in order.`
+                      : `Each image costs ${GENERATED_IMAGE_CREDITS_PER_VISUAL} credits. Failed images are refunded.`}
                   </p>
                 </div>
                 <div>
@@ -1279,8 +1328,9 @@ export default function Generate() {
                     type="number"
                     min={1}
                     max={30}
-                    value={imagePackCount}
+                    value={effectiveImagePackCount}
                     onChange={(event) => setImagePackCount(Number(event.target.value))}
+                    disabled={numberedImageSceneCount !== null}
                     aria-label="Images to generate"
                   />
                   <p className="mt-1 text-right text-xs font-medium text-primary">
@@ -2572,8 +2622,12 @@ export default function Generate() {
                   <span>
                     {imagePackMode ? (
                       <>
-                        {imagePackCount} standalone {imagePackCount === 1 ? "image" : "images"}
-                        {refImageObjectPath ? " · reference consistency on" : ""}
+                        {effectiveImagePackCount} standalone {effectiveImagePackCount === 1 ? "image" : "images"}
+                        {refImageObjectPath
+                          ? " · uploaded reference consistency on"
+                          : numberedImageSceneCount
+                            ? " · first character image anchors later scenes"
+                            : ""}
                         {" · "}credits reserved when the job starts
                       </>
                     ) : (
@@ -2717,7 +2771,7 @@ export default function Generate() {
                   <>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Images</span>
-                      <span className="font-medium">{imagePackCount} images · {imagePackAspectRatio}</span>
+                      <span className="font-medium">{effectiveImagePackCount} images · {imagePackAspectRatio}</span>
                     </div>
                     {refImageObjectPath && (
                       <div className="flex justify-between">

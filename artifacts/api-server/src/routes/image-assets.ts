@@ -12,7 +12,11 @@ import {
 import { getUserTier } from "../lib/tier.js";
 import { GENERATED_IMAGE_CREDITS_PER_VISUAL } from "../lib/creditCost.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
-import { planImagePackScenes } from "../lib/shotPlan.js";
+import {
+  hasNumberedImagePackScript,
+  parseNumberedImagePackScript,
+  planImagePackScenes,
+} from "../lib/shotPlan.js";
 
 const router = Router();
 const MAX_IMAGE_PACK_COUNT = 30;
@@ -55,6 +59,22 @@ router.post("/image-packs", async (req, res) => {
   }
 
   const { prompt, style, imageCount, aspectRatio, referenceImagePath } = parsed.data;
+  const numberedScript = parseNumberedImagePackScript(prompt);
+  if (hasNumberedImagePackScript(prompt) && !numberedScript) {
+    res.status(400).json({
+      error: "Number every scene consecutively from 1, with exactly one complete scene on each line.",
+      code: "INVALID_NUMBERED_IMAGE_SCRIPT",
+    });
+    return;
+  }
+  if (numberedScript && numberedScript.scenes.length !== imageCount) {
+    res.status(400).json({
+      error: `Your script contains ${numberedScript.scenes.length} numbered scenes. Set Images to generate to ${numberedScript.scenes.length} so every line produces exactly one image.`,
+      code: "IMAGE_COUNT_SCRIPT_MISMATCH",
+      sceneCount: numberedScript.scenes.length,
+    });
+    return;
+  }
   if (referenceImagePath) {
     try {
       await new ObjectStorageService().getObjectEntityFile(referenceImagePath);
