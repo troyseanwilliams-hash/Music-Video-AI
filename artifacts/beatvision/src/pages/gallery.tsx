@@ -85,6 +85,7 @@ export default function Gallery() {
   const [selectedImageIds, setSelectedImageIds] = useState<string[]>([]);
   const [previewImage, setPreviewImage] = useState<ImageAsset | null>(null);
   const [deletingImageId, setDeletingImageId] = useState<string | null>(null);
+  const [downloadingImageId, setDownloadingImageId] = useState<string | null>(null);
   const [imageActionError, setImageActionError] = useState<string | null>(null);
 
   const imageAssetsQuery = useInfiniteQuery({
@@ -196,6 +197,33 @@ export default function Gallery() {
       /* ignore */
     } finally {
       setTogglingId(null);
+    }
+  }
+
+  async function downloadImage(asset: ImageAsset) {
+    setDownloadingImageId(asset.id);
+    try {
+      const response = await fetch(`/api/storage${asset.objectPath}`, {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Could not download this image.");
+
+      const blob = await response.blob();
+      const extension = asset.objectPath.match(/\.([a-zA-Z0-9]+)(?:\?.*)?$/)?.[1] || "png";
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = `aibeatsync-image-${asset.assetIndex + 1}.${extension}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5_000);
+    } catch (error) {
+      setImageActionError(
+        error instanceof Error ? error.message : "Could not download this image.",
+      );
+    } finally {
+      setDownloadingImageId(null);
     }
   }
 
@@ -681,6 +709,21 @@ export default function Gallery() {
                           ) : null}
                           {selected ? "Selected" : "Select"}
                         </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8 shrink-0"
+                          title="Download image"
+                          aria-label={`Download generated image ${asset.assetIndex + 1}`}
+                          disabled={downloadingImageId === asset.id}
+                          onClick={() => void downloadImage(asset)}
+                        >
+                          {downloadingImageId === asset.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Download className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button
@@ -817,6 +860,19 @@ export default function Gallery() {
                 ) : (
                   "Select for Remix"
                 )}
+              </Button>
+              <Button
+                className="mt-2 w-full"
+                variant="outline"
+                onClick={() => void downloadImage(previewImage)}
+                disabled={downloadingImageId === previewImage.id}
+              >
+                {downloadingImageId === previewImage.id ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="mr-2 h-4 w-4" />
+                )}
+                Download image
               </Button>
             </div>
           </div>
