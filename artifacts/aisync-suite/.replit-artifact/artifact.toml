@@ -1,5 +1,5 @@
 kind = "web"
-previewPath = "/aisync-suite/"
+previewPath = "/"
 title = "AISync Suite"
 description = "The shared AISync Suite home for AIBeatSync and AIPodSync customers, with unified subscriptions, account linking, and billing access."
 version = "1.0.0"
@@ -8,7 +8,7 @@ router = "path"
 
 [[services]]
 name = "web"
-paths = [ "/aisync-suite/" ]
+paths = [ "/" ]
 localPort = 24613
 
 [services.development]
@@ -25,4 +25,4 @@ to = "/index.html"
 
 [services.env]
 PORT = "24613"
-BASE_PATH = "/aisync-suite/"
+BASE_PATH = "/"
