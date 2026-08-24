@@ -38,6 +38,7 @@ export function Nav() {
         <div className="flex items-center gap-4">
           <a href="https://aibeatsync.com" target="_blank" rel="noopener noreferrer" className="text-sm text-muted-foreground hover:text-foreground hidden sm:block">AIBeatSync</a>
           <a href="https://aipodsync.com" target="_blank" rel="noopener noreferrer" className="text-sm text-muted-foreground hover:text-foreground hidden sm:block">AIPodSync</a>
+          <Link href="/pricing" className="text-sm text-muted-foreground hover:text-foreground hidden sm:block">Pricing</Link>
           
           <div className="h-4 w-[1px] bg-border hidden sm:block"></div>
 

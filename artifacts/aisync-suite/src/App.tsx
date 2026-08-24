@@ -18,6 +18,14 @@ import { Footer } from '@/components/footer';
 
 const queryClient = new QueryClient();
 
+function SuiteHome() {
+  return <Home />;
+}
+
+function Pricing() {
+  return <Home pricingPage />;
+}
+
 function Router() {
   return (
     <div className="flex flex-col min-h-[100dvh]">
@@ -25,7 +33,8 @@ function Router() {
       <main className="flex-1">
         <RoutedErrorBoundary>
           <Switch>
-            <Route path="/" component={Home} />
+            <Route path="/" component={SuiteHome} />
+            <Route path="/pricing" component={Pricing} />
             <Route path="/login" component={Login} />
             <Route path="/register" component={Register} />
             <Route component={NotFound} />

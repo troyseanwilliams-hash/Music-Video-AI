@@ -57,7 +57,11 @@ const SUITE_PLANS = [
 
 type SuitePlanId = (typeof SUITE_PLANS)[number]["id"];
 
-export default function Home() {
+interface HomeProps {
+  pricingPage?: boolean;
+}
+
+export default function Home({ pricingPage = false }: HomeProps) {
   const { toast } = useToast();
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const [, setLocation] = useLocation();
@@ -80,9 +84,13 @@ export default function Home() {
   const [interval, setInterval] = useState<"month" | "year">(incomingInterval === "year" ? "year" : "month");
 
   useSEO({
-    title: "AISync Suite — AIBeatSync + AIPodSync",
-    description: "Get dedicated monthly credits for both AIBeatSync and AIPodSync in one powerful subscription.",
-    canonical: "/",
+    title: pricingPage
+      ? "AISync Suite Pricing — AIBeatSync + AIPodSync"
+      : "AISync Suite — AIBeatSync + AIPodSync",
+    description: pricingPage
+      ? "Compare combined AISync Suite plans with dedicated AIBeatSync and AIPodSync credits in one subscription."
+      : "Get dedicated monthly credits for both AIBeatSync and AIPodSync in one powerful subscription.",
+    canonical: pricingPage ? "/pricing" : "/",
   });
 
   const { data: status, isLoading: isStatusLoading } = useGetSuiteStatus({
@@ -112,6 +120,14 @@ export default function Home() {
       });
     }
   }, [isAuthenticated, state, codeChallenge, returnTo, authorizeLink, toast]);
+
+  useEffect(() => {
+    if (!pricingPage || isAuthLoading || (isAuthenticated && isStatusLoading)) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById("pricing")?.scrollIntoView({ block: "start" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [pricingPage, isAuthLoading, isAuthenticated, isStatusLoading]);
 
   if (isAuthLoading || (isAuthenticated && isStatusLoading)) {
     return (
@@ -165,7 +181,8 @@ export default function Home() {
 
   const handleCheckout = (planId: SuitePlanId) => {
     if (!isAuthenticated) {
-      setLocation(`/login?returnTo=${encodeURIComponent("/?plan=" + planId + "&interval=" + interval)}`);
+      const returnPath = pricingPage ? "/pricing" : "/";
+      setLocation(`/login?returnTo=${encodeURIComponent(returnPath + "?plan=" + planId + "&interval=" + interval)}`);
       return;
     }
 
@@ -342,8 +359,21 @@ export default function Home() {
         ))}
       </div>
 
-      {activeSuite && (
-        <Card className="max-w-3xl mx-auto mb-16 p-6 sm:p-8 border-primary/30 bg-primary/5 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-glow animate-in fade-in slide-in-from-bottom-8">
+      <section id="pricing" className="scroll-mt-24">
+        <div className="mx-auto mb-10 max-w-2xl text-center">
+          <Badge className="mb-4 border-primary/20 bg-primary/10 text-primary">
+            Combined Suite pricing
+          </Badge>
+          <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
+            Both studios in every plan
+          </h2>
+          <p className="mt-3 text-muted-foreground">
+            Every AISync Suite plan includes dedicated AIBeatSync credits and dedicated AIPodSync credits under one subscription.
+          </p>
+        </div>
+
+        {activeSuite && (
+          <Card className="max-w-3xl mx-auto mb-16 p-6 sm:p-8 border-primary/30 bg-primary/5 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-glow animate-in fade-in slide-in-from-bottom-8">
           <div className="text-center sm:text-left">
             <h3 className="font-bold text-xl mb-2 flex items-center justify-center sm:justify-start gap-2">
               <Check className="h-5 w-5 text-primary" />
@@ -370,22 +400,22 @@ export default function Home() {
             {portal.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
             Manage Subscription
           </Button>
-        </Card>
-      )}
+          </Card>
+        )}
 
-      {(status?.hasDirectSubscription || status?.aipodHasDirectSubscription) && !activeSuite && (
-        <div className="max-w-3xl mx-auto mb-12 rounded-xl border border-destructive/30 bg-destructive/10 p-5 text-destructive flex flex-col sm:flex-row items-start gap-4">
+        {(status?.hasDirectSubscription || status?.aipodHasDirectSubscription) && !activeSuite && (
+          <div className="max-w-3xl mx-auto mb-12 rounded-xl border border-destructive/30 bg-destructive/10 p-5 text-destructive flex flex-col sm:flex-row items-start gap-4">
           <AlertTriangle className="h-6 w-6 shrink-0 mt-0.5" />
           <div className="text-sm leading-relaxed">
             <strong className="font-semibold block mb-1 text-base">Standalone subscription detected</strong>
             Manage or cancel the active standalone subscription before starting an AISync Suite plan.
             This prevents overlapping subscriptions and duplicate charges.
           </div>
-        </div>
-      )}
+          </div>
+        )}
 
-      {!activeSuite && (
-        <div className="flex justify-center items-center gap-3 mb-12 animate-in fade-in slide-in-from-bottom-8 duration-500 delay-300 fill-mode-both" id="pricing">
+        {!activeSuite && (
+          <div className="flex justify-center items-center gap-3 mb-12">
           <span className={`text-sm font-medium transition-colors ${interval === "month" ? "text-foreground" : "text-muted-foreground"}`}>Monthly</span>
           <button
             type="button"
@@ -398,19 +428,18 @@ export default function Home() {
             Yearly
             <Badge variant="secondary" className="text-[10px] bg-accent/15 text-accent border-0 px-2 py-0.5 font-semibold">2 months free</Badge>
           </span>
-        </div>
-      )}
+          </div>
+        )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-24 max-w-6xl mx-auto">
-        {SUITE_PLANS.map((plan, i) => (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-24 max-w-6xl mx-auto">
+          {SUITE_PLANS.map((plan) => (
           <Card
             key={plan.id}
-            className={`relative flex flex-col overflow-hidden transition-all duration-300 animate-in fade-in slide-in-from-bottom-8 fill-mode-both ${
+            className={`relative flex flex-col overflow-hidden transition-all duration-300 ${
               plan.popular
                 ? "border-primary/50 shadow-glow scale-100 md:scale-105 z-10 bg-card/80 backdrop-blur-sm"
                 : "border-border/50 bg-card/50 backdrop-blur-sm hover:border-primary/30"
             }`}
-            style={{ animationDelay: `${400 + i * 150}ms` }}
           >
             {plan.popular && (
               <div className="absolute top-0 inset-x-0 h-1 bg-gradient-electric" />
@@ -493,8 +522,9 @@ export default function Home() {
               </Button>
             </div>
           </Card>
-        ))}
-      </div>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }
