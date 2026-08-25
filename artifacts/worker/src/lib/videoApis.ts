@@ -36,16 +36,19 @@ export interface ClipResult {
 
 type Provider = "runway" | "luma" | "kling" | "pixazo";
 const PIXAZO_SUBMIT_TIMEOUT_MS = 90_000;
+// Runway's current gateway model id. The versioned Runway routes below are
+// documented against this id; do not take it from a stale environment override.
+const PIXAZO_RUNWAY_MODEL = "runway-gen-4-5";
 
 function providerAvailable(p: Provider): boolean {
   if (p === "luma") return !!process.env.LUMA_API_KEY;
   // "kling" and "pixazo" run through the Pixazo gateway (single key).
   if (p === "kling") return !!process.env.PIXAZO_API_KEY;
   if (p === "pixazo") return !!process.env.PIXAZO_API_KEY;
-  // "runway" now runs through the Pixazo gateway too (no direct Runway API).
-  // Requires the Pixazo key AND a Runway model slug (set PIXAZO_RUNWAY_MODEL to
-  // the slug shown in your Pixazo dashboard, e.g. "runway-gen4-5-text-to-video").
-  if (p === "runway") return !!process.env.PIXAZO_API_KEY && !!process.env.PIXAZO_RUNWAY_MODEL?.trim();
+  // Runway is available through the Pixazo gateway whenever its shared key is
+  // present. Its supported model id is pinned above rather than being supplied
+  // by an easily-stale environment value.
+  if (p === "runway") return !!process.env.PIXAZO_API_KEY;
   return false;
 }
 
@@ -311,6 +314,7 @@ async function generateWithPixazo(
   req: ClipRequest,
   t2vOverride?: string,
   i2vOverride?: string,
+  provider: "kling" | "runway" = "kling",
 ): Promise<string> {
   const key = process.env.PIXAZO_API_KEY!;
   const duration = req.durationSeconds <= 5 ? "5" : "10";
@@ -334,23 +338,26 @@ async function generateWithPixazo(
     model = t2vOverride || process.env.PIXAZO_MODEL?.trim() || "kling-video-v3-turbo-pro-text-to-video";
   }
 
-  // The gateway's model endpoints are uniform, including the Runway models:
-  // /<model>/v1/<model>-request. Do not append a provider/version segment here;
-  // that route returns a 404 before the provider can accept a render request.
-  const endpoint = `https://gateway.pixazo.ai/${model}/v1/${model}-request`;
-  const body: Record<string, unknown> = {
-    prompt: req.prompt.slice(0, 2500),
-    duration,
-  };
-  if (hasImage) {
-    // Image-to-video: feed the reference image (aspect ratio comes from the image).
-    body.image_url = req.imageUrl;
+  const body: Record<string, unknown> = { prompt: req.prompt.slice(0, 2500) };
+  let endpoint = `https://gateway.pixazo.ai/${model}/v1/${model}-request`;
+  if (provider === "runway") {
+    // Runway Gen-4.5 uses Pixazo's documented versioned submission routes.
+    endpoint =
+      `https://gateway.pixazo.ai/${model}/v1/gen-4.5/` +
+      `${hasImage ? "image-to-video" : "text-to-video"}`;
+    if (hasImage) body.image_url = req.imageUrl;
   } else {
-    // Text-to-video: pass aspect ratio + resolution hint (4K also via model slug).
-    body.aspect_ratio = req.aspectRatio ?? "16:9";
-    if (r === "1080p") body.resolution = "1080p";
-    else if (is4k) body.resolution = "4k";
-    else if (r === "720p") body.resolution = "720p";
+    body.duration = duration;
+    if (hasImage) {
+      // Image-to-video: feed the reference image (aspect ratio comes from the image).
+      body.image_url = req.imageUrl;
+    } else {
+      // Text-to-video: pass aspect ratio + resolution hint (4K also via model slug).
+      body.aspect_ratio = req.aspectRatio ?? "16:9";
+      if (r === "1080p") body.resolution = "1080p";
+      else if (is4k) body.resolution = "4k";
+      else if (r === "720p") body.resolution = "720p";
+    }
   }
 
   const uncertainProvider = req.provider ?? "pixazo";
@@ -498,11 +505,12 @@ function isCreditError(err: unknown): boolean {
 async function callProvider(provider: Provider, req: ClipRequest): Promise<string> {
   switch (provider) {
     case "runway":
-      // PIXAZO_RUNWAY_MODEL / PIXAZO_RUNWAY_I2V_MODEL choose the slugs.
+      // Pixazo documents Gen-4.5 at a versioned, model-specific endpoint.
       return generateWithPixazo(
         req,
-        process.env.PIXAZO_RUNWAY_MODEL!.trim(),
-        process.env.PIXAZO_RUNWAY_I2V_MODEL?.trim(),
+        PIXAZO_RUNWAY_MODEL,
+        PIXAZO_RUNWAY_MODEL,
+        "runway",
       );
     case "luma":
       return generateWithLuma(req);
