@@ -8,9 +8,12 @@ import { downloadClip } from "../lib/videoApis.js";
 // Billing/salvage state AI jobs stash in the manifest jsonb.
 type AiJobMeta = {
   reservedCredits?: number;
+  reservedSubscriptionCredits?: number;
+  reservedTopupCredits?: number;
   refunded?: boolean;
   partialClips?: Record<string, string>;
   pendingRequests?: Record<string, string>;
+  uncertainImageSubmissions?: Record<string, unknown>;
 };
 function metaOf(manifest: unknown): AiJobMeta {
   return manifest && typeof manifest === "object" ? (manifest as AiJobMeta) : {};
@@ -155,36 +158,85 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
   }
 
   const { id } = req.params;
-  const [job] = await db
-    .select()
-    .from(jobsTable)
-    .where(eq(jobsTable.id, id))
-    .limit(1);
+  const outcome = await db.transaction(async (tx) => {
+    const [job] = await tx
+      .select()
+      .from(jobsTable)
+      .where(eq(jobsTable.id, id))
+      .limit(1)
+      .for("update");
 
-  if (!job) {
+    if (!job) return { kind: "missing" as const };
+    if (job.status !== "failed") return { kind: "not_failed" as const, status: job.status };
+
+    const meta = metaOf(job.manifest);
+    // A failed render returns its reservation. An explicit admin retry is a
+    // new billable provider attempt, so restore the exact original split
+    // before queueing it. This keeps a manual recovery from becoming a free
+    // render and prevents an unfunded retry from being delivered.
+    if (meta.refunded && (meta.reservedCredits ?? 0) > 0) {
+      const [credits] = await tx
+        .select()
+        .from(creditsTable)
+        .where(eq(creditsTable.userId, job.userId))
+        .limit(1)
+        .for("update");
+      const total = meta.reservedCredits ?? 0;
+      const subscriptionDebit = meta.reservedSubscriptionCredits ?? total;
+      const topupDebit = meta.reservedTopupCredits ?? Math.max(0, total - subscriptionDebit);
+      if (
+        !credits ||
+        credits.subscriptionCredits < subscriptionDebit ||
+        credits.topupCredits < topupDebit
+      ) {
+        return { kind: "insufficient_credits" as const };
+      }
+      await tx
+        .update(creditsTable)
+        .set({
+          subscriptionCredits: sql`subscription_credits - ${subscriptionDebit}`,
+          topupCredits: sql`topup_credits - ${topupDebit}`,
+          creditsRemaining: sql`credits_remaining - ${total}`,
+          creditsUsed: sql`credits_used + ${total}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(creditsTable.userId, job.userId));
+    }
+
+    // A 5xx response can mean the provider never accepted the image request.
+    // Retrying needs explicit approval (this endpoint), then the uncertain
+    // marker must be cleared so the job can submit a fresh source image.
+    const { uncertainImageSubmissions: _uncertain, ...retryMeta } = meta;
+    const [updated] = await tx
+      .update(jobsTable)
+      .set({
+        status: "queued",
+        errorMessage: null,
+        retryCount: 0,
+        claimedAt: null,
+        manifest: { ...retryMeta, refunded: false },
+        updatedAt: new Date(),
+      })
+      .where(eq(jobsTable.id, id))
+      .returning();
+    return { kind: "ok" as const, job: updated };
+  });
+
+  if (outcome.kind === "missing") {
     res.status(404).json({ error: "Job not found" });
     return;
   }
-
-  if (job.status !== "failed") {
-    res.status(400).json({ error: "Only failed jobs can be retried" });
+  if (outcome.kind === "not_failed") {
+    res.status(400).json({ error: `Only failed jobs can be retried (currently ${outcome.status})` });
+    return;
+  }
+  if (outcome.kind === "insufficient_credits") {
+    res.status(402).json({ error: "The original user no longer has enough credits to retry this render." });
     return;
   }
 
-  const [updated] = await db
-    .update(jobsTable)
-    .set({
-      status: "queued",
-      errorMessage: null,
-      retryCount: 0,
-      claimedAt: null,
-      updatedAt: new Date(),
-    })
-    .where(eq(jobsTable.id, id))
-    .returning();
-
-  req.log.info({ jobId: id }, "Admin retried failed job — moving to queued");
-  res.json(updated);
+  req.log.info({ jobId: id, userId: outcome.job.userId }, "Admin explicitly retried failed job");
+  res.json(outcome.job);
 });
 
 // Force-fail any in-progress job (stitching / generating / etc.) without
