@@ -30,7 +30,7 @@ describe("resolveClipProviderChain", () => {
     ).toEqual(["runway"]);
   });
 
-  it("submits Runway through Pixazo's Gen-4.5 endpoint", async () => {
+  it("submits Runway through its standard Pixazo model endpoint", async () => {
     vi.stubEnv("PIXAZO_API_KEY", "test-key");
     vi.stubEnv("PIXAZO_RUNWAY_MODEL", "runway-gen-4-5");
     const fetchMock = vi
@@ -71,10 +71,15 @@ describe("resolveClipProviderChain", () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      "https://gateway.pixazo.ai/runway-gen-4-5/v1/gen-4.5/text-to-video",
+      "https://gateway.pixazo.ai/runway-gen-4-5/v1/runway-gen-4-5-request",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ prompt: "cinematic rain" }),
+        body: JSON.stringify({
+          prompt: "cinematic rain",
+          duration: "10",
+          aspect_ratio: "16:9",
+          resolution: "720p",
+        }),
       }),
     );
   }, 10_000);

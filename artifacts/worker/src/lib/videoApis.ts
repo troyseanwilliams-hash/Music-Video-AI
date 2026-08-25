@@ -311,7 +311,6 @@ async function generateWithPixazo(
   req: ClipRequest,
   t2vOverride?: string,
   i2vOverride?: string,
-  provider: "kling" | "runway" = "kling",
 ): Promise<string> {
   const key = process.env.PIXAZO_API_KEY!;
   const duration = req.durationSeconds <= 5 ? "5" : "10";
@@ -335,27 +334,23 @@ async function generateWithPixazo(
     model = t2vOverride || process.env.PIXAZO_MODEL?.trim() || "kling-video-v3-turbo-pro-text-to-video";
   }
 
-  const body: Record<string, unknown> = { prompt: req.prompt.slice(0, 2500) };
-  let endpoint = `https://gateway.pixazo.ai/${model}/v1/${model}-request`;
-  if (provider === "runway") {
-    // Runway Gen-4.5 has provider-specific Pixazo routes and accepts the
-    // documented prompt payload rather than Kling's duration/resolution fields.
-    endpoint =
-      `https://gateway.pixazo.ai/${model}/v1/gen-4.5/` +
-      `${hasImage ? "image-to-video" : "text-to-video"}`;
-    if (hasImage) body.image_url = req.imageUrl;
+  // The gateway's model endpoints are uniform, including the Runway models:
+  // /<model>/v1/<model>-request. Do not append a provider/version segment here;
+  // that route returns a 404 before the provider can accept a render request.
+  const endpoint = `https://gateway.pixazo.ai/${model}/v1/${model}-request`;
+  const body: Record<string, unknown> = {
+    prompt: req.prompt.slice(0, 2500),
+    duration,
+  };
+  if (hasImage) {
+    // Image-to-video: feed the reference image (aspect ratio comes from the image).
+    body.image_url = req.imageUrl;
   } else {
-    body.duration = duration;
-    if (hasImage) {
-      // Image-to-video: feed the reference image (aspect ratio comes from the image).
-      body.image_url = req.imageUrl;
-    } else {
-      // Text-to-video: pass aspect ratio + resolution hint (4K also via model slug).
-      body.aspect_ratio = req.aspectRatio ?? "16:9";
-      if (r === "1080p") body.resolution = "1080p";
-      else if (is4k) body.resolution = "4k";
-      else if (r === "720p") body.resolution = "720p";
-    }
+    // Text-to-video: pass aspect ratio + resolution hint (4K also via model slug).
+    body.aspect_ratio = req.aspectRatio ?? "16:9";
+    if (r === "1080p") body.resolution = "1080p";
+    else if (is4k) body.resolution = "4k";
+    else if (r === "720p") body.resolution = "720p";
   }
 
   const uncertainProvider = req.provider ?? "pixazo";
@@ -508,7 +503,6 @@ async function callProvider(provider: Provider, req: ClipRequest): Promise<strin
         req,
         process.env.PIXAZO_RUNWAY_MODEL!.trim(),
         process.env.PIXAZO_RUNWAY_I2V_MODEL?.trim(),
-        "runway",
       );
     case "luma":
       return generateWithLuma(req);
