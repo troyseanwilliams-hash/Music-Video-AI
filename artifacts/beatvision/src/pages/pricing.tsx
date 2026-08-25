@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { track } from "@/lib/analytics";
+import { GENERATED_IMAGE_CREDITS_PER_VISUAL } from "@/lib/creditPricing";
 import {
   Check,
   Loader2,
@@ -272,8 +273,8 @@ export default function Pricing() {
           Choose your <span className="text-gradient-electric">plan</span>
         </h1>
         <p className="text-base leading-7 text-muted-foreground max-w-xl mx-auto sm:text-lg">
-          Pick the credits that fit your output. Every plan includes music videos, AI Soundtracks, Remix Lab, and a
-          free 7-day trial. Plan credits refresh with your billing cycle; top-ups never expire.
+          Pick the credits that fit your output. Every plan includes access to music, AI image generation, narrative
+          videos, Remix Lab, and a free 7-day trial. Plan credits refresh with your billing cycle; top-ups never expire.
         </p>
         <div className="mx-auto mt-5 flex max-w-md items-start gap-2 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-3 text-left text-sm font-medium sm:inline-flex sm:max-w-none sm:items-center sm:rounded-full sm:py-2">
           <Sparkles className="h-4 w-4 text-primary" />
@@ -369,12 +370,12 @@ export default function Pricing() {
             {
               icon: Music2,
               title: "Music",
-              description: "Generate royalty-free AI Soundtracks or bring your own music to every visual project.",
+              description: "Unlimited access to royalty-free AI Soundtracks, limited only by the credits in your tier.",
             },
             {
               icon: ImageIcon,
               title: "AI Image Generation",
-              description: "Create consistent image packs and turn numbered scene prompts into reusable visuals.",
+              description: `New: create consistent image packs for ${GENERATED_IMAGE_CREDITS_PER_VISUAL} credits per image.`,
             },
             {
               icon: Youtube,
@@ -434,8 +435,6 @@ export default function Pricing() {
             price.interval === "year" ? getYearlySavings(plan.prices) : null;
           const monthlyEquivalent =
             price.interval === "year" ? price.unitAmount / 12 : null;
-          const soundtracksPerMonth =
-            ({ starter: 25, pro: 100, studio: 300 } as Record<string, number>)[plan.name.toLowerCase()] ?? 25;
           const isCurrent =
             subscription?.priceLookupKey &&
             price.lookupKey === subscription.priceLookupKey;
@@ -512,9 +511,19 @@ export default function Pricing() {
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                     <span>
-                      <strong>{soundtracksPerMonth} free AI Soundtracks</strong>/month{" "}
-                      — royalty-free instrumentals for your videos{" "}
-                      <span className="text-muted-foreground">(3 free to try on signup; extra tracks from 5 credits)</span>
+                      <strong>Unlimited AI Soundtracks</strong>{" "}
+                      <span className="text-muted-foreground">
+                        — instrumental songs use 5–10 credits by length; songs with lyrics use 15 credits
+                      </span>
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                    <span>
+                      <strong>New: AI Image Generation</strong>{" "}
+                      <span className="text-muted-foreground">
+                        — {GENERATED_IMAGE_CREDITS_PER_VISUAL} credits per generated image, limited only by your credit balance
+                      </span>
                     </span>
                   </li>
                   <li className="flex items-start gap-2">
