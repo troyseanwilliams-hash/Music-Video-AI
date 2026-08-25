@@ -1210,7 +1210,8 @@ export default function Generate() {
         </TutorialTip>
 
         {/* ── Quick start: a compact mobile picker, full controls on larger screens ── */}
-        <div className={`sm:hidden rounded-2xl border border-primary/25 bg-gradient-to-r from-primary/[0.09] to-accent/[0.06] p-3 ${imagePackMode ? "hidden" : ""}`}>
+        {!imagePackMode && (
+        <div className="sm:hidden rounded-2xl border border-primary/25 bg-gradient-to-r from-primary/[0.09] to-accent/[0.06] p-3">
           <div className="flex items-center gap-2">
             <div className="min-w-0 flex flex-1 items-center gap-2 max-[359px]:hidden">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
@@ -1272,8 +1273,10 @@ export default function Generate() {
             </Popover>
           </div>
         </div>
+        )}
 
-        <div className={`hidden sm:block rounded-2xl border border-border/60 bg-background/30 p-5 ${imagePackMode ? "hidden" : ""}`}>
+        {!imagePackMode && (
+        <div className="hidden sm:block rounded-2xl border border-border/60 bg-background/30 p-5">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <span className="flex items-center gap-1.5 text-sm font-semibold">
               <Sparkles className="h-4 w-4 text-primary" /> Quick start
@@ -1331,6 +1334,7 @@ export default function Generate() {
             </div>
           </div>
         </div>
+        )}
 
         <Collapsible open={imagePackMode} onOpenChange={setImagePackMode}>
           <section
