@@ -24,6 +24,9 @@ import {
   Sparkles,
   CreditCard,
   ArrowLeft,
+  Music2,
+  ImageIcon,
+  Youtube,
 } from "lucide-react";
 
 type Interval = "month" | "year";
@@ -348,6 +351,57 @@ export default function Pricing() {
           </div>
         </div>
       )}
+
+      <section className="mb-12" aria-labelledby="included-highlights-heading">
+        <div className="mb-5 text-center">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+            Included creative tools
+          </p>
+          <h2 id="included-highlights-heading" className="mt-2 text-2xl font-bold sm:text-3xl">
+            More than just music videos
+          </h2>
+          <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+            Your plan credits unlock the full AIBeatSync creative suite as your tier grows.
+          </p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          {[
+            {
+              icon: Music2,
+              title: "Music",
+              description: "Generate royalty-free AI Soundtracks or bring your own music to every visual project.",
+            },
+            {
+              icon: ImageIcon,
+              title: "AI Image Generation",
+              description: "Create consistent image packs and turn numbered scene prompts into reusable visuals.",
+            },
+            {
+              icon: Youtube,
+              title: "Narrative Videos for YouTube",
+              description: "Build chronological, story-led videos with scene-by-scene visuals for long-form YouTube content.",
+            },
+          ].map(({ icon: FeatureIcon, title, description }) => (
+            <div
+              key={title}
+              className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/[0.08] via-card/70 to-accent/[0.05] p-5"
+            >
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                <FeatureIcon className="h-5 w-5" />
+              </div>
+              <h3 className="font-semibold">{title}</h3>
+              <p className="mt-1.5 text-sm leading-6 text-muted-foreground">{description}</p>
+            </div>
+          ))}
+        </div>
+        <div className="mx-auto mt-5 flex max-w-3xl items-start gap-2 rounded-2xl border border-primary/30 bg-primary/10 px-4 py-3 text-center text-sm sm:items-center sm:justify-center sm:rounded-full">
+          <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary sm:mt-0" />
+          <span>
+            <strong className="text-foreground">New features are included as we grow.</strong>{" "}
+            We keep expanding what your tier can create—no separate feature unlock required.
+          </span>
+        </div>
+      </section>
 
       {/* Digital Drift Pro perk — hidden for now */}
       {false && <section className="mb-12">
