@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { generateClip, resolveClipProviderChain } from "./videoApis.js";
+import { generateClip, PROVIDER_POLL_TIMEOUT, resolveClipProviderChain } from "./videoApis.js";
 
 describe("resolveClipProviderChain", () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
@@ -180,5 +181,41 @@ describe("resolveClipProviderChain", () => {
       status: 200,
       reason: "AI service returned an invalid success response",
     });
+  });
+
+  it("marks an exhausted persisted scene request as a resumable polling timeout", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("PIXAZO_API_KEY", "test-key");
+    vi.stubEnv("PIXAZO_RUNWAY_MODEL", "runway-gen-4-5");
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            request_id: "runway-timeout-123",
+            polling_url: "https://gateway.pixazo.ai/v2/requests/status/runway-timeout-123",
+          }),
+          { status: 202 },
+        ),
+      )
+      .mockImplementation(
+        async () => new Response(JSON.stringify({ status: "IN_PROGRESS" }), { status: 200 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = generateClip({
+      prompt: "cinematic rain",
+      durationSeconds: 10,
+      provider: "runway",
+      providerOnly: true,
+      onSubmit,
+    });
+    const assertion = expect(result).rejects.toThrow(PROVIDER_POLL_TIMEOUT);
+    await vi.advanceTimersByTimeAsync(120 * 5_000);
+
+    await assertion;
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(121);
   });
 });

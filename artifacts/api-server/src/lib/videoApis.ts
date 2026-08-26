@@ -297,6 +297,7 @@ async function generateWithLuma(req: ClipRequest): Promise<string> {
 // to permanently fail the job without re-queuing. AI provider charges happen at
 // submission time — retrying after a provider failure just doubles the bill.
 export const PROVIDER_API_FAILURE = "[PROVIDER_FAILURE]";
+export const PROVIDER_POLL_TIMEOUT = "[PROVIDER_POLL_TIMEOUT]";
 // Marker appended when the failure was the provider running out of tokens /
 // credits (Pixazo 402, quota exceeded, insufficient balance, …).
 export const PROVIDER_OUT_OF_CREDITS = "[PROVIDER_OUT_OF_CREDITS]";
@@ -494,7 +495,7 @@ async function generateWithPixazo(
     if (d.status === "COMPLETED" && d.output?.media_url?.[0]) return d.output.media_url[0];
     if (d.status === "FAILED" || d.status === "ERROR") throw new Error(`${PROVIDER_API_FAILURE} Pixazo ${d.status}: ${d.error ?? "unknown error"}`);
   }
-  throw new Error(`${PROVIDER_API_FAILURE} Pixazo task timed out after 10 minutes`);
+  throw new Error(`${PROVIDER_POLL_TIMEOUT} AI scene polling timed out after 10 minutes`);
 }
 
 function isCreditError(err: unknown): boolean {
@@ -576,7 +577,10 @@ export async function generateClip(req: ClipRequest): Promise<ClipResult | null>
     isCreditError(lastErr) && !finalErr.message.includes(PROVIDER_OUT_OF_CREDITS)
       ? ` ${PROVIDER_OUT_OF_CREDITS}`
       : "";
-  if (!finalErr.message.includes(PROVIDER_API_FAILURE)) {
+  if (
+    !finalErr.message.includes(PROVIDER_API_FAILURE) &&
+    !finalErr.message.includes(PROVIDER_POLL_TIMEOUT)
+  ) {
     throw new Error(`${PROVIDER_API_FAILURE}${creditTag} ${finalErr.message}`);
   }
   if (creditTag) throw new Error(`${finalErr.message}${creditTag}`);

@@ -6,6 +6,7 @@ import { join } from "path";
 import { promisify } from "util";
 
 export const IMAGE_API_FAILURE = "[IMAGE_API_FAILURE]";
+export const IMAGE_POLL_TIMEOUT = "[IMAGE_POLL_TIMEOUT]";
 const execFileAsync = promisify(execFile);
 
 export interface NarrativeImageRequest {
@@ -140,7 +141,7 @@ export async function generateNarrativeImage(req: NarrativeImageRequest): Promis
       // checking it must not fail/refund the whole render; keep polling the same
       // request so a retry never submits and pays for a duplicate image.
       if (attempt === 119) {
-        throw new Error(`${IMAGE_API_FAILURE} The source-image request status could not be confirmed.`);
+        throw new Error(`${IMAGE_POLL_TIMEOUT} The source-image request status could not be confirmed.`);
       }
       continue;
     }
@@ -154,7 +155,7 @@ export async function generateNarrativeImage(req: NarrativeImageRequest): Promis
       result = await poll.json() as typeof result;
     } catch {
       if (attempt === 119) {
-        throw new Error(`${IMAGE_API_FAILURE} The source-image status response could not be verified.`);
+        throw new Error(`${IMAGE_POLL_TIMEOUT} The source-image status response could not be verified.`);
       }
       continue;
     }
@@ -163,7 +164,7 @@ export async function generateNarrativeImage(req: NarrativeImageRequest): Promis
       throw new Error(`${IMAGE_API_FAILURE} AI image generation failed: ${result.error ?? "unknown error"}`);
     }
   }
-  throw new Error(`${IMAGE_API_FAILURE} AI image generation timed out.`);
+  throw new Error(`${IMAGE_POLL_TIMEOUT} AI image generation timed out.`);
 }
 
 async function assertDecodableImage(buffer: Buffer): Promise<void> {

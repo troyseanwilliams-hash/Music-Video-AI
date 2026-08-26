@@ -3,6 +3,7 @@ import {
   downloadGeneratedImage,
   generateNarrativeImage,
   IMAGE_API_FAILURE,
+  IMAGE_POLL_TIMEOUT,
   singleSceneImagePrompt,
 } from "./imageApis.js";
 
@@ -153,6 +154,22 @@ describe("generateNarrativeImage recovery", () => {
 
     await expect(result).resolves.toBe("https://example.test/recovered-after-json.jpg");
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("marks an exhausted saved request as a resumable polling timeout", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockRejectedValue(new Error("status timeout"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = generateNarrativeImage({
+      prompt: "A consistent story scene",
+      existingPollUrl: "https://example.test/image-status/request-timeout",
+    });
+    const assertion = expect(result).rejects.toThrow(IMAGE_POLL_TIMEOUT);
+    await vi.advanceTimersByTimeAsync(120 * 5_000);
+
+    await assertion;
+    expect(fetchMock).toHaveBeenCalledTimes(120);
   });
 
   it("classifies a rejected image download as an image-stage failure", async () => {
