@@ -106,18 +106,53 @@ describe("generateNarrativeImage recovery", () => {
     expect(submittedBody.prompt).toContain("Do not create a collage, triptych, diptych, grid, contact sheet, split screen, panels, montage, storyboard, or multi-frame composition.");
   });
 
-  it("classifies a rejected saved-poll request as an image-stage failure", async () => {
+  it("keeps polling the saved request after a transient status timeout", async () => {
     vi.useFakeTimers();
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("poll timeout")));
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new Error("poll timeout"))
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: "COMPLETED",
+          output: { media_url: ["https://example.test/recovered.jpg"] },
+        }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
 
     const result = generateNarrativeImage({
       prompt: "A consistent story scene",
       existingPollUrl: "https://example.test/image-status/request-2",
     });
-    const rejection = expect(result).rejects.toThrow(IMAGE_API_FAILURE);
-    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.advanceTimersByTimeAsync(10_000);
 
-    await rejection;
+    await expect(result).resolves.toBe("https://example.test/recovered.jpg");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps polling after a malformed transient status response", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => { throw new SyntaxError("truncated JSON"); },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: "COMPLETED",
+          output: { media_url: ["https://example.test/recovered-after-json.jpg"] },
+        }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = generateNarrativeImage({
+      prompt: "A consistent story scene",
+      existingPollUrl: "https://example.test/image-status/request-json",
+    });
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await expect(result).resolves.toBe("https://example.test/recovered-after-json.jpg");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("classifies a rejected image download as an image-stage failure", async () => {
@@ -125,5 +160,45 @@ describe("generateNarrativeImage recovery", () => {
 
     await expect(downloadGeneratedImage("https://example.test/generated.jpg"))
       .rejects.toThrow(IMAGE_API_FAILURE);
+  });
+
+  it("rejects a non-image provider response before it can be stored", async () => {
+    const html = Buffer.from("<html><body>temporary gateway error</body></html>".repeat(40));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      arrayBuffer: async () => html,
+    }));
+
+    await expect(downloadGeneratedImage("https://example.test/generated.jpg"))
+      .rejects.toThrow("invalid and was not added");
+  });
+
+  it("rejects a spoofed JPEG signature without a valid image structure", async () => {
+    const fakeJpeg = Buffer.alloc(1_024, 0);
+    fakeJpeg.set([0xff, 0xd8, 0xff], 0);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      arrayBuffer: async () => fakeJpeg,
+    }));
+
+    await expect(downloadGeneratedImage("https://example.test/generated.jpg"))
+      .rejects.toThrow("invalid and was not added");
+  });
+
+  it("accepts a structurally valid generated PNG payload", async () => {
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64",
+    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      arrayBuffer: async () => png,
+    }));
+
+    await expect(downloadGeneratedImage("https://example.test/generated.png"))
+      .resolves.toEqual(png);
   });
 });

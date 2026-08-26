@@ -1,4 +1,12 @@
+import { execFile } from "child_process";
+import { randomUUID } from "crypto";
+import { writeFile, unlink } from "fs/promises";
+import { tmpdir } from "os";
+import { join } from "path";
+import { promisify } from "util";
+
 export const IMAGE_API_FAILURE = "[IMAGE_API_FAILURE]";
+const execFileAsync = promisify(execFile);
 
 export interface NarrativeImageRequest {
   prompt: string;
@@ -123,7 +131,13 @@ export async function generateNarrativeImage(req: NarrativeImageRequest): Promis
         signal: AbortSignal.timeout(15_000),
       });
     } catch {
-      throw new Error(`${IMAGE_API_FAILURE} The source-image request status could not be confirmed.`);
+      // The paid request is already persisted. A single network timeout while
+      // checking it must not fail/refund the whole render; keep polling the same
+      // request so a retry never submits and pays for a duplicate image.
+      if (attempt === 119) {
+        throw new Error(`${IMAGE_API_FAILURE} The source-image request status could not be confirmed.`);
+      }
+      continue;
     }
     if (!poll.ok) continue;
     let result: {
@@ -134,7 +148,10 @@ export async function generateNarrativeImage(req: NarrativeImageRequest): Promis
     try {
       result = await poll.json() as typeof result;
     } catch {
-      throw new Error(`${IMAGE_API_FAILURE} The source-image status response could not be verified.`);
+      if (attempt === 119) {
+        throw new Error(`${IMAGE_API_FAILURE} The source-image status response could not be verified.`);
+      }
+      continue;
     }
     if (result.status === "COMPLETED" && result.output?.media_url?.[0]) return result.output.media_url[0];
     if (result.status === "FAILED" || result.status === "ERROR") {
@@ -142,6 +159,22 @@ export async function generateNarrativeImage(req: NarrativeImageRequest): Promis
     }
   }
   throw new Error(`${IMAGE_API_FAILURE} AI image generation timed out.`);
+}
+
+async function assertDecodableImage(buffer: Buffer): Promise<void> {
+  const path = join(tmpdir(), `beatsync-image-check-${randomUUID()}.img`);
+  try {
+    await writeFile(path, buffer);
+    await execFileAsync(
+      "ffmpeg",
+      ["-v", "error", "-i", path, "-map", "0:v:0", "-frames:v", "1", "-f", "null", "-"],
+      { timeout: 30_000, maxBuffer: 256 * 1024 },
+    );
+  } catch {
+    throw new Error(`${IMAGE_API_FAILURE} The generated source image was invalid and was not added.`);
+  } finally {
+    await unlink(path).catch(() => {});
+  }
 }
 
 export async function downloadGeneratedImage(url: string): Promise<Buffer> {
@@ -152,5 +185,7 @@ export async function downloadGeneratedImage(url: string): Promise<Buffer> {
     throw new Error(`${IMAGE_API_FAILURE} The completed source image could not be downloaded.`);
   }
   if (!response.ok) throw new Error(`${IMAGE_API_FAILURE} Could not download generated image: HTTP ${response.status}`);
-  return Buffer.from(await response.arrayBuffer());
+  const buffer = Buffer.from(await response.arrayBuffer());
+  await assertDecodableImage(buffer);
+  return buffer;
 }

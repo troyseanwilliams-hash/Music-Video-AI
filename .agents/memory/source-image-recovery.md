@@ -1,0 +1,10 @@
+---
+name: Source-image recovery and validation
+description: Safety rules for polling paid source-image requests and accepting generated image payloads
+---
+
+Once an image provider returns a request ID, keep polling that persisted request through transient transport failures, non-success status responses, and malformed status bodies. Never convert one polling interruption into a fresh paid submission.
+
+**Why:** A paid request was accepted, but one status timeout caused the entire render to fail and refund. A later user attempt could duplicate provider spend even though the original request remained recoverable.
+
+**How to apply:** Bound the polling window, resume from the saved poll URL, and fail only after the window expires or the provider returns a terminal failure. Before storing a downloaded source image, require a real decoder to successfully decode at least one image frame; signatures and container headers alone are not sufficient validation.
