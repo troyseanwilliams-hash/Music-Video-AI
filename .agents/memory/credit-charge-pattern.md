@@ -8,4 +8,4 @@ Rule: any route that charges credits for a paid provider call must (1) debit ins
 
 **How to apply:** copy the pattern from artifacts/api-server/src/routes/lyrics.ts when adding new paid endpoints; teasers.ts now uses the atomic pattern too (fixed later), but prompt.ts chargeCredits is still legacy, not a template. Also: once work is durably delivered (e.g. video row inserted), post-delivery failures like URL signing must NOT refund.
 
-Explicit retries of refunded jobs are new paid attempts: atomically re-reserve the original subscription/topup split before re-queueing, and refuse the retry when either bucket can no longer cover its original portion. Clear an uncertain provider-submission marker only as part of that explicit retry.
+Explicit retries of refunded jobs are new paid attempts: atomically reserve from the user's current subscription/topup buckets, record that new split for any later refund, and refuse only when the current total cannot cover the attempt. Clear an uncertain provider-submission marker only as part of that explicit retry.

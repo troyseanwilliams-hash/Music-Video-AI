@@ -170,10 +170,13 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
     if (job.status !== "failed") return { kind: "not_failed" as const, status: job.status };
 
     const meta = metaOf(job.manifest);
+    let retrySubscriptionReservation = meta.reservedSubscriptionCredits;
+    let retryTopupReservation = meta.reservedTopupCredits;
     // A failed render returns its reservation. An explicit admin retry is a
-    // new billable provider attempt, so restore the exact original split
-    // before queueing it. This keeps a manual recovery from becoming a free
-    // render and prevents an unfunded retry from being delivered.
+    // new billable provider attempt, so reserve from the user's CURRENT
+    // buckets before queueing it. A renewal or another purchase can change the
+    // bucket mix after the refund; requiring the historical split would reject
+    // a user who still has enough total credits.
     if (meta.refunded && (meta.reservedCredits ?? 0) > 0) {
       const [credits] = await tx
         .select()
@@ -182,15 +185,17 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
         .limit(1)
         .for("update");
       const total = meta.reservedCredits ?? 0;
-      const subscriptionDebit = meta.reservedSubscriptionCredits ?? total;
-      const topupDebit = meta.reservedTopupCredits ?? Math.max(0, total - subscriptionDebit);
+      const subscriptionDebit = Math.min(credits?.subscriptionCredits ?? 0, total);
+      const topupDebit = total - subscriptionDebit;
       if (
         !credits ||
-        credits.subscriptionCredits < subscriptionDebit ||
+        credits.creditsRemaining < total ||
         credits.topupCredits < topupDebit
       ) {
         return { kind: "insufficient_credits" as const };
       }
+      retrySubscriptionReservation = subscriptionDebit;
+      retryTopupReservation = topupDebit;
       await tx
         .update(creditsTable)
         .set({
@@ -214,7 +219,12 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
         errorMessage: null,
         retryCount: 0,
         claimedAt: null,
-        manifest: { ...retryMeta, refunded: false },
+        manifest: {
+          ...retryMeta,
+          refunded: false,
+          reservedSubscriptionCredits: retrySubscriptionReservation,
+          reservedTopupCredits: retryTopupReservation,
+        },
         updatedAt: new Date(),
       })
       .where(eq(jobsTable.id, id))
