@@ -21,7 +21,7 @@ const THREE_MINUTE_ANALYSIS = {
 };
 
 describe("planShots montage planning", () => {
-  it("uses six paid visuals across eighteen intentional timeline cuts for a three-minute track", () => {
+  it("uses eighteen unique paid visuals for a three-minute track", () => {
     const plan = planShots({
       prompt: "A rider enters the desert. Then a storm arrives. Finally sunrise breaks over the mountains.",
       style: "cinematic",
@@ -29,11 +29,11 @@ describe("planShots montage planning", () => {
       analysis: THREE_MINUTE_ANALYSIS,
     });
 
-    expect(plan.numClips).toBe(6);
-    expect(plan.shots).toHaveLength(6);
+    expect(plan.numClips).toBe(18);
+    expect(plan.shots).toHaveLength(18);
     expect(plan.timeline).toHaveLength(18);
     expect(plan.timelineSceneCount).toBe(18);
-    expect(plan.reuseCount).toBe(12);
+    expect(plan.reuseCount).toBe(0);
     expect(plan.timeline.reduce((sum, scene) => sum + scene.duration, 0)).toBe(180);
     expect(plan.timeline.every((scene) => scene.duration <= 10)).toBe(true);
   });
@@ -194,7 +194,7 @@ describe("planShots narrative planning", () => {
     expect(plan.shots[17]!.prompt).toContain("deliver a clear visual resolution");
   });
 
-  it("scales a ten-minute full track to sixty paid scenes without changing Montage", () => {
+  it("scales every ten-minute full track to sixty unique paid scenes", () => {
     const analysis = {
       ...THREE_MINUTE_ANALYSIS,
       durationSeconds: 600,
@@ -218,9 +218,9 @@ describe("planShots narrative planning", () => {
     expect(narrative.numClips).toBe(60);
     expect(narrative.timelineSceneCount).toBe(60);
     expect(narrative.reuseCount).toBe(0);
-    expect(montage.numClips).toBe(20);
+    expect(montage.numClips).toBe(60);
     expect(montage.timelineSceneCount).toBe(60);
-    expect(montage.reuseCount).toBe(40);
+    expect(montage.reuseCount).toBe(0);
   });
 
   it("uses one five-second scene for a five-second Narrative Story", () => {

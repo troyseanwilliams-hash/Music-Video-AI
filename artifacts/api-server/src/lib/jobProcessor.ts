@@ -25,6 +25,7 @@ const MAX_RETRIES = 3;
 const POLL_INTERVAL_MS = 5000;
 
 const storageService = new ObjectStorageService();
+const activeClaimTokens = new Map<string, Date>();
 type JobRow = typeof jobsTable.$inferSelect;
 
 function targetOutputDuration(
@@ -104,6 +105,10 @@ type PendingImageRequest = {
   pollUrl: string;
 };
 
+type ImageSubmissionIntent = {
+  occurredAt: string;
+};
+
 type UncertainImageSubmission = {
   status?: number;
   activityId?: string;
@@ -116,6 +121,7 @@ type AiJobMeta = {
   narrativeVisualSource?: "video" | "generated_images";
   narrativeImages?: Record<string, string>;
   pendingImageRequests?: Record<string, PendingImageRequest>;
+  imageSubmissionIntents?: Record<string, ImageSubmissionIntent>;
   uncertainImageSubmissions?: Record<string, UncertainImageSubmission>;
   imageFirstVersion?: number;
   reservedCredits?: number;
@@ -186,13 +192,34 @@ async function persistPendingImageRequest(
   await db.execute(sql`
     UPDATE jobs
     SET manifest = jsonb_set(
-      COALESCE(manifest, '{}'::jsonb),
-      '{pendingImageRequests}',
-      COALESCE(manifest->'pendingImageRequests', '{}'::jsonb)
-        || ${JSON.stringify({ [index]: info })}::jsonb
+      jsonb_set(
+        COALESCE(manifest, '{}'::jsonb),
+        '{pendingImageRequests}',
+        COALESCE(manifest->'pendingImageRequests', '{}'::jsonb)
+          || ${JSON.stringify({ [index]: info })}::jsonb
+      ),
+      '{imageSubmissionIntents}',
+      COALESCE(manifest->'imageSubmissionIntents', '{}'::jsonb) - ${String(index)}
     ), updated_at = NOW()
     WHERE id = ${jobId}
   `);
+}
+
+async function persistImageSubmissionIntent(job: JobRow, index: number): Promise<boolean> {
+  const result = await db.execute<{ id: string }>(sql`
+    UPDATE jobs
+    SET manifest = jsonb_set(
+      COALESCE(manifest, '{}'::jsonb),
+      '{imageSubmissionIntents}',
+      COALESCE(manifest->'imageSubmissionIntents', '{}'::jsonb)
+        || ${JSON.stringify({ [index]: { occurredAt: new Date().toISOString() } })}::jsonb
+    ), updated_at = NOW()
+    WHERE id = ${job.id}
+      AND status = 'generating'
+      AND claimed_at = ${job.claimedAt}
+    RETURNING id
+  `);
+  return result.rows.length > 0;
 }
 
 async function persistUncertainImageSubmission(
@@ -203,10 +230,14 @@ async function persistUncertainImageSubmission(
   await db.execute(sql`
     UPDATE jobs
     SET manifest = jsonb_set(
-      COALESCE(manifest, '{}'::jsonb),
-      '{uncertainImageSubmissions}',
-      COALESCE(manifest->'uncertainImageSubmissions', '{}'::jsonb)
-        || ${JSON.stringify({ [index]: { ...info, occurredAt: new Date().toISOString() } })}::jsonb
+      jsonb_set(
+        COALESCE(manifest, '{}'::jsonb),
+        '{uncertainImageSubmissions}',
+        COALESCE(manifest->'uncertainImageSubmissions', '{}'::jsonb)
+          || ${JSON.stringify({ [index]: { ...info, occurredAt: new Date().toISOString() } })}::jsonb
+      ),
+      '{imageSubmissionIntents}',
+      COALESCE(manifest->'imageSubmissionIntents', '{}'::jsonb) - ${String(index)}
     ), updated_at = NOW()
     WHERE id = ${jobId}
   `);
@@ -218,12 +249,16 @@ async function clearImageSubmissionState(jobId: string, index: number): Promise<
     UPDATE jobs
     SET manifest = jsonb_set(
       jsonb_set(
-        COALESCE(manifest, '{}'::jsonb),
-        '{pendingImageRequests}',
-        COALESCE(manifest->'pendingImageRequests', '{}'::jsonb) - ${key}
+        jsonb_set(
+          COALESCE(manifest, '{}'::jsonb),
+          '{pendingImageRequests}',
+          COALESCE(manifest->'pendingImageRequests', '{}'::jsonb) - ${key}
+        ),
+        '{uncertainImageSubmissions}',
+        COALESCE(manifest->'uncertainImageSubmissions', '{}'::jsonb) - ${key}
       ),
-      '{uncertainImageSubmissions}',
-      COALESCE(manifest->'uncertainImageSubmissions', '{}'::jsonb) - ${key}
+      '{imageSubmissionIntents}',
+      COALESCE(manifest->'imageSubmissionIntents', '{}'::jsonb) - ${key}
     ), updated_at = NOW()
     WHERE id = ${jobId}
   `);
@@ -242,19 +277,24 @@ async function prepareNarrativeImagesStage(job: JobRow): Promise<Record<string, 
   const paths: Record<string, string> = { ...(liveMeta.narrativeImages ?? {}) };
   const pending = liveMeta.pendingImageRequests ?? {};
   const uncertain = liveMeta.uncertainImageSubmissions ?? {};
+  const intents = liveMeta.imageSubmissionIntents ?? {};
   for (const asset of stored) paths[asset.assetIndex] = asset.objectPath;
   await updateJobStatus(job.id, { status: "generating", progressPercent: 5 });
   for (let position = 0; position < shots.length; position++) {
     const shot = shots[position]!;
     if (!paths[shot.index]) {
       const existingRequest = pending[shot.index];
-      if (uncertain[shot.index] && !existingRequest?.pollUrl) {
+      if ((uncertain[shot.index] || intents[shot.index]) && !existingRequest?.pollUrl) {
         throw new Error(`${IMAGE_API_FAILURE}: A source-image request has an uncertain submission state`);
       }
       await assertJobOwned(job); // fence immediately before this paid image call
       const referenceImageUrl = shot.usesCharacterReference && job.referenceImagePath
         ? await storageService.getObjectEntitySignedUrl(job.referenceImagePath, 900)
         : undefined;
+      if (!existingRequest) {
+        const intentPersisted = await persistImageSubmissionIntent(job, shot.index);
+        if (!intentPersisted) throw new Error(`${OWNERSHIP_LOST} (image submission intent fence)`);
+      }
       const providerUrl = await generateNarrativeImage({
         prompt: shot.prompt,
         aspectRatio: job.aspectRatio,
@@ -389,6 +429,7 @@ async function processImagePackJob(job: JobRow): Promise<void> {
     const liveMeta = await readAiMeta(job.id);
     const pending = liveMeta.pendingImageRequests ?? {};
     const uncertain = liveMeta.uncertainImageSubmissions ?? {};
+    const intents = liveMeta.imageSubmissionIntents ?? {};
     let generatedCharacterAnchorPath = existing
       .filter((asset) => sceneByIndex.get(asset.assetIndex)?.usesCharacterReference === true)
       .sort((a, b) => a.assetIndex - b.assetIndex)[0]?.objectPath;
@@ -402,7 +443,7 @@ async function processImagePackJob(job: JobRow): Promise<void> {
       await assertJobOwned(job);
       const scene = sceneByIndex.get(index);
       const existingRequest = pending[index];
-      if (uncertain[index] && !existingRequest?.pollUrl) {
+      if ((uncertain[index] || intents[index]) && !existingRequest?.pollUrl) {
         throw new Error(`${IMAGE_API_FAILURE} An image request has an uncertain submission state.`);
       }
       const prompt = scene
@@ -424,6 +465,10 @@ async function processImagePackJob(job: JobRow): Promise<void> {
       const referenceImageUrl = referenceImagePath
         ? await storageService.getObjectEntitySignedUrl(referenceImagePath, 900)
         : undefined;
+      if (!existingRequest) {
+        const intentPersisted = await persistImageSubmissionIntent(job, index);
+        if (!intentPersisted) throw new Error(`${OWNERSHIP_LOST} (image submission intent fence)`);
+      }
       const providerUrl = await generateNarrativeImage({
         prompt,
         aspectRatio: imageAspectRatio,
@@ -757,7 +802,9 @@ async function notifyJobUpdate(jobId: string): Promise<void> {
 async function claimNextJob(): Promise<JobRow | null> {
   const result = await db.execute<{ id: string }>(sql`
     UPDATE jobs
-    SET status = 'analyzing', claimed_at = NOW(), updated_at = NOW()
+    SET status = 'analyzing',
+        claimed_at = date_trunc('milliseconds', NOW()),
+        updated_at = NOW()
     WHERE id = (
       SELECT j.id FROM jobs j
       WHERE j.status = 'queued' AND j.retry_count < ${MAX_RETRIES}
@@ -867,10 +914,19 @@ async function updateJobStatus(
   jobId: string,
   fields: Partial<typeof jobsTable.$inferInsert>,
 ): Promise<void> {
-  await db
+  const claimToken = activeClaimTokens.get(jobId);
+  const updated = await db
     .update(jobsTable)
     .set({ ...fields, updatedAt: new Date() })
-    .where(eq(jobsTable.id, jobId));
+    .where(
+      claimToken
+        ? and(eq(jobsTable.id, jobId), eq(jobsTable.claimedAt, claimToken))
+        : eq(jobsTable.id, jobId),
+    )
+    .returning({ id: jobsTable.id });
+  if (claimToken && updated.length === 0) {
+    throw new Error(`${OWNERSHIP_LOST} (status update claim fence)`);
+  }
   await notifyJobUpdate(jobId);
 }
 
@@ -2632,6 +2688,11 @@ async function recoverStaleJobs(): Promise<void> {
       )
       AND NOT EXISTS (
         SELECT 1 FROM jsonb_object_keys(
+          COALESCE(manifest->'imageSubmissionIntents', '{}'::jsonb)
+        )
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM jsonb_object_keys(
           COALESCE(manifest->'uncertainSubmissions', '{}'::jsonb)
         )
       )
@@ -2875,6 +2936,7 @@ export async function startJobProcessor(): Promise<void> {
         if (job) {
           busy = true;
           inFlightJobIds.add(job.id);
+          if (job.claimedAt) activeClaimTokens.set(job.id, new Date(job.claimedAt));
           const stopHeartbeat = startJobHeartbeat(job.id);
           processJob(job)
             .catch((err) =>
@@ -2883,6 +2945,7 @@ export async function startJobProcessor(): Promise<void> {
             .finally(() => {
               stopHeartbeat();
               inFlightJobIds.delete(job.id);
+              activeClaimTokens.delete(job.id);
               busy = false;
             });
         }

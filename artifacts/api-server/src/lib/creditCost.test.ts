@@ -10,26 +10,31 @@ import {
   LIPSYNC_MAX_SECONDS,
 } from "./creditCost.js";
 
-describe("Narrative Story provider work and pricing", () => {
-  it("charges one unique provider clip per ten-second scene", () => {
+describe("unique-scene provider work and pricing", () => {
+  it("charges every mode for one unique provider clip per ten-second scene", () => {
     expect(getClipPlan("180", null, "montage")).toEqual({
-      numClips: 9,
+      numClips: 18,
       clipDurationSec: 10,
     });
     expect(getClipPlan("180", null, "narrative")).toEqual({
       numClips: 18,
       clipDurationSec: 10,
     });
-    expect(calculateCreditCost("180", "720p", null, "runway", "montage")).toBe(1261);
+    expect(calculateCreditCost("180", "720p", null, "runway", "montage")).toBe(2521);
     expect(calculateCreditCost("180", "720p", null, "runway", "narrative")).toBe(2521);
   });
 
-  it("uses sixty paid scenes for a ten-minute full-track Narrative Story", () => {
+  it("uses sixty paid scenes for every ten-minute full-track video", () => {
     expect(getClipPlan("full", 600, "narrative")).toEqual({
       numClips: 60,
       clipDurationSec: 10,
     });
     expect(calculateCreditCost("full", "720p", 600, "runway", "narrative")).toBe(8401);
+    expect(getClipPlan("full", 600, "montage")).toEqual({
+      numClips: 60,
+      clipDurationSec: 10,
+    });
+    expect(calculateCreditCost("full", "720p", 600, "runway", "montage")).toBe(8401);
   });
 
   it("keeps five-second Narrative output on a single five-second provider call", () => {
@@ -45,9 +50,9 @@ describe("image-first video pricing", () => {
     expect(GENERATED_IMAGE_CREDITS_PER_VISUAL).toBe(7);
   });
 
-  it("charges every unique Montage motif image even when an older client submits video mode", () => {
-    expect(calculateGeneratedImageCost("180", null, "montage", "video")).toBe(9 * 7);
-    expect(calculateGeneratedImageCost("180", null, "montage", "generated_images")).toBe(9 * 7);
+  it("charges every unique Montage scene image even when an older client submits video mode", () => {
+    expect(calculateGeneratedImageCost("180", null, "montage", "video")).toBe(18 * 7);
+    expect(calculateGeneratedImageCost("180", null, "montage", "generated_images")).toBe(18 * 7);
   });
 
   it("charges one source image for every chronological Narrative scene", () => {
@@ -109,13 +114,13 @@ describe("calculateLipsyncCostFromSourceVideo (completed-video Lip Sync)", () =>
   });
 
   it("prices a full-track source video, scaled by the song's real duration", () => {
-    // A 90s song -> 3 clips (fullClipCount) x 10s x $0.14/s = $4.20 -> x1.5 = $6.30 -> 420 credits.
-    expect(calculateLipsyncCostFromSourceVideo("full", null, 90, "runway")).toBe(420);
+    // A 90s song -> 9 unique clips x 10s x $0.14/s, priced at the standard long-form markup.
+    expect(calculateLipsyncCostFromSourceVideo("full", null, 90, "runway")).toBe(1261);
   });
 
   it("prices a long explicit-duration source video (5 min)", () => {
-    // 300s -> 15 clips x 10s x $0.14/s = $21.00 -> x1.5 = $31.50 -> 2100 credits (rounds up 1 for fp epsilon).
-    expect(calculateLipsyncCostFromSourceVideo("300", null, null, "runway")).toBe(2101);
+    // 300s -> 30 unique clips x 10s x $0.14/s, priced at the standard long-form markup.
+    expect(calculateLipsyncCostFromSourceVideo("300", null, null, "runway")).toBe(4201);
   });
 
   it("is always at least 1.5x the real (pre-markup) provider cost, across providers and resolutions", () => {
@@ -136,14 +141,11 @@ describe("calculateLipsyncCostFromSourceVideo (completed-video Lip Sync)", () =>
       let clipDurationSec: number;
       if (dur === "full") {
         const secs = song && song > 0 ? song : 600;
-        numClips = Math.max(3, Math.min(20, Math.ceil(Math.min(secs, 600) / 30)));
+        numClips = Math.max(1, Math.min(60, Math.ceil(Math.min(secs, 600) / 10)));
         clipDurationSec = 10;
       } else {
         clipDurationSec = (durSec as number) <= 5 ? 5 : 10;
-        numClips =
-          (durSec as number) > 120
-            ? Math.min(30, Math.ceil((durSec as number) / 20))
-            : Math.max(1, Math.ceil((durSec as number) / clipDurationSec));
+        numClips = Math.max(1, Math.min(60, Math.ceil((durSec as number) / clipDurationSec)));
       }
       const resMultiplier = res === "4k" ? 5.0 : res === "1080p" ? 1.25 : 1;
       const realCostCredits = (numClips * clipDurationSec * rate * resMultiplier) / 0.015;

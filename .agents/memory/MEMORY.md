@@ -22,7 +22,7 @@
 - [Cross-product billing exclusion](cross-product-billing-exclusion.md) — direct and Suite checkout must reserve on one authority; refunds use source-aware current-period buckets.
 - [Timed-lyrics payload contract](timed-lyrics-payload-contract.md) — Auto-sync can exceed textarea limits because enhanced LRC adds per-word timestamps; keep all lyric entry paths and render parsers aligned.
 - [Generate provider routing](generate-provider-routing.md) — standard Generate jobs must use the same provider route for admins and customers; keep direct experiments isolated.
-- [Generation-mode sequencing](visual-montage-sequencing.md) — Montage reuses motifs; Narrative renders one immutable chronological scene per slot and fails on any shortfall.
+- [Generation-mode sequencing](visual-montage-sequencing.md) — every 10s slot gets unique paid media; Montage is music-first, Narrative is chronological.
 - [Montage generated-still source](montage-generated-stills.md) — user-selected vertical AI stills belong to Visual Montage, where each planned visual is persisted and reused as a controlled motif.
 - [Configurable silent-film runtime](configurable-silent-film-runtime.md) — no-audio videos use a user-selected whole-second duration, never a prompt-specific preset.
 - [Authoritative full-track analysis](authoritative-full-track-analysis.md) — full-track runtime and credits must use server-verified analysis bound to the exact stored audio.

@@ -41,8 +41,7 @@ const KLING_LONG_MARKUP = 1.75;
 // estimators in dashboard.tsx, job-status.tsx, editor.tsx) + editorCost.ts.
 export const PRICE_MULTIPLIER = 2;
 
-// Full videos are capped at 10 minutes and scale unique clips with (capped) song
-// length: ~1 clip per 30s, min 3, max 20.
+// Full videos are capped at 10 minutes and use one unique clip per 10 seconds.
 export const MAX_FULL_SECONDS = 600;
 export type GenerationMode = "montage" | "narrative";
 // Keep this mirrored with the API server: $0.07 provider cost with a 1.5×
@@ -70,7 +69,7 @@ function targetDurationSeconds(
 
 export function fullClipCount(songDurationSec?: number | null): number {
   const secs = songDurationSec && songDurationSec > 0 ? songDurationSec : MAX_FULL_SECONDS;
-  return Math.max(3, Math.min(20, Math.ceil(Math.min(secs, MAX_FULL_SECONDS) / 30)));
+  return Math.max(1, Math.min(60, Math.ceil(Math.min(secs, MAX_FULL_SECONDS) / 10)));
 }
 
 export function getClipPlan(
@@ -92,12 +91,10 @@ export function getClipPlan(
   }
   const durSec = parseInt(dur, 10);
   const clipDurationSec: 5 | 10 = durSec <= 5 ? 5 : 10;
-  // Explicit durations over 2 min scale by length so 10 min ≈ 2× 5 min: ~1 clip
-  // per 20s, capped at 30 (5 min = 15 clips, 10 min = 30). Clips are looped to
-  // fill the runtime. Shorter durations keep 1 clip per 10s.
-  const numClips = durSec > 120
-    ? Math.min(30, Math.ceil(durSec / 20))
-    : Math.max(1, Math.ceil(durSec / clipDurationSec));
+  // Every output interval gets its own paid scene. This keeps the provider
+  // work, source-image count, customer estimate, and final runtime aligned:
+  // 5 min = 30 unique scenes; 10 min = 60. No motif looping discount.
+  const numClips = Math.max(1, Math.min(60, Math.ceil(durSec / clipDurationSec)));
   return { numClips, clipDurationSec };
 }
 

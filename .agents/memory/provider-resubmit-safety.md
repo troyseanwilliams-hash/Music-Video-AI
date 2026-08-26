@@ -26,3 +26,15 @@ Image-foundation submissions follow the same durable-recovery rule, but never en
 **Why:** An image request can be accepted before a worker dies or a poll/download/storage step fails. Requeuing it as a normal video retry can duplicate provider spend and debit the full reservation again.
 
 **How to apply:** Persist per-image poll or uncertain-submission state atomically, resume a known poll without another charge, and re-check ownership after provider work. A complete image foundation may resume clip generation only when no clip intent or uncertainty is unresolved. Keep watchdog eligibility, retry caps, and refunds identical in API and worker.
+
+Paid image submissions also require a durable pre-POST intent, not only an acceptance callback.
+
+**Why:** A process can stop after the provider accepts an image but before the request ID is saved. Without a pre-submit intent, an explicit retry can create a second paid image.
+
+**How to apply:** Write an ownership-fenced image intent before POST, atomically replace it with pending or uncertain state, and block conversion/retry while an intent is unresolved.
+
+Timestamp claim fences must use values that round-trip through JavaScript without precision loss.
+
+**Why:** PostgreSQL `NOW()` retains microseconds while JavaScript `Date` retains milliseconds; direct equality can reject the rightful worker.
+
+**How to apply:** Prefer an opaque lease ID. If `claimed_at` is the token, write it with `date_trunc('milliseconds', NOW())` in every claimant before comparing the driver-mapped value.

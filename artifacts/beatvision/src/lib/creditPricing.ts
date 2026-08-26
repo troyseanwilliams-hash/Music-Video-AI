@@ -88,7 +88,7 @@ export const GENERATED_IMAGE_CREDITS_PER_VISUAL = Math.ceil(
 
 function fullClipCount(songDurationSec?: number | null): number {
   const secs = songDurationSec && songDurationSec > 0 ? songDurationSec : MAX_FULL_SECONDS;
-  return Math.max(3, Math.min(20, Math.ceil(Math.min(secs, MAX_FULL_SECONDS) / 30)));
+  return Math.max(1, Math.min(60, Math.ceil(Math.min(secs, MAX_FULL_SECONDS) / 10)));
 }
 
 // Resolution surcharge — mirror artifacts/api-server/src/lib/creditCost.ts.
@@ -143,9 +143,9 @@ export function getGenerationClipPlan(
     return { numClips: fullClipCount(songDurationSec), clipDurationSec: 10, targetDurationSec };
   }
   const clipDurationSec: 5 | 10 = durSec <= 5 ? 5 : 10;
-  // Explicit >2min scale by length so 10 min ≈ 2× 5 min: ~1 clip/20s, cap 30
-  // (5 min = 15 clips, 10 min = 30). Shorter durations keep 1 clip/10s.
-  const numClips = durSec > 120 ? Math.min(30, Math.ceil(durSec / 20)) : Math.max(1, Math.ceil(durSec / clipDurationSec));
+  // One unique paid source image and clip per output interval. This mirrors
+  // server reservation pricing: 5 min = 30 scenes; 10 min = 60 scenes.
+  const numClips = Math.max(1, Math.min(60, Math.ceil(durSec / clipDurationSec)));
   return { numClips, clipDurationSec, targetDurationSec: durSec };
 }
 

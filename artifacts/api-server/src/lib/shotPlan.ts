@@ -113,13 +113,11 @@ function planCount(
   }
   if (dur === "full") {
     const capped = Math.min(durationSec > 0 ? durationSec : MAX_FULL_SECONDS, MAX_FULL_SECONDS);
-    return { numClips: Math.max(3, Math.min(20, Math.ceil(capped / 30))), clipDurationSec: 10, target: capped };
+    return { numClips: Math.max(1, Math.min(60, Math.ceil(capped / 10))), clipDurationSec: 10, target: capped };
   }
   const durSec = parseInt(dur, 10);
   const clipDurationSec = durSec <= 5 ? 5 : 10;
-  const numClips = durSec > 120
-    ? Math.min(30, Math.ceil(durSec / 20))
-    : Math.max(1, Math.ceil(durSec / clipDurationSec));
+  const numClips = Math.max(1, Math.min(60, Math.ceil(durSec / clipDurationSec)));
   return { numClips, clipDurationSec, target: durSec };
 }
 

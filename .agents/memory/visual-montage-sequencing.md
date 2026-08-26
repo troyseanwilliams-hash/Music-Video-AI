@@ -3,10 +3,10 @@ name: Generation-mode sequencing
 description: Product, billing, and recovery rules that distinguish Visual Montage from Narrative Story.
 ---
 
-Visual Montage is music-first, not plot-first. Build a small library of focused visual motifs, then intentionally recur those motifs across short music-timed cuts. Do not stretch each source clip into one long contiguous block or ask one clip to depict an entire multi-beat story.
+Visual Montage is music-first, not plot-first, but it still provisions one unique source image and animated clip per 10-second output interval. Visuals may share art direction and motifs, but the renderer must not reuse a paid source asset to fill a later interval.
 
 Narrative Story is plot-first and non-repeating. Its reviewed storyboard is immutable after credit reservation: render one unique provider scene per chronological 5- or 10-second timeline slot, preserve each scene index through retry/recovery, and fail rather than substitute, repeat, or finalize with a missing scene.
 
-**Why:** Montage stays affordable by separating paid provider renders from edit cuts. Narrative's higher price must come from actual unique provider work, and substituting a surviving scene would break both the reviewed story and the billing promise.
+**Why:** Long videos must contain enough generated media to cover their runtime without scene repetition. The customer estimate and atomic reservation must capture the additional provider work rather than discounting long-form Montage through reused assets.
 
-**How to apply:** Keep mode-aware clip counts, pricing, estimates, persisted plans, processor behavior, strict stitching, and Remix metadata aligned across API, worker, and frontend. Old or unmarked jobs default to Montage.
+**How to apply:** Provision and charge one unique image plus one unique clip per 10 seconds in every mode (up to 30 for 5 minutes and 60 for 10 minutes). Keep API, worker, frontend estimates, persisted plans, stitching, and Remix metadata aligned.

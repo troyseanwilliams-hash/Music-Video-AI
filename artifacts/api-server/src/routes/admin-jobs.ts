@@ -1,19 +1,35 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, usersTable, creditsTable } from "@workspace/db";
+import { jobsTable, usersTable, creditsTable, imageAssetsTable } from "@workspace/db";
 import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { downloadClip } from "../lib/videoApis.js";
 
 // Billing/salvage state AI jobs stash in the manifest jsonb.
 type AiJobMeta = {
+  generationMode?: "montage" | "narrative";
+  narrativeVisualSource?: "video" | "generated_images";
+  imageFirstVersion?: number;
   reservedCredits?: number;
   reservedSubscriptionCredits?: number;
   reservedTopupCredits?: number;
   refunded?: boolean;
   partialClips?: Record<string, string>;
   pendingRequests?: Record<string, string>;
+  pendingImageRequests?: Record<string, unknown>;
+  imageSubmissionIntents?: Record<string, unknown>;
+  uncertainSubmissions?: Record<string, unknown>;
+  submissionIntents?: Record<string, unknown>;
   uncertainImageSubmissions?: Record<string, unknown>;
+  courtesy30SceneVersion?: number;
+  storyboard?: {
+    generationMode?: "montage" | "narrative";
+    numClips?: number;
+    clipDurationSec?: number;
+    targetOutputDuration?: number;
+    shots?: unknown[];
+    timeline?: unknown[];
+  };
 };
 function metaOf(manifest: unknown): AiJobMeta {
   return manifest && typeof manifest === "object" ? (manifest as AiJobMeta) : {};
@@ -247,6 +263,187 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
 
   req.log.info({ jobId: id, userId: outcome.job.userId }, "Admin explicitly retried failed job");
   res.json(outcome.job);
+});
+
+// One-time courtesy conversion for a five-minute 15-scene image-first render.
+// It preserves all existing images, clips, and known provider requests; appends
+// 15 distinct scenes; refunds the current reservation; and requeues with a
+// zero-credit reservation so the platform absorbs the replacement cost.
+router.post("/admin/jobs/:id/courtesy-30-scene", async (req, res) => {
+  if (!req.isAuthenticated() || !isAdmin(req.user.email)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const { id } = req.params;
+  const outcome = await db.transaction(async (tx) => {
+    const [job] = await tx
+      .select()
+      .from(jobsTable)
+      .where(eq(jobsTable.id, id))
+      .limit(1)
+      .for("update");
+    if (!job) return { kind: "missing" as const };
+    if (job.jobType !== "ai") return { kind: "invalid" as const, error: "Only AI video jobs are supported." };
+
+    const meta = metaOf(job.manifest);
+    if (meta.courtesy30SceneVersion === 1) {
+      return { kind: "already" as const, job };
+    }
+    if (meta.imageFirstVersion !== 1 || meta.narrativeVisualSource !== "generated_images") {
+      return { kind: "invalid" as const, error: "This job is not an image-first video." };
+    }
+    if (
+      Object.keys(meta.uncertainImageSubmissions ?? {}).length > 0 ||
+      Object.keys(meta.imageSubmissionIntents ?? {}).length > 0 ||
+      Object.keys(meta.uncertainSubmissions ?? {}).length > 0 ||
+      Object.keys(meta.submissionIntents ?? {}).length > 0
+    ) {
+      return {
+        kind: "invalid" as const,
+        error: "The job has an unresolved provider submission and cannot be safely converted.",
+      };
+    }
+
+    const originalShots = Array.isArray(meta.storyboard?.shots)
+      ? meta.storyboard.shots.filter(
+          (value): value is {
+            index: number;
+            label: string;
+            startTime: number;
+            energy: number;
+            usesCharacterReference?: boolean;
+            prompt: string;
+          } => {
+            if (!value || typeof value !== "object") return false;
+            const shot = value as Record<string, unknown>;
+            return (
+              Number.isFinite(shot.index) &&
+              typeof shot.label === "string" &&
+              Number.isFinite(shot.startTime) &&
+              Number.isFinite(shot.energy) &&
+              typeof shot.prompt === "string" &&
+              shot.prompt.trim().length > 0
+            );
+          },
+        )
+      : [];
+    if (originalShots.length !== 15) {
+      return {
+        kind: "invalid" as const,
+        error: `Expected exactly 15 existing scenes; found ${originalShots.length}.`,
+      };
+    }
+    const exactFiveMinutePlan =
+      job.requestedDuration === "300" &&
+      meta.storyboard?.numClips === 15 &&
+      meta.storyboard?.clipDurationSec === 10 &&
+      meta.storyboard?.targetOutputDuration === 300;
+    if (!exactFiveMinutePlan) {
+      return {
+        kind: "invalid" as const,
+        error: "This courtesy action only supports the original five-minute, 15-scene, 10-second plan.",
+      };
+    }
+    const [assetCount] = await tx
+      .select({ count: sql<number>`count(DISTINCT ${imageAssetsTable.assetIndex})` })
+      .from(imageAssetsTable)
+      .where(eq(imageAssetsTable.jobId, id));
+    if (Number(assetCount?.count ?? 0) !== 15) {
+      return {
+        kind: "invalid" as const,
+        error: `Expected 15 unique saved source images; found ${Number(assetCount?.count ?? 0)}.`,
+      };
+    }
+
+    const appendedShots = originalShots.map((shot, offset) => ({
+      ...shot,
+      index: 15 + offset,
+      startTime: 150 + offset * 10,
+      label: `${shot.label} — new angle`,
+      prompt: `${shot.prompt} Create a completely distinct follow-up shot for the next story beat: use a new camera position, different composition, fresh subject action, and different environmental detail. Do not repeat the previous framing, pose, or scene arrangement.`,
+    }));
+    const total = meta.refunded ? 0 : (meta.reservedCredits ?? 0);
+    const subscriptionRefund = meta.refunded ? 0 : (meta.reservedSubscriptionCredits ?? 0);
+    const topupRefund = meta.refunded ? 0 : (meta.reservedTopupCredits ?? 0);
+    if (subscriptionRefund + topupRefund !== total) {
+      return {
+        kind: "invalid" as const,
+        error: "The current reservation split does not match the reserved total.",
+      };
+    }
+    if (total > 0) {
+      await tx
+        .update(creditsTable)
+        .set({
+          subscriptionCredits: sql`subscription_credits + ${subscriptionRefund}`,
+          topupCredits: sql`topup_credits + ${topupRefund}`,
+          creditsRemaining: sql`credits_remaining + ${total}`,
+          creditsUsed: sql`credits_used - ${total}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(creditsTable.userId, job.userId));
+    }
+
+    const nextMeta: AiJobMeta = {
+      ...meta,
+      generationMode: "narrative",
+      courtesy30SceneVersion: 1,
+      reservedCredits: 0,
+      reservedSubscriptionCredits: 0,
+      reservedTopupCredits: 0,
+      refunded: false,
+      storyboard: {
+        ...meta.storyboard,
+        generationMode: "narrative",
+        numClips: 30,
+        clipDurationSec: 10,
+        targetOutputDuration: 300,
+        shots: [...originalShots, ...appendedShots],
+        timeline: Array.from({ length: 30 }, (_, index) => index),
+      },
+    };
+    delete (nextMeta as AiJobMeta & { retryAfter?: number }).retryAfter;
+
+    const [updated] = await tx
+      .update(jobsTable)
+      .set({
+        status: "queued",
+        progressPercent: 0,
+        errorMessage: null,
+        retryCount: 0,
+        claimedAt: null,
+        manifest: nextMeta as unknown as Record<string, unknown>,
+        updatedAt: new Date(),
+      })
+      .where(eq(jobsTable.id, id))
+      .returning();
+    return { kind: "ok" as const, job: updated, refundedCredits: total };
+  });
+
+  if (outcome.kind === "missing") {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
+  if (outcome.kind === "invalid") {
+    res.status(409).json({ error: outcome.error });
+    return;
+  }
+  if (outcome.kind === "already") {
+    res.json({ ok: true, alreadyConverted: true, job: outcome.job });
+    return;
+  }
+  req.log.info(
+    { jobId: id, userId: outcome.job.userId, refundedCredits: outcome.refundedCredits },
+    "Admin created zero-credit 30-scene courtesy replacement",
+  );
+  res.json({
+    ok: true,
+    alreadyConverted: false,
+    refundedCredits: outcome.refundedCredits,
+    sceneCount: 30,
+    job: outcome.job,
+  });
 });
 
 // Force-fail any in-progress job (stitching / generating / etc.) without

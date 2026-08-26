@@ -1355,6 +1355,30 @@ export default function AdminPage() {
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
+  const courtesy30SceneMutation = useMutation({
+    mutationFn: async () => {
+      const jobId = attachJobId.trim();
+      if (!jobId) throw new Error("Enter the job ID");
+      const res = await fetch(`/api/admin/jobs/${jobId}/courtesy-30-scene`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error ?? `Failed (${res.status})`);
+      return data as { alreadyConverted: boolean; refundedCredits?: number; sceneCount?: number };
+    },
+    onSuccess: (data) => {
+      toast({
+        title: data.alreadyConverted ? "Courtesy replacement already queued" : "30-scene courtesy replacement queued",
+        description: data.alreadyConverted
+          ? "No duplicate action or credit change was made."
+          : `The user was refunded ${data.refundedCredits ?? 0} credits. Existing work will be reused and 30 unique scenes will render at no user cost.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["admin", "jobs"] });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
   const {
     data: deletedVideosData,
     isLoading: deletedLoading,
@@ -1872,6 +1896,24 @@ export default function AdminPage() {
                   >
                     {finalizeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Scissors className="h-4 w-4" />}
                     {finalizeMutation.isPending ? "Requesting…" : "Finalize with Saved Clips"}
+                  </button>
+                </div>
+                <div className="pt-2 border-t border-border">
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Convert this five-minute image-first job into a one-time 30-scene Narrative replacement.
+                    Existing images and clips are reused, 15 new scenes are added, and the user&apos;s current reservation is fully refunded.
+                  </p>
+                  <button
+                    onClick={() => {
+                      if (window.confirm("Create a 30-scene courtesy replacement, refund this job's reservation, and requeue it at zero user credits?")) {
+                        courtesy30SceneMutation.mutate();
+                      }
+                    }}
+                    disabled={courtesy30SceneMutation.isPending || !attachJobId.trim()}
+                    className="w-full sm:w-auto flex items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/10 text-primary px-5 py-3 sm:py-2.5 text-sm font-semibold hover:bg-primary/15 transition-colors disabled:opacity-50"
+                  >
+                    {courtesy30SceneMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                    {courtesy30SceneMutation.isPending ? "Creating replacement…" : "30-Scene Courtesy Replacement"}
                   </button>
                 </div>
               </CardContent>

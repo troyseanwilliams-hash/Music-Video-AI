@@ -28,10 +28,10 @@ function daysUntil(dateStr: string | null | undefined): number {
 
 // Mirrors server-side calculateCreditCost — must stay in sync with creditCost.ts.
 // Charge = real clip cost × tiered markup (2× single-clip / 1.5× multi-clip).
-// Full videos scale 3–10 clips with song length, capped at 5 min.
+// Full videos use one unique paid scene per 10 seconds, capped at 10 min.
 const RUNWAY_USD_PER_SECOND = 0.14; // Freeway: $1.40 per 10s clip
 const USD_PER_CREDIT = 0.015;
-const MAX_FULL_SECONDS = 300;
+const MAX_FULL_SECONDS = 600;
 
 function estimateCreditCost(requestedDuration: string | null | undefined, songDurationSec?: number | null): number {
   const dur = requestedDuration ?? "full";
@@ -40,7 +40,7 @@ function estimateCreditCost(requestedDuration: string | null | undefined, songDu
   const n = parseInt(dur ?? "", 10);
   if (dur === "full" || isNaN(n) || n <= 0) {
     const secs = songDurationSec && songDurationSec > 0 ? songDurationSec : MAX_FULL_SECONDS;
-    numClips = Math.max(3, Math.min(10, Math.ceil(Math.min(secs, MAX_FULL_SECONDS) / 30)));
+    numClips = Math.max(1, Math.min(60, Math.ceil(Math.min(secs, MAX_FULL_SECONDS) / 10)));
     clipDurationSec = 10;
   } else {
     clipDurationSec = n <= 5 ? 5 : 10;
