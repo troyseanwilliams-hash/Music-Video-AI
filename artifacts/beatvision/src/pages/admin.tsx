@@ -11,7 +11,7 @@ import {
   Loader2, Search, ShieldCheck, Coins, Check, X,
   MessageSquare, Users, ChevronDown, ChevronUp,
   CircleDot, Clock, CheckCircle2, XCircle, RotateCcw, AlertTriangle, RefreshCw,
-  Film, Ban, Trash2, Play, Music2, Sparkles, Scissors, Download,
+  Film, Ban, Trash2, Play, Music2, Sparkles, Scissors, Download, Mail,
   BarChart3, TrendingUp, Clock3, MousePointerClick, DollarSign, Share2, Gift, Copy, Mic2,
 } from "lucide-react";
 import {
@@ -448,6 +448,32 @@ interface PendingJob {
 interface FailedJob extends PendingJob {
   errorMessage: string | null;
   retryCount: number | null;
+  updatedAt: string;
+}
+
+interface ActiveJob {
+  id: string;
+  userId: string;
+  email: string | null;
+  status: "queued" | "analyzing" | "generating" | "stitching";
+  jobType: string;
+  prompt: string | null;
+  style: string | null;
+  progressPercent: number | null;
+  requestedDuration: string | null;
+  resolution: string | null;
+  aiProvider: string | null;
+  generationMode: string | null;
+  plannedScenes: number | null;
+  clipDurationSec: number | null;
+  reservedCredits: number | null;
+  savedImages: number;
+  savedClips: number;
+  pendingImageRequests: number;
+  pendingClipRequests: number;
+  retryCount: number | null;
+  claimedAt: string | null;
+  createdAt: string;
   updatedAt: string;
 }
 
@@ -1222,6 +1248,18 @@ export default function AdminPage() {
     refetchInterval: tab === "jobs" ? 15_000 : false,
   });
 
+  const { data: activeJobsData, isLoading: activeJobsLoading, refetch: refetchActiveJobs } = useQuery<{ jobs: ActiveJob[] }>({
+    queryKey: ["admin", "jobs", "active"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/jobs/active", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    enabled: isAdmin && tab === "jobs",
+    staleTime: 5_000,
+    refetchInterval: tab === "jobs" ? 5_000 : false,
+  });
+
   const { data: failedJobsData, isLoading: failedJobsLoading, refetch: refetchFailedJobs } = useQuery<{ jobs: FailedJob[] }>({
     queryKey: ["admin", "jobs", "failed"],
     queryFn: async () => {
@@ -1375,6 +1413,29 @@ export default function AdminPage() {
           : `The user was refunded ${data.refundedCredits ?? 0} credits. Existing work will be reused and 30 unique scenes will render at no user cost.`,
       });
       queryClient.invalidateQueries({ queryKey: ["admin", "jobs"] });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const notifyOnCompleteMutation = useMutation({
+    mutationFn: async () => {
+      const jobId = attachJobId.trim();
+      if (!jobId) throw new Error("Enter the job ID");
+      const res = await fetch(`/api/admin/jobs/${jobId}/notify-on-complete`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error ?? `Failed (${res.status})`);
+      return data as { sentNow: boolean };
+    },
+    onSuccess: (data) => {
+      toast({
+        title: data.sentNow ? "Completion email sent" : "Completion email scheduled",
+        description: data.sentNow
+          ? "The job was already finished, so the email was sent now."
+          : "You will receive an email when this job finishes.",
+      });
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -1689,6 +1750,95 @@ export default function AdminPage() {
       {/* ── Job Approvals tab ── */}
       {tab === "jobs" && (
         <div className="space-y-4">
+          <div className="rounded-2xl border border-cyan-500/25 bg-cyan-500/5 overflow-hidden">
+            <div className="flex items-center justify-between gap-3 p-4 border-b border-cyan-500/15">
+              <div>
+                <h2 className="text-base sm:text-lg font-semibold flex items-center gap-2">
+                  <Clock3 className="h-4 w-4 text-cyan-400" />
+                  Running Jobs
+                  <span className="text-xs bg-cyan-500/15 text-cyan-300 px-2 py-0.5 rounded-full font-medium">
+                    {activeJobsData?.jobs.length ?? 0}
+                  </span>
+                </h2>
+                <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
+                  All queued and in-progress jobs. Refreshes every five seconds.
+                </p>
+              </div>
+              <button
+                onClick={() => refetchActiveJobs()}
+                className="w-9 h-9 shrink-0 flex items-center justify-center rounded-full bg-muted/60 hover:bg-muted transition-colors"
+                aria-label="Refresh running jobs"
+              >
+                <RefreshCw className="h-4 w-4 text-muted-foreground" />
+              </button>
+            </div>
+            {activeJobsLoading ? (
+              <div className="flex items-center justify-center py-10">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : !activeJobsData?.jobs.length ? (
+              <div className="text-center py-10 text-sm text-muted-foreground">No jobs are currently running.</div>
+            ) : (
+              <div className="divide-y divide-border/50">
+                {activeJobsData.jobs.map((job) => {
+                  const progress = Math.max(0, Math.min(100, job.progressPercent ?? 0));
+                  return (
+                    <div key={job.id} className="p-4 space-y-3">
+                      <div className="flex items-start gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="capitalize text-xs font-semibold text-cyan-300 bg-cyan-500/15 px-2 py-0.5 rounded-full">
+                              {job.status}
+                            </span>
+                            <span className="text-xs font-mono text-muted-foreground">{job.id}</span>
+                            <button
+                              onClick={() => {
+                                void navigator.clipboard.writeText(job.id);
+                                toast({ title: "Job ID copied" });
+                              }}
+                              className="text-muted-foreground hover:text-foreground"
+                              aria-label={`Copy job ${job.id}`}
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                          <p className="text-sm font-medium mt-1 line-clamp-2">
+                            {job.prompt || <span className="italic text-muted-foreground">No prompt</span>}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">{job.email ?? job.userId}</p>
+                        </div>
+                        <span className="text-lg font-semibold tabular-nums">{progress}%</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-muted overflow-hidden">
+                        <div className="h-full bg-cyan-400 transition-all duration-500" style={{ width: `${progress}%` }} />
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 text-xs">
+                        <span className="bg-muted px-2 py-1 rounded-full capitalize">{job.jobType.replaceAll("_", " ")}</span>
+                        {job.generationMode && <span className="bg-muted px-2 py-1 rounded-full capitalize">{job.generationMode}</span>}
+                        {job.requestedDuration && <span className="bg-muted px-2 py-1 rounded-full">{job.requestedDuration === "full" ? "Full track" : `${job.requestedDuration}s`}</span>}
+                        {job.plannedScenes != null && <span className="bg-muted px-2 py-1 rounded-full">{job.plannedScenes} scenes × {job.clipDurationSec ?? "?"}s</span>}
+                        {job.savedImages > 0 && <span className="bg-muted px-2 py-1 rounded-full">{job.savedImages} images saved</span>}
+                        {job.savedClips > 0 && <span className="bg-muted px-2 py-1 rounded-full">{job.savedClips} clips saved</span>}
+                        {(job.pendingImageRequests + job.pendingClipRequests) > 0 && (
+                          <span className="bg-amber-500/10 text-amber-300 px-2 py-1 rounded-full">
+                            {job.pendingImageRequests + job.pendingClipRequests} provider request{job.pendingImageRequests + job.pendingClipRequests === 1 ? "" : "s"} polling
+                          </span>
+                        )}
+                        {job.reservedCredits != null && <span className="bg-muted px-2 py-1 rounded-full">{job.reservedCredits.toLocaleString()} credits reserved</span>}
+                        {job.aiProvider && <span className="bg-muted px-2 py-1 rounded-full capitalize">{job.aiProvider}</span>}
+                        {job.resolution && <span className="bg-muted px-2 py-1 rounded-full uppercase">{job.resolution}</span>}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Updated {new Date(job.updatedAt).toLocaleString()}
+                        {job.claimedAt ? ` · Claimed ${new Date(job.claimedAt).toLocaleString()}` : " · Waiting for worker"}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {/* Section header */}
           <div className="flex items-center justify-between">
             <div>
@@ -1914,6 +2064,20 @@ export default function AdminPage() {
                   >
                     {courtesy30SceneMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
                     {courtesy30SceneMutation.isPending ? "Creating replacement…" : "30-Scene Courtesy Replacement"}
+                  </button>
+                </div>
+                <div className="pt-2 border-t border-border">
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Send the admin account a one-time email when this job finishes.
+                    If it is already complete, the email sends immediately.
+                  </p>
+                  <button
+                    onClick={() => notifyOnCompleteMutation.mutate()}
+                    disabled={notifyOnCompleteMutation.isPending || !attachJobId.trim()}
+                    className="w-full sm:w-auto flex items-center justify-center gap-2 rounded-xl border border-border bg-background px-5 py-3 sm:py-2.5 text-sm font-semibold hover:bg-muted transition-colors disabled:opacity-50"
+                  >
+                    {notifyOnCompleteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                    {notifyOnCompleteMutation.isPending ? "Scheduling…" : "Email Me When Finished"}
                   </button>
                 </div>
               </CardContent>

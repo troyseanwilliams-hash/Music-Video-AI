@@ -6,8 +6,8 @@
 // identical). Respects the user's notify_on_complete preference. Fire-and-
 // forget: email failures never affect job processing.
 
-import { db, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, jobsTable, usersTable } from "@workspace/db";
+import { eq, sql } from "drizzle-orm";
 import { logger } from "./logger.js";
 import {
   renderReadyEmailHtml,
@@ -57,23 +57,77 @@ export async function notifyRenderReady(job: RenderEmailJob): Promise<void> {
       .from(usersTable)
       .where(eq(usersTable.id, job.userId))
       .limit(1);
-    if (!user?.email || user.notifyOnComplete === false) return;
-
-    const title = job.prompt?.slice(0, 80) || "Your video";
-    const unsub = unsubscribeUrl(APP_URL, job.userId);
-    await sendViaResend(
-      user.email,
-      "Your video is ready 🎬",
-      renderReadyEmailHtml({
-        title,
-        jobUrl: `${APP_URL}/api/email/video/${encodeURIComponent(job.id)}`,
-        unsubscribeUrl: unsub,
-      }),
-      unsubscribeHeaders(unsub),
-    );
-    logger.info({ jobId: job.id }, "Render-ready email sent");
+    if (user?.email && user.notifyOnComplete !== false) {
+      const title = job.prompt?.slice(0, 80) || "Your video";
+      const unsub = unsubscribeUrl(APP_URL, job.userId);
+      await sendViaResend(
+        user.email,
+        "Your video is ready 🎬",
+        renderReadyEmailHtml({
+          title,
+          jobUrl: `${APP_URL}/api/email/video/${encodeURIComponent(job.id)}`,
+          unsubscribeUrl: unsub,
+        }),
+        unsubscribeHeaders(unsub),
+      );
+      logger.info({ jobId: job.id }, "Render-ready email sent");
+    }
   } catch (err) {
     logger.error({ err, jobId: job.id }, "Failed to send render-ready email (non-fatal)");
+  }
+  await notifyRequestedAdminRenderReady(job);
+}
+
+export async function notifyRequestedAdminRenderReady(job: RenderEmailJob): Promise<void> {
+  try {
+    const [row] = await db
+      .select({ manifest: jobsTable.manifest })
+      .from(jobsTable)
+      .where(eq(jobsTable.id, job.id))
+      .limit(1);
+    const manifest =
+      row?.manifest && typeof row.manifest === "object"
+        ? (row.manifest as Record<string, unknown>)
+        : {};
+    if (manifest.notifyAdminOnComplete !== true || manifest.adminCompletionNotifiedAt) return;
+    const adminEmail = process.env.ADMIN_EMAIL;
+    if (!adminEmail) {
+      logger.warn({ jobId: job.id }, "ADMIN_EMAIL not set — requested completion alert skipped");
+      return;
+    }
+    await sendViaResend(
+      adminEmail,
+      "User video job finished",
+      adminEmailHtml({
+        heading: "User video job finished",
+        intro: "The requested user video has completed successfully.",
+        rows: [
+          detailRow("Job ID", escapeHtml(job.id)),
+          detailRow("Title", escapeHtml(job.prompt?.slice(0, 120) || "Untitled video")),
+        ].join(""),
+        ctaHref: `${APP_URL}/api/email/video/${encodeURIComponent(job.id)}`,
+        ctaLabel: "View completed video",
+      }),
+    );
+    await db.execute(sql`
+      UPDATE jobs
+      SET manifest = jsonb_set(
+        jsonb_set(
+          COALESCE(manifest, '{}'::jsonb),
+          '{notifyAdminOnComplete}',
+          'false'::jsonb
+        ),
+        '{adminCompletionNotifiedAt}',
+        to_jsonb(NOW()::text)
+      ),
+      updated_at = NOW()
+      WHERE id = ${job.id}
+        AND COALESCE((manifest->>'notifyAdminOnComplete')::boolean, false) = true
+        AND manifest->>'adminCompletionNotifiedAt' IS NULL
+    `);
+    logger.info({ jobId: job.id }, "Requested admin completion email sent");
+  } catch (err) {
+    logger.error({ err, jobId: job.id }, "Failed to send requested admin completion email (non-fatal)");
   }
 }
 

@@ -4,6 +4,7 @@ import { jobsTable, usersTable, creditsTable, imageAssetsTable } from "@workspac
 import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { downloadClip } from "../lib/videoApis.js";
+import { notifyRequestedAdminRenderReady } from "../lib/renderEmail.js";
 
 // Billing/salvage state AI jobs stash in the manifest jsonb.
 type AiJobMeta = {
@@ -15,6 +16,7 @@ type AiJobMeta = {
   reservedTopupCredits?: number;
   refunded?: boolean;
   partialClips?: Record<string, string>;
+  narrativeImages?: Record<string, string>;
   pendingRequests?: Record<string, string>;
   pendingImageRequests?: Record<string, unknown>;
   imageSubmissionIntents?: Record<string, unknown>;
@@ -53,7 +55,7 @@ router.get("/admin/jobs/active", async (req, res) => {
     return;
   }
 
-  const jobs = await db
+  const rows = await db
     .select({
       id: jobsTable.id,
       userId: jobsTable.userId,
@@ -62,6 +64,11 @@ router.get("/admin/jobs/active", async (req, res) => {
       jobType: jobsTable.jobType,
       prompt: jobsTable.prompt,
       style: jobsTable.style,
+      progressPercent: jobsTable.progressPercent,
+      requestedDuration: jobsTable.requestedDuration,
+      resolution: jobsTable.resolution,
+      aiProvider: jobsTable.aiProvider,
+      manifest: jobsTable.manifest,
       errorMessage: jobsTable.errorMessage,
       retryCount: jobsTable.retryCount,
       claimedAt: jobsTable.claimedAt,
@@ -71,9 +78,23 @@ router.get("/admin/jobs/active", async (req, res) => {
     .from(jobsTable)
     .leftJoin(usersTable, eq(jobsTable.userId, usersTable.id))
     .where(inArray(jobsTable.status, ["queued", "analyzing", "generating", "stitching"]))
-    .orderBy(desc(jobsTable.updatedAt))
-    .limit(50);
+    .orderBy(desc(jobsTable.updatedAt));
 
+  const jobs = rows.map(({ manifest, ...job }) => {
+    const meta = metaOf(manifest);
+    const storyboard = meta.storyboard;
+    return {
+      ...job,
+      generationMode: meta.generationMode ?? storyboard?.generationMode ?? null,
+      plannedScenes: storyboard?.numClips ?? null,
+      clipDurationSec: storyboard?.clipDurationSec ?? null,
+      reservedCredits: meta.reservedCredits ?? null,
+      savedImages: Object.keys(meta.narrativeImages ?? {}).length,
+      savedClips: Object.keys(meta.partialClips ?? {}).length,
+      pendingImageRequests: Object.keys(meta.pendingImageRequests ?? {}).length,
+      pendingClipRequests: Object.keys(meta.pendingRequests ?? {}).length,
+    };
+  });
   res.json({ jobs });
 });
 
@@ -444,6 +465,35 @@ router.post("/admin/jobs/:id/courtesy-30-scene", async (req, res) => {
     sceneCount: 30,
     job: outcome.job,
   });
+});
+
+router.post("/admin/jobs/:id/notify-on-complete", async (req, res) => {
+  if (!req.isAuthenticated() || !isAdmin(req.user.email)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const { id } = req.params;
+  const [job] = await db
+    .update(jobsTable)
+    .set({
+      manifest: sql`jsonb_set(
+        COALESCE(${jobsTable.manifest}, '{}'::jsonb),
+        '{notifyAdminOnComplete}',
+        'true'::jsonb
+      )`,
+      updatedAt: new Date(),
+    })
+    .where(eq(jobsTable.id, id))
+    .returning();
+  if (!job) {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
+  if (job.status === "ready") {
+    await notifyRequestedAdminRenderReady(job);
+  }
+  req.log.info({ jobId: id, status: job.status }, "Admin requested job completion email");
+  res.json({ ok: true, status: job.status, sentNow: job.status === "ready" });
 });
 
 // Force-fail any in-progress job (stitching / generating / etc.) without
