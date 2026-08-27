@@ -7,3 +7,10 @@ uri = "file://attached_assets/welcome-email-preview.html"
 type = "text"
 title = "Welcome email preview"
 description = "What new users receive right after signing up — features highlight plus a light AIPodSync mention."
+
+[[outputs]]
+id = "vBle9ApjgMfgNxG93RWLg"
+uri = "file://previews/user-recovery-email-preview.html"
+type = "text"
+title = "AIBeatSync Customer Recovery Email Preview"
+description = "Preview addressed to ym19810926@icloud.com. This is a draft only; it has not been sent and no account credits were changed."
