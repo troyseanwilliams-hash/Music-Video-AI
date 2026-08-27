@@ -37,6 +37,7 @@ import {
   type GenerationMode,
 } from "@/lib/creditPricing";
 import { getGenerationTimeEstimate } from "@/lib/jobEstimates";
+import { detectNamedSubject } from "@/lib/promptWarnings";
 
 const NUMBERED_IMAGE_SCENE_LINE =
   /^\s*(?:scene\s+)?(\d{1,2})\s*(?:(?:[.):])\s*|\s+)(?:\(\s*(?:\d+(?:\.\d+)?s?|\d{1,2}:\d{2}(?::\d{2})?)\s*[-–—]\s*(?:\d+(?:\.\d+)?s?|\d{1,2}:\d{2}(?::\d{2})?)\s*\)\s*[:\-]?\s*)?(.+?)\s*$/i;
@@ -318,6 +319,7 @@ export default function Generate() {
     : { count: null, invalid: false };
   const numberedImageSceneCount = numberedImageSceneAnalysis.count;
   const effectiveImagePackCount = numberedImageSceneCount ?? imagePackCount;
+  const namedSubjectWarning = detectNamedSubject(prompt);
 
   // Reference image
   const refImageInputRef = useRef<HTMLInputElement>(null);
@@ -2379,6 +2381,20 @@ export default function Generate() {
               maxLength={1000}
               onChange={(e) => { setPrompt(e.target.value); setFieldErrors((fe) => ({ ...fe, prompt: undefined })); }}
             />
+            {namedSubjectWarning && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="flex items-start gap-2.5 rounded-xl border border-amber-400/35 bg-amber-500/[0.08] px-3.5 py-3 text-sm text-amber-100"
+              >
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+                <p className="leading-relaxed">
+                  <strong className="font-semibold">Person or character name detected:</strong>{" "}
+                  “{namedSubjectWarning}”. Some image providers may reject named people or characters.
+                  For a better chance of success, describe the subject&apos;s appearance, clothing, era, and mood instead.
+                </p>
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <div>
                 {fieldErrors.prompt && (
