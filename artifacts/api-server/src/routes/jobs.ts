@@ -999,6 +999,7 @@ router.post("/jobs/:id/retry", async (req, res) => {
           bundledLipSyncEnabled?: boolean;
           bundledLipSyncActivated?: boolean;
           uncertainSubmissions?: Record<string, unknown>;
+           rejectedRequests?: Record<string, unknown>;
         })
       : {};
   if (
@@ -1023,20 +1024,25 @@ router.post("/jobs/:id/retry", async (req, res) => {
     return;
   }
 
-  const acknowledgeUncertainSubmission =
-    req.body?.acknowledgeUncertainSubmission === true;
   const hasPersistedUncertainty =
     Object.keys(retryMeta.uncertainSubmissions ?? {}).length > 0;
+  const hasTerminalRejection =
+    Object.keys(retryMeta.rejectedRequests ?? {}).length > 0 ||
+    /request was rejected|ai scene (failed|error)/i.test(job.errorMessage ?? "");
   // Backward compatibility for failures recorded before uncertainSubmissions
   // existed. These messages all mean submission ended without a request id.
   const hasLegacyUncertainty =
     /aborted due to timeout|ai service 5\d\d|pixazo 5\d\d|internal server error/i.test(
       job.errorMessage ?? "",
     );
-  if (
-    (hasPersistedUncertainty || hasLegacyUncertainty) &&
-    !acknowledgeUncertainSubmission
-  ) {
+  if (hasTerminalRejection) {
+    res.status(409).json({
+      error: "This generation cannot be resubmitted right now.",
+      code: "RETRY_UNAVAILABLE",
+    });
+    return;
+  }
+  if (hasPersistedUncertainty || hasLegacyUncertainty) {
     res.status(409).json({
       error: "This generation cannot be resubmitted right now.",
       code: "RETRY_UNAVAILABLE",
@@ -1052,7 +1058,7 @@ router.post("/jobs/:id/retry", async (req, res) => {
       errorMessage: null,
       retryCount: 0,
       claimedAt: null,
-      manifest: sql`COALESCE(${jobsTable.manifest}, '{}'::jsonb) - 'uncertainSubmissions'`,
+      manifest: sql`COALESCE(${jobsTable.manifest}, '{}'::jsonb)`,
       updatedAt: new Date(),
     })
     .where(

@@ -3,6 +3,7 @@ import {
   generateClip,
   pollPixazoRequestUntilComplete,
   PROVIDER_API_FAILURE,
+  PROVIDER_TERMINAL_FAILURE,
   PROVIDER_POLL_TIMEOUT,
   resolveClipProviderChain,
 } from "./videoApis.js";
@@ -252,9 +253,27 @@ describe("resolveClipProviderChain", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("expired", { status: 404 })));
 
     const result = pollPixazoRequestUntilComplete("https://gateway.pixazo.ai/v2/requests/status/missing");
-    const assertion = expect(result).rejects.toThrow(PROVIDER_API_FAILURE);
+    const assertion = expect(result).rejects.toThrow(PROVIDER_TERMINAL_FAILURE);
     await vi.advanceTimersByTimeAsync(5_000);
 
     await assertion;
+  });
+
+  it("preserves a saved request through authentication failures", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("PIXAZO_API_KEY", "test-key");
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response("unauthorized", { status: 401 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = pollPixazoRequestUntilComplete(
+      "https://gateway.pixazo.ai/v2/requests/status/auth-failure",
+    );
+    const assertion = expect(result).rejects.toThrow(PROVIDER_POLL_TIMEOUT);
+    await vi.advanceTimersByTimeAsync(180 * 5_000);
+
+    await assertion;
+    expect(fetchMock).toHaveBeenCalledTimes(180);
   });
 });

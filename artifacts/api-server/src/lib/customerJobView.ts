@@ -1,6 +1,7 @@
 const PRIVATE_MANIFEST_KEYS = new Set([
   "partialClips",
   "pendingRequests",
+  "rejectedRequests",
   "pendingImageRequests",
   "submissionIntents",
   "imageSubmissionIntents",

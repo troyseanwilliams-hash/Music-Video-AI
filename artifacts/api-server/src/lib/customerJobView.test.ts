@@ -11,6 +11,12 @@ describe("toCustomerJobView", () => {
         storyboard: { numClips: 30 },
         partialClips: { "0": "/objects/clips/job-1/0.mp4" },
         pendingRequests: { "19": "https://provider.example/status/private-handle" },
+        rejectedRequests: {
+          "19": {
+            pollUrl: "https://provider.example/status/rejected-private-handle",
+            reason: "terminal provider rejection",
+          },
+        },
         uncertainSubmissions: { "20": { startedAt: 123 } },
         lipSyncPollUrl: "https://provider.example/lip-sync/private-handle",
         finalizeWithPartial: true,

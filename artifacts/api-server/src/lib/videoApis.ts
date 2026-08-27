@@ -297,6 +297,7 @@ async function generateWithLuma(req: ClipRequest): Promise<string> {
 // to permanently fail the job without re-queuing. AI provider charges happen at
 // submission time — retrying after a provider failure just doubles the bill.
 export const PROVIDER_API_FAILURE = "[PROVIDER_FAILURE]";
+export const PROVIDER_TERMINAL_FAILURE = "[PROVIDER_TERMINAL_FAILURE]";
 export const PROVIDER_POLL_TIMEOUT = "[PROVIDER_POLL_TIMEOUT]";
 const PROVIDER_POLL_ATTEMPTS = 180;
 // Marker appended when the failure was the provider running out of tokens /
@@ -328,9 +329,9 @@ export async function pollPixazoRequestUntilComplete(pollUrl: string): Promise<s
     if (!pollRes.ok) {
       // The provider has explicitly rejected this already-accepted request.
       // Do not keep retrying an invalid/expired handle or create a replacement.
-      if (pollRes.status >= 400 && pollRes.status < 500 && pollRes.status !== 429) {
+      if (pollRes.status === 404 || pollRes.status === 410) {
         throw new Error(
-          `${PROVIDER_API_FAILURE} Saved AI scene request was rejected (HTTP ${pollRes.status}).`,
+          `${PROVIDER_API_FAILURE} ${PROVIDER_TERMINAL_FAILURE} Saved AI scene request was rejected (HTTP ${pollRes.status}).`,
         );
       }
       continue;
@@ -352,7 +353,7 @@ export async function pollPixazoRequestUntilComplete(pollUrl: string): Promise<s
     }
     if (result.status === "FAILED" || result.status === "ERROR") {
       throw new Error(
-        `${PROVIDER_API_FAILURE} AI scene ${result.status}: ${result.error ?? "unknown error"}`,
+        `${PROVIDER_API_FAILURE} ${PROVIDER_TERMINAL_FAILURE} AI scene ${result.status}: ${result.error ?? "unknown error"}`,
       );
     }
   }

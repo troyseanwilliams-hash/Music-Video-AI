@@ -18,6 +18,7 @@ type AiJobMeta = {
   partialClips?: Record<string, string>;
   narrativeImages?: Record<string, string>;
   pendingRequests?: Record<string, string>;
+  rejectedRequests?: Record<string, unknown>;
   pendingImageRequests?: Record<string, unknown>;
   imageSubmissionIntents?: Record<string, unknown>;
   uncertainSubmissions?: Record<string, unknown>;
@@ -207,6 +208,22 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
     if (job.status !== "failed") return { kind: "not_failed" as const, status: job.status };
 
     const meta = metaOf(job.manifest);
+    const terminalRejectedRequest =
+      /request was rejected|ai scene (failed|error)/i.test(job.errorMessage ?? "");
+    const pendingEntries = Object.entries(meta.pendingRequests ?? {});
+    if (
+      terminalRejectedRequest &&
+      Object.keys(meta.rejectedRequests ?? {}).length === 0 &&
+      pendingEntries.length > 1
+    ) {
+      return { kind: "unsafe_recovery_state" as const };
+    }
+    const legacyRejectedIndex =
+      terminalRejectedRequest &&
+      Object.keys(meta.rejectedRequests ?? {}).length === 0 &&
+      pendingEntries.length === 1
+        ? pendingEntries[0]![0]
+        : null;
     let retrySubscriptionReservation = meta.reservedSubscriptionCredits;
     let retryTopupReservation = meta.reservedTopupCredits;
     // A failed render returns its reservation. An explicit admin retry is a
@@ -245,10 +262,18 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
         .where(eq(creditsTable.userId, job.userId));
     }
 
-    // A 5xx response can mean the provider never accepted the image request.
-    // Retrying needs explicit approval (this endpoint), then the uncertain
-    // marker must be cleared so the job can submit a fresh source image.
-    const { uncertainImageSubmissions: _uncertain, ...retryMeta } = meta;
+    // Uncertain image submissions must remain intact. Without a confirmed
+    // request id there is no safe way to prove that a replacement image POST
+    // would not duplicate a paid request.
+    const {
+      rejectedRequests: _rejected,
+      ...retryMeta
+    } = meta;
+    const retryPendingRequests = Object.fromEntries(
+      Object.entries(retryMeta.pendingRequests ?? {}).filter(
+        ([index]) => index !== legacyRejectedIndex,
+      ),
+    );
     const [updated] = await tx
       .update(jobsTable)
       .set({
@@ -258,6 +283,7 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
         claimedAt: null,
         manifest: {
           ...retryMeta,
+          pendingRequests: retryPendingRequests,
           refunded: false,
           reservedSubscriptionCredits: retrySubscriptionReservation,
           reservedTopupCredits: retryTopupReservation,
@@ -279,6 +305,12 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
   }
   if (outcome.kind === "insufficient_credits") {
     res.status(402).json({ error: "The original user no longer has enough credits to retry this render." });
+    return;
+  }
+  if (outcome.kind === "unsafe_recovery_state") {
+    res.status(409).json({
+      error: "This job has multiple saved scene requests and cannot be retried safely.",
+    });
     return;
   }
 

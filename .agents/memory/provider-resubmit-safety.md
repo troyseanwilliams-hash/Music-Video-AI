@@ -13,7 +13,13 @@ Persisted provider requests must be recovered conservatively.
 
 **Why:** Clearing an in-flight request or a completed request whose media download temporarily failed causes a new paid submission even though the original may still succeed.
 
-**How to apply:** Keep pending request metadata through completion, hard failure, 404, or 410; recover completed media without new spend. A still-pending poll may requeue only within a bounded free recovery budget. Never clear a non-completed handle and fall through to a replacement POST.
+**How to apply:** Keep pending request metadata through transport, auth, 5xx, unreadable, and other ambiguous poll failures; recover completed media without new spend. Move only explicit request-level terminal states (`FAILED`/`ERROR`/404/410) to a per-index rejected archive. A still-pending poll may requeue only within a bounded free recovery budget.
+
+An explicit admin retry may replace a terminally rejected request, but it must be a per-scene transition.
+
+**Why:** Clearing the entire pending map after one rejected scene can duplicate other accepted requests. Validating the retry after reserving credits can charge a customer even when the retry is rejected.
+
+**How to apply:** Validate recovery state before any credit debit, clear only archived rejected indexes, preserve unrelated pending handles plus all clip/image intents and uncertainty markers, and block customer retries whenever terminal or uncertain provider state exists.
 
 Every failure after a provider POST is issued but before a valid request ID is durably saved must be recorded as an uncertain submission.
 

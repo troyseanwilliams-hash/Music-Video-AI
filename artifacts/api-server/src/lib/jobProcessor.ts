@@ -13,7 +13,7 @@ import { logger } from "./logger.js";
 import { notifyRenderReady, notifyRenderFailed, notifyAdminRenderFailed } from "./renderEmail.js";
 import { ObjectStorageService } from "./objectStorage.js";
 import { analyzeAudioBuffer, type AudioAnalysis, type AudioSection } from "./audioAnalysis.js";
-import { generateClip, downloadClip, pollPixazoRequestUntilComplete, getActiveProvider, PROVIDER_API_FAILURE, PROVIDER_OUT_OF_CREDITS, PROVIDER_POLL_TIMEOUT } from "./videoApis.js";
+import { generateClip, downloadClip, pollPixazoRequestUntilComplete, getActiveProvider, PROVIDER_API_FAILURE, PROVIDER_TERMINAL_FAILURE, PROVIDER_OUT_OF_CREDITS, PROVIDER_POLL_TIMEOUT } from "./videoApis.js";
 import { generateNarrativeImage, downloadGeneratedImage, IMAGE_API_FAILURE, IMAGE_POLL_TIMEOUT } from "./imageApis.js";
 import { generateLipsync, lipsyncAvailable } from "./lipsync.js";
 import { stitchVideoClips, extractVideoThumbnail } from "./videoStitcher.js";
@@ -95,6 +95,12 @@ type UncertainSubmission = {
   occurredAt: string;
 };
 
+type RejectedClipRequest = {
+  pollUrl: string;
+  reason: string;
+  occurredAt: string;
+};
+
 type ClipSubmissionIntent = {
   provider: string;
   occurredAt: string;
@@ -131,6 +137,7 @@ type AiJobMeta = {
   lipSyncPollUrl?: string;
   partialClips?: Record<string, string>; // clip index -> object storage path
   pendingRequests?: Record<string, string>; // clip index -> provider poll URL (submitted, not yet downloaded)
+  rejectedRequests?: Record<string, RejectedClipRequest>; // terminal provider rejection; admin may authorize one fresh submission
   uncertainSubmissions?: Record<string, UncertainSubmission>; // clip index -> ambiguous submit outcome requiring explicit acknowledgement
   submissionIntents?: Record<string, ClipSubmissionIntent>; // written before POST; unresolved entries block automatic resubmission
   retryAfter?: number; // epoch ms — queued job must not be claimed before this
@@ -732,6 +739,34 @@ async function clearPendingRequest(jobId: string, index: number): Promise<void> 
   `);
 }
 
+async function persistRejectedRequest(
+  jobId: string,
+  index: number,
+  pollUrl: string,
+  reason: string,
+): Promise<void> {
+  const entry: RejectedClipRequest = {
+    pollUrl,
+    reason: reason.slice(0, 240),
+    occurredAt: new Date().toISOString(),
+  };
+  await db.execute(sql`
+    UPDATE jobs
+    SET manifest = jsonb_set(
+          jsonb_set(
+            COALESCE(manifest, '{}'::jsonb),
+            '{rejectedRequests}',
+            COALESCE(manifest->'rejectedRequests', '{}'::jsonb)
+              || ${JSON.stringify({ [index]: entry })}::jsonb
+          ),
+          '{pendingRequests}',
+          COALESCE(manifest->'pendingRequests', '{}'::jsonb) - ${String(index)}
+        ),
+        updated_at = NOW()
+    WHERE id = ${jobId}
+  `);
+}
+
 async function persistLipSyncPollUrl(jobId: string, pollUrl: string): Promise<void> {
   await db.execute(sql`
     UPDATE jobs
@@ -1256,7 +1291,15 @@ async function generateClips(
         continue;
       } catch (e) {
         const detail = e instanceof Error ? e.message : String(e);
-        if (detail.includes(PROVIDER_API_FAILURE) || detail.includes(PROVIDER_POLL_TIMEOUT)) {
+        if (detail.includes(PROVIDER_TERMINAL_FAILURE)) {
+          await persistRejectedRequest(job.id, i, pending[i]!, detail);
+          delete pending[i];
+          throw e;
+        }
+        if (
+          detail.includes(PROVIDER_API_FAILURE) ||
+          detail.includes(PROVIDER_POLL_TIMEOUT)
+        ) {
           throw e;
         }
         logger.warn({ jobId: job.id, clip: i, err: e }, "Stranded clip download failed — preserving request for recovery");
@@ -1341,6 +1384,14 @@ async function generateClips(
       } catch (e) {
         clipErr = e;
         const msg = e instanceof Error ? e.message : String(e);
+        if (
+          acceptedRequest &&
+          pending[i] &&
+          msg.includes(PROVIDER_TERMINAL_FAILURE)
+        ) {
+          await persistRejectedRequest(job.id, i, pending[i]!, msg);
+          delete pending[i];
+        }
         // Provider ran out of tokens (Pixazo 402 / quota / balance): if we
         // already have rendered clips, stop generating and salvage them —
         // the video is finished with fewer unique clips (looped to fill the
