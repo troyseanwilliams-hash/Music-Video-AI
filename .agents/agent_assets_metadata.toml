@@ -14,3 +14,10 @@ uri = "file://previews/user-recovery-email-preview.html"
 type = "text"
 title = "AIBeatSync Customer Recovery Email Preview"
 description = "Preview addressed to ym19810926@icloud.com. This is a draft only; it has not been sent and no account credits were changed."
+
+[[outputs]]
+id = "NulyzlFP7-3COElWrtxgR"
+uri = "file://previews/user-recovery-email-preview.png"
+type = "image"
+title = "AIBeatSync Email Preview"
+description = "Image preview of the customer recovery email. Draft only—nothing has been sent and no credits were changed."
