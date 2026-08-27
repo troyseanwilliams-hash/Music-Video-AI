@@ -19,7 +19,6 @@ import {
   CartesianGrid, LineChart, Line, Legend,
 } from "recharts";
 import { useToast } from "@/hooks/use-toast";
-import LyricSyncStudio from "@/components/admin/LyricSyncStudio";
 
 /* ─── User management types ─── */
 interface AdminUser {
@@ -730,7 +729,7 @@ function AdminMusicPanel() {
 }
 
 /* ─── Main admin page ─── */
-type Tab = "analytics" | "users" | "support" | "jobs" | "deleted" | "music" | "lyricsync";
+type Tab = "analytics" | "users" | "support" | "jobs" | "deleted";
 
 interface DeletedVideo {
   id: string;
@@ -1240,18 +1239,6 @@ export default function AdminPage() {
     staleTime: 30_000,
   });
 
-  const { data: pendingJobsData, isLoading: pendingJobsLoading, refetch: refetchPendingJobs } = useQuery<{ jobs: PendingJob[] }>({
-    queryKey: ["admin", "jobs", "pending"],
-    queryFn: async () => {
-      const res = await fetch("/api/admin/jobs/pending", { credentials: "include" });
-      if (!res.ok) throw new Error("Failed");
-      return res.json();
-    },
-    enabled: isAdmin && tab === "jobs",
-    staleTime: 10_000,
-    refetchInterval: tab === "jobs" ? 15_000 : false,
-  });
-
   const { data: activeJobsData, isLoading: activeJobsLoading, refetch: refetchActiveJobs } = useQuery<{ jobs: ActiveJob[] }>({
     queryKey: ["admin", "jobs", "active"],
     queryFn: async () => {
@@ -1284,36 +1271,6 @@ export default function AdminPage() {
     },
     enabled: isAdmin && tab === "users",
     refetchInterval: tab === "users" ? 15_000 : false,
-  });
-
-  const approveMutation = useMutation({
-    mutationFn: async (jobId: string) => {
-      const res = await fetch(`/api/admin/jobs/${jobId}/approve`, {
-        method: "POST",
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to approve");
-    },
-    onSuccess: () => {
-      toast({ title: "Job approved", description: "Job moved to queue and will process shortly." });
-      refetchPendingJobs();
-    },
-    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-  });
-
-  const rejectMutation = useMutation({
-    mutationFn: async (jobId: string) => {
-      const res = await fetch(`/api/admin/jobs/${jobId}/reject`, {
-        method: "POST",
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to reject");
-    },
-    onSuccess: () => {
-      toast({ title: "Job rejected", description: "Job has been marked as failed." });
-      refetchPendingJobs();
-    },
-    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const forceFailMutation = useMutation({
@@ -1639,11 +1596,6 @@ export default function AdminPage() {
         >
           <ShieldCheck className="h-4 w-4" />
           Job Approvals
-          {pendingJobsData && pendingJobsData.jobs.length > 0 && (
-            <span className="ml-1 px-1.5 py-0.5 rounded-full bg-yellow-500 text-black text-xs font-mono leading-none">
-              {pendingJobsData.jobs.length}
-            </span>
-          )}
         </button>
         <button
           onClick={() => setTab("deleted")}
@@ -1656,37 +1608,9 @@ export default function AdminPage() {
           <Trash2 className="h-4 w-4" />
           Deleted Files
         </button>
-        <button
-          onClick={() => setTab("music")}
-          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
-            tab === "music"
-              ? "border-primary text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          <Music2 className="h-4 w-4" />
-          Soundtracks
-          <span className="ml-1 px-1.5 py-0.5 rounded-full bg-primary/20 text-primary text-[10px] font-mono leading-none">Beta</span>
-        </button>
-        <button
-          onClick={() => setTab("lyricsync")}
-          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap ${
-            tab === "lyricsync"
-              ? "border-primary text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          <Mic2 className="h-4 w-4" />
-          Lyric Sync
-          <span className="ml-1 px-1.5 py-0.5 rounded-full bg-primary/20 text-primary text-[10px] font-mono leading-none">Beta</span>
-        </button>
       </div>
 
       {tab === "analytics" && <AnalyticsPanel />}
-
-      {tab === "music" && <AdminMusicPanel />}
-
-      {tab === "lyricsync" && <LyricSyncStudio />}
 
       {/* ── Users tab ── */}
       {tab === "users" && (
@@ -1895,89 +1819,6 @@ export default function AdminPage() {
               </div>
             )}
           </div>
-
-          {/* Section header */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-base sm:text-lg font-semibold flex items-center gap-2">
-                <ShieldCheck className="h-4 w-4 text-purple-400" />
-                Pending Approvals
-                {pendingJobsData && pendingJobsData.jobs.length > 0 && (
-                  <span className="text-xs bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full font-medium">
-                    {pendingJobsData.jobs.length}
-                  </span>
-                )}
-              </h2>
-              <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 hidden sm:block">
-                Approved jobs are sent to the AI engine for processing.
-              </p>
-            </div>
-            <button
-              onClick={() => refetchPendingJobs()}
-              className="w-9 h-9 flex items-center justify-center rounded-full bg-muted/60 hover:bg-muted transition-colors"
-            >
-              <RefreshCw className="h-4 w-4 text-muted-foreground" />
-            </button>
-          </div>
-
-          {pendingJobsLoading ? (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : !pendingJobsData?.jobs.length ? (
-            <div className="text-center py-16 sm:py-20 border border-dashed border-border rounded-2xl bg-card/30">
-              <ShieldCheck className="h-10 w-10 sm:h-12 sm:w-12 text-green-500 mx-auto mb-3 sm:mb-4 opacity-40" />
-              <p className="text-foreground font-medium mb-1">All clear</p>
-              <p className="text-muted-foreground text-sm">No jobs are waiting for approval.</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {pendingJobsData.jobs.map((job) => (
-                <div key={job.id} className="rounded-2xl overflow-hidden border border-border/60 bg-card/50">
-                  {/* Job info */}
-                  <div className="p-4 space-y-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-mono text-muted-foreground">{job.id.slice(0, 8)}…</span>
-                      <span className="text-xs text-muted-foreground">·</span>
-                      <span className="text-xs text-muted-foreground truncate">{job.email ?? job.userId}</span>
-                      <span className="text-xs text-muted-foreground ml-auto">{new Date(job.createdAt).toLocaleString()}</span>
-                    </div>
-                    <p className="text-sm font-medium leading-snug line-clamp-3">
-                      {job.prompt ?? <span className="italic text-muted-foreground">No prompt</span>}
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {job.style && <span className="capitalize bg-muted text-muted-foreground text-xs px-2 py-0.5 rounded-full">{job.style}</span>}
-                      {job.requestedDuration && (
-                        <span className="bg-muted text-muted-foreground text-xs px-2 py-0.5 rounded-full">
-                          {job.requestedDuration === "full" ? "Full track" : `${job.requestedDuration}s`}
-                        </span>
-                      )}
-                      {job.audioSourceType && <span className="bg-muted text-muted-foreground text-xs px-2 py-0.5 rounded-full capitalize">{job.audioSourceType}</span>}
-                    </div>
-                  </div>
-                  {/* Action bar — full width on mobile, compact on desktop */}
-                  <div className="flex border-t border-border/50">
-                    <button
-                      className="flex-1 flex items-center justify-center gap-2 py-3.5 sm:py-2.5 text-sm font-semibold text-red-400 hover:bg-red-500/10 active:bg-red-500/15 transition-colors border-r border-border/50 disabled:opacity-50"
-                      disabled={rejectMutation.isPending || approveMutation.isPending}
-                      onClick={() => rejectMutation.mutate(job.id)}
-                    >
-                      <X className="h-4 w-4" />
-                      Reject
-                    </button>
-                    <button
-                      className="flex-1 flex items-center justify-center gap-2 py-3.5 sm:py-2.5 text-sm font-semibold text-green-400 hover:bg-green-500/10 active:bg-green-500/15 transition-colors disabled:opacity-50"
-                      disabled={approveMutation.isPending || rejectMutation.isPending}
-                      onClick={() => approveMutation.mutate(job.id)}
-                    >
-                      <Check className="h-4 w-4" />
-                      Approve
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
 
           {/* ── Recover stranded renders ── */}
           <RecoverStrandedPanel />
