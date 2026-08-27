@@ -10,6 +10,8 @@ export interface ClipRequest {
   resolution?: string | null;
   /** When true, do not continue to another provider after this provider fails. */
   providerOnly?: boolean;
+  /** Optional second engine used only after the pinned engine returns an explicit terminal result. */
+  terminalFallbackProvider?: string;
   /**
    * Called as soon as the provider accepts the render request, BEFORE polling
    * begins. Lets the caller persist the request id / poll URL so a clip that
@@ -26,6 +28,11 @@ export interface ClipRequest {
     status?: number;
     activityId?: string;
     reason: string;
+  }) => void | Promise<void>;
+  /** Called after the primary request is terminal and immediately before the fallback POST. */
+  onTerminalFallback?: (info: {
+    fromProvider: string;
+    toProvider: string;
   }) => void | Promise<void>;
 }
 
@@ -568,11 +575,15 @@ async function callProvider(provider: Provider, req: ClipRequest): Promise<strin
 }
 
 export function resolveClipProviderChain(
-  req: Pick<ClipRequest, "provider" | "providerOnly">,
+  req: Pick<ClipRequest, "provider" | "providerOnly" | "terminalFallbackProvider">,
 ): Provider[] {
   const pinned = req.provider?.toLowerCase() as Provider | undefined;
   if (req.providerOnly) {
-    return pinned && providerAvailable(pinned) ? [pinned] : [];
+    if (!pinned || !providerAvailable(pinned)) return [];
+    const fallback = req.terminalFallbackProvider?.toLowerCase() as Provider | undefined;
+    return fallback && fallback !== pinned && providerAvailable(fallback)
+      ? [pinned, fallback]
+      : [pinned];
   }
 
   let chain = getProviderChain();
@@ -605,6 +616,15 @@ export async function generateClip(req: ClipRequest): Promise<ClipResult | null>
       return { videoUrl, provider };
     } catch (err) {
       lastErr = err;
+      const nextProvider = chain[i + 1];
+      if (nextProvider && req.providerOnly && req.terminalFallbackProvider) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (!message.includes(PROVIDER_TERMINAL_FAILURE)) throw err;
+        await req.onTerminalFallback?.({
+          fromProvider: provider,
+          toProvider: nextProvider,
+        });
+      }
     }
   }
   // All providers in the chain have been tried and failed. Mark the error as

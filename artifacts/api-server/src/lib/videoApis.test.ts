@@ -38,6 +38,65 @@ describe("resolveClipProviderChain", () => {
     ).toEqual(["runway"]);
   });
 
+  it("adds the explicitly authorized terminal fallback to a provider-only request", () => {
+    vi.stubEnv("PIXAZO_API_KEY", "test-key");
+
+    expect(
+      resolveClipProviderChain({
+        provider: "runway",
+        providerOnly: true,
+        terminalFallbackProvider: "kling",
+      }),
+    ).toEqual(["runway", "kling"]);
+  });
+
+  it("submits the fallback only after the primary request is terminal", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("PIXAZO_API_KEY", "test-key");
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const onTerminalFallback = vi.fn().mockResolvedValue(undefined);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        request_id: "runway-terminal",
+        polling_url: "https://gateway.pixazo.ai/v2/requests/status/runway-terminal",
+      }), { status: 202 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        status: "FAILED",
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        request_id: "kling-fallback",
+        polling_url: "https://gateway.pixazo.ai/v2/requests/status/kling-fallback",
+      }), { status: 202 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        status: "COMPLETED",
+        output: { media_url: ["https://cdn.example.com/kling-fallback.mp4"] },
+      }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = generateClip({
+      prompt: "cinematic rain",
+      durationSeconds: 5,
+      provider: "runway",
+      providerOnly: true,
+      terminalFallbackProvider: "kling",
+      onSubmit,
+      onTerminalFallback,
+    });
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await expect(result).resolves.toEqual({
+      videoUrl: "https://cdn.example.com/kling-fallback.mp4",
+      provider: "kling",
+    });
+    expect(onTerminalFallback).toHaveBeenCalledWith({
+      fromProvider: "runway",
+      toProvider: "kling",
+    });
+    expect(onSubmit).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
   it("submits Runway through its documented Gen-4.5 endpoint", async () => {
     vi.stubEnv("PIXAZO_API_KEY", "test-key");
     vi.stubEnv("PIXAZO_RUNWAY_MODEL", "runway-gen-4-5");
@@ -109,18 +168,20 @@ describe("resolveClipProviderChain", () => {
   it("records a 5xx submission as uncertain before failing the clip", async () => {
     vi.stubEnv("PIXAZO_API_KEY", "test-key");
     const onUncertainSubmission = vi.fn().mockResolvedValue(undefined);
+    const onTerminalFallback = vi.fn().mockResolvedValue(undefined);
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          statusCode: 500,
+          message: "Internal server error",
+          activityId: "activity-123",
+        }),
+        { status: 500 },
+      ),
+    );
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            statusCode: 500,
-            message: "Internal server error",
-            activityId: "activity-123",
-          }),
-          { status: 500 },
-        ),
-      ),
+      fetchMock,
     );
 
     await expect(
@@ -129,7 +190,9 @@ describe("resolveClipProviderChain", () => {
         durationSeconds: 5,
         provider: "kling",
         providerOnly: true,
+        terminalFallbackProvider: "runway",
         onUncertainSubmission,
+        onTerminalFallback,
       }),
     ).rejects.toThrow("temporarily unavailable");
     expect(onUncertainSubmission).toHaveBeenCalledWith({
@@ -138,6 +201,8 @@ describe("resolveClipProviderChain", () => {
       activityId: "activity-123",
       reason: "AI service returned HTTP 500",
     });
+    expect(onTerminalFallback).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("records a malformed success response as uncertain", async () => {

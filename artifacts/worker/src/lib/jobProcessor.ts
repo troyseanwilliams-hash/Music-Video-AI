@@ -173,6 +173,7 @@ type AiJobMeta = {
     sceneIndex: number;
     assetType: "clip";
     allowTerminalSkip: true;
+    terminalFallbackProvider: "kling";
     requestedAt: string;
   }; // explicit admin recovery: this exact storyboard segment must be the next paid request
   retryAfter?: number; // epoch ms — queued job must not be claimed before this
@@ -878,6 +879,75 @@ async function persistClipSubmissionIntent(
   return result.rows.length > 0;
 }
 
+async function persistTargetedClipSubmissionIntent(
+  job: JobRow,
+  index: number,
+  provider: string,
+  markerRequestedAt: string,
+): Promise<boolean> {
+  const entry: ClipSubmissionIntent = {
+    provider: provider.slice(0, 40),
+    occurredAt: new Date().toISOString(),
+  };
+  const result = await db.execute<{ id: string }>(sql`
+    UPDATE jobs
+    SET manifest = jsonb_set(
+          COALESCE(manifest, '{}'::jsonb),
+          '{submissionIntents}',
+          COALESCE(manifest->'submissionIntents', '{}'::jsonb)
+            || ${JSON.stringify({ [index]: entry })}::jsonb
+        ),
+        updated_at = NOW()
+    WHERE id = ${job.id}
+      AND status = 'generating'
+      AND claimed_at = ${job.claimedAt}
+      AND COALESCE(manifest->'targetedSceneRecovery'->>'sceneIndex', '') = ${String(index)}
+      AND COALESCE(manifest->'targetedSceneRecovery'->>'requestedAt', '') = ${markerRequestedAt}
+    RETURNING id
+  `);
+  return result.rows.length > 0;
+}
+
+async function persistTargetedFallbackIntent(
+  job: JobRow,
+  index: number,
+  provider: string,
+  markerRequestedAt: string,
+): Promise<void> {
+  const entry: ClipSubmissionIntent = {
+    provider: provider.slice(0, 40),
+    occurredAt: new Date().toISOString(),
+  };
+  const result = await db.execute<{ id: string }>(sql`
+    UPDATE jobs
+    SET manifest = jsonb_set(
+          jsonb_set(
+            jsonb_set(
+              COALESCE(manifest, '{}'::jsonb),
+              '{submissionIntents}',
+              COALESCE(manifest->'submissionIntents', '{}'::jsonb)
+                || ${JSON.stringify({ [index]: entry })}::jsonb
+            ),
+            '{pendingRequests}',
+            COALESCE(manifest->'pendingRequests', '{}'::jsonb) - ${String(index)}
+          ),
+          '{rejectedRequests}',
+          COALESCE(manifest->'rejectedRequests', '{}'::jsonb) - ${String(index)}
+        ),
+        updated_at = NOW()
+    WHERE id = ${job.id}
+      AND status = 'generating'
+      AND claimed_at = ${job.claimedAt}
+      AND COALESCE(manifest->'targetedSceneRecovery'->>'sceneIndex', '') = ${String(index)}
+      AND COALESCE(manifest->'targetedSceneRecovery'->>'requestedAt', '') = ${markerRequestedAt}
+    RETURNING id
+  `);
+  if (result.rows.length === 0) {
+    await assertJobOwned(job);
+    throw new Error(`${PROVIDER_API_FAILURE}: Targeted scene recovery marker changed before fallback submission`);
+  }
+}
+
 async function persistUncertainSubmission(
   jobId: string,
   index: number,
@@ -1390,6 +1460,8 @@ async function generateClips(
   const targetedSceneRequestedAt = clipMeta.targetedSceneRecovery?.requestedAt;
   const allowTargetedTerminalSkip =
     clipMeta.targetedSceneRecovery?.allowTerminalSkip === true;
+  const terminalFallbackProvider =
+    clipMeta.targetedSceneRecovery?.terminalFallbackProvider;
   if (
     targetedSceneIndex !== undefined &&
     (
@@ -1603,7 +1675,14 @@ async function generateClips(
         const narrativeImageUrl = imagePath
           ? await storageService.getObjectEntitySignedUrl(imagePath, 3600)
           : refImageUrl ?? undefined;
-        const intentPersisted = await persistClipSubmissionIntent(job, i, provider);
+        const intentPersisted = targetedSceneIndex === i
+          ? await persistTargetedClipSubmissionIntent(
+              job,
+              i,
+              provider,
+              targetedSceneRequestedAt!,
+            )
+          : await persistClipSubmissionIntent(job, i, provider);
         if (!intentPersisted) {
           throw new Error(`${OWNERSHIP_LOST} (clip submission intent fence)`);
         }
@@ -1616,6 +1695,8 @@ async function generateClips(
           // and do not submit paid fallback requests to unrelated engines.
           provider,
           providerOnly: true,
+          terminalFallbackProvider:
+            targetedSceneIndex === i ? terminalFallbackProvider : undefined,
           resolution: job.resolution,
           // Persist the provider request id before polling starts so this clip
           // is recoverable if the server dies mid-poll.
@@ -1641,6 +1722,14 @@ async function generateClips(
                 targetedSceneRequestedAt!,
               )
             : persistUncertainSubmission(job.id, i, info),
+          onTerminalFallback: targetedSceneIndex === i
+            ? (info) => persistTargetedFallbackIntent(
+                job,
+                i,
+                info.toProvider,
+                targetedSceneRequestedAt!,
+              )
+            : undefined,
         });
         clipBuffer = result ? await downloadClip(result.videoUrl) : await createSimulationClip(clipDuration);
         if (result) {

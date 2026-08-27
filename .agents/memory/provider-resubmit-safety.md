@@ -33,6 +33,12 @@ A terminal-skip fallback is recovery-only and must remain claim- and marker-inst
 
 **How to apply:** Permit skipping only a confirmed terminal result for the explicitly authorized scene. Continue remaining scenes, fill the original slot from adjacent footage, and atomically persist that slot while clearing its recovery state under status, claim-token, scene-index, and marker-identity fences.
 
+Cross-engine fallback is allowed only after the primary request is explicitly terminal, never after an exception category that leaves submission state ambiguous.
+
+**Why:** Falling back after timeouts, authentication failures, malformed responses, or transport errors can create two paid requests for one scene.
+
+**How to apply:** Before the fallback POST, atomically replace the terminal primary handle with a new provider intent under the same claim and recovery-marker fences. Persist the fallback handle before polling; if it is terminal too, use the recovery-only timeline fallback.
+
 Every failure after a provider POST is issued but before a valid request ID is durably saved must be recorded as an uncertain submission.
 
 **Why:** Timeouts, 5xx responses, unreadable bodies, malformed 2xx JSON, and persistence failures can all happen after the provider accepted a billable request. Treating any of them as a normal failure exposes an unacknowledged duplicate resubmit.

@@ -29,6 +29,7 @@ type AiJobMeta = {
     sceneIndex: number;
     assetType: "clip";
     allowTerminalSkip: true;
+    terminalFallbackProvider: "kling";
     requestedAt: string;
   };
   courtesy30SceneVersion?: number;
@@ -315,6 +316,7 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
               sceneIndex: Number(freshSceneKey),
               assetType: "clip" as const,
               allowTerminalSkip: true as const,
+              terminalFallbackProvider: "kling" as const,
               requestedAt: new Date().toISOString(),
             },
           }),
