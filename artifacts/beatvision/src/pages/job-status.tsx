@@ -20,7 +20,7 @@ import {
   Loader2, Music, CheckCircle2, AlertCircle, ArrowLeft,
   Play, RefreshCw, Download, ExternalLink, Clock,
   AudioWaveform, Clapperboard, Scissors, Sparkles, RotateCcw, Info,
-  WifiOff, Wifi, FileAudio, Server, Zap, Plus, Link2, Check, ShieldAlert,
+  WifiOff, Wifi, Plus, Link2, Check, ShieldAlert,
   TriangleAlert, X, ImageIcon,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from "recharts";
@@ -128,95 +128,18 @@ function inferClipProgress(
   return `Generating scene ${completed + 1} of ${n}…`;
 }
 
-// Categorise error messages into user-friendly buckets
-type ErrorCategory = "api" | "audio" | "quota" | "timeout" | "content" | "unknown";
-
-function categoriseError(msg: string | null | undefined): {
-  category: ErrorCategory;
+function customerFailureMessage(): {
   headline: string;
   detail: string;
-  canRetry: boolean;
 } {
-  const m = (msg ?? "").toLowerCase();
-
-  // Content policy / safety filter — check before generic "runway" match
-  if (
-    m.includes("content") ||
-    m.includes("moderat") ||
-    m.includes("nsfw") ||
-    m.includes("safety") ||
-    m.includes("violat") ||
-    m.includes("explicit") ||
-    m.includes("inappropriate") ||
-    m.includes("policy")
-  ) {
-    return {
-      category: "content",
-      headline: "Prompt flagged by content filter",
-      detail:
-        "Your prompt or reference image was rejected by the AI safety filter. Try rephrasing your prompt — avoid explicit, violent, or trademarked content — and generate again.",
-      canRetry: false,
-    };
-  }
-  if (
-    m.includes("temporarily unavailable") ||
-    m.includes("internal server error") ||
-    /ai service 5\d\d/.test(m)
-  ) {
-    return {
-      category: "api",
-      headline: "Service temporarily unavailable",
-      detail:
-        "The video service is having a temporary problem. We stopped safely without an automatic retry to prevent duplicate charges. Please wait a little while and try again.",
-      canRetry: true,
-    };
-  }
-  if (m.includes("runway") || m.includes("api error") || m.includes("api key")) {
-    return {
-      category: "api",
-      headline: "AI generation service error",
-      detail: "The AI engine returned an unexpected response. This is usually transient — retrying often fixes it.",
-      canRetry: true,
-    };
-  }
-  if (m.includes("ffmpeg") || m.includes("audio") || m.includes("pcm") || m.includes("decode")) {
-    return {
-      category: "audio",
-      headline: "Audio processing failed",
-      detail: "We couldn't decode your audio file. Make sure it's a valid MP3, WAV, FLAC, or AAC file and try again.",
-      canRetry: false,
-    };
-  }
-  if (m.includes("quota") || m.includes("rate limit") || m.includes("429")) {
-    return {
-      category: "quota",
-      headline: "Rate limit reached",
-      detail: "The generation service is temporarily rate-limited. Your job will automatically retry in a few minutes.",
-      canRetry: true,
-    };
-  }
-  if (m.includes("timeout") || m.includes("timed out") || m.includes("econnreset")) {
-    return {
-      category: "timeout",
-      headline: "Connection timed out",
-      detail: "The request to the AI service timed out. This can happen during high-traffic periods — retrying should work.",
-      canRetry: true,
-    };
-  }
   return {
-    category: "unknown",
-    headline: "An unexpected error occurred",
-    detail: "Something went wrong during processing. The full error has been logged. Please try again or start a new generation.",
-    canRetry: true,
+    headline: "Generation unavailable",
+    detail: "We couldn't complete this generation. We're working on the issue.",
   };
 }
 
 function isAutoRetrying(msg: string | null | undefined): boolean {
   return /retry \d+\/\d+ in \d+m/.test(msg ?? "");
-}
-
-function sanitizeTechnicalError(msg: string): string {
-  return msg.replace(/pixazo/gi, "AI service");
 }
 
 // Wall-clock elapsed since the job was created (ISO timestamp), ticking every
@@ -336,14 +259,9 @@ export default function JobStatus() {
   const [sseConnected, setSseConnected] = useState(false);
   const [copied, setCopied] = useState(false);
   const [warningDismissed, setWarningDismissed] = useState(false);
-  const [resubmitting, setResubmitting] = useState(false);
-  const [resubmitError, setResubmitError] = useState<string | null>(null);
-  const [uncertainRetryWarning, setUncertainRetryWarning] = useState<string | null>(null);
 
   useEffect(() => {
     setWarningDismissed(false);
-    setResubmitError(null);
-    setUncertainRetryWarning(null);
   }, [id]);
 
   const { data: job, isLoading } = useGetJob(id as string, {
@@ -404,44 +322,6 @@ export default function JobStatus() {
       setLocation(`/login?from=${returnTo}`);
     }
   }, [isAuthenticated, isAuthLoading, setLocation]);
-
-  const handleRetry = async (acknowledgeUncertainSubmission = false) => {
-    if (!id || resubmitting) return;
-    setResubmitting(true);
-    setResubmitError(null);
-    try {
-      const res = await fetch(`/api/jobs/${id}/retry`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ acknowledgeUncertainSubmission }),
-      });
-      const payload = await res.json().catch(() => null) as
-        | (Job & { error?: string; code?: string })
-        | { error?: string; code?: string }
-        | null;
-      if (!res.ok) {
-        if (payload?.code === "UNCERTAIN_PROVIDER_SUBMISSION") {
-          setUncertainRetryWarning(
-            payload.error ??
-              "The previous scene request was not confirmed. Submitting again may create an additional provider request.",
-          );
-          return;
-        }
-        throw new Error(payload?.error ?? "This job could not be resubmitted.");
-      }
-      setUncertainRetryWarning(null);
-      queryClient.setQueryData(getGetJobQueryKey(id), payload as Job);
-    } catch (error) {
-      setResubmitError(
-        error instanceof Error
-          ? error.message
-          : "This job could not be resubmitted.",
-      );
-    } finally {
-      setResubmitting(false);
-    }
-  };
 
   const durVal = job?.requestedDuration;
   const jobIsActive = !!(job && !TERMINAL_STATUSES.has(job.status ?? ""));
@@ -520,7 +400,7 @@ export default function JobStatus() {
     (!jobAudio.audioSourceType || jobAudio.audioSourceType === "none") &&
     !jobAudio.audioObjectPath &&
     !jobAudio.audioSourceUrl;
-  const errInfo = categoriseError(job.errorMessage);
+  const errInfo = customerFailureMessage();
 
   // Remix Lab renders one final output video regardless of its timeline size.
   const isRemixJob = job.jobType === "editor_render";
@@ -1007,42 +887,13 @@ export default function JobStatus() {
                 <CardContent className="pt-6 space-y-4">
                   <div className="flex items-start gap-4">
                     <div className="h-10 w-10 rounded-full bg-destructive/15 flex items-center justify-center shrink-0">
-                      <ErrorIcon category={errInfo.category} />
+                      <AlertCircle className="h-5 w-5 text-destructive" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold text-destructive mb-1">{errInfo.headline}</h3>
                       <p className="text-sm text-muted-foreground mb-3">{errInfo.detail}</p>
 
-                      {/* Raw error — collapsed by default */}
-                      {job.errorMessage && (
-                        <details className="mb-4 group">
-                          <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground select-none">
-                            Show technical details
-                          </summary>
-                          <pre className="mt-2 text-[11px] bg-secondary/60 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-all text-muted-foreground leading-relaxed">
-                            {sanitizeTechnicalError(job.errorMessage)}
-                          </pre>
-                        </details>
-                      )}
-
                       <div className="flex flex-wrap gap-3">
-                        {errInfo.canRetry &&
-                          (job as { jobType?: string }).jobType !== "runway_lipsync" &&
-                          (job as { jobType?: string }).jobType !== "image_pack" && (
-                          <Button
-                            variant="outline"
-                            className="border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
-                            onClick={() => handleRetry(false)}
-                            disabled={resubmitting}
-                          >
-                            {resubmitting ? (
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            ) : (
-                              <RefreshCw className="mr-2 h-4 w-4" />
-                            )}
-                            {resubmitting ? "Resubmitting…" : "Resubmit this job"}
-                          </Button>
-                        )}
                         <Button variant="outline" onClick={() => setLocation("/generate")}>
                           <Plus className="mr-2 h-4 w-4" /> New generation
                         </Button>
@@ -1050,39 +901,6 @@ export default function JobStatus() {
                           Dashboard
                         </Button>
                       </div>
-                      {resubmitError && (
-                        <p className="mt-3 text-sm text-destructive" role="alert">
-                          {resubmitError}
-                        </p>
-                      )}
-                      {uncertainRetryWarning && (
-                        <div
-                          className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm"
-                          role="alert"
-                        >
-                          <p className="font-medium text-amber-700 dark:text-amber-300">
-                            Previous submission could not be confirmed
-                          </p>
-                          <p className="mt-1 text-muted-foreground">
-                            {uncertainRetryWarning} Your existing app-credit reservation will be reused, but the AI service may count this as another provider request.
-                          </p>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="mt-3 border-amber-500/30"
-                            disabled={resubmitting}
-                            onClick={() => handleRetry(true)}
-                          >
-                            {resubmitting ? (
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            ) : (
-                              <RefreshCw className="mr-2 h-4 w-4" />
-                            )}
-                            I understand — submit another attempt
-                          </Button>
-                        </div>
-                      )}
                     </div>
                   </div>
                 </CardContent>
@@ -1384,18 +1202,6 @@ function StatusBadge({ status, autoRetrying }: { status: string; autoRetrying: b
       <Loader2 className="h-4 w-4 animate-spin" /> {status}
     </span>
   );
-}
-
-function ErrorIcon({ category }: { category: ErrorCategory }) {
-  const cls = "h-5 w-5 text-destructive";
-  switch (category) {
-    case "api":     return <Server className={cls} />;
-    case "audio":   return <FileAudio className={cls} />;
-    case "quota":   return <Zap className={cls} />;
-    case "timeout": return <WifiOff className={cls} />;
-    case "content": return <ShieldAlert className={cls} />;
-    default:        return <AlertCircle className={cls} />;
-  }
 }
 
 function DownloadBar({ jobId, prompt }: { jobId: string; prompt?: string | null }) {

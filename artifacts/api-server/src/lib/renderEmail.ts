@@ -180,7 +180,7 @@ export async function notifyAdminRenderFailed(job: RenderEmailJob, reason: strin
 }
 
 /** Emails the job owner that their render permanently failed. Never throws. */
-export async function notifyRenderFailed(job: RenderEmailJob, reason: string): Promise<void> {
+export async function notifyRenderFailed(job: RenderEmailJob, _reason: string): Promise<void> {
   try {
     const [user] = await db
       .select({ email: usersTable.email, notifyOnComplete: usersTable.notifyOnComplete })
@@ -194,7 +194,13 @@ export async function notifyRenderFailed(job: RenderEmailJob, reason: string): P
     await sendViaResend(
       user.email,
       "Your render didn't finish",
-      renderFailedEmailHtml({ title, reason, jobUrl: `${APP_URL}/jobs/${job.id}`, supportUrl: `${APP_URL}/support`, unsubscribeUrl: unsub }),
+      renderFailedEmailHtml({
+        title,
+        reason: "We couldn't complete this generation. We're working on the issue.",
+        jobUrl: `${APP_URL}/jobs/${job.id}`,
+        supportUrl: `${APP_URL}/support`,
+        unsubscribeUrl: unsub,
+      }),
       unsubscribeHeaders(unsub),
     );
     logger.info({ jobId: job.id }, "Render-failed email sent");

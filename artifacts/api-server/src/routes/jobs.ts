@@ -26,6 +26,7 @@ import { planShots } from "../lib/shotPlan.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { MAX_LYRICS_LENGTH } from "../lib/lyricLimits.js";
 import { verifyAudioAnalysisReceipt } from "../lib/audioAnalysisReceipt.js";
+import { toCustomerJobView } from "../lib/customerJobView.js";
 
 const router = Router();
 
@@ -244,7 +245,7 @@ router.get("/jobs", async (req, res) => {
   ]);
 
   res.json({
-    jobs,
+    jobs: jobs.map(toCustomerJobView),
     total: totalResult[0]?.count ?? 0,
     page,
     limit,
@@ -694,7 +695,7 @@ router.post("/jobs", async (req, res) => {
     "Job queued — credits reserved up front (refunded automatically on failure)",
   );
 
-  res.status(201).json(job);
+  res.status(201).json(toCustomerJobView(job));
 });
 
 router.get("/jobs/:id", async (req, res) => {
@@ -725,7 +726,7 @@ router.get("/jobs/:id", async (req, res) => {
     return;
   }
 
-  const jobData: Record<string, unknown> = { ...job[0] };
+  const jobData: Record<string, unknown> = { ...toCustomerJobView(job[0]) };
   const previewClips = resolvePreviewClips(job[0].manifest);
   if (previewClips) jobData.previewClips = previewClips;
   const scenePlan = resolveScenePlan(job[0]);
@@ -777,11 +778,11 @@ router.get("/jobs/:id/events", async (req, res) => {
   const sendJob = (job: typeof existing[0]) => {
     const previewClips = resolvePreviewClips(job.manifest);
     const scenePlan = resolveScenePlan(job);
-    const payload = {
+    const payload = toCustomerJobView({
       ...job,
       ...(previewClips ? { previewClips } : {}),
       ...(scenePlan ? { scenePlan } : {}),
-    };
+    });
     res.write(`data: ${JSON.stringify(payload)}\n\n`);
   };
 
@@ -1037,9 +1038,8 @@ router.post("/jobs/:id/retry", async (req, res) => {
     !acknowledgeUncertainSubmission
   ) {
     res.status(409).json({
-      error:
-        "The AI service did not confirm whether the previous scene request was accepted. Submitting again may create an additional provider request.",
-      code: "UNCERTAIN_PROVIDER_SUBMISSION",
+      error: "This generation cannot be resubmitted right now.",
+      code: "RETRY_UNAVAILABLE",
     });
     return;
   }
@@ -1072,7 +1072,7 @@ router.post("/jobs/:id/retry", async (req, res) => {
     return;
   }
 
-  res.json(updated);
+  res.json(toCustomerJobView(updated));
 });
 
 // DELETE /api/jobs/:id — remove a user's own job. Restricted to terminal
