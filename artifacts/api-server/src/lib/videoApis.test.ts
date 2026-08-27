@@ -17,7 +17,7 @@ describe("resolveClipProviderChain", () => {
 
   it("routes a selected Runway render through the normal production provider chain", () => {
     vi.stubEnv("PIXAZO_API_KEY", "test-key");
-    vi.stubEnv("PIXAZO_RUNWAY_MODEL", "test-runway-model");
+    vi.stubEnv("RUNWAY_API_KEY", "runway-key");
     vi.stubEnv("LUMA_API_KEY", "");
     vi.stubEnv("VIDEO_API", "");
     vi.stubEnv("VIDEO_API_CHAIN", "");
@@ -25,13 +25,11 @@ describe("resolveClipProviderChain", () => {
     expect(resolveClipProviderChain({ provider: "runway" })).toEqual([
       "runway",
       "kling",
-      "pixazo",
     ]);
   });
 
   it("honors provider-only requests without enabling an unrelated fallback", () => {
-    vi.stubEnv("PIXAZO_API_KEY", "test-key");
-    vi.stubEnv("PIXAZO_RUNWAY_MODEL", "test-runway-model");
+    vi.stubEnv("RUNWAY_API_KEY", "runway-key");
 
     expect(
       resolveClipProviderChain({ provider: "runway", providerOnly: true }),
@@ -53,13 +51,13 @@ describe("resolveClipProviderChain", () => {
   it("submits the fallback only after the primary request is terminal", async () => {
     vi.useFakeTimers();
     vi.stubEnv("PIXAZO_API_KEY", "test-key");
+    vi.stubEnv("RUNWAY_API_KEY", "runway-key");
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const onTerminalFallback = vi.fn().mockResolvedValue(undefined);
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({
-        request_id: "runway-terminal",
-        polling_url: "https://gateway.pixazo.ai/v2/requests/status/runway-terminal",
+        id: "runway-terminal",
       }), { status: 202 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         status: "FAILED",
@@ -97,16 +95,14 @@ describe("resolveClipProviderChain", () => {
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
-  it("submits Runway through its documented Gen-4.5 endpoint", async () => {
-    vi.stubEnv("PIXAZO_API_KEY", "test-key");
-    vi.stubEnv("PIXAZO_RUNWAY_MODEL", "runway-gen-4-5");
+  it("submits Runway directly through its documented Gen-4.5 endpoint", async () => {
+    vi.stubEnv("RUNWAY_API_KEY", "runway-key");
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
-            request_id: "runway-request-123",
-            polling_url: "https://gateway.pixazo.ai/v2/requests/status/runway-request-123",
+            id: "runway-request-123",
           }),
           { status: 202 },
         ),
@@ -114,8 +110,8 @@ describe("resolveClipProviderChain", () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
-            status: "COMPLETED",
-            output: { media_url: ["https://cdn.example.com/runway.mp4"] },
+            status: "SUCCEEDED",
+            output: ["https://cdn.example.com/runway.mp4"],
           }),
           { status: 200 },
         ),
@@ -138,17 +134,25 @@ describe("resolveClipProviderChain", () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      "https://gateway.pixazo.ai/runway-gen-4-5/v1/gen-4.5/text-to-video",
+      "https://api.dev.runwayml.com/v1/text_to_video",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ prompt: "cinematic rain" }),
+        headers: expect.objectContaining({
+          Authorization: "Bearer runway-key",
+          "X-Runway-Version": "2024-11-06",
+        }),
+        body: JSON.stringify({
+          model: "gen4.5",
+          promptText: "cinematic rain",
+          ratio: "1280:720",
+          duration: 10,
+        }),
       }),
     );
   }, 10_000);
 
   it("fails a provider-only request instead of silently using another engine", async () => {
-    vi.stubEnv("PIXAZO_API_KEY", "");
-    vi.stubEnv("PIXAZO_RUNWAY_MODEL", "");
+    vi.stubEnv("RUNWAY_API_KEY", "");
     vi.stubEnv("LUMA_API_KEY", "test-luma-key");
     vi.stubEnv("VIDEO_API_CHAIN", "luma");
 
@@ -205,6 +209,36 @@ describe("resolveClipProviderChain", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("never falls back to Kling after an ambiguous direct Runway submission", async () => {
+    vi.stubEnv("RUNWAY_API_KEY", "runway-key");
+    vi.stubEnv("PIXAZO_API_KEY", "pixazo-key");
+    vi.stubEnv("VIDEO_API_CHAIN", "runway,kling");
+    const onUncertainSubmission = vi.fn().mockResolvedValue(undefined);
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response("upstream unavailable", { status: 503 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      generateClip({
+        prompt: "cinematic rain",
+        durationSeconds: 5,
+        provider: "runway",
+        onUncertainSubmission,
+      }),
+    ).rejects.toThrow("temporarily unavailable");
+
+    expect(onUncertainSubmission).toHaveBeenCalledWith({
+      provider: "runway",
+      status: 503,
+      reason: "AI service returned HTTP 503",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "https://api.dev.runwayml.com/v1/text_to_video",
+    );
+  });
+
   it("records a malformed success response as uncertain", async () => {
     vi.stubEnv("PIXAZO_API_KEY", "test-key");
     const onUncertainSubmission = vi.fn().mockResolvedValue(undefined);
@@ -257,22 +291,20 @@ describe("resolveClipProviderChain", () => {
 
   it("marks an exhausted persisted scene request as a resumable polling timeout", async () => {
     vi.useFakeTimers();
-    vi.stubEnv("PIXAZO_API_KEY", "test-key");
-    vi.stubEnv("PIXAZO_RUNWAY_MODEL", "runway-gen-4-5");
+    vi.stubEnv("RUNWAY_API_KEY", "runway-key");
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
-            request_id: "runway-timeout-123",
-            polling_url: "https://gateway.pixazo.ai/v2/requests/status/runway-timeout-123",
+            id: "runway-timeout-123",
           }),
           { status: 202 },
         ),
       )
       .mockImplementation(
-        async () => new Response(JSON.stringify({ status: "IN_PROGRESS" }), { status: 200 }),
+        async () => new Response(JSON.stringify({ status: "RUNNING" }), { status: 200 }),
       );
     vi.stubGlobal("fetch", fetchMock);
 

@@ -43,19 +43,14 @@ export interface ClipResult {
 
 type Provider = "runway" | "luma" | "kling" | "pixazo";
 const PIXAZO_SUBMIT_TIMEOUT_MS = 90_000;
-// Runway's current gateway model id. The versioned Runway routes below are
-// documented against this id; do not take it from a stale environment override.
-const PIXAZO_RUNWAY_MODEL = "runway-gen-4-5";
+const RUNWAY_VIDEO_MODEL = "gen4.5";
 
 function providerAvailable(p: Provider): boolean {
   if (p === "luma") return !!process.env.LUMA_API_KEY;
-  // "kling" and "pixazo" run through the Pixazo gateway (single key).
+  // Only Kling runs through the Pixazo gateway.
   if (p === "kling") return !!process.env.PIXAZO_API_KEY;
-  if (p === "pixazo") return !!process.env.PIXAZO_API_KEY;
-  // Runway is available through the Pixazo gateway whenever its shared key is
-  // present. Its supported model id is pinned above rather than being supplied
-  // by an easily-stale environment value.
-  if (p === "runway") return !!process.env.PIXAZO_API_KEY;
+  if (p === "pixazo") return false;
+  if (p === "runway") return !!process.env.RUNWAY_API_KEY;
   return false;
 }
 
@@ -72,9 +67,8 @@ function klingModel(resolution?: string | null): string {
   return process.env.PIXAZO_KLING_MODEL?.trim() || "kling-video-v3-turbo-pro-text-to-video";
 }
 
-// Ordered provider chain with automatic fallback. Default order: Kling via
-// Pixazo first, then Runway via Pixazo (if PIXAZO_RUNWAY_MODEL is set), then
-// Luma. Override the whole order with VIDEO_API_CHAIN env var.
+// Ordered provider chain with automatic fallback. Kling uses Pixazo; Runway
+// uses the direct Runway API. Override the whole order with VIDEO_API_CHAIN.
 // VIDEO_API pins the primary provider.
 export function getProviderChain(): Provider[] {
   const chainEnv = process.env.VIDEO_API_CHAIN
@@ -87,7 +81,7 @@ export function getProviderChain(): Provider[] {
   if (chainEnv && chainEnv.length) {
     order = chainEnv;
   } else {
-    order = ["kling", "runway", "pixazo", "luma"];
+    order = ["kling", "runway", "luma"];
     if (primary && order.includes(primary)) order = [primary, ...order.filter((p) => p !== primary)];
   }
   return order.filter(providerAvailable);
@@ -102,7 +96,6 @@ export function getActiveProvider(hint?: string | null): string {
   if (h === "runway" && providerAvailable("runway")) return "runway";
   if (h === "kling" && process.env.PIXAZO_API_KEY) return "kling";
   if (h === "luma" && process.env.LUMA_API_KEY) return "luma";
-  if (h === "pixazo" && process.env.PIXAZO_API_KEY) return "pixazo";
   return getProvider() ?? "simulation";
 }
 
@@ -306,6 +299,7 @@ async function generateWithLuma(req: ClipRequest): Promise<string> {
 export const PROVIDER_API_FAILURE = "[PROVIDER_FAILURE]";
 export const PROVIDER_TERMINAL_FAILURE = "[PROVIDER_TERMINAL_FAILURE]";
 export const PROVIDER_POLL_TIMEOUT = "[PROVIDER_POLL_TIMEOUT]";
+export const PROVIDER_SUBMISSION_UNCERTAIN = "[PROVIDER_SUBMISSION_UNCERTAIN]";
 const PROVIDER_POLL_ATTEMPTS = 180;
 // Marker appended when the failure was the provider running out of tokens /
 // credits (Pixazo 402, quota exceeded, insufficient balance, …).
@@ -315,7 +309,8 @@ export const PROVIDER_OUT_OF_CREDITS = "[PROVIDER_OUT_OF_CREDITS]";
 // this separate from submission makes a restart/deploy recovery unambiguously
 // free: the only network calls here are GETs to the persisted poll URL.
 export async function pollPixazoRequestUntilComplete(pollUrl: string): Promise<string> {
-  const key = process.env.PIXAZO_API_KEY;
+  const isRunway = pollUrl.startsWith(`${RUNWAY_BASE}/tasks/`);
+  const key = isRunway ? process.env.RUNWAY_API_KEY : process.env.PIXAZO_API_KEY;
   if (!key) {
     throw new Error(`${PROVIDER_API_FAILURE} AI video generation is not configured.`);
   }
@@ -325,7 +320,9 @@ export async function pollPixazoRequestUntilComplete(pollUrl: string): Promise<s
     let pollRes: Response;
     try {
       pollRes = await fetch(pollUrl, {
-        headers: { "Ocp-Apim-Subscription-Key": key },
+        headers: isRunway
+          ? { Authorization: `Bearer ${key}`, "X-Runway-Version": RUNWAY_VERSION }
+          : { "Ocp-Apim-Subscription-Key": key },
         signal: AbortSignal.timeout(15_000),
       });
     } catch {
@@ -355,16 +352,137 @@ export async function pollPixazoRequestUntilComplete(pollUrl: string): Promise<s
       // accepted request is durable, so continue checking that same request.
       continue;
     }
-    if (result.status === "COMPLETED" && result.output?.media_url?.[0]) {
-      return result.output.media_url[0];
+    const output = result.output as unknown;
+    const mediaUrl = isRunway
+      ? (Array.isArray(output) && typeof output[0] === "string" ? output[0] : undefined)
+      : result.output?.media_url?.[0];
+    if ((result.status === "COMPLETED" || result.status === "SUCCEEDED") && mediaUrl) {
+      return mediaUrl;
     }
-    if (result.status === "FAILED" || result.status === "ERROR") {
+    if (result.status === "FAILED" || result.status === "ERROR" || result.status === "CANCELLED") {
       throw new Error(
         `${PROVIDER_API_FAILURE} ${PROVIDER_TERMINAL_FAILURE} AI scene ${result.status}: ${result.error ?? "unknown error"}`,
       );
     }
   }
   throw new Error(`${PROVIDER_POLL_TIMEOUT} AI scene polling timed out after 15 minutes`);
+}
+
+function runwayRatio(aspectRatio: string | undefined, hasImage: boolean): string {
+  const ratio = aspectRatio ?? "16:9";
+  const imageRatios: Record<string, string> = {
+    "16:9": "1280:720",
+    "9:16": "720:1280",
+    "4:3": "1104:832",
+    "1:1": "960:960",
+    "3:4": "832:1104",
+    "21:9": "1584:672",
+  };
+  const resolved = imageRatios[ratio];
+  if (!resolved || (!hasImage && resolved !== "1280:720" && resolved !== "720:1280")) {
+    throw new Error(
+      `${PROVIDER_API_FAILURE} Runway does not support ${ratio} for this scene type.`,
+    );
+  }
+  return resolved;
+}
+
+async function generateWithRunway(req: ClipRequest): Promise<string> {
+  const key = process.env.RUNWAY_API_KEY!;
+  const hasImage = !!req.imageUrl;
+  const endpoint = `${RUNWAY_BASE}/${hasImage ? "image_to_video" : "text_to_video"}`;
+  const body: Record<string, unknown> = {
+    model: RUNWAY_VIDEO_MODEL,
+    promptText: req.prompt.slice(0, 1000),
+    ratio: runwayRatio(req.aspectRatio, hasImage),
+    duration: Math.max(2, Math.min(10, Math.round(req.durationSeconds))),
+  };
+  if (hasImage) body.promptImage = req.imageUrl;
+
+  let submit: Response;
+  try {
+    submit = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+        "X-Runway-Version": RUNWAY_VERSION,
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(PIXAZO_SUBMIT_TIMEOUT_MS),
+    });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    await req.onUncertainSubmission?.({
+      provider: "runway",
+      reason: `Submission transport error: ${reason}`.slice(0, 240),
+    });
+    throw new Error(
+      `${PROVIDER_API_FAILURE} ${PROVIDER_SUBMISSION_UNCERTAIN} The AI service did not confirm the scene request.`,
+    );
+  }
+
+  let text: string;
+  try {
+    text = await submit.text();
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    await req.onUncertainSubmission?.({
+      provider: "runway",
+      status: submit.status,
+      reason: `Could not read submission response: ${reason}`.slice(0, 240),
+    });
+    throw new Error(
+      `${PROVIDER_API_FAILURE} ${PROVIDER_SUBMISSION_UNCERTAIN} The AI service response could not be verified.`,
+    );
+  }
+  if (!submit.ok) {
+    if (submit.status >= 500) {
+      await req.onUncertainSubmission?.({
+        provider: "runway",
+        status: submit.status,
+        reason: `AI service returned HTTP ${submit.status}`,
+      });
+      throw new Error(
+        `${PROVIDER_API_FAILURE} ${PROVIDER_SUBMISSION_UNCERTAIN} Service temporarily unavailable. ` +
+          "No automatic retry was attempted to prevent duplicate charges. Please try again later.",
+      );
+    }
+    throw new Error(`${PROVIDER_API_FAILURE} AI service ${submit.status}: ${text.slice(0, 200)}`);
+  }
+
+  let id = "";
+  try {
+    const parsed = JSON.parse(text) as { id?: unknown };
+    if (typeof parsed.id === "string") id = parsed.id.trim();
+  } catch {
+    // Handled as an uncertain accepted submission below.
+  }
+  if (!id) {
+    await req.onUncertainSubmission?.({
+      provider: "runway",
+      status: submit.status,
+      reason: "AI service returned success without a task id",
+    });
+    throw new Error(
+      `${PROVIDER_API_FAILURE} ${PROVIDER_SUBMISSION_UNCERTAIN} The AI service did not return a scene request id.`,
+    );
+  }
+
+  const pollUrl = `${RUNWAY_BASE}/tasks/${id}`;
+  try {
+    await req.onSubmit?.({ provider: "runway", requestId: id, pollUrl });
+  } catch {
+    await req.onUncertainSubmission?.({
+      provider: "runway",
+      activityId: id.slice(0, 120),
+      reason: "Accepted scene request could not be saved for recovery",
+    });
+    throw new Error(
+      `${PROVIDER_API_FAILURE} ${PROVIDER_SUBMISSION_UNCERTAIN} The AI service accepted the scene request, but its recovery state could not be saved.`,
+    );
+  }
+  return pollPixazoRequestUntilComplete(pollUrl);
 }
 
 // Pixazo (pixazo.ai) — a unified gateway that fronts Kling, Runway, Veo, etc.
@@ -379,8 +497,6 @@ export async function pollPixazoRequestUntilComplete(pollUrl: string): Promise<s
 async function generateWithPixazo(
   req: ClipRequest,
   t2vOverride?: string,
-  i2vOverride?: string,
-  provider: "kling" | "runway" = "kling",
 ): Promise<string> {
   const key = process.env.PIXAZO_API_KEY!;
   const duration = req.durationSeconds <= 5 ? "5" : "10";
@@ -393,37 +509,23 @@ async function generateWithPixazo(
   // i2v slugs (4K or standard). Text-to-video always uses t2vOverride first.
   let model: string;
   if (hasImage) {
-    if (i2vOverride) {
-      model = i2vOverride;
-    } else {
-      model = is4k
-        ? (process.env.PIXAZO_KLING_4K_I2V_MODEL?.trim() || "kling-video-o3-4k-image-to-video")
-        : (process.env.PIXAZO_KLING_I2V_MODEL?.trim() || "kling-video-v3-turbo-pro-image-to-video");
-    }
+    model = is4k
+      ? (process.env.PIXAZO_KLING_4K_I2V_MODEL?.trim() || "kling-video-o3-4k-image-to-video")
+      : (process.env.PIXAZO_KLING_I2V_MODEL?.trim() || "kling-video-v3-turbo-pro-image-to-video");
   } else {
     model = t2vOverride || process.env.PIXAZO_MODEL?.trim() || "kling-video-v3-turbo-pro-text-to-video";
   }
 
   const body: Record<string, unknown> = { prompt: req.prompt.slice(0, 2500) };
-  let endpoint = `https://gateway.pixazo.ai/${model}/v1/${model}-request`;
-  if (provider === "runway") {
-    // Runway Gen-4.5 uses Pixazo's documented versioned submission routes.
-    endpoint =
-      `https://gateway.pixazo.ai/${model}/v1/gen-4.5/` +
-      `${hasImage ? "image-to-video" : "text-to-video"}`;
-    if (hasImage) body.image_url = req.imageUrl;
+  const endpoint = `https://gateway.pixazo.ai/${model}/v1/${model}-request`;
+  body.duration = duration;
+  if (hasImage) {
+    body.image_url = req.imageUrl;
   } else {
-    body.duration = duration;
-    if (hasImage) {
-      // Image-to-video: feed the reference image (aspect ratio comes from the image).
-      body.image_url = req.imageUrl;
-    } else {
-      // Text-to-video: pass aspect ratio + resolution hint (4K also via model slug).
-      body.aspect_ratio = req.aspectRatio ?? "16:9";
-      if (r === "1080p") body.resolution = "1080p";
-      else if (is4k) body.resolution = "4k";
-      else if (r === "720p") body.resolution = "720p";
-    }
+    body.aspect_ratio = req.aspectRatio ?? "16:9";
+    if (r === "1080p") body.resolution = "1080p";
+    else if (is4k) body.resolution = "4k";
+    else if (r === "720p") body.resolution = "720p";
   }
 
   const uncertainProvider = req.provider ?? "pixazo";
@@ -447,7 +549,9 @@ async function generateWithPixazo(
       provider: uncertainProvider,
       reason: `Submission transport error: ${reason}`.slice(0, 240),
     });
-    throw new Error(`${PROVIDER_API_FAILURE} The AI service did not confirm the scene request.`);
+    throw new Error(
+      `${PROVIDER_API_FAILURE} ${PROVIDER_SUBMISSION_UNCERTAIN} The AI service did not confirm the scene request.`,
+    );
   }
   let submitText: string;
   try {
@@ -459,7 +563,9 @@ async function generateWithPixazo(
       status: submit.status,
       reason: `Could not read submission response: ${reason}`.slice(0, 240),
     });
-    throw new Error(`${PROVIDER_API_FAILURE} The AI service response could not be verified.`);
+    throw new Error(
+      `${PROVIDER_API_FAILURE} ${PROVIDER_SUBMISSION_UNCERTAIN} The AI service response could not be verified.`,
+    );
   }
   if (!submit.ok) {
     const text = submitText.slice(0, 500);
@@ -479,7 +585,7 @@ async function generateWithPixazo(
       });
       const reference = activityId ? ` Reference ID: ${activityId}.` : "";
       throw new Error(
-        `${PROVIDER_API_FAILURE} Service temporarily unavailable. ` +
+        `${PROVIDER_API_FAILURE} ${PROVIDER_SUBMISSION_UNCERTAIN} Service temporarily unavailable. ` +
           `No automatic retry was attempted to prevent duplicate charges. Please try again later.${reference}`,
       );
     }
@@ -494,7 +600,9 @@ async function generateWithPixazo(
       status: submit.status,
       reason: "AI service returned an unreadable success response",
     });
-    throw new Error(`${PROVIDER_API_FAILURE} The AI service response could not be verified.`);
+    throw new Error(
+      `${PROVIDER_API_FAILURE} ${PROVIDER_SUBMISSION_UNCERTAIN} The AI service response could not be verified.`,
+    );
   }
   if (
     !parsedSubmitData ||
@@ -506,7 +614,9 @@ async function generateWithPixazo(
       status: submit.status,
       reason: "AI service returned an invalid success response",
     });
-    throw new Error(`${PROVIDER_API_FAILURE} The AI service response could not be verified.`);
+    throw new Error(
+      `${PROVIDER_API_FAILURE} ${PROVIDER_SUBMISSION_UNCERTAIN} The AI service response could not be verified.`,
+    );
   }
   const submitData = parsedSubmitData as {
     request_id?: unknown;
@@ -521,7 +631,9 @@ async function generateWithPixazo(
       provider: uncertainProvider,
       reason: "AI service returned success without a request id",
     });
-    throw new Error(`${PROVIDER_API_FAILURE} The AI service did not return a scene request id.`);
+    throw new Error(
+      `${PROVIDER_API_FAILURE} ${PROVIDER_SUBMISSION_UNCERTAIN} The AI service did not return a scene request id.`,
+    );
   }
   const pollUrl =
     typeof submitData.polling_url === "string" &&
@@ -541,7 +653,7 @@ async function generateWithPixazo(
       reason: "Accepted scene request could not be saved for recovery",
     });
     throw new Error(
-      `${PROVIDER_API_FAILURE} The AI service accepted the scene request, but its recovery state could not be saved.`,
+      `${PROVIDER_API_FAILURE} ${PROVIDER_SUBMISSION_UNCERTAIN} The AI service accepted the scene request, but its recovery state could not be saved.`,
     );
   }
 
@@ -556,13 +668,7 @@ function isCreditError(err: unknown): boolean {
 async function callProvider(provider: Provider, req: ClipRequest): Promise<string> {
   switch (provider) {
     case "runway":
-      // Pixazo documents Gen-4.5 at a versioned, model-specific endpoint.
-      return generateWithPixazo(
-        req,
-        PIXAZO_RUNWAY_MODEL,
-        PIXAZO_RUNWAY_MODEL,
-        "runway",
-      );
+      return generateWithRunway(req);
     case "luma":
       return generateWithLuma(req);
     case "kling":
@@ -595,7 +701,7 @@ export function resolveClipProviderChain(
 }
 
 // Try providers in order, automatically falling back to the next on failure
-// when the caller has not pinned an engine. Kling and Runway remain Pixazo-backed;
+// when the caller has not pinned an engine. Kling is Pixazo-backed; Runway is direct.
 // providerOnly is used for paid jobs to prevent duplicate cross-engine submits.
 export async function generateClip(req: ClipRequest): Promise<ClipResult | null> {
   const chain = resolveClipProviderChain(req);
@@ -616,9 +722,15 @@ export async function generateClip(req: ClipRequest): Promise<ClipResult | null>
       return { videoUrl, provider };
     } catch (err) {
       lastErr = err;
+      const message = err instanceof Error ? err.message : String(err);
+      if (
+        message.includes(PROVIDER_SUBMISSION_UNCERTAIN) ||
+        message.includes(PROVIDER_POLL_TIMEOUT)
+      ) {
+        throw err;
+      }
       const nextProvider = chain[i + 1];
       if (nextProvider && req.providerOnly && req.terminalFallbackProvider) {
-        const message = err instanceof Error ? err.message : String(err);
         if (!message.includes(PROVIDER_TERMINAL_FAILURE)) throw err;
         await req.onTerminalFallback?.({
           fromProvider: provider,
