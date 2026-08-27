@@ -118,6 +118,13 @@ function timelineSegmentDuration(segment: Segment) {
     : Math.max(0, segment.durationSec || 0);
 }
 
+function formatTimelineTime(seconds: number) {
+  const safeSeconds = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = safeSeconds - minutes * 60;
+  return `${minutes}:${remainingSeconds.toFixed(1).padStart(4, "0")}`;
+}
+
 interface MusicTrack {
   name: string;
   objectPath: string | null;
@@ -1537,8 +1544,15 @@ export default function Editor() {
             onValueChange={([time]) => seekPreview(time ?? 0)}
             className="flex-1 cursor-pointer"
             aria-label="Preview position"
+            aria-valuetext={`${formatTimelineTime(progress * totalDuration)} of ${formatTimelineTime(totalDuration)}`}
           />
-          <span className="text-muted-foreground w-14 text-right text-xs tabular-nums">{totalDuration.toFixed(1)}s</span>
+          <span
+            className="text-muted-foreground shrink-0 text-right text-xs tabular-nums"
+            aria-live="off"
+            data-testid="editor-preview-time"
+          >
+            {formatTimelineTime(progress * totalDuration)} / {formatTimelineTime(totalDuration)}
+          </span>
         </div>
       )}
 
