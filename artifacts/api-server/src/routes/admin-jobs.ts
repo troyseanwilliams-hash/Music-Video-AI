@@ -28,6 +28,7 @@ type AiJobMeta = {
   targetedSceneRecovery?: {
     sceneIndex: number;
     assetType: "clip";
+    allowTerminalSkip: true;
     requestedAt: string;
   };
   courtesy30SceneVersion?: number;
@@ -255,6 +256,7 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
     if (
       freshSceneKey !== null &&
       (
+        meta.partialClips?.[freshSceneKey] ||
         meta.submissionIntents?.[freshSceneKey] ||
         meta.uncertainSubmissions?.[freshSceneKey]
       )
@@ -312,6 +314,7 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
             targetedSceneRecovery: {
               sceneIndex: Number(freshSceneKey),
               assetType: "clip" as const,
+              allowTerminalSkip: true as const,
               requestedAt: new Date().toISOString(),
             },
           }),

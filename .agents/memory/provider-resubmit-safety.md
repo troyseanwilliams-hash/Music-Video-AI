@@ -27,6 +27,12 @@ Targeted scene recovery must remain bound to the immutable storyboard index.
 
 **How to apply:** Persist the authorized scene index, make it the next paid request, and derive its prompt, timing, visual index, and source image from that same storyboard entry. Store the result at the original index so completed clips and stitching order never change.
 
+A terminal-skip fallback is recovery-only and must remain claim- and marker-instance-fenced.
+
+**Why:** A late callback from a stale worker can otherwise overwrite a newer same-scene retry, while omitting the failed array slot compresses the story timeline.
+
+**How to apply:** Permit skipping only a confirmed terminal result for the explicitly authorized scene. Continue remaining scenes, fill the original slot from adjacent footage, and atomically persist that slot while clearing its recovery state under status, claim-token, scene-index, and marker-identity fences.
+
 Every failure after a provider POST is issued but before a valid request ID is durably saved must be recorded as an uncertain submission.
 
 **Why:** Timeouts, 5xx responses, unreadable bodies, malformed 2xx JSON, and persistence failures can all happen after the provider accepted a billable request. Treating any of them as a normal failure exposes an unacknowledged duplicate resubmit.

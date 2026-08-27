@@ -172,6 +172,7 @@ type AiJobMeta = {
   targetedSceneRecovery?: {
     sceneIndex: number;
     assetType: "clip";
+    allowTerminalSkip: true;
     requestedAt: string;
   }; // explicit admin recovery: this exact storyboard segment must be the next paid request
   retryAfter?: number; // epoch ms — queued job must not be claimed before this
@@ -708,20 +709,86 @@ async function persistPartialClip(jobId: string, index: number, objectPath: stri
         updated_at = NOW()
     WHERE id = ${jobId}
   `);
-  await clearTargetedSceneRecovery(jobId, index);
   // Push immediately so the job-status page's "Scenes" preview can render this
   // clip the moment it lands, instead of waiting for the next progress tick.
   await notifyJobUpdate(jobId);
 }
 
-async function clearTargetedSceneRecovery(jobId: string, index: number): Promise<void> {
-  await db.execute(sql`
+async function persistTargetedSceneClip(
+  job: JobRow,
+  index: number,
+  objectPath: string,
+  markerRequestedAt: string,
+): Promise<void> {
+  const result = await db.execute(sql`
     UPDATE jobs
-    SET manifest = COALESCE(manifest, '{}'::jsonb) - 'targetedSceneRecovery',
+    SET manifest = (
+          jsonb_set(
+            jsonb_set(
+              jsonb_set(
+                COALESCE(manifest, '{}'::jsonb),
+                '{partialClips}',
+                COALESCE(manifest->'partialClips', '{}'::jsonb)
+                  || ${JSON.stringify({ [index]: objectPath })}::jsonb
+              ),
+              '{pendingRequests}',
+              COALESCE(manifest->'pendingRequests', '{}'::jsonb) - ${String(index)}
+            ),
+            '{rejectedRequests}',
+            COALESCE(manifest->'rejectedRequests', '{}'::jsonb) - ${String(index)}
+          ) - 'targetedSceneRecovery'
+        ),
         updated_at = NOW()
-    WHERE id = ${jobId}
+    WHERE id = ${job.id}
+      AND status = 'generating'
+      AND claimed_at = ${job.claimedAt}
       AND COALESCE(manifest->'targetedSceneRecovery'->>'sceneIndex', '') = ${String(index)}
+      AND COALESCE(manifest->'targetedSceneRecovery'->>'requestedAt', '') = ${markerRequestedAt}
+    RETURNING id
   `);
+  if (result.rows.length === 0) {
+    await assertJobOwned(job);
+    throw new Error(`${PROVIDER_API_FAILURE}: Targeted scene recovery marker changed before fallback persistence`);
+  }
+  await notifyJobUpdate(job.id);
+}
+
+async function persistTargetedRejectedRequest(
+  job: JobRow,
+  index: number,
+  pollUrl: string,
+  reason: string,
+  markerRequestedAt: string,
+): Promise<void> {
+  const entry: RejectedClipRequest = {
+    pollUrl,
+    reason: reason.slice(0, 240),
+    occurredAt: new Date().toISOString(),
+  };
+  const result = await db.execute(sql`
+    UPDATE jobs
+    SET manifest = jsonb_set(
+          jsonb_set(
+            COALESCE(manifest, '{}'::jsonb),
+            '{rejectedRequests}',
+            COALESCE(manifest->'rejectedRequests', '{}'::jsonb)
+              || ${JSON.stringify({ [index]: entry })}::jsonb
+          ),
+          '{pendingRequests}',
+          COALESCE(manifest->'pendingRequests', '{}'::jsonb) - ${String(index)}
+        ),
+        updated_at = NOW()
+    WHERE id = ${job.id}
+      AND status = 'generating'
+      AND claimed_at = ${job.claimedAt}
+      AND COALESCE(manifest->'targetedSceneRecovery'->>'sceneIndex', '') = ${String(index)}
+      AND COALESCE(manifest->'targetedSceneRecovery'->>'requestedAt', '') = ${markerRequestedAt}
+    RETURNING id
+  `);
+  if (result.rows.length === 0) {
+    await assertJobOwned(job);
+    throw new Error(`${PROVIDER_API_FAILURE}: Targeted scene recovery marker changed before terminal archiving`);
+  }
 }
 
 // Record the provider request for a clip the moment it is accepted, so a clip
@@ -747,6 +814,42 @@ async function persistPendingRequest(jobId: string, index: number, pollUrl: stri
         updated_at = NOW()
     WHERE id = ${jobId}
   `);
+}
+
+async function persistTargetedPendingRequest(
+  job: JobRow,
+  index: number,
+  pollUrl: string,
+  markerRequestedAt: string,
+): Promise<void> {
+  const result = await db.execute(sql`
+    UPDATE jobs
+    SET manifest = jsonb_set(
+          jsonb_set(
+            jsonb_set(
+              COALESCE(manifest, '{}'::jsonb),
+              '{pendingRequests}',
+              COALESCE(manifest->'pendingRequests', '{}'::jsonb)
+                || ${JSON.stringify({ [index]: pollUrl })}::jsonb
+            ),
+            '{uncertainSubmissions}',
+            COALESCE(manifest->'uncertainSubmissions', '{}'::jsonb) - ${String(index)}
+          ),
+          '{submissionIntents}',
+          COALESCE(manifest->'submissionIntents', '{}'::jsonb) - ${String(index)}
+        ),
+        updated_at = NOW()
+    WHERE id = ${job.id}
+      AND status = 'generating'
+      AND claimed_at = ${job.claimedAt}
+      AND COALESCE(manifest->'targetedSceneRecovery'->>'sceneIndex', '') = ${String(index)}
+      AND COALESCE(manifest->'targetedSceneRecovery'->>'requestedAt', '') = ${markerRequestedAt}
+    RETURNING id
+  `);
+  if (result.rows.length === 0) {
+    await assertJobOwned(job);
+    throw new Error(`${PROVIDER_API_FAILURE}: Targeted scene recovery marker changed before request acceptance`);
+  }
 }
 
 async function persistClipSubmissionIntent(
@@ -801,6 +904,45 @@ async function persistUncertainSubmission(
         updated_at = NOW()
     WHERE id = ${jobId}
   `);
+}
+
+async function persistTargetedUncertainSubmission(
+  job: JobRow,
+  index: number,
+  info: Omit<UncertainSubmission, "occurredAt">,
+  markerRequestedAt: string,
+): Promise<void> {
+  const entry: UncertainSubmission = {
+    provider: info.provider.slice(0, 40),
+    status: info.status,
+    activityId: info.activityId?.slice(0, 120),
+    reason: info.reason.slice(0, 240),
+    occurredAt: new Date().toISOString(),
+  };
+  const result = await db.execute(sql`
+    UPDATE jobs
+    SET manifest = jsonb_set(
+          jsonb_set(
+            COALESCE(manifest, '{}'::jsonb),
+            '{uncertainSubmissions}',
+            COALESCE(manifest->'uncertainSubmissions', '{}'::jsonb)
+              || ${JSON.stringify({ [index]: entry })}::jsonb
+          ),
+          '{submissionIntents}',
+          COALESCE(manifest->'submissionIntents', '{}'::jsonb) - ${String(index)}
+        ),
+        updated_at = NOW()
+    WHERE id = ${job.id}
+      AND status = 'generating'
+      AND claimed_at = ${job.claimedAt}
+      AND COALESCE(manifest->'targetedSceneRecovery'->>'sceneIndex', '') = ${String(index)}
+      AND COALESCE(manifest->'targetedSceneRecovery'->>'requestedAt', '') = ${markerRequestedAt}
+    RETURNING id
+  `);
+  if (result.rows.length === 0) {
+    await assertJobOwned(job);
+    throw new Error(`${PROVIDER_API_FAILURE}: Targeted scene recovery marker changed during uncertain submission`);
+  }
 }
 
 // Durably drop a pendingRequests entry that turned out to be dead (expired,
@@ -1245,13 +1387,18 @@ async function generateClips(
   const submissionIntents = clipMeta.submissionIntents ?? {};
   const uncertainSubmissions = clipMeta.uncertainSubmissions ?? {};
   const targetedSceneIndex = clipMeta.targetedSceneRecovery?.sceneIndex;
+  const targetedSceneRequestedAt = clipMeta.targetedSceneRecovery?.requestedAt;
+  const allowTargetedTerminalSkip =
+    clipMeta.targetedSceneRecovery?.allowTerminalSkip === true;
   if (
     targetedSceneIndex !== undefined &&
     (
       clipMeta.targetedSceneRecovery?.assetType !== "clip" ||
       !Number.isInteger(targetedSceneIndex) ||
       targetedSceneIndex < 0 ||
-      targetedSceneIndex >= sections.length
+      targetedSceneIndex >= sections.length ||
+      typeof targetedSceneRequestedAt !== "string" ||
+      targetedSceneRequestedAt.length === 0
     )
   ) {
     throw new Error(`${PROVIDER_API_FAILURE}: Targeted scene recovery is outside the immutable storyboard`);
@@ -1262,6 +1409,7 @@ async function generateClips(
         targetedSceneIndex,
         ...sections.map((_, index) => index).filter((index) => index !== targetedSceneIndex),
       ];
+  const skippedTerminalScenes = new Set<number>();
   const reuseCount = Object.keys(persisted).length;
   // Admin "finalize with saved clips": reuse stored clips and reclaim any
   // completed pending requests (both free), but NEVER pay for new generation.
@@ -1327,8 +1475,15 @@ async function generateClips(
         const url = await storageService.getObjectEntitySignedUrl(persisted[i]!, 3600);
         const buf = await downloadClip(url);
         clips[i] = { buffer: buf, targetDuration, prompt, visualIndex };
+        if (targetedSceneIndex === i) {
+          await persistTargetedSceneClip(
+            job,
+            i,
+            persisted[i]!,
+            targetedSceneRequestedAt!,
+          );
+        }
         logger.info({ jobId: job.id, clip: i }, "Reused previously-rendered clip (salvage)");
-        await clearTargetedSceneRecovery(job.id, i);
         await reportClipComplete(i);
         continue;
       } catch (e) {
@@ -1347,8 +1502,18 @@ async function generateClips(
         try {
           const path = await storageService.uploadClipBuffer(buf, `job-${job.id}`, i);
           persisted[i] = path;
-          await persistPartialClip(job.id, i, path); // also clears the pending entry
+          if (targetedSceneIndex === i) {
+            await persistTargetedSceneClip(
+              job,
+              i,
+              path,
+              targetedSceneRequestedAt!,
+            );
+          } else {
+            await persistPartialClip(job.id, i, path);
+          }
         } catch (e) {
+          if (targetedSceneIndex === i) throw e;
           logger.warn({ jobId: job.id, clip: i, err: e }, "Could not persist recovered clip (non-fatal)");
         }
         logger.info({ jobId: job.id, clip: i }, "Recovered stranded clip from provider (no new spend)");
@@ -1358,8 +1523,26 @@ async function generateClips(
       } catch (e) {
         const detail = e instanceof Error ? e.message : String(e);
         if (detail.includes(PROVIDER_TERMINAL_FAILURE)) {
-          await persistRejectedRequest(job.id, i, pending[i]!, detail);
+          if (targetedSceneIndex === i) {
+            await persistTargetedRejectedRequest(
+              job,
+              i,
+              pending[i]!,
+              detail,
+              targetedSceneRequestedAt!,
+            );
+          } else {
+            await persistRejectedRequest(job.id, i, pending[i]!, detail);
+          }
           delete pending[i];
+          if (allowTargetedTerminalSkip && targetedSceneIndex === i) {
+            skippedTerminalScenes.add(i);
+            logger.warn(
+              { jobId: job.id, clip: i },
+              "Targeted replacement was terminally rejected — continuing remaining scenes and filling this slot from adjacent footage",
+            );
+            continue;
+          }
           throw e;
         }
         if (
@@ -1408,6 +1591,7 @@ async function generateClips(
     );
     let clipBuffer: Buffer | null = null;
     let clipErr: unknown;
+    let skipTerminalScene = false;
     for (let attempt = 1; attempt <= clipAttempts; attempt++) {
       await assertJobOwned(job);
       let acceptedRequest = false;
@@ -1438,9 +1622,25 @@ async function generateClips(
           onSubmit: async (info) => {
             acceptedRequest = true;
             pending[i] = info.pollUrl;
-            await persistPendingRequest(job.id, i, info.pollUrl);
+            if (targetedSceneIndex === i) {
+              await persistTargetedPendingRequest(
+                job,
+                i,
+                info.pollUrl,
+                targetedSceneRequestedAt!,
+              );
+            } else {
+              await persistPendingRequest(job.id, i, info.pollUrl);
+            }
           },
-          onUncertainSubmission: (info) => persistUncertainSubmission(job.id, i, info),
+          onUncertainSubmission: (info) => targetedSceneIndex === i
+            ? persistTargetedUncertainSubmission(
+                job,
+                i,
+                info,
+                targetedSceneRequestedAt!,
+              )
+            : persistUncertainSubmission(job.id, i, info),
         });
         clipBuffer = result ? await downloadClip(result.videoUrl) : await createSimulationClip(clipDuration);
         if (result) {
@@ -1456,14 +1656,36 @@ async function generateClips(
           pending[i] &&
           msg.includes(PROVIDER_TERMINAL_FAILURE)
         ) {
-          await persistRejectedRequest(job.id, i, pending[i]!, msg);
+          if (targetedSceneIndex === i) {
+            await persistTargetedRejectedRequest(
+              job,
+              i,
+              pending[i]!,
+              msg,
+              targetedSceneRequestedAt!,
+            );
+          } else {
+            await persistRejectedRequest(job.id, i, pending[i]!, msg);
+          }
           delete pending[i];
+          if (allowTargetedTerminalSkip && targetedSceneIndex === i) {
+            skippedTerminalScenes.add(i);
+            skipTerminalScene = true;
+            logger.warn(
+              { jobId: job.id, clip: i },
+              "Targeted replacement was terminally rejected — continuing remaining scenes and filling this slot from adjacent footage",
+            );
+            break;
+          }
         }
         // Provider ran out of tokens (Pixazo 402 / quota / balance): if we
         // already have rendered clips, stop generating and salvage them —
         // the video is finished with fewer unique clips (looped to fill the
         // runtime) instead of throwing the whole job away.
         if (msg.includes(PROVIDER_OUT_OF_CREDITS)) {
+          if (skippedTerminalScenes.size > 0) {
+            throw e;
+          }
           if (generationMode === "narrative") throw e;
           const done = clips.filter(Boolean).length;
           if (done > 0) {
@@ -1491,19 +1713,59 @@ async function generateClips(
         throw new Error(`${PROVIDER_API_FAILURE} ${msg}`);
       }
     }
+    if (skipTerminalScene) continue;
     if (!clipBuffer) throw clipErr ?? new Error(`Clip ${i} failed to render`);
 
     // 5) Persist the successful clip so a future job retry can reuse it.
     try {
       const path = await storageService.uploadClipBuffer(clipBuffer, `job-${job.id}`, i);
       persisted[i] = path;
-      await persistPartialClip(job.id, i, path);
+      if (targetedSceneIndex === i) {
+        await persistTargetedSceneClip(
+          job,
+          i,
+          path,
+          targetedSceneRequestedAt!,
+        );
+      } else {
+        await persistPartialClip(job.id, i, path);
+      }
     } catch (e) {
+      if (targetedSceneIndex === i) throw e;
       logger.warn({ jobId: job.id, clip: i, err: e }, "Could not persist salvage copy of clip (non-fatal)");
     }
 
     clips[i] = { buffer: clipBuffer, targetDuration, prompt, visualIndex };
     await reportClipComplete(i);
+  }
+
+  for (const skippedIndex of skippedTerminalScenes) {
+    const adjacentClip = clips[skippedIndex - 1] ?? clips[skippedIndex + 1];
+    if (!adjacentClip) {
+      throw new Error(`${PROVIDER_API_FAILURE}: No adjacent story footage is available to cover skipped scene ${skippedIndex + 1}`);
+    }
+    const fallbackClip: GeneratedClip = {
+      ...adjacentClip,
+      targetDuration: clipDurationSec,
+    };
+    const path = await storageService.uploadClipBuffer(
+      fallbackClip.buffer,
+      `job-${job.id}`,
+      skippedIndex,
+    );
+    clips[skippedIndex] = fallbackClip;
+    persisted[skippedIndex] = path;
+    await persistTargetedSceneClip(
+      job,
+      skippedIndex,
+      path,
+      targetedSceneRequestedAt!,
+    );
+    await reportClipComplete(skippedIndex);
+    logger.warn(
+      { jobId: job.id, clip: skippedIndex, adjacentClip: clips[skippedIndex - 1] ? skippedIndex - 1 : skippedIndex + 1 },
+      "Filled terminally rejected scene slot with adjacent story footage",
+    );
   }
 
   if (finalizeOnly) {
