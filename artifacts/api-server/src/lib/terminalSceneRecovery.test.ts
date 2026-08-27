@@ -53,15 +53,27 @@ describe("terminalSceneRecovery", () => {
 });
 
 describe("retryProviderAfterTerminalFailure", () => {
-  it("switches to Kling when the same scene previously failed on Runway", () => {
+  it("retries a legacy gateway Runway failure through direct Runway", () => {
     expect(retryProviderAfterTerminalFailure({
       generationProvider: "runway",
       rejectedRequests: {
         "19": {
-          pollUrl: "https://gateway.example/v2/requests/status/runway-gen-4-5_request",
+          pollUrl: "https://gateway.pixazo.ai/v2/requests/status/runway-gen-4-5_request",
         },
       },
-    }, "kling", "19")).toBe("kling");
+    }, "kling", "19")).toBe("runway");
+  });
+
+  it("switches to Kling after a direct Runway task fails", () => {
+    expect(retryProviderAfterTerminalFailure({
+      generationProvider: "runway",
+      rejectedRequests: {
+        "19": {
+          provider: "runway",
+          pollUrl: "https://api.dev.runwayml.com/v1/tasks/direct-runway-task",
+        },
+      },
+    }, "runway", "19")).toBe("kling");
   });
 
   it("does not switch providers for a failure without a terminal scene", () => {

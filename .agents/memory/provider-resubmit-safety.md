@@ -39,11 +39,11 @@ Cross-engine fallback is allowed only after the primary request is explicitly te
 
 **How to apply:** Before the fallback POST, atomically replace the terminal primary handle with a new provider intent under the same claim and recovery-marker fences. Persist the fallback handle before polling; if it is terminal too, use the recovery-only timeline fallback.
 
-When retrying the same job after a confirmed Runway scene failure, switch both the job provider and the manifest-pinned generation provider to Kling.
+When retrying after a confirmed Runway scene failure, route by the failed request URL: legacy Pixazo Runway failures retry on direct Runway; direct Runway failures switch to Kling. Update both provider fields.
 
-**Why:** Updating only the job row leaves the worker governed by the stale manifest pin, causing another Runway submission despite the Admin UI showing Kling.
+**Why:** Legacy gateway failures should not disqualify the now-independent direct Runway route. Updating only the job row also leaves the worker governed by a stale manifest pin.
 
-**How to apply:** Trust scene-level provider evidence first; for legacy records, use the pinned/current provider. Keep completed assets attached and make the chosen backup authoritative for the failed and remaining scenes.
+**How to apply:** Trust scene-level provider and poll-URL evidence first. A Runway URL on the Pixazo gateway selects direct Runway; a direct Runway task failure selects Kling. Keep completed assets attached and pin the chosen engine for the failed and remaining scenes.
 
 Every failure after a provider POST is issued but before a valid request ID is durably saved must be recorded as an uncertain submission.
 

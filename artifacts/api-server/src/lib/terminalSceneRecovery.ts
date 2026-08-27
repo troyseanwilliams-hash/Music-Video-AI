@@ -20,6 +20,18 @@ function providerFromRequest(value: unknown): string | null {
   return null;
 }
 
+function isLegacyRunwayGatewayRequest(value: unknown): boolean {
+  if (typeof value === "string") {
+    const normalized = value.toLowerCase();
+    return normalized.includes("gateway.pixazo.ai") && normalized.includes("runway");
+  }
+  if (!value || typeof value !== "object") return false;
+  const pollUrl = (value as Record<string, unknown>).pollUrl;
+  if (typeof pollUrl !== "string") return false;
+  const normalized = pollUrl.toLowerCase();
+  return normalized.includes("gateway.pixazo.ai") && normalized.includes("runway");
+}
+
 export function retryProviderAfterTerminalFailure(
   meta: TerminalSceneRecoveryMeta,
   currentProvider: string | null,
@@ -30,6 +42,11 @@ export function retryProviderAfterTerminalFailure(
   const pendingProvider = providerFromRequest(meta.pendingRequests?.[sceneKey]);
   const sceneProvider = rejectedProvider ?? pendingProvider;
   if (sceneProvider) {
+    const sceneRequest =
+      rejectedProvider ? meta.rejectedRequests?.[sceneKey] : meta.pendingRequests?.[sceneKey];
+    if (sceneProvider === "runway" && isLegacyRunwayGatewayRequest(sceneRequest)) {
+      return "runway";
+    }
     return sceneProvider === "runway" ? "kling" : currentProvider;
   }
   const pinnedProvider = meta.generationProvider?.toLowerCase();
