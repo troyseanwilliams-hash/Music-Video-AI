@@ -3,8 +3,12 @@ import { db } from "@workspace/db";
 import { jobsTable, usersTable, creditsTable, imageAssetsTable } from "@workspace/db";
 import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
-import { downloadClip } from "../lib/videoApis.js";
 import { notifyRequestedAdminRenderReady } from "../lib/renderEmail.js";
+import {
+  clipContentHash,
+  securelyDownloadTrustedClip,
+  validateClipAttachment,
+} from "../lib/adminClipAttachments.js";
 import {
   retryProviderAfterTerminalFailure,
   terminalSceneRecovery,
@@ -12,6 +16,7 @@ import {
 
 // Billing/salvage state AI jobs stash in the manifest jsonb.
 type AiJobMeta = {
+  strictUniqueSourcesVersion?: number;
   generationProvider?: string;
   generationMode?: "montage" | "narrative";
   narrativeVisualSource?: "video" | "generated_images";
@@ -21,6 +26,8 @@ type AiJobMeta = {
   reservedTopupCredits?: number;
   refunded?: boolean;
   partialClips?: Record<string, string>;
+  attachedClipSources?: Record<string, string>;
+  attachedClipContentHashes?: Record<string, string>;
   narrativeImages?: Record<string, string>;
   pendingRequests?: Record<string, string>;
   rejectedRequests?: Record<string, unknown>;
@@ -757,43 +764,89 @@ router.post("/admin/jobs/:id/attach-clips", async (req, res) => {
 
   const storage = new ObjectStorageService();
   const results: { index: number; ok: boolean; error?: string }[] = [];
-  const attached: Record<string, string> = {};
+  const acceptedUrls = new Set<string>();
+  const acceptedHashes = new Set<string>();
+  let attachedCount = 0;
+  const initialMeta = metaOf(job.manifest);
 
   for (const c of clipsInput) {
-    const index = Number(c?.index);
-    const url = typeof c?.url === "string" ? c.url.trim() : "";
-    if (!Number.isInteger(index) || index < 0 || !/^https:\/\//.test(url)) {
-      results.push({ index: Number.isFinite(index) ? index : -1, ok: false, error: "index must be a non-negative integer and url must be https" });
+    const validation = validateClipAttachment(initialMeta, c, acceptedUrls);
+    if (!validation.ok) {
+      results.push({ index: validation.index, ok: false, error: validation.error });
       continue;
     }
+    const { index, url } = validation.clip;
+    acceptedUrls.add(url);
     try {
-      const buf = await downloadClip(url);
+      const buf = await securelyDownloadTrustedClip(url, validation.trustedOrigins);
       if (buf.length < 10_000) throw new Error(`Downloaded file is suspiciously small (${buf.length} bytes) — is the link a video?`);
-      const path = await storage.uploadClipBuffer(buf, `job-${jobId}`, index);
-      attached[index] = path;
+      const hash = clipContentHash(buf);
+      if (
+        acceptedHashes.has(hash) ||
+        Object.values(initialMeta.attachedClipContentHashes ?? {}).includes(hash)
+      ) {
+        throw new Error("the same clip content cannot be attached to multiple storyboard indexes");
+      }
+      acceptedHashes.add(hash);
+      // Use a content-addressed admin namespace. The normal processor path is
+      // deterministic per scene, so uploading there before the conditional DB
+      // update could overwrite a concurrently-finished processor clip.
+      const path = await storage.uploadClipBuffer(
+        buf,
+        `job-${jobId}-admin-${hash.slice(0, 16)}`,
+        index,
+      );
+      const sourceEntry = JSON.stringify({ [index]: url });
+      const hashEntry = JSON.stringify({ [index]: hash });
+      const pathEntry = JSON.stringify({ [index]: path });
+      const strict = initialMeta.strictUniqueSourcesVersion === 1;
+      const updated = await db.execute<{ id: string }>(sql`
+        UPDATE jobs
+        SET manifest = jsonb_set(
+              jsonb_set(
+                jsonb_set(
+                  COALESCE(manifest, '{}'::jsonb),
+                  '{partialClips}',
+                  COALESCE(manifest->'partialClips', '{}'::jsonb) || ${pathEntry}::jsonb
+                ),
+                '{attachedClipSources}',
+                COALESCE(manifest->'attachedClipSources', '{}'::jsonb) || ${sourceEntry}::jsonb
+              ),
+              '{attachedClipContentHashes}',
+              COALESCE(manifest->'attachedClipContentHashes', '{}'::jsonb) || ${hashEntry}::jsonb
+            ),
+            updated_at = NOW()
+        WHERE id = ${jobId}
+          AND (
+            ${!strict}
+            OR (
+              NOT (COALESCE(manifest->'partialClips', '{}'::jsonb) ? ${String(index)})
+              AND (${index} >= 0)
+              AND (${index} < COALESCE((manifest->'storyboard'->>'numClips')::int, 0))
+              AND NOT EXISTS (
+                SELECT 1 FROM jsonb_each_text(COALESCE(manifest->'attachedClipSources', '{}'::jsonb))
+                WHERE value = ${url}
+              )
+              AND NOT EXISTS (
+                SELECT 1 FROM jsonb_each_text(COALESCE(manifest->'attachedClipContentHashes', '{}'::jsonb))
+                WHERE value = ${hash}
+              )
+            )
+          )
+        RETURNING id
+      `);
+      if (updated.rows.length === 0) {
+        throw new Error("clip attachment conflicted with the immutable storyboard mapping");
+      }
+      attachedCount++;
       results.push({ index, ok: true });
     } catch (err) {
       results.push({ index, ok: false, error: String(err instanceof Error ? err.message : err).slice(0, 300) });
     }
   }
 
-  if (Object.keys(attached).length > 0) {
-    // Merge into manifest.partialClips atomically (jsonb concat) so we don't
-    // clobber clips the job processor saved while we were downloading.
-    await db.execute(sql`
-      UPDATE jobs
-      SET manifest = jsonb_set(
-            COALESCE(manifest, '{}'::jsonb),
-            '{partialClips}',
-            COALESCE(manifest->'partialClips', '{}'::jsonb) || ${JSON.stringify(attached)}::jsonb
-          ),
-          updated_at = NOW()
-      WHERE id = ${jobId}
-    `);
-  }
-
   req.log.info({ jobId, results }, "Admin attached clips to job");
-  res.json({ ok: results.every((r) => r.ok), attached: Object.keys(attached).length, results });
+  res.json({ ok: results.every((r) => r.ok), attached: attachedCount, results });
 });
 
 // Stop a stuck/failing job and finish the video from the clips already saved

@@ -5,7 +5,6 @@ import { tmpdir } from "os";
 import { randomUUID } from "crypto";
 import { buildTimedLines, buildAssKaraoke, karaokeFontsDir } from "./lyricTiming.js";
 import { resolveAvailableStitchSequence } from "./montageSequence.js";
-import { resolveNarrativeSequence } from "./narrativeSequence.js";
 
 // `:fontsdir=` option pointing libass at the bundled karaoke font (Archivo
 // Black); empty string when the font directory is missing.
@@ -226,6 +225,15 @@ export async function stitchVideoClips(input: StitchInput): Promise<StitchResult
     const requestedSequence = input.sequence?.length
       ? input.sequence
       : input.clips.map((_, index) => index);
+    if (
+      input.strictSequence
+      && (
+        requestedSequence.length !== input.clips.length
+        || requestedSequence.some((sourceIndex, index) => sourceIndex !== index)
+      )
+    ) {
+      throw new Error("Strict stitching requires every clip exactly once in chronological order.");
+    }
     const availableBySource = new Map<number, string>();
     for (const path of trimmedPaths) {
       const match = /clip_(\d+)\.mp4$/.exec(path);
@@ -238,7 +246,7 @@ export async function stitchVideoClips(input: StitchInput): Promise<StitchResult
       );
     }
     const resolvedSequence = input.strictSequence
-      ? resolveNarrativeSequence(input.clips.length, availableSourceIndexes)
+      ? requestedSequence
       : resolveAvailableStitchSequence(
           requestedSequence,
           availableSourceIndexes,

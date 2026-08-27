@@ -93,7 +93,7 @@ export default function GenerationStoryboard({
               label: "Assembling the final cut",
               detail: isNarrative
                 ? "Placing every completed scene in chronological order, then aligning the final cut to your audio."
-                : "Arranging and recalling the completed visuals across the track, then aligning the final cut to your audio.",
+            : "Arranging each completed visual in its matching timeline segment, then aligning the final cut to your audio.",
               icon: Scissors,
             }
           : {
@@ -169,11 +169,9 @@ export default function GenerationStoryboard({
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
               {status === "stitching"
                 ? (isNarrative
-                    ? "Chronological scenes are being aligned to the final cut, with strict continuity and no reuse."
-                    : "Visual motifs are being alternated and recalled intentionally across one polished music video.")
-                : (isNarrative
-                    ? "Every timeline slot receives a newly rendered scene. No visual recalls."
-                    : `${storyboard.reuseCount ?? 0} intentional visual recalls keep longer Montage videos affordable.`)}
+                    ? "Chronological scenes are being aligned to the final cut with strict continuity."
+                    : "Each distinct visual is being aligned to its matching segment in one polished music video.")
+                : "Every timeline slot receives its own distinct newly rendered scene."}
             </p>
           </div>
         </div>

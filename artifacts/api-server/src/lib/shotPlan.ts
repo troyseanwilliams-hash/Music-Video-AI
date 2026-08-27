@@ -283,36 +283,44 @@ function buildMontageTimeline(
   slotDuration: number,
 ): MontageTimelineEntry[] {
   if (shots.length === 0 || targetDuration <= 0) return [];
-  const sceneCount = Math.max(1, Math.ceil(targetDuration / slotDuration));
-  const usage = new Array(shots.length).fill(0) as number[];
-  let previousVisual = -1;
-
-  return Array.from({ length: sceneCount }, (_, index) => {
+  // A source still belongs to precisely one output slot. Do not optimize this
+  // mapping for energy or motif recurrence: the persisted visual index is the
+  // immutable one-to-one image-to-segment contract used by rendering.
+  return shots.map((shot, index) => {
     const startTime = index * slotDuration;
     const duration = Math.min(slotDuration, targetDuration - startTime);
     const section = sectionAtTime(sections, startTime + duration / 2);
-    const leastUsed = Math.min(...usage);
-    const candidates = shots.filter((shot) => usage[shot.index] === leastUsed);
-    const selected = candidates
-      .map((shot) => ({
-        shot,
-        score:
-          Math.abs(shot.energy - section.energy)
-          + (shot.index === previousVisual && shots.length > 1 ? 10 : 0),
-      }))
-      .sort((a, b) => a.score - b.score || a.shot.index - b.shot.index)[0]!.shot;
-
-    usage[selected.index] += 1;
-    previousVisual = selected.index;
     return {
       index,
-      visualIndex: selected.index,
+      visualIndex: shot.index,
       startTime,
       duration,
       label: section.label,
       energy: Math.round(section.energy * 100) / 100,
     };
   });
+}
+
+// The image-first pipeline relies on this plan as its immutable source-image
+// manifest. Keep validation alongside the planner so the preview and paid-job
+// paths enforce exactly the same contract.
+export function hasStrictUniqueSourcePlan(plan: ShotPlan): boolean {
+  if (
+    plan.reuseCount !== 0
+    || plan.numClips < 1
+    || plan.shots.length !== plan.numClips
+    || plan.timeline.length !== plan.numClips
+    || plan.timelineSceneCount !== plan.numClips
+  ) {
+    return false;
+  }
+
+  return plan.shots.every((shot, index) => shot.index === index)
+    && plan.timeline.every((entry, index) =>
+      entry.index === index
+      && entry.visualIndex === index
+      && entry.duration > 0,
+    );
 }
 
 function buildPrompt(
@@ -513,7 +521,7 @@ export function planShots(input: ShotPlanInput): ShotPlan {
     shots,
     timeline,
     timelineSceneCount: timeline.length,
-    reuseCount: Math.max(0, timeline.length - numClips),
+    reuseCount: 0,
     approximate: !hasReal,
   };
 }

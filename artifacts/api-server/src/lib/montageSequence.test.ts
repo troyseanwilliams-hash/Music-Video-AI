@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   resolveAvailableStitchSequence,
   resolveMontageSequence,
+  resolveStrictMontageSequence,
 } from "./montageSequence.js";
 import { resolveNarrativeSequence } from "./narrativeSequence.js";
 
@@ -48,6 +49,41 @@ describe("resolveMontageSequence", () => {
     expect(sequence[0]).toBe(1);
     expect(sequence[1]).toBe(0);
     expect(sequence.every((clipIndex, index) => index === 0 || clipIndex !== sequence[index - 1])).toBe(true);
+  });
+});
+
+describe("resolveStrictMontageSequence", () => {
+  it("uses each chronological source exactly once for a complete strict plan", () => {
+    expect(
+      resolveStrictMontageSequence(
+        timeline([0, 1, 2]),
+        [{ visualIndex: 0 }, { visualIndex: 1 }, { visualIndex: 2 }],
+        30,
+        10,
+      ),
+    ).toEqual([0, 1, 2]);
+  });
+
+  it("rejects repeated timeline identities rather than cycling a source", () => {
+    expect(() =>
+      resolveStrictMontageSequence(
+        timeline([0, 1, 1]),
+        [{ visualIndex: 0 }, { visualIndex: 1 }, { visualIndex: 2 }],
+        30,
+        10,
+      ),
+    ).toThrow("does not preserve its visual identity");
+  });
+
+  it("rejects a missing or substituted strict clip instead of salvaging it", () => {
+    expect(() =>
+      resolveStrictMontageSequence(
+        timeline([0, 1, 2]),
+        [{ visualIndex: 0 }, { visualIndex: 2 }],
+        30,
+        10,
+      ),
+    ).toThrow("one distinct clip");
   });
 });
 

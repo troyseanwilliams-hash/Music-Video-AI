@@ -26,6 +26,49 @@ function persistedVisualOrder(rawTimeline: unknown): number[] {
     .map((entry) => entry.visualIndex);
 }
 
+// Versioned image-first jobs have no reusable montage library: every timeline
+// slot is backed by its own persisted visual and its own generated clip.
+// Validate that contract here rather than silently applying the legacy cycling
+// and substitution policy below.
+export function resolveStrictMontageSequence(
+  rawTimeline: unknown,
+  clips: MontageClipIdentity[],
+  totalDuration: number,
+  slotDuration: number,
+): number[] {
+  const sceneCount = Math.max(1, Math.ceil(totalDuration / Math.max(1, slotDuration)));
+  if (!Array.isArray(rawTimeline) || rawTimeline.length !== sceneCount) {
+    throw new Error(`Strict montage timeline must contain exactly ${sceneCount} segments`);
+  }
+  const timeline = rawTimeline.map((value, position) => {
+    if (!value || typeof value !== "object") {
+      throw new Error(`Strict montage timeline segment ${position} is invalid`);
+    }
+    const entry = value as Record<string, unknown>;
+    if (
+      !Number.isInteger(entry.index)
+      || !Number.isInteger(entry.visualIndex)
+      || !Number.isFinite(entry.startTime)
+      || !Number.isFinite(entry.duration)
+      || typeof entry.duration !== "number"
+      || entry.duration <= 0
+      || entry.index !== position
+      || entry.visualIndex !== position
+    ) {
+      throw new Error(`Strict montage timeline segment ${position} does not preserve its visual identity`);
+    }
+    return entry;
+  });
+  if (
+    clips.length !== sceneCount
+    || new Set(clips.map((clip) => clip.visualIndex)).size !== sceneCount
+    || clips.some((clip, index) => clip.visualIndex !== index)
+  ) {
+    throw new Error("Strict montage requires one distinct clip for every timeline segment");
+  }
+  return timeline.map((_, index) => index);
+}
+
 export function resolveMontageSequence(
   rawTimeline: unknown,
   clips: MontageClipIdentity[],

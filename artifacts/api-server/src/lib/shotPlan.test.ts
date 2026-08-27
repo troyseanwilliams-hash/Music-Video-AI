@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   parseNumberedImagePackScript,
+  hasStrictUniqueSourcePlan,
   planImagePackScenes,
   planShots,
 } from "./shotPlan.js";
@@ -38,7 +39,7 @@ describe("planShots montage planning", () => {
     expect(plan.timeline.every((scene) => scene.duration <= 10)).toBe(true);
   });
 
-  it("never places the same visual in consecutive montage slots when alternatives exist", () => {
+  it("maps every montage timeline segment to its matching distinct visual", () => {
     const plan = planShots({
       prompt: "Neon city lights and a dancer moving through rain",
       style: "neon",
@@ -46,10 +47,21 @@ describe("planShots montage planning", () => {
       analysis: THREE_MINUTE_ANALYSIS,
     });
 
-    for (let index = 1; index < plan.timeline.length; index++) {
-      expect(plan.timeline[index]!.visualIndex).not.toBe(plan.timeline[index - 1]!.visualIndex);
-    }
-    expect(new Set(plan.timeline.slice(0, plan.numClips).map((scene) => scene.visualIndex)).size).toBe(plan.numClips);
+    expect(plan.timeline.map((scene) => scene.visualIndex)).toEqual(
+      Array.from({ length: plan.numClips }, (_, index) => index),
+    );
+    expect(hasStrictUniqueSourcePlan(plan)).toBe(true);
+  });
+
+  it("rejects a plan whose source image is assigned to more than one segment", () => {
+    const plan = planShots({
+      prompt: "Neon city lights and a dancer moving through rain",
+      style: "neon",
+      requestedDuration: "30",
+    });
+    plan.timeline[1]!.visualIndex = 0;
+
+    expect(hasStrictUniqueSourcePlan(plan)).toBe(false);
   });
 
   it("splits a multi-beat prompt into focused visual motifs instead of repeating the full story", () => {
@@ -221,6 +233,8 @@ describe("planShots narrative planning", () => {
     expect(montage.numClips).toBe(60);
     expect(montage.timelineSceneCount).toBe(60);
     expect(montage.reuseCount).toBe(0);
+    expect(hasStrictUniqueSourcePlan(narrative)).toBe(true);
+    expect(hasStrictUniqueSourcePlan(montage)).toBe(true);
   });
 
   it("uses one five-second scene for a five-second Narrative Story", () => {

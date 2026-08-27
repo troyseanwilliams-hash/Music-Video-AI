@@ -1464,7 +1464,7 @@ export default function Generate() {
                     <div>
                       <p className="text-sm font-semibold">Visual Montage</p>
                       <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                        Creates a focused set of visuals, then edits and recalls them across the track to keep the cost lower.
+                        Creates a distinct, music-timed visual for every timeline segment while preserving a shared style and world.
                       </p>
                     </div>
                   </div>
@@ -1497,7 +1497,7 @@ export default function Generate() {
                     <div>
                       <p className="text-sm font-semibold">Narrative Story</p>
                       <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                        A chronological beginning-to-ending story with a unique scene for each timeline segment. No visual recalls.
+                        A chronological beginning-to-ending story with a distinct scene for every timeline segment.
                       </p>
                     </div>
                   </div>
@@ -1521,7 +1521,7 @@ export default function Generate() {
                       <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
                         {generationMode === CreateJobRequestGenerationMode.narrative
                           ? "First creates one ordered story image for every scene, then animates each segment from its matching image."
-                          : "First creates a consistent motif image pack, then animates every montage segment from its assigned image."}
+                          : "First creates one distinct, consistent-style image for every montage segment, then animates each matching image."}
                       </p>
                     </div>
                     <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
@@ -2962,11 +2962,7 @@ export default function Generate() {
                   <>
                     <p className="mb-2 text-xs leading-relaxed text-muted-foreground">
                       {shotPlan.timelineSceneCount} {generationMode === CreateJobRequestGenerationMode.narrative ? "chronological scenes" : "music-timed cuts"}
-                      {generationMode === CreateJobRequestGenerationMode.narrative
-                        ? " · exact continuity, no visual reuse"
-                        : (shotPlan.reuseCount > 0
-                          ? ` · ${shotPlan.reuseCount} intentional visual recalls keep the price lower`
-                          : " · no visual reuse needed")}
+                      {" · one distinct source image for every timeline segment"}
                     </p>
                     <div className="max-h-44 overflow-y-auto space-y-2 pr-1">
                       {shotPlan.shots.map((s) => (

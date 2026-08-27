@@ -22,7 +22,7 @@ import {
   MAX_FULL_SECONDS,
 } from "../lib/creditCost.js";
 import { getUserTier, canRender4k } from "../lib/tier.js";
-import { planShots } from "../lib/shotPlan.js";
+import { hasStrictUniqueSourcePlan, planShots } from "../lib/shotPlan.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { MAX_LYRICS_LENGTH } from "../lib/lyricLimits.js";
 import { verifyAudioAnalysisReceipt } from "../lib/audioAnalysisReceipt.js";
@@ -463,18 +463,10 @@ router.post("/jobs", async (req, res) => {
     generationMode: normalizedGenerationMode,
     analysis: verifiedAudioAnalysis as never,
   });
-  if (
-    normalizedGenerationMode === "narrative"
-    && (
-      storyboard.reuseCount !== 0
-      || storyboard.shots.length !== storyboard.numClips
-      || storyboard.timeline.length !== storyboard.numClips
-      || storyboard.timeline.some((entry, index) => entry.visualIndex !== index)
-    )
-  ) {
+  if (!hasStrictUniqueSourcePlan(storyboard)) {
     res.status(422).json({
-      error: "Could not build a complete chronological story plan. Please adjust the prompt and try again.",
-      code: "NARRATIVE_PLAN_INVALID",
+      error: "Could not build a complete one-image-per-segment video plan. Please adjust the prompt and try again.",
+      code: "STRICT_UNIQUE_SOURCES_PLAN_INVALID",
     });
     return;
   }
@@ -605,6 +597,7 @@ router.post("/jobs", async (req, res) => {
         generationMode: normalizedGenerationMode,
         narrativeVisualSource: normalizedNarrativeVisualSource,
         imageFirstVersion: 1,
+        strictUniqueSourcesVersion: 1,
         imageCreditCost: calculateGeneratedImageCost(
           resolvedRequestedDuration,
           songDurationSec,

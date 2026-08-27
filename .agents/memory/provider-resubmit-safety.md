@@ -15,6 +15,12 @@ Persisted provider requests must be recovered conservatively.
 
 **How to apply:** Keep pending request metadata through transport, auth, 5xx, unreadable, and other ambiguous poll failures; recover completed media without new spend. Move only explicit request-level terminal states (`FAILED`/`ERROR`/404/410) to a per-index rejected archive. A still-pending poll may requeue only within a bounded free recovery budget.
 
+Persisted clip object paths are authoritative recovery state and must never be discarded automatically.
+
+**Why:** An unreadable stored clip can be a transient object-storage or download problem. Falling through to video generation silently buys a replacement and can overwrite the exact accepted output the job is supposed to preserve.
+
+**How to apply:** Preserve the indexed clip path and stop before any provider POST. Surface the affected index for explicit repair or recovery; apply this rule to both strict and legacy jobs.
+
 An explicit admin retry may replace a terminally rejected request, but it must be a per-scene transition.
 
 **Why:** Clearing the entire pending map after one rejected scene can duplicate other accepted requests. Validating the retry after reserving credits can charge a customer even when the retry is rejected.

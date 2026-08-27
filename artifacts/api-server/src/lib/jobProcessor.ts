@@ -18,7 +18,8 @@ import { generateNarrativeImage, downloadGeneratedImage, IMAGE_API_FAILURE, IMAG
 import { generateLipsync, lipsyncAvailable } from "./lipsync.js";
 import { stitchVideoClips, extractVideoThumbnail } from "./videoStitcher.js";
 import { stitchEditorTimeline } from "./editorStitcher.js";
-import { resolveMontageSequence } from "./montageSequence.js";
+import { resolveMontageSequence, resolveStrictMontageSequence } from "./montageSequence.js";
+import { assertStrictUniqueMedia, perceptualFingerprint } from "./mediaUniqueness.js";
 
 const execAsync = promisify(exec);
 const MAX_RETRIES = 3;
@@ -123,6 +124,7 @@ type UncertainImageSubmission = {
 };
 
 type AiJobMeta = {
+  strictUniqueSourcesVersion?: number;
   generationMode?: "montage" | "narrative";
   narrativeVisualSource?: "video" | "generated_images";
   narrativeImages?: Record<string, string>;
@@ -613,6 +615,70 @@ function storyboardShotsOf(job: JobRow): PersistedStoryboardShot[] {
       );
     })
     .sort((a, b) => a.index - b.index);
+}
+
+function isStrictUniqueSourcesJob(job: JobRow): boolean {
+  return aiMetaOf(job).strictUniqueSourcesVersion === 1;
+}
+
+async function validateStrictSourceFoundation(
+  job: JobRow,
+  expectedSegments: number,
+  clipDurationSec: number,
+  totalDuration: number,
+  preparedImages: Record<string, string>,
+): Promise<void> {
+  if (!isStrictUniqueSourcesJob(job)) return;
+  const meta = aiMetaOf(job);
+  const shots = storyboardShotsOf(job);
+  if (
+    !Array.isArray(meta.storyboard?.shots)
+    || meta.storyboard.shots.length !== expectedSegments
+    || meta.storyboard.numClips !== expectedSegments
+    || shots.length !== expectedSegments
+    || shots.some((shot, index) => shot.index !== index)
+  ) {
+    throw new Error(`${PROVIDER_API_FAILURE}: Strict job storyboard must contain every indexed segment exactly once`);
+  }
+  // This also rejects duplicated, reordered, or incomplete timeline identities
+  // before a provider POST can be reached.
+  resolveStrictMontageSequence(
+    meta.storyboard?.timeline,
+    shots.map((shot) => ({ visualIndex: shot.index })),
+    totalDuration,
+    clipDurationSec,
+  );
+  const paths = shots.map((shot) => preparedImages[shot.index]);
+  if (
+    paths.some((path) => typeof path !== "string" || path.trim().length === 0)
+    || new Set(paths).size !== paths.length
+  ) {
+    throw new Error(`${IMAGE_API_FAILURE}: Strict job requires one distinct prepared image for every segment`);
+  }
+  const stored = await db.select({
+    assetIndex: imageAssetsTable.assetIndex,
+    objectPath: imageAssetsTable.objectPath,
+  }).from(imageAssetsTable).where(eq(imageAssetsTable.jobId, job.id));
+  const persistedByIndex = new Map(stored.map((asset) => [asset.assetIndex, asset.objectPath]));
+  if (shots.some((shot) => persistedByIndex.get(shot.index) !== preparedImages[shot.index])) {
+    throw new Error(`${IMAGE_API_FAILURE}: Strict job prepared images are not durably persisted for every segment`);
+  }
+  const fingerprints = [];
+  for (const path of paths) {
+    try {
+      const file = await storageService.getObjectEntityFile(path!);
+      const [buffer] = await file.download();
+      fingerprints.push(await perceptualFingerprint(buffer, "image"));
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(`${IMAGE_API_FAILURE}: Strict source image inspection failed: ${detail}`);
+    }
+  }
+  try {
+    assertStrictUniqueMedia(true, fingerprints, "source image");
+  } catch (error) {
+    throw new Error(`${IMAGE_API_FAILURE}: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 async function readAiMeta(jobId: string): Promise<AiJobMeta> {
@@ -1388,6 +1454,7 @@ async function generateClips(
   const provider = selectedProvider || getActiveProvider();
   const requestedDur = (job as JobRow & { requestedDuration?: string | null }).requestedDuration;
   const generationMode = generationModeOf(job);
+  const strictUniqueSources = isStrictUniqueSourcesJob(job);
 
   // Use the same clip plan as the credit formula so the number of provider calls
   // matches exactly what was charged.
@@ -1414,8 +1481,15 @@ async function generateClips(
     : await selectSections(analysis.sections, maxClips);
   const sections: AudioSection[] = [];
   for (let i = 0; i < maxClips; i++) {
-    sections.push(baseSections[i % baseSections.length]!);
+    sections.push(strictUniqueSources ? baseSections[i]! : baseSections[i % baseSections.length]!);
   }
+  await validateStrictSourceFoundation(
+    job,
+    maxClips,
+    clipDurationSec,
+    targetOutputDuration(requestedDur, analysis.durationSeconds),
+    preparedImages,
+  );
 
   const refImageUrl = await loadReferenceImageUrl(job);
 
@@ -1434,7 +1508,7 @@ async function generateClips(
   const targetedSceneIndex = clipMeta.targetedSceneRecovery?.sceneIndex;
   const targetedSceneRequestedAt = clipMeta.targetedSceneRecovery?.requestedAt;
   const allowTargetedTerminalSkip =
-    clipMeta.targetedSceneRecovery?.allowTerminalSkip === true;
+    !strictUniqueSources && clipMeta.targetedSceneRecovery?.allowTerminalSkip === true;
   const terminalFallbackProvider =
     clipMeta.targetedSceneRecovery?.terminalFallbackProvider;
   if (
@@ -1460,6 +1534,9 @@ async function generateClips(
   const reuseCount = Object.keys(persisted).length;
   // Admin "finalize with saved clips": reuse stored clips and reclaim any
   // completed pending requests (both free), but NEVER pay for new generation.
+  if (strictUniqueSources && clipMeta.finalizeWithPartial === true) {
+    throw new Error(`${PROVIDER_API_FAILURE}: Strict jobs cannot finalize with missing clips`);
+  }
   const finalizeOnly = clipMeta.finalizeWithPartial === true;
 
   logger.info(
@@ -1491,7 +1568,7 @@ async function generateClips(
   const clipAttempts = is4k ? 1 : 2;
 
   for (const i of generationOrder) {
-    const storyboardShot = generationMode === "narrative"
+    const storyboardShot = strictUniqueSources || generationMode === "narrative"
       ? storyboardShots[i]!
       : storyboardShots.length > 0
         ? storyboardShots[i % storyboardShots.length]!
@@ -1527,8 +1604,13 @@ async function generateClips(
         await reportClipComplete(i);
         continue;
       } catch (e) {
-        logger.warn({ jobId: job.id, clip: i, err: e }, "Persisted clip unreadable — regenerating");
-        delete persisted[i];
+        logger.warn(
+          { jobId: job.id, clip: i, objectPath: persisted[i], err: e },
+          "Persisted clip unreadable — preserving saved output and stopping before provider submission",
+        );
+        throw new Error(
+          `${PROVIDER_POLL_TIMEOUT} Saved scene ${i + 1} is temporarily unavailable. Its stored output was preserved for recovery.`,
+        );
       }
     }
 
@@ -1611,6 +1693,9 @@ async function generateClips(
 
     // 3b) Simulation fallback (no real provider configured).
     if (provider === "simulation") {
+      if (strictUniqueSources) {
+        throw new Error(`${PROVIDER_API_FAILURE}: Strict jobs require real, unique provider clips; simulation is disabled`);
+      }
       logger.info({ jobId: job.id, section: section.label, clipDuration }, "Simulation: creating placeholder clip");
       await new Promise((r) => setTimeout(r, 1500));
       clips[i] = {
@@ -1699,6 +1784,9 @@ async function generateClips(
               )
             : undefined,
         });
+        if (!result && strictUniqueSources) {
+          throw new Error(`${PROVIDER_API_FAILURE}: Strict jobs cannot substitute a simulated clip`);
+        }
         clipBuffer = result ? await downloadClip(result.videoUrl) : await createSimulationClip(clipDuration);
         if (result) {
           logger.info({ jobId: job.id, section: section.label, provider: result.provider }, "AI clip downloaded");
@@ -1742,7 +1830,7 @@ async function generateClips(
           if (skippedTerminalScenes.size > 0) {
             throw e;
           }
-          if (generationMode === "narrative") throw e;
+          if (strictUniqueSources || generationMode === "narrative") throw e;
           const done = clips.filter(Boolean).length;
           if (done > 0) {
             logger.warn(
@@ -2857,6 +2945,17 @@ async function processJob(job: JobRow): Promise<void> {
     const { clips, shortfallNotice } = await generateClips(job, analysis, preparedImages, (pct) =>
       updateJobStatus(job.id, { progressPercent: pct }),
     );
+    if (isStrictUniqueSourcesJob(job)) {
+      const clipFingerprints = [];
+      for (const clip of clips) {
+        clipFingerprints.push(await perceptualFingerprint(clip.buffer, "video"));
+      }
+      try {
+        assertStrictUniqueMedia(true, clipFingerprints, "generated clip");
+      } catch (error) {
+        throw new Error(`${PROVIDER_API_FAILURE}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
 
     await updateJobStatus(job.id, { status: "stitching", progressPercent: 75 });
 
@@ -2871,7 +2970,15 @@ async function processJob(job: JobRow): Promise<void> {
     const reqDur = (job as JobRow & { requestedDuration?: string | null }).requestedDuration;
     const outputDuration = targetOutputDuration(reqDur, analysis.durationSeconds);
     const generationMode = generationModeOf(job);
-    const requestedSequence = generationMode === "narrative"
+    const strictUniqueSources = isStrictUniqueSourcesJob(job);
+    const requestedSequence = strictUniqueSources
+      ? resolveStrictMontageSequence(
+          aiMetaOf(job).storyboard?.timeline,
+          clips,
+          outputDuration,
+          clips[0]?.targetDuration ?? 10,
+        )
+      : generationMode === "narrative"
       ? clips.map((_, index) => index)
       : resolveMontageSequence(
           aiMetaOf(job).storyboard?.timeline,
@@ -2884,7 +2991,7 @@ async function processJob(job: JobRow): Promise<void> {
       const stitchResult = await stitchVideoClips({
         clips,
         sequence: requestedSequence,
-        strictSequence: generationMode === "narrative",
+        strictSequence: strictUniqueSources || generationMode === "narrative",
         audioBuffer: audioData.buffer,
         audioExt: audioData.ext,
         totalDuration: outputDuration,
@@ -2901,7 +3008,7 @@ async function processJob(job: JobRow): Promise<void> {
       const stitchResult = await stitchVideoClips({
         clips,
         sequence: requestedSequence,
-        strictSequence: generationMode === "narrative",
+        strictSequence: strictUniqueSources || generationMode === "narrative",
         totalDuration: outputDuration,
         lyricsText, // captions burn onto silent videos too
       });
@@ -2909,6 +3016,9 @@ async function processJob(job: JobRow): Promise<void> {
       thumbnailBuffer = stitchResult.thumbnailBuffer;
       resolvedSequence = stitchResult.resolvedSequence;
     } else {
+      if (strictUniqueSources) {
+        throw new Error(`${PROVIDER_API_FAILURE}: Strict jobs require every unique generated clip`);
+      }
       videoBuffer = await createSimulationClip(10);
       thumbnailBuffer = await extractVideoThumbnail(videoBuffer, 2);
     }
