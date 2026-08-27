@@ -169,6 +169,11 @@ type AiJobMeta = {
   rejectedRequests?: Record<string, RejectedClipRequest>; // terminal provider rejection; admin may authorize one fresh submission
   uncertainSubmissions?: Record<string, UncertainSubmission>; // clip index -> ambiguous submit outcome requiring explicit acknowledgement
   submissionIntents?: Record<string, ClipSubmissionIntent>; // written before POST; unresolved entries block automatic resubmission
+  targetedSceneRecovery?: {
+    sceneIndex: number;
+    assetType: "clip";
+    requestedAt: string;
+  }; // explicit admin recovery: this exact storyboard segment must be the next paid request
   retryAfter?: number; // epoch ms — queued job must not be claimed before this
   finalizeWithPartial?: boolean; // admin: stitch whatever clips exist, never call the provider
   storyboard?: {
@@ -703,9 +708,20 @@ async function persistPartialClip(jobId: string, index: number, objectPath: stri
         updated_at = NOW()
     WHERE id = ${jobId}
   `);
+  await clearTargetedSceneRecovery(jobId, index);
   // Push immediately so the job-status page's "Scenes" preview can render this
   // clip the moment it lands, instead of waiting for the next progress tick.
   await notifyJobUpdate(jobId);
+}
+
+async function clearTargetedSceneRecovery(jobId: string, index: number): Promise<void> {
+  await db.execute(sql`
+    UPDATE jobs
+    SET manifest = COALESCE(manifest, '{}'::jsonb) - 'targetedSceneRecovery',
+        updated_at = NOW()
+    WHERE id = ${jobId}
+      AND COALESCE(manifest->'targetedSceneRecovery'->>'sceneIndex', '') = ${String(index)}
+  `);
 }
 
 // Record the provider request for a clip the moment it is accepted, so a clip
@@ -1228,6 +1244,24 @@ async function generateClips(
   const pending: Record<string, string> = { ...(clipMeta.pendingRequests ?? {}) };
   const submissionIntents = clipMeta.submissionIntents ?? {};
   const uncertainSubmissions = clipMeta.uncertainSubmissions ?? {};
+  const targetedSceneIndex = clipMeta.targetedSceneRecovery?.sceneIndex;
+  if (
+    targetedSceneIndex !== undefined &&
+    (
+      clipMeta.targetedSceneRecovery?.assetType !== "clip" ||
+      !Number.isInteger(targetedSceneIndex) ||
+      targetedSceneIndex < 0 ||
+      targetedSceneIndex >= sections.length
+    )
+  ) {
+    throw new Error(`${PROVIDER_API_FAILURE}: Targeted scene recovery is outside the immutable storyboard`);
+  }
+  const generationOrder = targetedSceneIndex === undefined
+    ? sections.map((_, index) => index)
+    : [
+        targetedSceneIndex,
+        ...sections.map((_, index) => index).filter((index) => index !== targetedSceneIndex),
+      ];
   const reuseCount = Object.keys(persisted).length;
   // Admin "finalize with saved clips": reuse stored clips and reclaim any
   // completed pending requests (both free), but NEVER pay for new generation.
@@ -1261,7 +1295,7 @@ async function generateClips(
   const is4k = (job.resolution ?? "").toLowerCase() === "4k";
   const clipAttempts = is4k ? 1 : 2;
 
-  for (let i = 0; i < sections.length; i++) {
+  for (const i of generationOrder) {
     const storyboardShot = generationMode === "narrative"
       ? storyboardShots[i]!
       : storyboardShots.length > 0
@@ -1294,6 +1328,7 @@ async function generateClips(
         const buf = await downloadClip(url);
         clips[i] = { buffer: buf, targetDuration, prompt, visualIndex };
         logger.info({ jobId: job.id, clip: i }, "Reused previously-rendered clip (salvage)");
+        await clearTargetedSceneRecovery(job.id, i);
         await reportClipComplete(i);
         continue;
       } catch (e) {

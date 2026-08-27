@@ -5,6 +5,7 @@ import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { downloadClip } from "../lib/videoApis.js";
 import { notifyRequestedAdminRenderReady } from "../lib/renderEmail.js";
+import { terminalSceneRecovery } from "../lib/terminalSceneRecovery.js";
 
 // Billing/salvage state AI jobs stash in the manifest jsonb.
 type AiJobMeta = {
@@ -24,6 +25,11 @@ type AiJobMeta = {
   uncertainSubmissions?: Record<string, unknown>;
   submissionIntents?: Record<string, unknown>;
   uncertainImageSubmissions?: Record<string, unknown>;
+  targetedSceneRecovery?: {
+    sceneIndex: number;
+    assetType: "clip";
+    requestedAt: string;
+  };
   courtesy30SceneVersion?: number;
   storyboard?: {
     generationMode?: "montage" | "narrative";
@@ -36,6 +42,15 @@ type AiJobMeta = {
 };
 function metaOf(manifest: unknown): AiJobMeta {
   return manifest && typeof manifest === "object" ? (manifest as AiJobMeta) : {};
+}
+
+function withoutRecordKey<T>(
+  record: Record<string, T> | undefined,
+  key: string | null,
+): Record<string, T> {
+  return Object.fromEntries(
+    Object.entries(record ?? {}).filter(([entryKey]) => entryKey !== key),
+  );
 }
 
 function isAdmin(email: string | null | undefined): boolean {
@@ -165,7 +180,7 @@ router.get("/admin/jobs/failed", async (req, res) => {
     return;
   }
 
-  const jobs = await db
+  const rows = await db
     .select({
       id: jobsTable.id,
       userId: jobsTable.userId,
@@ -177,6 +192,7 @@ router.get("/admin/jobs/failed", async (req, res) => {
       audioSourceType: jobsTable.audioSourceType,
       errorMessage: jobsTable.errorMessage,
       retryCount: jobsTable.retryCount,
+      manifest: jobsTable.manifest,
       createdAt: jobsTable.createdAt,
       updatedAt: jobsTable.updatedAt,
     })
@@ -185,6 +201,29 @@ router.get("/admin/jobs/failed", async (req, res) => {
     .where(eq(jobsTable.status, "failed"))
     .orderBy(desc(jobsTable.updatedAt))
     .limit(50);
+
+  const jobs = rows.map(({ manifest, ...job }) => {
+    const meta = metaOf(manifest);
+    const recovery = terminalSceneRecovery(meta, job.errorMessage);
+    const sceneIndex = recovery.sceneKey === null ? null : Number(recovery.sceneKey);
+    const validSceneIndex = sceneIndex !== null && Number.isInteger(sceneIndex) && sceneIndex >= 0
+      ? sceneIndex
+      : null;
+    const blockedByUncertainSubmission = recovery.sceneKey !== null && (
+      Boolean(meta.submissionIntents?.[recovery.sceneKey]) ||
+      Boolean(meta.uncertainSubmissions?.[recovery.sceneKey])
+    );
+    return {
+      ...job,
+      plannedScenes: meta.storyboard?.numClips ?? null,
+      savedClips: Object.keys(meta.partialClips ?? {}).length,
+      terminalSceneIndex: validSceneIndex,
+      freshSceneRequestAvailable:
+        validSceneIndex !== null &&
+        !recovery.unsafe &&
+        !blockedByUncertainSubmission,
+    };
+  });
 
   res.json({ jobs });
 });
@@ -208,22 +247,20 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
     if (job.status !== "failed") return { kind: "not_failed" as const, status: job.status };
 
     const meta = metaOf(job.manifest);
-    const terminalRejectedRequest =
-      /request was rejected|ai scene (failed|error)/i.test(job.errorMessage ?? "");
-    const pendingEntries = Object.entries(meta.pendingRequests ?? {});
+    const recovery = terminalSceneRecovery(meta, job.errorMessage);
+    if (recovery.unsafe) {
+      return { kind: "unsafe_recovery_state" as const };
+    }
+    const freshSceneKey = recovery.sceneKey;
     if (
-      terminalRejectedRequest &&
-      Object.keys(meta.rejectedRequests ?? {}).length === 0 &&
-      pendingEntries.length > 1
+      freshSceneKey !== null &&
+      (
+        meta.submissionIntents?.[freshSceneKey] ||
+        meta.uncertainSubmissions?.[freshSceneKey]
+      )
     ) {
       return { kind: "unsafe_recovery_state" as const };
     }
-    const legacyRejectedIndex =
-      terminalRejectedRequest &&
-      Object.keys(meta.rejectedRequests ?? {}).length === 0 &&
-      pendingEntries.length === 1
-        ? pendingEntries[0]![0]
-        : null;
     let retrySubscriptionReservation = meta.reservedSubscriptionCredits;
     let retryTopupReservation = meta.reservedTopupCredits;
     // A failed render returns its reservation. An explicit admin retry is a
@@ -265,15 +302,20 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
     // Uncertain image submissions must remain intact. Without a confirmed
     // request id there is no safe way to prove that a replacement image POST
     // would not duplicate a paid request.
-    const {
-      rejectedRequests: _rejected,
-      ...retryMeta
-    } = meta;
-    const retryPendingRequests = Object.fromEntries(
-      Object.entries(retryMeta.pendingRequests ?? {}).filter(
-        ([index]) => index !== legacyRejectedIndex,
-      ),
-    );
+    const retryMeta: AiJobMeta = {
+      ...meta,
+      rejectedRequests: withoutRecordKey(meta.rejectedRequests, freshSceneKey),
+      pendingRequests: withoutRecordKey(meta.pendingRequests, freshSceneKey),
+      ...(freshSceneKey === null
+        ? {}
+        : {
+            targetedSceneRecovery: {
+              sceneIndex: Number(freshSceneKey),
+              assetType: "clip" as const,
+              requestedAt: new Date().toISOString(),
+            },
+          }),
+    };
     const [updated] = await tx
       .update(jobsTable)
       .set({
@@ -283,7 +325,6 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
         claimedAt: null,
         manifest: {
           ...retryMeta,
-          pendingRequests: retryPendingRequests,
           refunded: false,
           reservedSubscriptionCredits: retrySubscriptionReservation,
           reservedTopupCredits: retryTopupReservation,
@@ -292,7 +333,13 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
       })
       .where(eq(jobsTable.id, id))
       .returning();
-    return { kind: "ok" as const, job: updated };
+    return {
+      kind: "ok" as const,
+      job: updated,
+      freshSceneIndex: freshSceneKey === null ? null : Number(freshSceneKey),
+      savedClips: Object.keys(meta.partialClips ?? {}).length,
+      plannedScenes: meta.storyboard?.numClips ?? null,
+    };
   });
 
   if (outcome.kind === "missing") {
@@ -314,8 +361,25 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
     return;
   }
 
-  req.log.info({ jobId: id, userId: outcome.job.userId }, "Admin explicitly retried failed job");
-  res.json(outcome.job);
+  req.log.info(
+    {
+      jobId: id,
+      userId: outcome.job.userId,
+      freshSceneIndex: outcome.freshSceneIndex,
+      savedClips: outcome.savedClips,
+    },
+    outcome.freshSceneIndex === null
+      ? "Admin explicitly retried failed job"
+      : "Admin queued a fresh request for a terminally rejected scene",
+  );
+  res.json({
+    ...outcome.job,
+    recovery: {
+      freshSceneIndex: outcome.freshSceneIndex,
+      savedClips: outcome.savedClips,
+      plannedScenes: outcome.plannedScenes,
+    },
+  });
 });
 
 // One-time courtesy conversion for a five-minute 15-scene image-first render.

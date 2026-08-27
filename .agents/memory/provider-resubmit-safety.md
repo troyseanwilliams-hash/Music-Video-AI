@@ -21,6 +21,12 @@ An explicit admin retry may replace a terminally rejected request, but it must b
 
 **How to apply:** Validate recovery state before any credit debit, clear only archived rejected indexes, preserve unrelated pending handles plus all clip/image intents and uncertainty markers, and block customer retries whenever terminal or uncertain provider state exists.
 
+Targeted scene recovery must remain bound to the immutable storyboard index.
+
+**Why:** A replacement generated from the next available prompt or image can break narrative continuity even when it fills the missing runtime slot.
+
+**How to apply:** Persist the authorized scene index, make it the next paid request, and derive its prompt, timing, visual index, and source image from that same storyboard entry. Store the result at the original index so completed clips and stitching order never change.
+
 Every failure after a provider POST is issued but before a valid request ID is durably saved must be recorded as an uncertain submission.
 
 **Why:** Timeouts, 5xx responses, unreadable bodies, malformed 2xx JSON, and persistence failures can all happen after the provider accepted a billable request. Treating any of them as a normal failure exposes an unacknowledged duplicate resubmit.

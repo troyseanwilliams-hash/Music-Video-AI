@@ -448,6 +448,10 @@ interface PendingJob {
 interface FailedJob extends PendingJob {
   errorMessage: string | null;
   retryCount: number | null;
+  plannedScenes: number | null;
+  savedClips: number;
+  terminalSceneIndex: number | null;
+  freshSceneRequestAvailable: boolean;
   updatedAt: string;
 }
 
@@ -1318,11 +1322,32 @@ export default function AdminPage() {
         method: "POST",
         credentials: "include",
       });
-      if (!res.ok) throw new Error("Failed to retry");
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error ?? "Failed to retry");
+      return data as {
+        recovery?: {
+          freshSceneIndex: number | null;
+          savedClips: number;
+          plannedScenes: number | null;
+        };
+      };
     },
-    onSuccess: () => {
-      toast({ title: "Job requeued", description: "Job has been reset and will process shortly." });
+    onSuccess: (data) => {
+      const recovery = data.recovery;
+      if (recovery?.freshSceneIndex != null) {
+        const sceneNumber = recovery.freshSceneIndex + 1;
+        const remaining = recovery.plannedScenes == null
+          ? null
+          : Math.max(0, recovery.plannedScenes - recovery.savedClips);
+        toast({
+          title: `New request queued for scene ${sceneNumber}`,
+          description: `${recovery.savedClips} completed clip${recovery.savedClips === 1 ? "" : "s"} remain attached to this job.${remaining == null ? "" : ` ${remaining} scene${remaining === 1 ? "" : "s"} remain, starting with scene ${sceneNumber}.`}`,
+        });
+      } else {
+        toast({ title: "Job requeued", description: "Job has been reset and will process shortly." });
+      }
       refetchFailedJobs();
+      refetchActiveJobs();
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -1980,6 +2005,16 @@ export default function AdminPage() {
                       <div className="flex flex-wrap gap-1.5">
                         {job.style && <span className="capitalize bg-muted text-muted-foreground text-xs px-2 py-0.5 rounded-full">{job.style}</span>}
                         {job.audioSourceType && <span className="bg-muted text-muted-foreground text-xs px-2 py-0.5 rounded-full capitalize">{job.audioSourceType}</span>}
+                        {job.savedClips > 0 && (
+                          <span className="bg-muted text-muted-foreground text-xs px-2 py-0.5 rounded-full">
+                            {job.savedClips} clips completed
+                          </span>
+                        )}
+                        {job.terminalSceneIndex != null && (
+                          <span className="bg-destructive/10 text-destructive text-xs px-2 py-0.5 rounded-full">
+                            Scene {job.terminalSceneIndex + 1} rejected
+                          </span>
+                        )}
                         <span className="bg-muted text-muted-foreground text-xs px-2 py-0.5 rounded-full">
                           Failed {new Date(job.updatedAt).toLocaleString()}
                         </span>
@@ -1989,10 +2024,23 @@ export default function AdminPage() {
                       <button
                         className="w-full flex items-center justify-center gap-2 py-3.5 sm:py-2.5 text-sm font-semibold text-muted-foreground hover:bg-muted/30 active:bg-muted/50 transition-colors disabled:opacity-50"
                         disabled={retryMutation.isPending}
-                        onClick={() => retryMutation.mutate(job.id)}
+                        onClick={() => {
+                          if (
+                            job.freshSceneRequestAvailable &&
+                            job.terminalSceneIndex != null &&
+                            !window.confirm(
+                              `Create a new request for scene ${job.terminalSceneIndex + 1} and keep ${job.savedClips} completed clips attached to this job?`,
+                            )
+                          ) {
+                            return;
+                          }
+                          retryMutation.mutate(job.id);
+                        }}
                       >
                         <RotateCcw className="h-4 w-4" />
-                        Retry Job
+                        {job.freshSceneRequestAvailable && job.terminalSceneIndex != null
+                          ? `Create New Request for Scene ${job.terminalSceneIndex + 1}`
+                          : "Retry Job"}
                       </button>
                     </div>
                   </div>
