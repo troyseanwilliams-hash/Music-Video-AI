@@ -166,10 +166,24 @@ describe("generateNarrativeImage recovery", () => {
       existingPollUrl: "https://example.test/image-status/request-timeout",
     });
     const assertion = expect(result).rejects.toThrow(IMAGE_POLL_TIMEOUT);
-    await vi.advanceTimersByTimeAsync(120 * 5_000);
+    await vi.advanceTimersByTimeAsync(180 * 5_000);
 
     await assertion;
-    expect(fetchMock).toHaveBeenCalledTimes(120);
+    expect(fetchMock).toHaveBeenCalledTimes(180);
+  });
+
+  it("keeps an explicitly rejected saved request terminal", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("expired", { status: 404 })));
+
+    const result = generateNarrativeImage({
+      prompt: "A consistent story scene",
+      existingPollUrl: "https://example.test/image-status/missing",
+    });
+    const assertion = expect(result).rejects.toThrow(IMAGE_API_FAILURE);
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    await assertion;
   });
 
   it("classifies a rejected image download as an image-stage failure", async () => {

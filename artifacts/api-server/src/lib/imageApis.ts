@@ -7,6 +7,7 @@ import { promisify } from "util";
 
 export const IMAGE_API_FAILURE = "[IMAGE_API_FAILURE]";
 export const IMAGE_POLL_TIMEOUT = "[IMAGE_POLL_TIMEOUT]";
+const IMAGE_POLL_ATTEMPTS = 180;
 const execFileAsync = promisify(execFile);
 
 export interface NarrativeImageRequest {
@@ -123,7 +124,7 @@ export async function generateNarrativeImage(req: NarrativeImageRequest): Promis
     await req.onSubmit?.({ requestId, pollUrl });
   }
 
-  for (let attempt = 0; attempt < 120; attempt++) {
+  for (let attempt = 0; attempt < IMAGE_POLL_ATTEMPTS; attempt++) {
     await new Promise((resolve) => setTimeout(resolve, 5_000));
     let poll: Response;
     try {
@@ -135,12 +136,17 @@ export async function generateNarrativeImage(req: NarrativeImageRequest): Promis
       // The paid request is already persisted. A single network timeout while
       // checking it must not fail/refund the whole render; keep polling the same
       // request so a retry never submits and pays for a duplicate image.
-      if (attempt === 119) {
+      if (attempt === IMAGE_POLL_ATTEMPTS - 1) {
         throw new Error(`${IMAGE_POLL_TIMEOUT} The source-image request status could not be confirmed.`);
       }
       continue;
     }
-    if (!poll.ok) continue;
+    if (!poll.ok) {
+      if (poll.status >= 400 && poll.status < 500 && poll.status !== 429) {
+        throw new Error(`${IMAGE_API_FAILURE} Saved source-image request was rejected (HTTP ${poll.status}).`);
+      }
+      continue;
+    }
     let result: {
       status?: string;
       error?: string | null;
@@ -149,7 +155,7 @@ export async function generateNarrativeImage(req: NarrativeImageRequest): Promis
     try {
       result = await poll.json() as typeof result;
     } catch {
-      if (attempt === 119) {
+      if (attempt === IMAGE_POLL_ATTEMPTS - 1) {
         throw new Error(`${IMAGE_POLL_TIMEOUT} The source-image status response could not be verified.`);
       }
       continue;

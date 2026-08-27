@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { generateClip, PROVIDER_POLL_TIMEOUT, resolveClipProviderChain } from "./videoApis.js";
+import {
+  generateClip,
+  pollPixazoRequestUntilComplete,
+  PROVIDER_API_FAILURE,
+  PROVIDER_POLL_TIMEOUT,
+  resolveClipProviderChain,
+} from "./videoApis.js";
 
 describe("resolveClipProviderChain", () => {
   afterEach(() => {
@@ -212,10 +218,43 @@ describe("resolveClipProviderChain", () => {
       onSubmit,
     });
     const assertion = expect(result).rejects.toThrow(PROVIDER_POLL_TIMEOUT);
-    await vi.advanceTimersByTimeAsync(120 * 5_000);
+    await vi.advanceTimersByTimeAsync(180 * 5_000);
 
     await assertion;
     expect(onSubmit).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledTimes(121);
+    expect(fetchMock).toHaveBeenCalledTimes(181);
+  });
+
+  it("continues polling a saved scene request without a second provider submission", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("PIXAZO_API_KEY", "test-key");
+    const pollUrl = "https://gateway.pixazo.ai/v2/requests/status/saved-request";
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        status: "COMPLETED",
+        output: { media_url: ["https://cdn.example.com/recovered.mp4"] },
+      }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = pollPixazoRequestUntilComplete(pollUrl);
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    await expect(result).resolves.toBe("https://cdn.example.com/recovered.mp4");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(pollUrl);
+    expect(fetchMock.mock.calls[0]?.[1]).not.toHaveProperty("method");
+  });
+
+  it("keeps an explicitly rejected saved scene request terminal", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("PIXAZO_API_KEY", "test-key");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("expired", { status: 404 })));
+
+    const result = pollPixazoRequestUntilComplete("https://gateway.pixazo.ai/v2/requests/status/missing");
+    const assertion = expect(result).rejects.toThrow(PROVIDER_API_FAILURE);
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    await assertion;
   });
 });

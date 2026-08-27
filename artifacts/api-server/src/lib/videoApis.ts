@@ -298,9 +298,66 @@ async function generateWithLuma(req: ClipRequest): Promise<string> {
 // submission time — retrying after a provider failure just doubles the bill.
 export const PROVIDER_API_FAILURE = "[PROVIDER_FAILURE]";
 export const PROVIDER_POLL_TIMEOUT = "[PROVIDER_POLL_TIMEOUT]";
+const PROVIDER_POLL_ATTEMPTS = 180;
 // Marker appended when the failure was the provider running out of tokens /
 // credits (Pixazo 402, quota exceeded, insufficient balance, …).
 export const PROVIDER_OUT_OF_CREDITS = "[PROVIDER_OUT_OF_CREDITS]";
+
+// Poll an already accepted gateway request without submitting anything. Keeping
+// this separate from submission makes a restart/deploy recovery unambiguously
+// free: the only network calls here are GETs to the persisted poll URL.
+export async function pollPixazoRequestUntilComplete(pollUrl: string): Promise<string> {
+  const key = process.env.PIXAZO_API_KEY;
+  if (!key) {
+    throw new Error(`${PROVIDER_API_FAILURE} AI video generation is not configured.`);
+  }
+
+  for (let attempt = 0; attempt < PROVIDER_POLL_ATTEMPTS; attempt++) {
+    await delay(5_000);
+    let pollRes: Response;
+    try {
+      pollRes = await fetch(pollUrl, {
+        headers: { "Ocp-Apim-Subscription-Key": key },
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch {
+      // A saved request remains safe to retry. Treat transient transport
+      // failures as an unavailable status, not a reason to resubmit.
+      continue;
+    }
+    if (!pollRes.ok) {
+      // The provider has explicitly rejected this already-accepted request.
+      // Do not keep retrying an invalid/expired handle or create a replacement.
+      if (pollRes.status >= 400 && pollRes.status < 500 && pollRes.status !== 429) {
+        throw new Error(
+          `${PROVIDER_API_FAILURE} Saved AI scene request was rejected (HTTP ${pollRes.status}).`,
+        );
+      }
+      continue;
+    }
+    let result: {
+      status?: string;
+      error?: string | null;
+      output?: { media_url?: string[] };
+    };
+    try {
+      result = await pollRes.json() as typeof result;
+    } catch {
+      // Gateway responses can be truncated during a transient outage. The
+      // accepted request is durable, so continue checking that same request.
+      continue;
+    }
+    if (result.status === "COMPLETED" && result.output?.media_url?.[0]) {
+      return result.output.media_url[0];
+    }
+    if (result.status === "FAILED" || result.status === "ERROR") {
+      throw new Error(
+        `${PROVIDER_API_FAILURE} AI scene ${result.status}: ${result.error ?? "unknown error"}`,
+      );
+    }
+  }
+  throw new Error(`${PROVIDER_POLL_TIMEOUT} AI scene polling timed out after 15 minutes`);
+}
 
 // Pixazo (pixazo.ai) — a unified gateway that fronts Kling, Runway, Veo, etc.
 // behind one API key (Ocp-Apim-Subscription-Key). Submit to a model endpoint,
@@ -480,22 +537,7 @@ async function generateWithPixazo(
     );
   }
 
-  for (let i = 0; i < 120; i++) {
-    await delay(5000);
-    const pollRes = await fetch(pollUrl, {
-      headers: { "Ocp-Apim-Subscription-Key": key },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!pollRes.ok) continue;
-    const d = (await pollRes.json()) as {
-      status?: string;
-      error?: string | null;
-      output?: { media_url?: string[] };
-    };
-    if (d.status === "COMPLETED" && d.output?.media_url?.[0]) return d.output.media_url[0];
-    if (d.status === "FAILED" || d.status === "ERROR") throw new Error(`${PROVIDER_API_FAILURE} Pixazo ${d.status}: ${d.error ?? "unknown error"}`);
-  }
-  throw new Error(`${PROVIDER_POLL_TIMEOUT} AI scene polling timed out after 10 minutes`);
+  return pollPixazoRequestUntilComplete(pollUrl);
 }
 
 function isCreditError(err: unknown): boolean {

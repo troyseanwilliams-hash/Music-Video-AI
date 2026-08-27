@@ -13,7 +13,7 @@ import { logger } from "./logger.js";
 import { notifyRenderReady, notifyRenderFailed, notifyAdminRenderFailed } from "./renderEmail.js";
 import { ObjectStorageService } from "./objectStorage.js";
 import { analyzeAudioBuffer, type AudioAnalysis, type AudioSection } from "./audioAnalysis.js";
-import { generateClip, downloadClip, checkPixazoRequest, getActiveProvider, PROVIDER_API_FAILURE, PROVIDER_OUT_OF_CREDITS, PROVIDER_POLL_TIMEOUT } from "./videoApis.js";
+import { generateClip, downloadClip, pollPixazoRequestUntilComplete, getActiveProvider, PROVIDER_API_FAILURE, PROVIDER_OUT_OF_CREDITS, PROVIDER_POLL_TIMEOUT } from "./videoApis.js";
 import { generateNarrativeImage, downloadGeneratedImage, IMAGE_API_FAILURE, IMAGE_POLL_TIMEOUT } from "./imageApis.js";
 import { generateLipsync, lipsyncAvailable } from "./lipsync.js";
 import { stitchVideoClips, extractVideoThumbnail, applyWatermark } from "./videoStitcher.js";
@@ -305,7 +305,19 @@ async function prepareNarrativeImagesStage(job: JobRow): Promise<Record<string, 
   const uncertain = liveMeta.uncertainImageSubmissions ?? {};
   const intents = liveMeta.imageSubmissionIntents ?? {};
   for (const asset of stored) paths[asset.assetIndex] = asset.objectPath;
-  await updateJobStatus(job.id, { status: "generating", progressPercent: 5 });
+  const completedImages = shots.filter((shot) => !!paths[shot.index]).length;
+  const completedClips = Object.keys(liveMeta.partialClips ?? {})
+    .map(Number)
+    .filter((index) => Number.isInteger(index) && index >= 0 && index < shots.length)
+    .length;
+  let reportedProgress = Math.max(
+    job.progressPercent ?? 0,
+    5 + Math.round((completedImages / shots.length) * 23),
+    completedClips > 0
+      ? 30 + Math.floor((completedClips / shots.length) * 40)
+      : 0,
+  );
+  await updateJobStatus(job.id, { status: "generating", progressPercent: reportedProgress });
   for (let position = 0; position < shots.length; position++) {
     const shot = shots[position]!;
     if (!paths[shot.index]) {
@@ -345,7 +357,11 @@ async function prepareNarrativeImagesStage(job: JobRow): Promise<Record<string, 
     } else if (pending[shot.index] || uncertain[shot.index]) {
       await clearImageSubmissionState(job.id, shot.index);
     }
-    await updateJobStatus(job.id, { progressPercent: 5 + Math.round(((position + 1) / shots.length) * 23) });
+    reportedProgress = Math.max(
+      reportedProgress,
+      5 + Math.round(((position + 1) / shots.length) * 23),
+    );
+    await updateJobStatus(job.id, { progressPercent: reportedProgress });
   }
   await persistNarrativeImages(job.id, paths);
   if (shots.some((shot) => !paths[shot.index])) throw new Error(`${IMAGE_API_FAILURE}: Required planned visuals are unavailable`);
@@ -439,7 +455,6 @@ async function processImagePackJob(job: JobRow): Promise<void> {
     return;
   }
   try {
-    await updateJobStatus(job.id, { status: "generating", progressPercent: 5 });
     const imageAspectRatio = job.aspectRatio === "16:9" ? "16:9" : "9:16";
     const scenes = Array.isArray(meta.imagePack?.scenes) ? meta.imagePack.scenes : [];
     const sceneByIndex = new Map(scenes.map((scene) => [scene.index, scene]));
@@ -451,6 +466,11 @@ async function processImagePackJob(job: JobRow): Promise<void> {
       .from(imageAssetsTable)
       .where(and(eq(imageAssetsTable.jobId, job.id), isNull(imageAssetsTable.deletedAt)));
     const completed = new Set(existing.map((asset) => asset.assetIndex));
+    let reportedProgress = Math.max(
+      job.progressPercent ?? 0,
+      5 + Math.round((completed.size / imageCount) * 90),
+    );
+    await updateJobStatus(job.id, { status: "generating", progressPercent: reportedProgress });
     const liveMeta = await readAiMeta(job.id);
     const pending = liveMeta.pendingImageRequests ?? {};
     const uncertain = liveMeta.uncertainImageSubmissions ?? {};
@@ -523,9 +543,11 @@ async function processImagePackJob(job: JobRow): Promise<void> {
       ) {
         generatedCharacterAnchorPath = objectPath;
       }
-      await updateJobStatus(job.id, {
-        progressPercent: Math.min(95, 5 + Math.round(((index + 1) / imageCount) * 90)),
-      });
+      reportedProgress = Math.max(
+        reportedProgress,
+        Math.min(95, 5 + Math.round(((index + 1) / imageCount) * 90)),
+      );
+      await updateJobStatus(job.id, { progressPercent: reportedProgress });
     }
     await updateJobStatus(job.id, { status: "ready", progressPercent: 100 });
     await notifyJobUpdate(job.id);
@@ -924,14 +946,25 @@ const HEARTBEAT_INTERVAL_MS = 60_000;
 // before giving up so a flaky connection doesn't let the job go stale.
 const HEARTBEAT_RETRIES = 3;
 const HEARTBEAT_RETRY_DELAY_MS = 5_000;
-function startJobHeartbeat(jobId: string): () => void {
+function startJobHeartbeat(job: JobRow): () => void {
+  const jobId = job.id;
+  const claimToken = job.claimedAt;
   let stopped = false;
   const beat = async () => {
+    if (stopped) return;
     for (let attempt = 1; attempt <= HEARTBEAT_RETRIES; attempt++) {
       try {
-        await db.execute(
-          sql`UPDATE jobs SET updated_at = NOW() WHERE id = ${jobId} AND status IN ('analyzing', 'generating', 'stitching')`,
-        );
+        const result = await db.execute<{ id: string }>(sql`
+          UPDATE jobs SET updated_at = NOW()
+          WHERE id = ${jobId}
+            AND claimed_at = ${claimToken}
+            AND status IN ('analyzing', 'generating', 'stitching')
+          RETURNING id
+        `);
+        if (result.rows.length === 0) {
+          stopped = true;
+          logger.info({ jobId }, "Job heartbeat stopped after ownership changed");
+        }
         return;
       } catch (err) {
         if (stopped) return;
@@ -981,9 +1014,19 @@ async function updateJobStatus(
   fields: Partial<typeof jobsTable.$inferInsert>,
 ): Promise<void> {
   const claimToken = activeClaimTokens.get(jobId);
+  const { progressPercent, ...remainingFields } = fields;
   const updated = await db
     .update(jobsTable)
-    .set({ ...fields, updatedAt: new Date() })
+    .set({
+      ...remainingFields,
+      // A resumed run replays earlier stages to validate/pull saved assets.
+      // Progress represents completed durable work, so replay must never make
+      // the customer-visible percentage move backward.
+      ...(progressPercent === undefined
+        ? {}
+        : { progressPercent: sql`GREATEST(progress_percent, ${progressPercent})` }),
+      updatedAt: new Date(),
+    })
     .where(
       claimToken
         ? and(eq(jobsTable.id, jobId), eq(jobsTable.claimedAt, claimToken))
@@ -1159,6 +1202,24 @@ async function generateClips(
     { jobId: job.id, provider, sectionCount: sections.length, clipDurationSec, targetOutputDuration: plan.targetOutputDuration, reuseCount },
     reuseCount ? "Generating clips per plan (resuming — reusing rendered clips)" : "Generating clips per plan",
   );
+  const completedClipIndexes = new Set(
+    Object.keys(persisted)
+      .map(Number)
+      .filter((index) => Number.isInteger(index) && index >= 0 && index < sections.length),
+  );
+  let reportedProgress = Math.max(
+    job.progressPercent ?? 0,
+    30 + Math.floor((completedClipIndexes.size / sections.length) * 40),
+  );
+  await onProgress(reportedProgress);
+  const reportClipComplete = async (index: number): Promise<void> => {
+    completedClipIndexes.add(index);
+    reportedProgress = Math.max(
+      reportedProgress,
+      30 + Math.floor((completedClipIndexes.size / sections.length) * 40),
+    );
+    await onProgress(reportedProgress);
+  };
 
   // 4K clips are expensive, so don't burn a second full-price attempt on them;
   // everything else gets one in-clip retry before the whole job is failed.
@@ -1187,8 +1248,6 @@ async function generateClips(
     const targetDuration = clipDurationSec;
     const clipDuration = clipDurationSec;
 
-    await onProgress(30 + Math.floor((i / sections.length) * 40));
-
     // Build the prompt regardless of provider so it can be persisted as clip
     // metadata (and reused as the basis for a future remix of this clip).
     const prompt = visualShot?.prompt ?? buildSectionPrompt(job, analysis, section);
@@ -1200,6 +1259,7 @@ async function generateClips(
         const buf = await downloadClip(url);
         clips[i] = { buffer: buf, targetDuration, prompt, visualIndex };
         logger.info({ jobId: job.id, clip: i }, "Reused previously-rendered clip (salvage)");
+        await reportClipComplete(i);
         continue;
       } catch (e) {
         logger.warn({ jobId: job.id, clip: i, err: e }, "Persisted clip unreadable — regenerating");
@@ -1207,44 +1267,31 @@ async function generateClips(
       }
     }
 
-    // 2) A request submitted on a previous attempt may have finished on the
-    //    provider after we stopped polling. Fetch it for free before paying to
-    //    regenerate.
+    // 2) Continue polling a request accepted on a previous attempt. This sends
+    //    only GET status checks to its saved URL, never a duplicate paid POST.
     if (pending[i]) {
-      const check = await checkPixazoRequest(pending[i]!);
-      if (check.state === "completed") {
+      try {
+        const mediaUrl = await pollPixazoRequestUntilComplete(pending[i]!);
+        const buf = await downloadClip(mediaUrl);
+        clips[i] = { buffer: buf, targetDuration, prompt, visualIndex };
         try {
-          const buf = await downloadClip(check.mediaUrl);
-          clips[i] = { buffer: buf, targetDuration, prompt, visualIndex };
-          try {
-            const path = await storageService.uploadClipBuffer(buf, `job-${job.id}`, i);
-            persisted[i] = path;
-            await persistPartialClip(job.id, i, path); // also clears the pending entry
-          } catch (e) {
-            logger.warn({ jobId: job.id, clip: i, err: e }, "Could not persist recovered clip (non-fatal)");
-          }
-          logger.info({ jobId: job.id, clip: i }, "Recovered stranded clip from provider (no new spend)");
-          delete pending[i];
-          continue;
+          const path = await storageService.uploadClipBuffer(buf, `job-${job.id}`, i);
+          persisted[i] = path;
+          await persistPartialClip(job.id, i, path); // also clears the pending entry
         } catch (e) {
-          logger.warn({ jobId: job.id, clip: i, err: e }, "Stranded clip download failed — preserving request for recovery");
-          throw new Error(
-            `${PROVIDER_POLL_TIMEOUT} A completed AI scene is temporarily unavailable.`,
-          );
+          logger.warn({ jobId: job.id, clip: i, err: e }, "Could not persist recovered clip (non-fatal)");
         }
-      } else if (check.state === "gone") {
-        // FAILED/ERROR and 404/410 are not proof that the original paid
-        // submission never ran. Preserve the handle and stop terminally;
-        // automatically replacing it could double provider spend.
-        logger.warn({ jobId: job.id, clip: i }, "Saved provider request is terminal or unresolvable — refusing duplicate submission");
-        throw new Error(
-          `${PROVIDER_API_FAILURE} A saved AI scene request could not be recovered. No replacement request was submitted.`,
-        );
-      } else {
-        logger.info({ jobId: job.id, clip: i }, "Pending provider request still in flight — preserving it instead of resubmitting");
-        throw new Error(
-          `${PROVIDER_POLL_TIMEOUT} An existing AI scene request is still processing.`,
-        );
+        logger.info({ jobId: job.id, clip: i }, "Recovered stranded clip from provider (no new spend)");
+        delete pending[i];
+        await reportClipComplete(i);
+        continue;
+      } catch (e) {
+        const detail = e instanceof Error ? e.message : String(e);
+        if (detail.includes(PROVIDER_API_FAILURE) || detail.includes(PROVIDER_POLL_TIMEOUT)) {
+          throw e;
+        }
+        logger.warn({ jobId: job.id, clip: i, err: e }, "Stranded clip download failed — preserving request for recovery");
+        throw new Error(`${PROVIDER_POLL_TIMEOUT} A completed AI scene is temporarily unavailable.`);
       }
     }
 
@@ -1271,6 +1318,7 @@ async function generateClips(
         prompt,
           visualIndex,
       };
+      await reportClipComplete(i);
       continue;
     }
 
@@ -1369,6 +1417,7 @@ async function generateClips(
     }
 
     clips[i] = { buffer: clipBuffer, targetDuration, prompt, visualIndex };
+    await reportClipComplete(i);
   }
 
   if (finalizeOnly) {
@@ -1648,7 +1697,6 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
       )
       UPDATE jobs SET
         status = 'queued',
-        progress_percent = 0,
         error_message = ${noteMsg},
         retry_count = ${nextRetry},
         claimed_at = NULL,
@@ -2328,7 +2376,7 @@ async function processJob(job: JobRow): Promise<void> {
 
   try {
     // === ANALYZING ===
-    await updateJobStatus(job.id, { progressPercent: 5 });
+    await updateJobStatus(job.id, { progressPercent: Math.max(job.progressPercent ?? 0, 5) });
 
     const rawAudioData = await getAudioBuffer(job);
 
@@ -2804,7 +2852,7 @@ export async function startJobProcessor(): Promise<void> {
           busy = true;
           inFlightJobIds.add(job.id);
           if (job.claimedAt) activeClaimTokens.set(job.id, new Date(job.claimedAt));
-          const stopHeartbeat = startJobHeartbeat(job.id);
+          const stopHeartbeat = startJobHeartbeat(job);
           processJob(job)
             .catch((err) =>
               logger.error({ err, jobId: job.id }, "Unhandled job error"),
