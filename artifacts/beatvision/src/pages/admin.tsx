@@ -1316,6 +1316,24 @@ export default function AdminPage() {
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
+  const forceFailMutation = useMutation({
+    mutationFn: async (jobId: string) => {
+      const res = await fetch(`/api/admin/jobs/${jobId}/force-fail`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error ?? "Failed to stop job");
+      return data;
+    },
+    onSuccess: () => {
+      toast({ title: "Job stopped", description: "The active worker claim was cleared and the job was marked failed." });
+      refetchActiveJobs();
+      refetchFailedJobs();
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
   const retryMutation = useMutation({
     mutationFn: async (jobId: string) => {
       const res = await fetch(`/api/admin/jobs/${jobId}/retry`, {
@@ -1857,6 +1875,19 @@ export default function AdminPage() {
                         Updated {new Date(job.updatedAt).toLocaleString()}
                         {job.claimedAt ? ` · Claimed ${new Date(job.claimedAt).toLocaleString()}` : " · Waiting for worker"}
                       </p>
+                      <button
+                        type="button"
+                        disabled={forceFailMutation.isPending}
+                        onClick={() => {
+                          if (window.confirm("Force fail this active job? Any provider request already accepted may continue externally.")) {
+                            forceFailMutation.mutate(job.id);
+                          }
+                        }}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/15 disabled:opacity-50"
+                      >
+                        {forceFailMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+                        Force Fail
+                      </button>
                     </div>
                   );
                 })}
