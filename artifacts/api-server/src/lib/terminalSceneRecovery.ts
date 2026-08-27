@@ -1,10 +1,43 @@
 export type TerminalSceneRecoveryMeta = {
   pendingRequests?: Record<string, unknown>;
   rejectedRequests?: Record<string, unknown>;
+  generationProvider?: string;
   storyboard?: {
     numClips?: number;
   };
 };
+
+function providerFromRequest(value: unknown): string | null {
+  if (typeof value === "string") {
+    return value.toLowerCase().includes("runway") ? "runway" : null;
+  }
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.provider === "string") return record.provider.toLowerCase();
+  if (typeof record.pollUrl === "string" && record.pollUrl.toLowerCase().includes("runway")) {
+    return "runway";
+  }
+  return null;
+}
+
+export function retryProviderAfterTerminalFailure(
+  meta: TerminalSceneRecoveryMeta,
+  currentProvider: string | null,
+  sceneKey: string | null,
+): string | null {
+  if (sceneKey === null) return currentProvider;
+  const rejectedProvider = providerFromRequest(meta.rejectedRequests?.[sceneKey]);
+  const pendingProvider = providerFromRequest(meta.pendingRequests?.[sceneKey]);
+  const sceneProvider = rejectedProvider ?? pendingProvider;
+  if (sceneProvider) {
+    return sceneProvider === "runway" ? "kling" : currentProvider;
+  }
+  const pinnedProvider = meta.generationProvider?.toLowerCase();
+  const selectedProvider = currentProvider?.toLowerCase() ?? null;
+  return [pinnedProvider, selectedProvider].includes("runway")
+    ? "kling"
+    : currentProvider;
+}
 
 export type TerminalSceneRecovery = {
   sceneKey: string | null;

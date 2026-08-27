@@ -1347,6 +1347,7 @@ export default function AdminPage() {
           freshSceneIndex: number | null;
           savedClips: number;
           plannedScenes: number | null;
+          retryProvider?: string | null;
         };
       };
     },
@@ -1359,7 +1360,7 @@ export default function AdminPage() {
           : Math.max(0, recovery.plannedScenes - recovery.savedClips);
         toast({
           title: `New request queued for scene ${sceneNumber}`,
-          description: `${recovery.savedClips} completed clip${recovery.savedClips === 1 ? "" : "s"} remain attached to this job.${remaining == null ? "" : ` ${remaining} scene${remaining === 1 ? "" : "s"} remain, starting with scene ${sceneNumber}.`}`,
+          description: `${recovery.savedClips} completed clip${recovery.savedClips === 1 ? "" : "s"} remain attached to this job.${recovery.retryProvider === "kling" ? " Kling will handle the failed scene and remaining scenes." : ""}${remaining == null ? "" : ` ${remaining} scene${remaining === 1 ? "" : "s"} remain, starting with scene ${sceneNumber}.`}`,
         });
       } else {
         toast({ title: "Job requeued", description: "Job has been reset and will process shortly." });

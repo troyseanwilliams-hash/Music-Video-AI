@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { terminalSceneRecovery } from "./terminalSceneRecovery.js";
+import {
+  retryProviderAfterTerminalFailure,
+  terminalSceneRecovery,
+} from "./terminalSceneRecovery.js";
 
 describe("terminalSceneRecovery", () => {
   it("targets one archived terminal scene inside the plan", () => {
@@ -46,5 +49,42 @@ describe("terminalSceneRecovery", () => {
       sceneKey: null,
       unsafe: false,
     });
+  });
+});
+
+describe("retryProviderAfterTerminalFailure", () => {
+  it("switches to Kling when the same scene previously failed on Runway", () => {
+    expect(retryProviderAfterTerminalFailure({
+      generationProvider: "runway",
+      rejectedRequests: {
+        "19": {
+          pollUrl: "https://gateway.example/v2/requests/status/runway-gen-4-5_request",
+        },
+      },
+    }, "kling", "19")).toBe("kling");
+  });
+
+  it("does not switch providers for a failure without a terminal scene", () => {
+    expect(retryProviderAfterTerminalFailure({
+      generationProvider: "runway",
+    }, "runway", null)).toBe("runway");
+  });
+
+  it("preserves a non-Runway provider for a terminal scene", () => {
+    expect(retryProviderAfterTerminalFailure({
+      generationProvider: "luma",
+      rejectedRequests: {
+        "4": { provider: "luma" },
+      },
+    }, "luma", "4")).toBe("luma");
+  });
+
+  it("trusts failed-scene provider evidence over stale Runway metadata", () => {
+    expect(retryProviderAfterTerminalFailure({
+      generationProvider: "runway",
+      rejectedRequests: {
+        "4": { provider: "luma" },
+      },
+    }, "kling", "4")).toBe("kling");
   });
 });

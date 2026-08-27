@@ -5,10 +5,14 @@ import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { downloadClip } from "../lib/videoApis.js";
 import { notifyRequestedAdminRenderReady } from "../lib/renderEmail.js";
-import { terminalSceneRecovery } from "../lib/terminalSceneRecovery.js";
+import {
+  retryProviderAfterTerminalFailure,
+  terminalSceneRecovery,
+} from "../lib/terminalSceneRecovery.js";
 
 // Billing/salvage state AI jobs stash in the manifest jsonb.
 type AiJobMeta = {
+  generationProvider?: string;
   generationMode?: "montage" | "narrative";
   narrativeVisualSource?: "video" | "generated_images";
   imageFirstVersion?: number;
@@ -254,6 +258,11 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
       return { kind: "unsafe_recovery_state" as const };
     }
     const freshSceneKey = recovery.sceneKey;
+    const retryProvider = retryProviderAfterTerminalFailure(
+      meta,
+      job.aiProvider,
+      freshSceneKey,
+    );
     if (
       freshSceneKey !== null &&
       (
@@ -307,6 +316,7 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
     // would not duplicate a paid request.
     const retryMeta: AiJobMeta = {
       ...meta,
+      generationProvider: retryProvider ?? meta.generationProvider,
       rejectedRequests: withoutRecordKey(meta.rejectedRequests, freshSceneKey),
       pendingRequests: withoutRecordKey(meta.pendingRequests, freshSceneKey),
       ...(freshSceneKey === null
@@ -328,6 +338,7 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
         errorMessage: null,
         retryCount: 0,
         claimedAt: null,
+        aiProvider: retryProvider,
         manifest: {
           ...retryMeta,
           refunded: false,
@@ -344,6 +355,7 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
       freshSceneIndex: freshSceneKey === null ? null : Number(freshSceneKey),
       savedClips: Object.keys(meta.partialClips ?? {}).length,
       plannedScenes: meta.storyboard?.numClips ?? null,
+      retryProvider,
     };
   });
 
@@ -372,6 +384,7 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
       userId: outcome.job.userId,
       freshSceneIndex: outcome.freshSceneIndex,
       savedClips: outcome.savedClips,
+      retryProvider: outcome.retryProvider,
     },
     outcome.freshSceneIndex === null
       ? "Admin explicitly retried failed job"
@@ -383,6 +396,7 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
       freshSceneIndex: outcome.freshSceneIndex,
       savedClips: outcome.savedClips,
       plannedScenes: outcome.plannedScenes,
+      retryProvider: outcome.retryProvider,
     },
   });
 });

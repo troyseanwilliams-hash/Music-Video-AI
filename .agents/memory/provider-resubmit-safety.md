@@ -39,6 +39,12 @@ Cross-engine fallback is allowed only after the primary request is explicitly te
 
 **How to apply:** Before the fallback POST, atomically replace the terminal primary handle with a new provider intent under the same claim and recovery-marker fences. Persist the fallback handle before polling; if it is terminal too, use the recovery-only timeline fallback.
 
+When retrying the same job after a confirmed Runway scene failure, switch both the job provider and the manifest-pinned generation provider to Kling.
+
+**Why:** Updating only the job row leaves the worker governed by the stale manifest pin, causing another Runway submission despite the Admin UI showing Kling.
+
+**How to apply:** Trust scene-level provider evidence first; for legacy records, use the pinned/current provider. Keep completed assets attached and make the chosen backup authoritative for the failed and remaining scenes.
+
 Every failure after a provider POST is issued but before a valid request ID is durably saved must be recorded as an uncertain submission.
 
 **Why:** Timeouts, 5xx responses, unreadable bodies, malformed 2xx JSON, and persistence failures can all happen after the provider accepted a billable request. Treating any of them as a normal failure exposes an unacknowledged duplicate resubmit.
