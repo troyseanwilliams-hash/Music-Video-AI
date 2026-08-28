@@ -369,7 +369,7 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
   const [preset, setPreset] = useState<Preset>("karaoke");
   const [position, setPosition] = useState<Position>("center");
   const [color, setColor] = useState(COLORS[0].key);
-  const [size, setSize] = useState(30);
+  const [size, setSize] = useState(24);
 
   // ── Lip sync (premium add-on) — only the two values the API actually accepts:
   //    a face image + a clip length (5–30s). No strength/placement (OmniHuman
@@ -959,7 +959,7 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
                 </div>
                 <div>
                   <Label className="text-xs text-muted-foreground">Size · {size}px</Label>
-                  <Slider className="mt-2" value={[size]} min={16} max={44} step={1} onValueChange={([v]) => setSize(v)} />
+                  <Slider className="mt-2" value={[size]} min={14} max={36} step={1} onValueChange={([v]) => setSize(v)} />
                 </div>
               </div>
 

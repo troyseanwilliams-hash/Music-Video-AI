@@ -202,8 +202,9 @@ export function karaokeFontsDir(): string | null {
  * unsung text is white, sung text fills in electric cyan.
  *
  * Style tuned for social-video engagement: Archivo Black (the heavy caption
- * font popularized by TikTok/CapCut lyric videos), ~8% of frame height,
- * thick outline + soft shadow for readability over any footage.
+ * font popularized by TikTok/CapCut lyric videos), kept compact enough to
+ * avoid overwhelming the footage, with a thick outline + soft shadow for
+ * readability over any footage.
  */
 export function buildAssKaraoke(lines: TimedLine[]): string {
   const header = `[Script Info]
@@ -214,7 +215,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Karaoke,Archivo Black,58,&H00EED322,&H00FFFFFF,&H00000000,&H90000000,0,0,0,0,100,100,0,0,1,3,1,2,60,60,64,1
+Style: Karaoke,Archivo Black,44,&H00EED322,&H00FFFFFF,&H00000000,&H90000000,0,0,0,0,100,100,0,0,1,3,1,2,60,60,64,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
