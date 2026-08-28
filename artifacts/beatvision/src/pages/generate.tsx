@@ -123,6 +123,24 @@ type ErrorDialogState = {
   creditsRemaining?: number;
 };
 
+async function readApiResponse<T extends Record<string, unknown>>(
+  response: Response,
+): Promise<T> {
+  const text = await response.text();
+  if (!text.trim()) return {} as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    const isHtml = /^\s*</.test(text);
+    const message = response.ok
+      ? "The server returned an unreadable response. Please try again."
+      : isHtml
+        ? `The server could not complete this request (${response.status}). Please try again.`
+        : text.slice(0, 240);
+    throw new Error(message);
+  }
+}
+
 const STYLES = [
   { id: VideoStyle.realistic, label: "Realistic", icon: Users },
   { id: VideoStyle.anime, label: "Anime", icon: Sparkles },
@@ -891,7 +909,7 @@ export default function Generate() {
               : null,
         }),
       });
-      const data = await response.json() as {
+      const data = await readApiResponse<{
         error?: string;
         shots?: PlannedShot[];
         numClips?: number;
@@ -899,7 +917,7 @@ export default function Generate() {
         reuseCount?: number;
         approximate?: boolean;
         fingerprint?: string;
-      };
+      }>(response);
       if (!response.ok || !data.shots || !data.fingerprint) {
         throw new Error(data.error || `Could not build ${generatedPromptLabelPlural}.`);
       }

@@ -44,11 +44,26 @@ async function postJSON<T>(url: string, body: unknown): Promise<T> {
     credentials: "include",
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error((data as { error?: string }).error ?? `Request failed (${res.status})`);
+  const text = await res.text();
+  let data: Record<string, unknown> = {};
+  if (text.trim()) {
+    try {
+      data = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      const isHtml = /^\s*</.test(text);
+      throw new Error(
+        isHtml
+          ? `The server could not complete this request (${res.status}). Please try again.`
+          : "The server returned an unreadable response. Please try again.",
+      );
+    }
   }
-  return res.json() as Promise<T>;
+  if (!res.ok) {
+    throw new Error(
+      typeof data.error === "string" ? data.error : `Request failed (${res.status})`,
+    );
+  }
+  return data as T;
 }
 
 function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) {
