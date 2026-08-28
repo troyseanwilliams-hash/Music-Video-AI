@@ -20,6 +20,11 @@ import { stitchVideoClips, extractVideoThumbnail, applyWatermark } from "./video
 import { stitchEditorTimeline } from "./editorStitcher.js";
 import { resolveMontageSequence, resolveStrictMontageSequence } from "./montageSequence.js";
 import { assertStrictUniqueMedia, perceptualFingerprint } from "./mediaUniqueness.js";
+import {
+  resolveCharacterReferencePath,
+  selectGeneratedCharacterAnchorPath,
+} from "./characterAnchor.js";
+import { settleImageFirstReservation } from "./imageFirstSettlement.js";
 
 const execAsync = promisify(exec);
 const MAX_RETRIES = 3;
@@ -371,6 +376,11 @@ async function prepareNarrativeImagesStage(job: JobRow): Promise<Record<string, 
   const uncertain = liveMeta.uncertainImageSubmissions ?? {};
   const intents = liveMeta.imageSubmissionIntents ?? {};
   for (const asset of stored) paths[asset.assetIndex] = asset.objectPath;
+  let generatedCharacterAnchorPath = selectGeneratedCharacterAnchorPath(
+    stored,
+    shots,
+    job.referenceImagePath,
+  );
   const completedImages = shots.filter((shot) => !!paths[shot.index]).length;
   const completedClips = Object.keys(liveMeta.partialClips ?? {})
     .map(Number)
@@ -392,8 +402,13 @@ async function prepareNarrativeImagesStage(job: JobRow): Promise<Record<string, 
         throw new Error(`${IMAGE_API_FAILURE}: A source-image request has an uncertain submission state`);
       }
       await assertJobOwned(job);
-      const referenceImageUrl = shot.usesCharacterReference && job.referenceImagePath
-        ? await storageService.getObjectEntitySignedUrl(job.referenceImagePath, 900)
+      const referenceImagePath = resolveCharacterReferencePath({
+        usesCharacterReference: shot.usesCharacterReference === true,
+        userReferenceImagePath: job.referenceImagePath,
+        generatedCharacterAnchorPath,
+      });
+      const referenceImageUrl = referenceImagePath
+        ? await storageService.getObjectEntitySignedUrl(referenceImagePath, 900)
         : undefined;
       if (!existingRequest) {
         const intentPersisted = await persistImageSubmissionIntent(job, shot.index);
@@ -420,6 +435,13 @@ async function prepareNarrativeImagesStage(job: JobRow): Promise<Record<string, 
       paths[shot.index] = asset?.objectPath ?? objectPath;
       await persistNarrativeImages(job.id, { [shot.index]: paths[shot.index]! });
       await clearImageSubmissionState(job.id, shot.index);
+      if (
+        !job.referenceImagePath
+        && !generatedCharacterAnchorPath
+        && shot.usesCharacterReference === true
+      ) {
+        generatedCharacterAnchorPath = paths[shot.index];
+      }
     } else if (pending[shot.index] || uncertain[shot.index]) {
       await clearImageSubmissionState(job.id, shot.index);
     }
@@ -541,9 +563,11 @@ async function processImagePackJob(job: JobRow): Promise<void> {
     const pending = liveMeta.pendingImageRequests ?? {};
     const uncertain = liveMeta.uncertainImageSubmissions ?? {};
     const intents = liveMeta.imageSubmissionIntents ?? {};
-    let generatedCharacterAnchorPath = existing
-      .filter((asset) => sceneByIndex.get(asset.assetIndex)?.usesCharacterReference === true)
-      .sort((a, b) => a.assetIndex - b.assetIndex)[0]?.objectPath;
+    let generatedCharacterAnchorPath = selectGeneratedCharacterAnchorPath(
+      existing,
+      scenes,
+      job.referenceImagePath,
+    );
     for (let index = 0; index < imageCount; index++) {
       if (completed.has(index)) {
         if (pending[index] || uncertain[index]) {
@@ -570,9 +594,11 @@ async function processImagePackJob(job: JobRow): Promise<void> {
       const shouldUseReference = scene
         ? scene.usesCharacterReference === true
         : Boolean(job.referenceImagePath);
-      const referenceImagePath = shouldUseReference
-        ? job.referenceImagePath ?? generatedCharacterAnchorPath
-        : undefined;
+      const referenceImagePath = resolveCharacterReferencePath({
+        usesCharacterReference: shouldUseReference,
+        userReferenceImagePath: job.referenceImagePath,
+        generatedCharacterAnchorPath,
+      });
       const referenceImageUrl = referenceImagePath
         ? await storageService.getObjectEntitySignedUrl(referenceImagePath, 900)
         : undefined;
@@ -601,13 +627,16 @@ async function processImagePackJob(job: JobRow): Promise<void> {
         prompt,
         style: job.style,
       }).onConflictDoNothing();
+      const [asset] = await db.select({ objectPath: imageAssetsTable.objectPath }).from(imageAssetsTable)
+        .where(and(eq(imageAssetsTable.jobId, job.id), eq(imageAssetsTable.assetIndex, index))).limit(1);
+      const canonicalObjectPath = asset?.objectPath ?? objectPath;
       await clearImageSubmissionState(job.id, index);
       if (
         !job.referenceImagePath
         && !generatedCharacterAnchorPath
         && scene?.usesCharacterReference === true
       ) {
-        generatedCharacterAnchorPath = objectPath;
+        generatedCharacterAnchorPath = canonicalObjectPath;
       }
       reportedProgress = Math.max(
         reportedProgress,
@@ -1189,6 +1218,21 @@ async function persistLipSyncPollUrl(jobId: string, pollUrl: string): Promise<vo
 
 // Refund the up-front reservation exactly once (idempotent via manifest.refunded).
 async function refundReservation(jobId: string, userId: string, reason: string): Promise<void> {
+  const imageFirstSettlement = await settleImageFirstReservation(jobId, userId);
+  if (imageFirstSettlement.handled) {
+    if (imageFirstSettlement.refundedCredits > 0) {
+      logger.info({
+        jobId,
+        userId,
+        refunded: imageFirstSettlement.refundedCredits,
+        charged: imageFirstSettlement.chargedCredits,
+        completedImages: imageFirstSettlement.completedImages,
+        spentVideoScenes: imageFirstSettlement.spentVideoScenes,
+        reason,
+      }, "Settled image-first reservation");
+    }
+    return;
+  }
   const totalRefund = await db.transaction(async (tx) => {
     const [row] = await tx
       .select({ manifest: jobsTable.manifest })
@@ -2198,8 +2242,8 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
     await updateJobStatus(job.id, {
       status: "failed",
       errorMessage: hasPersistedRequest
-        ? `${cleanMsg} The safe recovery limit was reached and your reserved credits were returned.`
-        : `${cleanMsg} No saved request was available to resume, so your reserved credits were returned.`,
+        ? `${cleanMsg} The safe recovery limit was reached. Credits for unfinished work were returned.`
+        : `${cleanMsg} No saved request was available to resume. Credits for unfinished work were returned.`,
     });
     void notifyAdminRenderFailed(job, cleanMsg);
     return;
@@ -2215,7 +2259,7 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
     await refundReservation(job.id, job.userId, "image-foundation-failure");
     await updateJobStatus(job.id, {
       status: "failed",
-      errorMessage: `${cleanMsg || "The source-image pack could not be completed."} Your reserved credits were returned. No automatic retry was attempted.`,
+      errorMessage: `${cleanMsg || "The source-image pack could not be completed."} Credits for unfinished work were returned. No automatic retry was attempted.`,
     });
     void notifyAdminRenderFailed(job, cleanMsg || "Source-image stage failed.");
     return;
@@ -2228,15 +2272,20 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
     const cleanMsg = errMsg.replace(PROVIDER_API_FAILURE, "").trim();
     logger.warn({ jobId: job.id }, "Permanent failure: AI provider error — not retrying to avoid repeated charges");
     const meta = aiMetaOf(job);
-    if (meta.bundledLipSyncEnabled && !meta.bundledLipSyncActivated) {
-      await refundReservation(job.id, job.userId, "bundled-source-provider-failure");
+    if (
+      usesGeneratedNarrativeImages(job)
+      || (meta.bundledLipSyncEnabled && !meta.bundledLipSyncActivated)
+    ) {
+      await refundReservation(job.id, job.userId, "source-provider-failure");
     }
     await updateJobStatus(job.id, {
       status: "failed",
       errorMessage:
         meta.bundledLipSyncEnabled && !meta.bundledLipSyncActivated
-          ? `${cleanMsg} The combined reservation was returned and AI Lip Sync was not started.`
-          : cleanMsg,
+          ? `${cleanMsg} Credits for unfinished work were returned and AI Lip Sync was not started.`
+          : usesGeneratedNarrativeImages(job)
+            ? `${cleanMsg} Credits for unfinished work were returned.`
+            : cleanMsg,
     });
     void notifyAdminRenderFailed(job, cleanMsg);
     return;
@@ -3433,7 +3482,7 @@ async function recoverStaleTimeoutJobs(): Promise<void> {
     const failed = await db.execute<{ id: string; user_id: string }>(sql`
       UPDATE jobs
       SET status = 'failed', claimed_at = NULL,
-          error_message = 'The source-image stage stopped without a confirmed result. Your reserved credits were returned and no automatic retry was attempted.',
+          error_message = 'The source-image stage stopped without a confirmed result. Credits for unfinished work were returned and no automatic retry was attempted.',
           updated_at = NOW()
       WHERE status IN ('analyzing', 'generating', 'stitching')
         AND manifest->>'imageFirstVersion' = '1'

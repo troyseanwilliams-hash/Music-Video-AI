@@ -495,7 +495,7 @@ function buildPrompt(
       : input.character && input.character !== "none"
         ? `featuring ${input.character}`
         : "featuring the recurring principal subject"
-    : "environmental or object-focused scene, no featured character unless required by this current visual idea";
+    : null;
   return scenePromptWithStyleFootnote([
     `scene direction: ${concept}`,
     characterDesc,
@@ -540,12 +540,12 @@ function buildNarrativePrompt(
       : input.character && input.character !== "none"
         ? `keep the same ${input.character} identity, face, wardrobe, and physical details established across character-focused scenes`
         : "keep the same principal subject identity, wardrobe, and physical details established across character-focused scenes"
-    : "focus on the environment, objects, or atmosphere for this story beat; do not introduce the recurring person unless the current concept explicitly calls for them";
+    : null;
   const continuity = usesCharacterReference
     ? sceneIndex === 0
       ? "establish the recurring subject, world, lighting language, and visual rules for all following scenes"
       : "continue directly from the previous character-focused scene with consistent subject identity, world, wardrobe, lighting language, and screen direction"
-    : "continue the established world, lighting language, and screen direction without requiring the recurring person in this scene";
+    : "continue the established world, lighting language, and screen direction";
   const ending =
     sceneIndex === sceneCount - 1
       ? "deliver a clear visual resolution that completes the story"

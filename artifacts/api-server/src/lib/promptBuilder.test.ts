@@ -47,6 +47,20 @@ describe("scene builder", () => {
     expect(result.scenes[1]!.imagePrompt).not.toMatch(/Amelia Earhart/i);
     expect(result.scenes[2]!.imagePrompt).not.toMatch(/attached reference image/i);
   });
+
+  it("uses descriptive text for a named subject when there is no reference", async () => {
+    const result = await buildScenePlan({
+      story: "Amelia Earhart prepares her aircraft. Amelia Earhart takes flight. The empty runway waits at dusk.",
+      sceneCount: 3,
+      hasReferenceImage: false,
+    });
+
+    expect(result.scenes[0]!.imagePrompt).not.toMatch(/Amelia Earhart/i);
+    expect(result.scenes[0]!.imagePrompt).toMatch(/woman aviator/i);
+    expect(result.scenes.every((scene) =>
+      !/attached reference image/i.test(scene.imagePrompt)
+    )).toBe(true);
+  });
 });
 
 describe("named subject script replacement", () => {

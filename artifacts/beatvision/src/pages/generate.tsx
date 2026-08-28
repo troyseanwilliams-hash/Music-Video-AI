@@ -3401,11 +3401,11 @@ export default function Generate() {
           <Button
             type="button"
             variant="outline"
-            onClick={() => {
-               void replaceNamedSubject();
-            }}
+            disabled={subjectReplacementBusy}
+            onClick={() => void replaceNamedSubject()}
           >
-             Continue with description
+            {subjectReplacementBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {subjectReplacementBusy ? "Replacing…" : "Continue with description"}
           </Button>
           <Button
             type="button"
@@ -3417,19 +3417,6 @@ export default function Generate() {
           >
             <Upload className="mr-2 h-4 w-4" />
             Add reference image
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={subjectReplacementBusy}
-            onClick={() => void replaceNamedSubject()}
-          >
-            {subjectReplacementBusy ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Wand2 className="mr-2 h-4 w-4" />
-            )}
-             {subjectReplacementBusy ? "Replacing…" : "Use descriptive replacement"}
           </Button>
         </DialogFooter>
       </DialogContent>

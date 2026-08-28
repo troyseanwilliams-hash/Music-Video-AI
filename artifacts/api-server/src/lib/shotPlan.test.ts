@@ -338,6 +338,20 @@ describe("planShots narrative planning", () => {
     expect(plan.shots[2]).toMatchObject({ usesCharacterReference: false });
   });
 
+  it("replaces a named subject with descriptive text when no reference is attached", () => {
+    const plan = planShots({
+      prompt: "Amelia Earhart prepares her aircraft. Amelia Earhart takes flight over the ocean. The empty runway waits at dusk.",
+      hasCharacterReference: false,
+      generationMode: "narrative",
+      requestedDuration: "30",
+    });
+
+    expect(plan.shots[0]!.prompt).not.toMatch(/Amelia Earhart/i);
+    expect(plan.shots[0]!.prompt).toMatch(/woman aviator/i);
+    expect(plan.shots[0]!.prompt).not.toMatch(/attached reference image/i);
+    expect(plan.shots[0]!.description).toMatch(/woman aviator/i);
+  });
+
   it("only marks character-focused story scenes for the character reference", () => {
     const plan = planShots({
       prompt: "A woman steps off a train. Then an empty train station waits in the rain. Finally sunrise fills the city skyline.",
@@ -363,6 +377,9 @@ describe("planShots narrative planning", () => {
 
     expect(plan.shots.every((shot) => shot.usesCharacterReference === false)).toBe(true);
     expect(plan.shots.every((shot) => !shot.prompt.includes("attached reference image"))).toBe(true);
+    expect(plan.shots.every((shot) =>
+      !/no featured character|do not introduce the recurring person|without requiring the recurring person/i.test(shot.prompt)
+    )).toBe(true);
   });
 
   it("creates eighteen unique chronological scenes for a three-minute story", () => {

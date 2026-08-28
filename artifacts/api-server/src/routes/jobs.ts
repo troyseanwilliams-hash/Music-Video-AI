@@ -33,6 +33,7 @@ import { ObjectStorageService } from "../lib/objectStorage.js";
 import { MAX_LYRICS_LENGTH } from "../lib/lyricLimits.js";
 import { verifyAudioAnalysisReceipt } from "../lib/audioAnalysisReceipt.js";
 import { toCustomerJobView } from "../lib/customerJobView.js";
+import { settleImageFirstReservation } from "../lib/imageFirstSettlement.js";
 
 const router = Router();
 
@@ -44,6 +45,7 @@ type AiJobMeta = {
   refunded?: boolean;
   partialClips?: Record<string, string>;
   bundledLipSyncChildId?: string;
+  imageFirstVersion?: number;
 };
 
 // Turn manifest.partialClips (clip index -> raw object storage path, e.g.
@@ -99,6 +101,34 @@ async function refundJobReservation(job: {
   manifest: unknown;
 }): Promise<number> {
   let paths: string[] = [];
+  const imageFirstSettlement = await settleImageFirstReservation(job.id, job.userId);
+  if (imageFirstSettlement.handled) {
+    const [stored] = await db
+      .select({ manifest: jobsTable.manifest })
+      .from(jobsTable)
+      .where(eq(jobsTable.id, job.id))
+      .limit(1);
+    const meta =
+      stored?.manifest && typeof stored.manifest === "object"
+        ? (stored.manifest as AiJobMeta)
+        : {};
+    paths = Object.values(meta.partialClips ?? {});
+    if (paths.length > 0) {
+      await db.execute(sql`
+        UPDATE jobs
+        SET manifest = jsonb_set(
+          COALESCE(manifest, '{}'::jsonb),
+          '{partialClips}',
+          '{}'::jsonb
+        ),
+        updated_at = NOW()
+        WHERE id = ${job.id}
+      `);
+      const storage = new ObjectStorageService();
+      await Promise.all(paths.map((path) => storage.deleteObject(path).catch(() => {})));
+    }
+    return imageFirstSettlement.refundedCredits;
+  }
   const totalRefund = await db.transaction(async (tx) => {
     const [row] = await tx
       .select({ manifest: jobsTable.manifest })
