@@ -859,6 +859,11 @@ export default function Generate() {
   const compactImagePromptScript = shotPlan
     ? compactGeneratedImagePromptScript(shotPlan.shots)
     : "";
+  const generatedPromptKind = generationMode === CreateJobRequestGenerationMode.narrative
+    ? "narrative"
+    : "image";
+  const generatedPromptLabel = `${generatedPromptKind} prompt`;
+  const generatedPromptLabelPlural = `${generatedPromptKind} prompts`;
 
   const buildScenePrompts = useCallback(async () => {
     if (imagePackMode || !prompt.trim() || requiredPromptCount === null) return;
@@ -894,7 +899,7 @@ export default function Generate() {
         fingerprint?: string;
       };
       if (!response.ok || !data.shots || !data.fingerprint) {
-        throw new Error(data.error || "Could not build image prompts.");
+        throw new Error(data.error || `Could not build ${generatedPromptLabelPlural}.`);
       }
       setShotPlan(data as NonNullable<typeof shotPlan>);
       setReviewedShotIndexes([]);
@@ -902,7 +907,7 @@ export default function Generate() {
       setShotPlan(null);
       setReviewedShotIndexes([]);
       toast({
-        title: "Image prompts were not built",
+        title: `${generatedPromptLabel} build failed`,
         description: error instanceof Error ? error.message : "Please try again.",
         variant: "destructive",
       });
@@ -925,6 +930,8 @@ export default function Generate() {
     analyzeAudio.data,
     analysisForPath,
     toast,
+    generatedPromptLabel,
+    generatedPromptLabelPlural,
   ]);
 
   useEffect(() => {
@@ -1078,10 +1085,10 @@ export default function Generate() {
       setConfirmOpen(false);
       setErrorDialog({
         open: true,
-        title: "Review the image prompts",
+          title: `Review the ${generatedPromptLabelPlural}`,
         message: !shotPromptValidation.valid
-          ? `Build ${requiredPromptCount ?? "the required"} distinct, non-empty image prompts before generating.`
-          : `Approve all ${shotPlan?.shots.length ?? requiredPromptCount ?? ""} image prompts before generating.`,
+            ? `Build ${requiredPromptCount ?? "the required"} distinct, non-empty ${generatedPromptLabelPlural} before generating.`
+            : `Approve all ${shotPlan?.shots.length ?? requiredPromptCount ?? ""} ${generatedPromptLabelPlural} before generating.`,
         code: "APPROVED_PROMPTS_INCOMPLETE",
       });
       return;
@@ -2817,9 +2824,11 @@ export default function Generate() {
               <div className="space-y-3 rounded-xl border border-primary/20 bg-primary/[0.035] p-3.5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-foreground">Build your image prompts</p>
+                     <p className="text-sm font-semibold text-foreground">Build your {generatedPromptLabelPlural}</p>
                     <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                      Turn this creative direction into the exact engine-ready prompts used for each source image. Planning is free.
+                       {generationMode === CreateJobRequestGenerationMode.narrative
+                         ? "Turn this story direction into chronological narrative prompts for each scene. Planning is free."
+                         : "Turn this creative direction into the exact engine-ready prompts used for each source image. Planning is free."}
                     </p>
                   </div>
                   <Button
@@ -2846,7 +2855,7 @@ export default function Generate() {
                     ) : (
                       <Wand2 className="mr-2 h-4 w-4" />
                     )}
-                    {shotPlan ? "Rebuild prompts" : "Build image prompts"}
+                     {shotPlan ? "Rebuild prompts" : `Build ${generatedPromptLabelPlural}`}
                   </Button>
                 </div>
 
@@ -2864,11 +2873,11 @@ export default function Generate() {
                           {reviewedShotIndexes.length} of {shotPlan.shots.length} reviewed
                         </span>
                         <span className="ml-2 text-muted-foreground">
-                          · {shotPromptValidation.readyCount} non-empty prompts
+                           · {shotPromptValidation.readyCount} non-empty {generatedPromptLabelPlural}
                         </span>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <Button
+                               <Button
                           type="button"
                           variant="ghost"
                           size="sm"
@@ -2909,7 +2918,7 @@ export default function Generate() {
                           onClick={() => setReviewedShotIndexes(shotPlan.shots.map((shot) => shot.index))}
                         >
                           <CheckCheck className="mr-1.5 h-3.5 w-3.5" />
-                          Approve all
+                          Approve all {generatedPromptLabelPlural}
                         </Button>
                       </div>
                     </div>
@@ -2976,7 +2985,7 @@ export default function Generate() {
                                 );
                               }}
                               className="min-h-28 resize-y bg-background text-xs leading-relaxed"
-                              aria-label={`Image prompt ${shot.index + 1}`}
+                               aria-label={`${generatedPromptLabel} ${shot.index + 1}`}
                               data-testid={`input-scene-image-prompt-${shot.index}`}
                             />
                           </div>
@@ -3581,7 +3590,7 @@ export default function Generate() {
                        </span>
                      </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-muted-foreground">Image prompts reviewed</span>
+                        <span className="text-muted-foreground">{generatedPromptLabel} reviewed</span>
                         <span className={allShotPromptsReviewed ? "text-primary font-medium" : "text-amber-500"}>
                           {reviewedShotIndexes.length} of {shotPlan?.shots.length ?? requiredPromptCount ?? "—"}
                         </span>
@@ -3737,8 +3746,8 @@ export default function Generate() {
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>
               {!shotPromptValidation.valid
-                ? `Build ${requiredPromptCount ?? "all required"} distinct image prompts before generating.`
-                : `Review and approve all ${shotPlan?.shots.length ?? requiredPromptCount ?? ""} image prompts before generating.`}
+                ? `Build ${requiredPromptCount ?? "all required"} distinct ${generatedPromptLabelPlural} before generating.`
+                : `Review and approve all ${shotPlan?.shots.length ?? requiredPromptCount ?? ""} ${generatedPromptLabelPlural} before generating.`}
             </span>
           </div>
         )}

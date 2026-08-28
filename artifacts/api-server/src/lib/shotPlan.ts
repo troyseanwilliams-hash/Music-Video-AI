@@ -123,26 +123,28 @@ export function applyApprovedScenePrompts(
   approvedPrompts: ApprovedScenePrompt[] | null | undefined,
   submittedFingerprint: string | null | undefined,
 ): ApprovedShotPlanResult {
+  const promptLabel = plan.generationMode === "narrative" ? "narrative prompt" : "image prompt";
+  const promptLabelPlural = `${promptLabel}s`;
   if (!approvedPrompts && !submittedFingerprint) return { ok: true, plan };
   if (!approvedPrompts || !submittedFingerprint) {
     return {
       ok: false,
       code: "APPROVED_PROMPTS_INCOMPLETE",
-      error: "The reviewed image prompts are incomplete. Rebuild and review them before submitting.",
+      error: `The reviewed ${promptLabelPlural} are incomplete. Rebuild and review them before submitting.`,
     };
   }
   if (submittedFingerprint !== shotPlanFingerprint(plan)) {
     return {
       ok: false,
       code: "APPROVED_PROMPTS_STALE",
-      error: "The video settings changed after these image prompts were built. Rebuild and review the prompts before submitting.",
+      error: `The video settings changed after these ${promptLabelPlural} were built. Rebuild and review the prompts before submitting.`,
     };
   }
   if (approvedPrompts.length !== plan.shots.length) {
     return {
       ok: false,
       code: "APPROVED_PROMPTS_COUNT_MISMATCH",
-      error: `This video needs ${plan.shots.length} reviewed image prompts, but ${approvedPrompts.length} were submitted.`,
+      error: `This video needs ${plan.shots.length} reviewed ${promptLabelPlural}, but ${approvedPrompts.length} were submitted.`,
     };
   }
 
@@ -156,14 +158,14 @@ export function applyApprovedScenePrompts(
       return {
         ok: false,
         code: "APPROVED_PROMPTS_ORDER_INVALID",
-        error: "Reviewed image prompts must remain in their original scene order.",
+        error: `Reviewed ${promptLabelPlural} must remain in their original scene order.`,
       };
     }
     if (!item.prompt) {
       return {
         ok: false,
         code: "APPROVED_PROMPTS_EMPTY",
-        error: `Image prompt ${index + 1} is empty.`,
+        error: `${promptLabel.charAt(0).toUpperCase() + promptLabel.slice(1)} ${index + 1} is empty.`,
       };
     }
   }
@@ -172,7 +174,7 @@ export function applyApprovedScenePrompts(
     return {
       ok: false,
       code: "APPROVED_PROMPTS_DUPLICATE",
-      error: "Every scene needs a distinct image prompt. Remove duplicate prompts before submitting.",
+        error: `Every scene needs a distinct ${promptLabel}. Remove duplicate prompts before submitting.`,
     };
   }
 
