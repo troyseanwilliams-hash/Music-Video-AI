@@ -4,6 +4,9 @@ import { logger } from "../lib/logger.js";
 import {
   generateAudioPrompt,
   generateVideoPrompt,
+  buildScenePlan,
+  MAX_SCENE_BUILDER_SCENES,
+  MAX_SCENE_SCRIPT_LENGTH,
   replaceNamedSubjectInScript,
   promptProviderAvailable,
 } from "../lib/promptBuilder.js";
@@ -131,6 +134,26 @@ router.post("/prompt/video", async (req: Request, res: Response) => {
   } catch (err) {
     logger.error({ err }, "Video prompt build failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Prompt build failed" });
+  }
+});
+
+const SceneBuilderBody = z.object({
+  story: z.string().trim().min(2).max(MAX_SCENE_SCRIPT_LENGTH),
+  sceneCount: z.number().int().min(2).max(MAX_SCENE_BUILDER_SCENES).optional(),
+  hasReferenceImage: z.boolean().optional(),
+});
+router.post("/prompt/scene-builder", async (req: Request, res: Response) => {
+  if (!guard(req, res)) return;
+  const parsed = SceneBuilderBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid story." });
+    return;
+  }
+  try {
+    res.json(await buildScenePlan(parsed.data));
+  } catch (err) {
+    logger.error({ err }, "Scene plan build failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Could not build the scene plan." });
   }
 });
 

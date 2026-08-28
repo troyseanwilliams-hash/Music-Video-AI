@@ -189,6 +189,145 @@ export async function generateVideoPrompt(
   return templateVideo(description, opts?.style);
 }
 
+export const MAX_SCENE_SCRIPT_LENGTH = 12_000;
+export const MAX_SCENE_BUILDER_SCENES = 20;
+export const MAX_SCENE_IMAGE_PROMPT_LENGTH = 420;
+
+export interface SceneBuilderScene {
+  number: number;
+  title: string;
+  imagePrompt: string;
+}
+
+export interface SceneBuilderResult {
+  scenes: SceneBuilderScene[];
+  script: string;
+  sceneCount: number;
+  hasReferenceImage: boolean;
+  source: string;
+}
+
+const SCENE_BUILDER_SYSTEM = `You are a visual story editor. Split a generic story into a chronological list of distinct scenes for an AI image generator.
+Return ONLY valid JSON in exactly this shape:
+{"scenes":[{"title":"short scene title","imagePrompt":"concise image prompt"}]}
+
+Rules:
+- Create the requested number of scenes, or 3–12 scenes if no count is provided.
+- Every imagePrompt must be 18–35 words, concrete, visual, and self-contained: subject/action, setting, lighting or mood, and a clear composition.
+- Each imagePrompt must describe one still image, one moment, and one location. Do not write video directions, dialogue, narration, camera movement, captions, or abstract plot summaries.
+- Keep every imagePrompt concise enough to combine all numbered scenes into a 12,000-character creative prompt.
+- Preserve chronological story progression and make each scene materially different from the previous one.
+- Use plain provider-neutral language. Do not mention any image or video provider.
+- If a reference image will be attached, do not describe the character's face, hair, clothing, identity, age, or other appearance. When a character is needed, write "use the attached reference image for the character" instead.
+- If no reference image will be attached, include only the minimum visible character traits needed for that scene.
+
+Return no markdown and no extra keys.`;
+
+function compactSceneText(value: unknown, maxLength: number, fallback: string): string {
+  const normalized = String(value ?? "").replace(/\s+/g, " ").trim();
+  if (!normalized) return fallback;
+  if (normalized.length <= maxLength) return normalized;
+  const clipped = normalized.slice(0, maxLength - 1).trimEnd();
+  const boundary = clipped.lastIndexOf(" ");
+  return `${(boundary > Math.floor(maxLength * 0.55) ? clipped.slice(0, boundary) : clipped)}…`;
+}
+
+function recommendedSceneCount(story: string): number {
+  const words = story.trim().split(/\s+/).filter(Boolean).length;
+  return Math.max(3, Math.min(12, Math.round(words / 45) || 3));
+}
+
+function splitStoryIntoBeats(story: string, sceneCount: number): string[] {
+  const sentences = story
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+  const parts = sentences.length > 0 ? sentences : [story.trim()];
+  return Array.from({ length: sceneCount }, (_, index) => {
+    const from = Math.floor((index * parts.length) / sceneCount);
+    const to = Math.max(from + 1, Math.floor(((index + 1) * parts.length) / sceneCount));
+    return parts.slice(from, to).join(" ") || parts[Math.min(index, parts.length - 1)]!;
+  });
+}
+
+function sceneScript(scenes: SceneBuilderScene[]): string {
+  return scenes.map((scene, index) => `${index + 1}. ${scene.imagePrompt}`).join("\n");
+}
+
+function normalizeSceneBuilderScenes(
+  rawScenes: unknown,
+  story: string,
+  sceneCount: number,
+  hasReferenceImage: boolean,
+): SceneBuilderScene[] {
+  const sourceScenes = Array.isArray(rawScenes) ? rawScenes : [];
+  const beats = splitStoryIntoBeats(story, sceneCount);
+  const maxPromptLength = Math.min(
+    MAX_SCENE_IMAGE_PROMPT_LENGTH,
+    Math.floor((MAX_SCENE_SCRIPT_LENGTH - sceneCount * 8) / sceneCount),
+  );
+
+  return Array.from({ length: sceneCount }, (_, index) => {
+    const raw = sourceScenes[index];
+    const record = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+    const fallbackPrompt = hasReferenceImage
+      ? `Use the attached reference image for the character, ${beats[index]}, cinematic still composition`
+      : `Cinematic still image, ${beats[index]}, clear subject and setting, expressive lighting and mood`;
+    const imagePrompt = compactSceneText(record.imagePrompt, maxPromptLength, fallbackPrompt);
+    const title = compactSceneText(record.title, 70, `Scene ${index + 1}`);
+    return { number: index + 1, title, imagePrompt };
+  });
+}
+
+function buildFallbackScenePlan(story: string, sceneCount: number, hasReferenceImage: boolean): SceneBuilderResult {
+  const scenes = normalizeSceneBuilderScenes([], story, sceneCount, hasReferenceImage);
+  return {
+    scenes,
+    script: sceneScript(scenes),
+    sceneCount,
+    hasReferenceImage,
+    source: "template",
+  };
+}
+
+export async function buildScenePlan(input: {
+  story: string;
+  sceneCount?: number;
+  hasReferenceImage?: boolean;
+}): Promise<SceneBuilderResult> {
+  const story = input.story.trim();
+  const sceneCount = Math.max(
+    2,
+    Math.min(MAX_SCENE_BUILDER_SCENES, Math.round(input.sceneCount ?? recommendedSceneCount(story))),
+  );
+  const hasReferenceImage = Boolean(input.hasReferenceImage);
+  const out = await callLLM(
+    SCENE_BUILDER_SYSTEM,
+    [
+      `Requested scene count: ${input.sceneCount ? sceneCount : "recommend an appropriate count"}.`,
+      `Reference image will be attached: ${hasReferenceImage ? "yes" : "no"}.`,
+      `Story:\n${story}`,
+    ].join("\n"),
+    Math.min(1800, 100 + sceneCount * 80),
+    0.5,
+  );
+  const parsed = out ? extractJson<{ scenes?: unknown }>(out.text) : null;
+  const scenes = normalizeSceneBuilderScenes(parsed?.scenes, story, sceneCount, hasReferenceImage);
+  const script = sceneScript(scenes);
+  if (!script || script.length > MAX_SCENE_SCRIPT_LENGTH) {
+    return buildFallbackScenePlan(story, sceneCount, hasReferenceImage);
+  }
+  return {
+    scenes,
+    script,
+    sceneCount,
+    hasReferenceImage,
+    source: out?.source ?? "template",
+  };
+}
+
 export interface SubjectReplacementResult {
   script: string;
   characterDescription: string;

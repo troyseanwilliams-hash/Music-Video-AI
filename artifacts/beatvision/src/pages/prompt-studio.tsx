@@ -11,6 +11,7 @@ import { useGetDashboardStats } from "@workspace/api-client-react";
 import TopUpRequiredDialog from "@/components/TopUpRequiredDialog";
 import {
   Sparkles, Music2, Film, FileText, Copy, Check, Loader2, ArrowRight, Wand2, Lightbulb,
+  ListOrdered, ChevronUp, ChevronDown, Plus, Trash2,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
@@ -19,6 +20,21 @@ import {
 type AudioResult = { prompt: string; genre: string; mood: string; bpm: number | null; tags: string[]; source: string };
 type VideoResult = { prompt: string; negativePrompt: string; source: string };
 type LyricsResult = { lyrics: string; source: string };
+type SceneBuilderScene = { number: number; title: string; imagePrompt: string };
+type SceneBuilderResult = {
+  scenes: SceneBuilderScene[];
+  script: string;
+  sceneCount: number;
+  hasReferenceImage: boolean;
+  source: string;
+};
+
+const MAX_CREATIVE_PROMPT_LENGTH = 12_000;
+const MAX_SCENE_IMAGE_PROMPT_LENGTH = 420;
+
+function buildNumberedImageScript(scenes: SceneBuilderScene[]): string {
+  return scenes.map((scene, index) => `${index + 1}. ${scene.imagePrompt.trim()}`).join("\n");
+}
 
 async function postJSON<T>(url: string, body: unknown): Promise<T> {
   const res = await fetch(url, {
