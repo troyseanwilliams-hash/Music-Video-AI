@@ -1,4 +1,6 @@
+import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
+import { latestStoryboardReferenceIndex } from "@/lib/jobStatusDisplay";
 import {
   AudioWaveform,
   Clapperboard,
@@ -61,6 +63,17 @@ export default function GenerationStoryboard({
 }: GenerationStoryboardProps) {
   const shots = storyboard.shots;
   const completedSet = new Set(completedClipIndexes);
+  const referenceCardRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const latestReferenceIndex = latestStoryboardReferenceIndex(referenceImages);
+
+  useEffect(() => {
+    if (latestReferenceIndex === null) return;
+    referenceCardRefs.current[latestReferenceIndex]?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "center",
+    });
+  }, [latestReferenceIndex]);
 
   if (shots.length === 0) return null;
 
@@ -264,11 +277,16 @@ export default function GenerationStoryboard({
           <div className="flex gap-2 overflow-x-auto pb-2" aria-label="Scene reference images">
             {shots.map((shot) => {
               const referenceImage = referenceImages?.[shot.index];
-              const active = shot.index === activeShot.index && status === "generating";
+              const active = shot.index === latestReferenceIndex;
               const complete = completedSet.has(shot.index);
               return (
                 <div
                   key={shot.index}
+                  ref={(element) => {
+                    referenceCardRefs.current[shot.index] = element;
+                  }}
+                  data-storyboard-reference-index={shot.index}
+                  aria-current={active ? "true" : undefined}
                   className={`w-28 shrink-0 overflow-hidden rounded-lg border bg-background/55 ${
                     active
                       ? "border-primary ring-1 ring-primary/30"
