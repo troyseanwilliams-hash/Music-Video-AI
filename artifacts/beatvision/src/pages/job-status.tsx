@@ -261,6 +261,10 @@ export default function JobStatus() {
   const [warningDismissed, setWarningDismissed] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [selectedReviewScenes, setSelectedReviewScenes] = useState<number[]>([]);
+  const [replacementPrompts, setReplacementPrompts] = useState<Record<number, string>>({});
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewMessage, setReviewMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setWarningDismissed(false);
@@ -298,6 +302,15 @@ export default function JobStatus() {
       job && !TERMINAL_STATUSES.has(job.status ?? "")
         ? 2500
         : false,
+  });
+  const { data: galleryImagesData } = useQuery<{ assets: ImagePackAsset[] }>({
+    queryKey: ["image-review-gallery"],
+    enabled: isAuthenticated && imageFirstEnabled,
+    queryFn: async () => {
+      const response = await fetch("/api/image-assets?limit=60", { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to load generated image gallery");
+      return response.json();
+    },
   });
 
   useEffect(() => {
@@ -453,6 +466,92 @@ export default function JobStatus() {
   const imagePackAssetByIndex = new Map(
     imagePackAssets.map((asset) => [asset.assetIndex, asset]),
   );
+  const imageReview = (manifest as {
+    imageReview?: {
+      phase?: string;
+      revision?: number;
+      scenes?: Record<string, {
+        index: number;
+        canonicalPath: string;
+        revision: number;
+        source: string;
+        prompt: string;
+      }>;
+      pendingReplacements?: Record<string, { index: number; prompt: string; credits: number }>;
+    };
+  }).imageReview;
+  const isReviewingImages = imageFirstVideoJob && imageReview?.phase === "awaiting_approval";
+  const reviewScenes = Object.values(imageReview?.scenes ?? {}).sort((a, b) => a.index - b.index);
+  const pendingReviewIndexes = new Set(
+    Object.values(imageReview?.pendingReplacements ?? {}).map((pending) => pending.index),
+  );
+  const reviewGallery = galleryImagesData?.assets ?? [];
+  const imageSourceLabel: Record<string, string> = {
+    original_generation: "Original generation",
+    regenerated: "Regenerated from edited prompt",
+    generated_gallery: "Generated gallery",
+    local_upload: "Local upload",
+  };
+  const submitReviewRequest = async (path: string, body: unknown): Promise<boolean> => {
+    setReviewBusy(true);
+    setReviewMessage(null);
+    try {
+      const response = await fetch(`/api/jobs/${id}/image-review/${path}`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error ?? "Image review update failed");
+      await queryClient.invalidateQueries({ queryKey: getGetJobQueryKey(id as string) });
+      await queryClient.invalidateQueries({ queryKey: ["image-pack-assets", id] });
+      setSelectedReviewScenes([]);
+      setReviewMessage("Saved. Your storyboard is still paused until you approve all images.");
+      return true;
+    } catch (error) {
+      setReviewMessage(error instanceof Error ? error.message : "Image review update failed");
+      return false;
+    } finally {
+      setReviewBusy(false);
+    }
+  };
+  const requestReplacements = () => {
+    const scenes = selectedReviewScenes.map((index) => ({
+      index,
+      prompt: replacementPrompts[index] || imageReview?.scenes?.[String(index)]?.prompt || "",
+    }));
+    void submitReviewRequest("replacements", { scenes });
+  };
+  const chooseReviewSource = (index: number, source: "gallery" | "upload", value: string) => {
+    void submitReviewRequest("source", source === "gallery"
+      ? { index, source, imageAssetId: value }
+      : { index, source, objectPath: value });
+  };
+  const uploadReviewImage = async (index: number, file: File | undefined) => {
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 15 * 1024 * 1024) {
+      setReviewMessage("Use a JPEG, PNG, or WebP image up to 15 MB.");
+      return;
+    }
+    setReviewBusy(true);
+    try {
+      const response = await fetch("/api/storage/uploads/request-url", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+      });
+      if (!response.ok) throw new Error("Could not prepare the image upload");
+      const upload = await response.json();
+      const put = await fetch(upload.uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+      if (!put.ok) throw new Error("Image upload failed");
+      await chooseReviewSource(index, "upload", upload.objectPath);
+    } catch (error) {
+      setReviewMessage(error instanceof Error ? error.message : "Image upload failed");
+      setReviewBusy(false);
+    }
+  };
   const storyboardReferenceImages = imageFirstVideoJob
     ? Object.fromEntries(
         imagePackAssets.map((asset) => [
@@ -872,6 +971,8 @@ export default function JobStatus() {
                     : isFailed
                       ? "Images that finished successfully remain available for Remix Lab."
                       : "Your completed images are ready to arrange in Remix Lab."
+                  : isReviewingImages
+                    ? "All source images are ready. Review and approve the complete storyboard before any animation request starts."
                   : isActive && imagePackAssets.length < visualImageCount
                     ? "The complete source-image pack is created first. Scene animation begins only after every planned image is ready."
                     : isActive
@@ -882,6 +983,145 @@ export default function JobStatus() {
               </p>
             </CardHeader>
             <CardContent className="pt-5">
+            {isReviewingImages && (
+              <div className="mb-6 rounded-xl border border-primary/30 bg-primary/5 p-4">
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-semibold">Review your storyboard before animation</p>
+                    <p className="text-xs text-muted-foreground">
+                      Select scenes to replace. Existing images remain approved until a replacement succeeds.
+                    </p>
+                  </div>
+                  <Button
+                    disabled={reviewBusy || selectedReviewScenes.length === 0}
+                    onClick={requestReplacements}
+                    size="sm"
+                  >
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Generate replacement
+                    <span className="ml-2 text-xs opacity-80">
+                      +{selectedReviewScenes.length * 7} credits
+                    </span>
+                  </Button>
+                </div>
+                <div className="mb-4 flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedReviewScenes(reviewScenes.map((scene) => scene.index))}
+                  >
+                    Select all
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedReviewScenes([])}>
+                    Clear selection
+                  </Button>
+                  <Button
+                    className="sm:ml-auto"
+                    disabled={reviewBusy || reviewScenes.length !== visualImageCount || pendingReviewIndexes.size > 0}
+                    onClick={() => void submitReviewRequest("approve", {})}
+                    size="sm"
+                  >
+                    <Check className="mr-2 h-4 w-4" />
+                    Approve images and create video
+                  </Button>
+                </div>
+                {reviewMessage && (
+                  <p className="mb-3 rounded-md bg-background/70 px-3 py-2 text-xs text-muted-foreground">
+                    {reviewMessage}
+                  </p>
+                )}
+                <div className="grid gap-4 md:grid-cols-2">
+                  {reviewScenes.map((scene) => {
+                    const asset = imagePackAssetByIndex.get(scene.index);
+                    const storyboardShot = Array.isArray(storyboard?.shots)
+                      ? storyboard.shots[scene.index] as { label?: string } | undefined
+                      : undefined;
+                    const selected = selectedReviewScenes.includes(scene.index);
+                    const pending = pendingReviewIndexes.has(scene.index);
+                    return (
+                      <div key={scene.index} className={`rounded-lg border p-3 ${selected ? "border-primary ring-1 ring-primary/40" : "border-border"}`}>
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <label className="flex items-center gap-2 text-sm font-medium">
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              onChange={(event) => setSelectedReviewScenes((current) =>
+                                event.target.checked
+                                  ? [...current, scene.index]
+                                  : current.filter((index) => index !== scene.index))}
+                            />
+                            Scene {scene.index + 1}{storyboardShot?.label ? ` · ${storyboardShot.label}` : ""}
+                          </label>
+                          <Badge variant="secondary" className="text-[10px]">
+                            {imageSourceLabel[scene.source] ?? scene.source}
+                          </Badge>
+                        </div>
+                        <div className="mb-3 aspect-video overflow-hidden rounded-md bg-muted">
+                          {asset ? (
+                            <img src={`/api/storage${asset.objectPath}`} alt={`Scene ${scene.index + 1}`} className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Waiting for image
+                            </div>
+                          )}
+                        </div>
+                        <p className="mb-2 line-clamp-3 text-xs text-muted-foreground">{scene.prompt}</p>
+                        <textarea
+                          className="mb-2 min-h-20 w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs"
+                          value={replacementPrompts[scene.index] ?? scene.prompt}
+                          onChange={(event) => setReplacementPrompts((current) => ({
+                            ...current,
+                            [scene.index]: event.target.value,
+                          }))}
+                          aria-label={`Replacement prompt for scene ${scene.index + 1}`}
+                        />
+                        {selected && (
+                          <p className="mb-2 rounded bg-muted/50 px-2 py-1.5 text-[11px] text-muted-foreground">
+                            Will submit exactly: {replacementPrompts[scene.index] ?? scene.prompt}
+                          </p>
+                        )}
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={reviewBusy || pending}
+                            onClick={() => setSelectedReviewScenes((current) => current.filter((index) => index !== scene.index))}
+                          >
+                            <Check className="mr-1.5 h-3.5 w-3.5" /> Keep current
+                          </Button>
+                          <select
+                            className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs"
+                            disabled={reviewBusy || pending}
+                            value=""
+                            onChange={(event) => {
+                              if (event.target.value) chooseReviewSource(scene.index, "gallery", event.target.value);
+                            }}
+                          >
+                            <option value="">Choose generated gallery image (free)</option>
+                            {reviewGallery.map((galleryAsset) => (
+                              <option key={galleryAsset.id} value={galleryAsset.id}>
+                                {galleryAsset.prompt.slice(0, 55)} · {job.aspectRatio === "16:9" ? "16:9" : "9:16"}
+                              </option>
+                            ))}
+                          </select>
+                          <label className="inline-flex h-8 cursor-pointer items-center rounded-md border border-input px-2 text-xs hover:bg-accent">
+                            <ImageIcon className="mr-1.5 h-3.5 w-3.5" /> Upload (free)
+                            <input
+                              type="file"
+                              className="hidden"
+                              accept="image/jpeg,image/png,image/webp"
+                              disabled={reviewBusy || pending}
+                              onChange={(event) => void uploadReviewImage(scene.index, event.target.files?.[0])}
+                            />
+                          </label>
+                        </div>
+                        {pending && <p className="mt-2 text-xs text-primary">Generating replacement…</p>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
               <div className={`grid grid-cols-2 gap-3 ${
                 imagePackAspectRatio === "16:9" ? "sm:grid-cols-2 lg:grid-cols-3" : "sm:grid-cols-3 lg:grid-cols-5"
               }`}>

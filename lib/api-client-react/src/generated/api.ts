@@ -39,6 +39,9 @@ import type {
   ImageAssetListResponse,
   ImagePackPlan,
   ImagePackPlanRequest,
+  ImageReviewReplacementRequest,
+  ImageReviewReplacementResponse,
+  ImageReviewSourceRequest,
   Job,
   JobListResponse,
   LikeResponse,
@@ -1793,6 +1796,270 @@ export function useGetJob<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Queue paid replacement images for selected scenes
+ */
+export const getQueueImageReviewReplacementsUrl = (id: string) => {
+  return `/api/jobs/${id}/image-review/replacements`;
+};
+
+export const queueImageReviewReplacements = async (
+  id: string,
+  imageReviewReplacementRequest: ImageReviewReplacementRequest,
+  options?: RequestInit,
+): Promise<ImageReviewReplacementResponse> => {
+  return customFetch<ImageReviewReplacementResponse>(
+    getQueueImageReviewReplacementsUrl(id),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(imageReviewReplacementRequest),
+    },
+  );
+};
+
+export const getQueueImageReviewReplacementsMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof queueImageReviewReplacements>>,
+    TError,
+    { id: string; data: BodyType<ImageReviewReplacementRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof queueImageReviewReplacements>>,
+  TError,
+  { id: string; data: BodyType<ImageReviewReplacementRequest> },
+  TContext
+> => {
+  const mutationKey = ["queueImageReviewReplacements"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof queueImageReviewReplacements>>,
+    { id: string; data: BodyType<ImageReviewReplacementRequest> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return queueImageReviewReplacements(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type QueueImageReviewReplacementsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof queueImageReviewReplacements>>
+>;
+export type QueueImageReviewReplacementsMutationBody =
+  BodyType<ImageReviewReplacementRequest>;
+export type QueueImageReviewReplacementsMutationError =
+  ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Queue paid replacement images for selected scenes
+ */
+export const useQueueImageReviewReplacements = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof queueImageReviewReplacements>>,
+    TError,
+    { id: string; data: BodyType<ImageReviewReplacementRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof queueImageReviewReplacements>>,
+  TError,
+  { id: string; data: BodyType<ImageReviewReplacementRequest> },
+  TContext
+> => {
+  return useMutation(getQueueImageReviewReplacementsMutationOptions(options));
+};
+
+/**
+ * @summary Choose an owned gallery or uploaded image for a scene
+ */
+export const getChooseImageReviewSourceUrl = (id: string) => {
+  return `/api/jobs/${id}/image-review/source`;
+};
+
+export const chooseImageReviewSource = async (
+  id: string,
+  imageReviewSourceRequest: ImageReviewSourceRequest,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getChooseImageReviewSourceUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(imageReviewSourceRequest),
+  });
+};
+
+export const getChooseImageReviewSourceMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof chooseImageReviewSource>>,
+    TError,
+    { id: string; data: BodyType<ImageReviewSourceRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof chooseImageReviewSource>>,
+  TError,
+  { id: string; data: BodyType<ImageReviewSourceRequest> },
+  TContext
+> => {
+  const mutationKey = ["chooseImageReviewSource"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof chooseImageReviewSource>>,
+    { id: string; data: BodyType<ImageReviewSourceRequest> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return chooseImageReviewSource(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ChooseImageReviewSourceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof chooseImageReviewSource>>
+>;
+export type ChooseImageReviewSourceMutationBody =
+  BodyType<ImageReviewSourceRequest>;
+export type ChooseImageReviewSourceMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Choose an owned gallery or uploaded image for a scene
+ */
+export const useChooseImageReviewSource = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof chooseImageReviewSource>>,
+    TError,
+    { id: string; data: BodyType<ImageReviewSourceRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof chooseImageReviewSource>>,
+  TError,
+  { id: string; data: BodyType<ImageReviewSourceRequest> },
+  TContext
+> => {
+  return useMutation(getChooseImageReviewSourceMutationOptions(options));
+};
+
+/**
+ * @summary Approve the complete canonical image set and resume animation
+ */
+export const getApproveImageReviewUrl = (id: string) => {
+  return `/api/jobs/${id}/image-review/approve`;
+};
+
+export const approveImageReview = async (
+  id: string,
+  options?: RequestInit,
+): Promise<Job> => {
+  return customFetch<Job>(getApproveImageReviewUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getApproveImageReviewMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof approveImageReview>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof approveImageReview>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["approveImageReview"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof approveImageReview>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return approveImageReview(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ApproveImageReviewMutationResult = NonNullable<
+  Awaited<ReturnType<typeof approveImageReview>>
+>;
+
+export type ApproveImageReviewMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Approve the complete canonical image set and resume animation
+ */
+export const useApproveImageReview = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof approveImageReview>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof approveImageReview>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getApproveImageReviewMutationOptions(options));
+};
 
 /**
  * Regenerates only the specified clips of a completed video and re-stitches them with the original audio into a new video. Credits are charged proportionally to the number of clips regenerated, not the full job.

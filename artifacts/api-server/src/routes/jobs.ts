@@ -2,7 +2,12 @@ import { Router } from "express";
 import https from "https";
 import { Client } from "pg";
 import { db } from "@workspace/db";
-import { jobsTable, creditsTable, usersTable, videosTable } from "@workspace/db";
+import {
+  jobsTable,
+  creditsTable,
+  usersTable,
+  videosTable,
+} from "@workspace/db";
 import type { VideoClipMeta } from "@workspace/db";
 import { eq, and, desc, count, isNull, inArray, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -34,6 +39,7 @@ import { MAX_LYRICS_LENGTH } from "../lib/lyricLimits.js";
 import { verifyAudioAnalysisReceipt } from "../lib/audioAnalysisReceipt.js";
 import { toCustomerJobView } from "../lib/customerJobView.js";
 import { settleImageFirstReservation } from "../lib/imageFirstSettlement.js";
+import { refundQueuedImageReviewReplacements } from "./image-review.js";
 
 const router = Router();
 
@@ -46,6 +52,29 @@ type AiJobMeta = {
   partialClips?: Record<string, string>;
   bundledLipSyncChildId?: string;
   imageFirstVersion?: number;
+  imageReview?: {
+    phase: "awaiting_approval" | "approved";
+    revision: number;
+    approvedRevision?: number;
+    scenes: Record<string, {
+      index: number;
+      canonicalPath: string;
+      revision: number;
+      source: "original_generation" | "regenerated" | "generated_gallery" | "local_upload";
+      prompt: string;
+      acceptedRequestId?: string;
+    }>;
+    pendingReplacements?: Record<string, {
+      id: string;
+      index: number;
+      prompt: string;
+      credits: number;
+      subscriptionCredits: number;
+      topupCredits: number;
+      status: "queued" | "processing";
+      createdAt: string;
+    }>;
+  };
 };
 
 // Turn manifest.partialClips (clip index -> raw object storage path, e.g.
@@ -1251,6 +1280,7 @@ router.post("/jobs/:id/cancel", async (req, res) => {
     return;
   }
   // Refund the up-front reservation for the canceled job.
+  await refundQueuedImageReviewReplacements(jobId, req.user.id);
   const refunded = await refundJobReservation(canceled);
   req.log.info({ jobId, userId: req.user.id, refunded }, "User canceled job");
   res.json({ ok: true, refunded });

@@ -318,6 +318,46 @@ export const JobManifestImageFirstVersion = {
   NUMBER_1: 1,
 } as const;
 
+export type ImageReviewPhase =
+  (typeof ImageReviewPhase)[keyof typeof ImageReviewPhase];
+
+export const ImageReviewPhase = {
+  awaiting_approval: "awaiting_approval",
+  approved: "approved",
+} as const;
+
+export type ImageReviewSceneSource =
+  (typeof ImageReviewSceneSource)[keyof typeof ImageReviewSceneSource];
+
+export const ImageReviewSceneSource = {
+  original_generation: "original_generation",
+  regenerated: "regenerated",
+  generated_gallery: "generated_gallery",
+  local_upload: "local_upload",
+} as const;
+
+export interface ImageReviewScene {
+  /** @minimum 0 */
+  index: number;
+  canonicalPath: string;
+  /** @minimum 1 */
+  revision: number;
+  source: ImageReviewSceneSource;
+  prompt: string;
+  acceptedRequestId?: string;
+}
+
+export type ImageReviewScenes = { [key: string]: ImageReviewScene };
+
+export interface ImageReview {
+  phase: ImageReviewPhase;
+  /** @minimum 1 */
+  revision: number;
+  /** @minimum 1 */
+  approvedRevision?: number;
+  scenes: ImageReviewScenes;
+}
+
 export type JobManifestSegmentsItem = {
   kind?: JobManifestSegmentsItemKind;
   durationSec?: number;
@@ -347,6 +387,7 @@ export interface JobManifest {
   storyboard?: JobStoryboard;
   /** Present when every video scene is animated from a persisted source-image plan. */
   imageFirstVersion?: JobManifestImageFirstVersion;
+  imageReview?: ImageReview;
   /** @minimum 0 */
   imageCreditCost?: number;
   /** @minimum 0 */
@@ -568,6 +609,48 @@ export interface GeneratedImageVisibility {
   id: string;
   isPublic: boolean;
   isCreatorAnonymous: boolean;
+}
+
+export interface ImageReviewReplacement {
+  /** @minimum 0 */
+  index: number;
+  /**
+   * @minLength 1
+   * @maxLength 1000
+   */
+  prompt: string;
+}
+
+export interface ImageReviewReplacementRequest {
+  /**
+   * @minItems 1
+   * @maxItems 64
+   */
+  scenes: ImageReviewReplacement[];
+}
+
+export interface ImageReviewReplacementResponse {
+  ok: true;
+  /** @minimum 1 */
+  credits: number;
+  /** @minimum 1 */
+  count: number;
+}
+
+export type ImageReviewSourceRequestSource =
+  (typeof ImageReviewSourceRequestSource)[keyof typeof ImageReviewSourceRequestSource];
+
+export const ImageReviewSourceRequestSource = {
+  gallery: "gallery",
+  upload: "upload",
+} as const;
+
+export interface ImageReviewSourceRequest {
+  /** @minimum 0 */
+  index: number;
+  source: ImageReviewSourceRequestSource;
+  imageAssetId?: string;
+  objectPath?: string;
 }
 
 export type CreateJobRequestAudioSourceType =

@@ -171,6 +171,32 @@ type ImageSubmissionIntent = {
   occurredAt: string;
 };
 
+type ImageReviewScene = {
+  index: number;
+  canonicalPath: string;
+  revision: number;
+  source: "original_generation" | "regenerated" | "generated_gallery" | "local_upload";
+  prompt: string;
+  acceptedRequestId?: string;
+};
+
+type ImageReviewState = {
+  phase: "awaiting_approval" | "approved";
+  revision: number;
+  approvedRevision?: number;
+  scenes: Record<string, ImageReviewScene>;
+  pendingReplacements?: Record<string, {
+    id: string;
+    index: number;
+    prompt: string;
+    credits: number;
+    subscriptionCredits: number;
+    topupCredits: number;
+    status: "queued" | "processing";
+    createdAt: string;
+  }>;
+};
+
 type UncertainImageSubmission = {
   status?: number;
   activityId?: string;
@@ -187,6 +213,7 @@ type AiJobMeta = {
   imageSubmissionIntents?: Record<string, ImageSubmissionIntent>;
   uncertainImageSubmissions?: Record<string, UncertainImageSubmission>;
   imageFirstVersion?: number;
+  imageReview?: ImageReviewState;
   reservedCredits?: number;
   reservedSubscriptionCredits?: number;
   reservedTopupCredits?: number;
@@ -241,6 +268,45 @@ function generationModeOf(job: JobRow): "montage" | "narrative" {
 function usesGeneratedNarrativeImages(job: JobRow): boolean {
   const meta = aiMetaOf(job);
   return meta.imageFirstVersion === 1 && meta.narrativeVisualSource === "generated_images";
+}
+
+function isAwaitingImageApproval(meta: AiJobMeta): boolean {
+  return meta.imageReview?.phase === "awaiting_approval";
+}
+
+async function persistInitialImageReview(
+  jobId: string,
+  shots: PersistedStoryboardShot[],
+  paths: Record<string, string>,
+): Promise<void> {
+  const scenes = Object.fromEntries(shots.map((shot) => [
+    String(shot.index),
+    {
+      index: shot.index,
+      canonicalPath: paths[shot.index],
+      revision: 1,
+      source: "original_generation",
+      prompt: shot.prompt,
+    },
+  ]));
+  await db.execute(sql`
+    UPDATE jobs
+    SET manifest = jsonb_set(
+      COALESCE(manifest, '{}'::jsonb),
+      '{imageReview}',
+      ${JSON.stringify({
+        phase: "awaiting_approval",
+        revision: 1,
+        scenes,
+      })}::jsonb
+    ),
+    status = 'pending_approval',
+    claimed_at = NULL,
+    updated_at = NOW()
+    WHERE id = ${jobId}
+      AND manifest->>'imageFirstVersion' = '1'
+  `);
+  await notifyJobUpdate(jobId);
 }
 
 async function persistNarrativeImages(jobId: string, paths: Record<string, string>): Promise<void> {
@@ -428,6 +494,14 @@ async function prepareNarrativeImagesStage(job: JobRow): Promise<Record<string, 
   }
   await persistNarrativeImages(job.id, paths);
   if (shots.some((shot) => !paths[shot.index])) throw new Error(`${IMAGE_API_FAILURE}: Required planned visuals are unavailable`);
+  const latestMeta = await readAiMeta(job.id);
+  if (!latestMeta.imageReview) {
+    await persistInitialImageReview(job.id, shots, paths);
+  } else if (latestMeta.imageReview.phase === "approved") {
+    // An approved set is immutable for the animation run. The API and worker
+    // both re-read this revision before each paid video request.
+    await notifyJobUpdate(job.id);
+  }
   return paths;
 }
 
@@ -441,6 +515,127 @@ async function prepareNarrativeImages(job: JobRow): Promise<Record<string, strin
     logger.error({ err: error, jobId: job.id }, "Source-image foundation stage failed");
     throw new Error(`${IMAGE_API_FAILURE} The source-image pack could not be safely completed.`);
   }
+}
+
+async function processImageReviewReplacements(job: JobRow): Promise<void> {
+  const shots = storyboardShotsOf(job);
+  const shotByIndex = new Map(shots.map((shot) => [shot.index, shot]));
+  const stored = await db.select({
+    assetIndex: imageAssetsTable.assetIndex,
+    objectPath: imageAssetsTable.objectPath,
+  }).from(imageAssetsTable).where(eq(imageAssetsTable.jobId, job.id));
+  let anchor = selectGeneratedCharacterAnchorPath(stored, shots, job.referenceImagePath);
+  while (true) {
+    const meta = await readAiMeta(job.id);
+    const review = meta.imageReview;
+    const pending = Object.values(review?.pendingReplacements ?? {});
+    if (!review || review.phase !== "awaiting_approval" || pending.length === 0) break;
+    const replacement = pending[0]!;
+    const shot = shotByIndex.get(replacement.index);
+    if (!shot) throw new Error(`${IMAGE_API_FAILURE}: Replacement scene is not in the storyboard`);
+    await assertJobOwned(job);
+    await db.execute(sql`
+      UPDATE jobs
+      SET manifest = jsonb_set(
+        COALESCE(manifest, '{}'::jsonb),
+        ARRAY['imageReview', 'pendingReplacements', ${replacement.id}, 'status']::text[],
+        '"processing"'::jsonb
+      )
+      WHERE id = ${job.id}
+    `);
+    try {
+    const referencePath = resolveCharacterReferencePath({
+      usesCharacterReference: shot.usesCharacterReference === true,
+      userReferenceImagePath: job.referenceImagePath,
+      generatedCharacterAnchorPath: anchor,
+    });
+    const referenceImageUrl = referencePath
+      ? await storageService.getObjectEntitySignedUrl(referencePath, 900)
+      : undefined;
+    const providerUrl = await generateNarrativeImage({
+      prompt: replacement.prompt,
+      aspectRatio: job.aspectRatio,
+      referenceImageUrl,
+    });
+    await assertJobOwned(job);
+    const buffer = await downloadGeneratedImage(providerUrl);
+    await assertJobOwned(job);
+    const objectPath = await storageService.uploadNarrativeImageBuffer(
+      buffer,
+      `${job.id}-replacement-${replacement.id}`,
+      replacement.index,
+    );
+    await db.transaction(async (tx) => {
+      const [locked] = await tx.select().from(jobsTable)
+        .where(eq(jobsTable.id, job.id)).limit(1).for("update");
+      const currentMeta = (locked?.manifest ?? {}) as AiJobMeta;
+      const currentReview = currentMeta.imageReview;
+      const current = currentReview?.pendingReplacements?.[replacement.id];
+      const currentScene = currentReview?.scenes[String(replacement.index)];
+      if (!locked || !currentReview || !current || !currentScene) return;
+      const revision = currentReview.revision + 1;
+      await tx.update(imageAssetsTable).set({
+        objectPath,
+        prompt: replacement.prompt,
+      }).where(and(eq(imageAssetsTable.jobId, job.id), eq(imageAssetsTable.assetIndex, replacement.index)));
+      const nextScene = {
+        ...currentScene,
+        canonicalPath: objectPath,
+        revision,
+        source: "regenerated" as const,
+        acceptedRequestId: replacement.id,
+      };
+      const { [replacement.id]: _accepted, ...remaining } = currentReview.pendingReplacements ?? {};
+      const nextReview = {
+        ...currentReview,
+        revision,
+        scenes: { ...currentReview.scenes, [String(replacement.index)]: nextScene },
+        pendingReplacements: remaining,
+      };
+      await tx.update(jobsTable).set({
+        manifest: sql`jsonb_set(COALESCE(${jobsTable.manifest}, '{}'::jsonb), '{imageReview}', ${JSON.stringify(nextReview)}::jsonb)`,
+        updatedAt: new Date(),
+      }).where(eq(jobsTable.id, job.id));
+    });
+    await notifyJobUpdate(job.id);
+    anchor = anchor ?? objectPath;
+    } catch (error) {
+      if (error instanceof Error && error.message.includes(OWNERSHIP_LOST)) throw error;
+      await refundFailedImageReviewReplacement(job.id, replacement.id);
+      logger.warn({ err: error, jobId: job.id, scene: replacement.index }, "Image replacement failed; refunded replacement charge");
+    }
+  }
+  const finalMeta = await readAiMeta(job.id);
+  if (finalMeta.imageReview?.phase === "awaiting_approval") {
+    const [current] = await db.select({ claimedAt: jobsTable.claimedAt })
+      .from(jobsTable).where(eq(jobsTable.id, job.id)).limit(1);
+    if (current?.claimedAt) {
+      await updateJobStatus(job.id, { status: "pending_approval", claimedAt: null });
+    }
+  }
+}
+
+async function refundFailedImageReviewReplacement(jobId: string, replacementId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [job] = await tx.select().from(jobsTable).where(eq(jobsTable.id, jobId)).limit(1).for("update");
+    const meta = (job?.manifest ?? {}) as AiJobMeta;
+    const review = meta.imageReview;
+    const replacement = review?.pendingReplacements?.[replacementId];
+    if (!replacement) return;
+    await tx.update(creditsTable).set({
+      subscriptionCredits: sql`${creditsTable.subscriptionCredits} + ${replacement.subscriptionCredits}`,
+      topupCredits: sql`${creditsTable.topupCredits} + ${replacement.topupCredits}`,
+      creditsRemaining: sql`${creditsTable.creditsRemaining} + ${replacement.credits}`,
+      creditsUsed: sql`GREATEST(${creditsTable.creditsUsed} - ${replacement.credits}, 0)`,
+      updatedAt: new Date(),
+    }).where(eq(creditsTable.userId, job!.userId));
+    const { [replacementId]: _failed, ...remaining } = review!.pendingReplacements ?? {};
+    const nextReview = { ...review, pendingReplacements: remaining };
+    await tx.update(jobsTable).set({
+      manifest: sql`jsonb_set(COALESCE(${jobsTable.manifest}, '{}'::jsonb), '{imageReview}', ${JSON.stringify(nextReview)}::jsonb)`,
+      updatedAt: new Date(),
+    }).where(eq(jobsTable.id, jobId));
+  });
 }
 
 type ImagePackMeta = AiJobMeta & {
@@ -1391,6 +1586,15 @@ async function assertJobOwned(job: JobRow): Promise<void> {
   }
 }
 
+async function assertApprovedImageReview(job: JobRow): Promise<void> {
+  if (!usesGeneratedNarrativeImages(job)) return;
+  const meta = await readAiMeta(job.id);
+  const review = meta.imageReview;
+  if (!review || review.phase !== "approved" || review.approvedRevision !== review.revision) {
+    throw new Error(`${PROVIDER_API_FAILURE}: Image foundation must be approved before animation`);
+  }
+}
+
 async function updateJobStatus(
   jobId: string,
   fields: Partial<typeof jobsTable.$inferInsert>,
@@ -1839,6 +2043,7 @@ async function generateClips(
     let skipTerminalScene = false;
     for (let attempt = 1; attempt <= clipAttempts; attempt++) {
       await assertJobOwned(job);
+      await assertApprovedImageReview(job);
       let acceptedRequest = false;
       try {
         const imagePath = preparedImages[visualIndex];
@@ -3063,6 +3268,12 @@ async function processJob(job: JobRow): Promise<void> {
     }
 
     const preparedImages = await prepareNarrativeImages(job);
+    const reviewMeta = await readAiMeta(job.id);
+    if (isAwaitingImageApproval(reviewMeta)) {
+      await processImageReviewReplacements(job);
+      logger.info({ jobId: job.id }, "Image-first job paused for image approval");
+      return;
+    }
     await updateJobStatus(job.id, {
       status: "generating",
       audioAnalysis: analysis as unknown as Record<string, unknown>,

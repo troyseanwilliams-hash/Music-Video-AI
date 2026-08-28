@@ -212,6 +212,8 @@ export const listJobsResponseJobsItemManifestOneStoryboardShotsItemStartTimeMin 
 export const listJobsResponseJobsItemManifestOneStoryboardShotsItemEnergyMin = 0;
 export const listJobsResponseJobsItemManifestOneStoryboardShotsItemEnergyMax = 1;
 
+export const listJobsResponseJobsItemManifestOneImageReviewScenesIndexMin = 0;
+
 export const listJobsResponseJobsItemManifestOneImageCreditCostMin = 0;
 
 export const listJobsResponseJobsItemManifestOneVideoCreditCostMin = 0;
@@ -463,6 +465,33 @@ export const ListJobsResponse = zod.object({
               .describe(
                 "Present when every video scene is animated from a persisted source-image plan.",
               ),
+            imageReview: zod
+              .object({
+                phase: zod.enum(["awaiting_approval", "approved"]),
+                revision: zod.number().min(1),
+                approvedRevision: zod.number().min(1).optional(),
+                scenes: zod.record(
+                  zod.string(),
+                  zod.object({
+                    index: zod
+                      .number()
+                      .min(
+                        listJobsResponseJobsItemManifestOneImageReviewScenesIndexMin,
+                      ),
+                    canonicalPath: zod.string(),
+                    revision: zod.number().min(1),
+                    source: zod.enum([
+                      "original_generation",
+                      "regenerated",
+                      "generated_gallery",
+                      "local_upload",
+                    ]),
+                    prompt: zod.string(),
+                    acceptedRequestId: zod.string().optional(),
+                  }),
+                ),
+              })
+              .optional(),
             imageCreditCost: zod
               .number()
               .min(listJobsResponseJobsItemManifestOneImageCreditCostMin)
@@ -1140,6 +1169,8 @@ export const getJobResponseManifestOneStoryboardShotsItemStartTimeMin = 0;
 export const getJobResponseManifestOneStoryboardShotsItemEnergyMin = 0;
 export const getJobResponseManifestOneStoryboardShotsItemEnergyMax = 1;
 
+export const getJobResponseManifestOneImageReviewScenesIndexMin = 0;
+
 export const getJobResponseManifestOneImageCreditCostMin = 0;
 
 export const getJobResponseManifestOneVideoCreditCostMin = 0;
@@ -1371,6 +1402,31 @@ export const GetJobResponse = zod.object({
           .describe(
             "Present when every video scene is animated from a persisted source-image plan.",
           ),
+        imageReview: zod
+          .object({
+            phase: zod.enum(["awaiting_approval", "approved"]),
+            revision: zod.number().min(1),
+            approvedRevision: zod.number().min(1).optional(),
+            scenes: zod.record(
+              zod.string(),
+              zod.object({
+                index: zod
+                  .number()
+                  .min(getJobResponseManifestOneImageReviewScenesIndexMin),
+                canonicalPath: zod.string(),
+                revision: zod.number().min(1),
+                source: zod.enum([
+                  "original_generation",
+                  "regenerated",
+                  "generated_gallery",
+                  "local_upload",
+                ]),
+                prompt: zod.string(),
+                acceptedRequestId: zod.string().optional(),
+              }),
+            ),
+          })
+          .optional(),
         imageCreditCost: zod
           .number()
           .min(getJobResponseManifestOneImageCreditCostMin)
@@ -1394,6 +1450,416 @@ export const GetJobResponse = zod.object({
         bundledLipSyncCost: zod
           .number()
           .min(getJobResponseManifestOneBundledLipSyncCostMin)
+          .optional(),
+        bundledLipSyncActivated: zod.boolean().optional(),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+  previewClips: zod
+    .record(zod.string(), zod.string())
+    .optional()
+    .describe(
+      "Completed scene index to preview URL, present while scenes are generated",
+    ),
+  videoUrl: zod
+    .string()
+    .optional()
+    .describe(
+      "Signed or proxied playback URL, present when the finished video is available",
+    ),
+  hasAudio: zod
+    .boolean()
+    .optional()
+    .describe("Whether the finished render contains a soundtrack"),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+
+/**
+ * @summary Queue paid replacement images for selected scenes
+ */
+export const QueueImageReviewReplacementsParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const QueueImageReviewReplacementsHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const queueImageReviewReplacementsBodyScenesItemIndexMin = 0;
+
+export const queueImageReviewReplacementsBodyScenesItemPromptMax = 1000;
+
+export const queueImageReviewReplacementsBodyScenesMax = 64;
+
+export const QueueImageReviewReplacementsBody = zod.object({
+  scenes: zod
+    .array(
+      zod.object({
+        index: zod
+          .number()
+          .min(queueImageReviewReplacementsBodyScenesItemIndexMin),
+        prompt: zod
+          .string()
+          .min(1)
+          .max(queueImageReviewReplacementsBodyScenesItemPromptMax),
+      }),
+    )
+    .min(1)
+    .max(queueImageReviewReplacementsBodyScenesMax),
+});
+
+/**
+ * @summary Choose an owned gallery or uploaded image for a scene
+ */
+export const ChooseImageReviewSourceParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const ChooseImageReviewSourceHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const chooseImageReviewSourceBodyIndexMin = 0;
+
+export const ChooseImageReviewSourceBody = zod.object({
+  index: zod.number().min(chooseImageReviewSourceBodyIndexMin),
+  source: zod.enum(["gallery", "upload"]),
+  imageAssetId: zod.string().optional(),
+  objectPath: zod.string().optional(),
+});
+
+/**
+ * @summary Approve the complete canonical image set and resume animation
+ */
+export const ApproveImageReviewParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const ApproveImageReviewHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const approveImageReviewResponseAudioAnalysisOneAnalysisReceiptMax = 512;
+
+export const approveImageReviewResponseClipStartTimeMin = 0;
+
+export const approveImageReviewResponseManifestOneStoryboardClipDurationSecMin = 0;
+
+export const approveImageReviewResponseManifestOneStoryboardTargetOutputDurationMin = 0;
+
+export const approveImageReviewResponseManifestOneStoryboardReuseCountMin = 0;
+
+export const approveImageReviewResponseManifestOneStoryboardShotsItemIndexMin = 0;
+
+export const approveImageReviewResponseManifestOneStoryboardShotsItemStartTimeMin = 0;
+
+export const approveImageReviewResponseManifestOneStoryboardShotsItemEnergyMin = 0;
+export const approveImageReviewResponseManifestOneStoryboardShotsItemEnergyMax = 1;
+
+export const approveImageReviewResponseManifestOneImageReviewScenesIndexMin = 0;
+
+export const approveImageReviewResponseManifestOneImageCreditCostMin = 0;
+
+export const approveImageReviewResponseManifestOneVideoCreditCostMin = 0;
+
+export const approveImageReviewResponseManifestOneBaseCreditCostMin = 0;
+
+export const approveImageReviewResponseManifestOneBundledLipSyncCostMin = 0;
+
+export const ApproveImageReviewResponse = zod.object({
+  id: zod.string(),
+  userId: zod.string(),
+  jobType: zod
+    .string()
+    .nullish()
+    .describe(
+      "Processing flow used for this job, such as editor_render for a Remix Lab export or image_pack for a reusable still set",
+    ),
+  aiProvider: zod
+    .union([
+      zod.literal("runway"),
+      zod.literal("kling"),
+      zod.literal("luma"),
+      zod.literal(null),
+    ])
+    .nullish(),
+  resolution: zod
+    .union([
+      zod.literal("720p"),
+      zod.literal("1080p"),
+      zod.literal("4k"),
+      zod.literal(null),
+    ])
+    .nullish(),
+  status: zod.enum([
+    "pending_approval",
+    "queued",
+    "analyzing",
+    "generating",
+    "stitching",
+    "ready",
+    "failed",
+  ]),
+  audioSourceType: zod
+    .union([
+      zod.literal("upload"),
+      zod.literal("youtube"),
+      zod.literal("suno"),
+      zod.literal("none"),
+      zod.literal(null),
+    ])
+    .nullish(),
+  audioObjectPath: zod.string().nullish(),
+  audioSourceUrl: zod.string().nullish(),
+  prompt: zod.string().nullish(),
+  style: zod.string().nullish(),
+  aspectRatio: zod
+    .union([
+      zod.literal("16:9"),
+      zod.literal("9:16"),
+      zod.literal("1:1"),
+      zod.literal("4:3"),
+      zod.literal("21:9"),
+      zod.literal(null),
+    ])
+    .nullish(),
+  audioAnalysis: zod
+    .union([
+      zod.object({
+        analysisReceipt: zod
+          .string()
+          .max(approveImageReviewResponseAudioAnalysisOneAnalysisReceiptMax)
+          .optional()
+          .describe(
+            "Server-signed receipt binding this analysis to the authenticated user and stored audio object",
+          ),
+        bpm: zod.number().nullish(),
+        key: zod.string().nullish(),
+        energy: zod.number().nullish(),
+        mood: zod.string().nullish(),
+        durationSeconds: zod.number().nullish(),
+        beatTimestamps: zod.array(zod.number()).optional(),
+        beatGrid: zod
+          .array(zod.number())
+          .optional()
+          .describe(
+            "Regular beat positions used to align generated cuts with the analyzed track",
+          ),
+        sections: zod
+          .array(
+            zod.object({
+              startTime: zod.number(),
+              endTime: zod.number(),
+              label: zod.string(),
+              energy: zod.number(),
+            }),
+          )
+          .optional(),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+  progressPercent: zod.number().nullish(),
+  errorMessage: zod.string().nullish(),
+  videoId: zod.string().nullish(),
+  clips: zod
+    .array(
+      zod.object({
+        index: zod
+          .number()
+          .describe("Zero-based position of this clip in the timeline"),
+        startTime: zod
+          .number()
+          .describe("Clip start time in seconds within the finished video"),
+        endTime: zod
+          .number()
+          .describe("Clip end time in seconds within the finished video"),
+        durationSec: zod.number(),
+        prompt: zod.string().describe("The prompt used to generate this clip"),
+        style: zod.string().nullish(),
+        objectPath: zod
+          .string()
+          .describe("Object storage path of the stored clip, reused on remix"),
+      }),
+    )
+    .optional()
+    .describe(
+      "Per-clip metadata for the finished video (present when status is ready). Used by the remix UI to list individual clips.",
+    ),
+  lyricsText: zod.string().nullish(),
+  referenceImagePath: zod
+    .string()
+    .nullish()
+    .describe("Object storage path for an optional reference image"),
+  requestedDuration: zod
+    .union([
+      zod.literal("5"),
+      zod.literal("8"),
+      zod.literal("10"),
+      zod.literal("30"),
+      zod.literal("45"),
+      zod.literal("60"),
+      zod.literal("90"),
+      zod.literal("120"),
+      zod.literal("300"),
+      zod.literal("600"),
+      zod.literal("full"),
+      zod.literal(null),
+    ])
+    .nullish()
+    .describe("Requested output video length"),
+  clipStartTime: zod
+    .number()
+    .min(approveImageReviewResponseClipStartTimeMin)
+    .nullish()
+    .describe(
+      "Audio clip start time in seconds; null means start from the beginning",
+    ),
+  claimedAt: zod.coerce
+    .date()
+    .nullish()
+    .describe("Time a worker claimed the job; null while the job is queued"),
+  manifest: zod
+    .union([
+      zod.object({
+        segments: zod
+          .array(
+            zod.object({
+              kind: zod.enum(["video", "photo"]).optional(),
+              durationSec: zod.number().optional(),
+              trimStart: zod.number().optional(),
+              trimEnd: zod.number().optional(),
+            }),
+          )
+          .optional(),
+        transition: zod
+          .object({
+            type: zod.string().optional(),
+            durationSec: zod.number().optional(),
+          })
+          .optional(),
+        resolution: zod.string().optional(),
+        lyricsText: zod.string().nullish(),
+        clipIndexes: zod.array(zod.number()).optional(),
+        storyboard: zod
+          .object({
+            generationMode: zod.enum(["montage", "narrative"]),
+            numClips: zod.number().min(1),
+            clipDurationSec: zod
+              .number()
+              .min(
+                approveImageReviewResponseManifestOneStoryboardClipDurationSecMin,
+              ),
+            targetOutputDuration: zod
+              .number()
+              .min(
+                approveImageReviewResponseManifestOneStoryboardTargetOutputDurationMin,
+              ),
+            approximate: zod.boolean(),
+            timelineSceneCount: zod.number().min(1).optional(),
+            reuseCount: zod
+              .number()
+              .min(approveImageReviewResponseManifestOneStoryboardReuseCountMin)
+              .optional(),
+            shots: zod.array(
+              zod.object({
+                index: zod
+                  .number()
+                  .min(
+                    approveImageReviewResponseManifestOneStoryboardShotsItemIndexMin,
+                  ),
+                label: zod.string(),
+                description: zod
+                  .string()
+                  .optional()
+                  .describe(
+                    "Short, human-readable description of the exact planned scene or visual.",
+                  ),
+                startTime: zod
+                  .number()
+                  .min(
+                    approveImageReviewResponseManifestOneStoryboardShotsItemStartTimeMin,
+                  ),
+                energy: zod
+                  .number()
+                  .min(
+                    approveImageReviewResponseManifestOneStoryboardShotsItemEnergyMin,
+                  )
+                  .max(
+                    approveImageReviewResponseManifestOneStoryboardShotsItemEnergyMax,
+                  ),
+                prompt: zod.string(),
+              }),
+            ),
+          })
+          .optional(),
+        imageFirstVersion: zod
+          .literal(1)
+          .optional()
+          .describe(
+            "Present when every video scene is animated from a persisted source-image plan.",
+          ),
+        imageReview: zod
+          .object({
+            phase: zod.enum(["awaiting_approval", "approved"]),
+            revision: zod.number().min(1),
+            approvedRevision: zod.number().min(1).optional(),
+            scenes: zod.record(
+              zod.string(),
+              zod.object({
+                index: zod
+                  .number()
+                  .min(
+                    approveImageReviewResponseManifestOneImageReviewScenesIndexMin,
+                  ),
+                canonicalPath: zod.string(),
+                revision: zod.number().min(1),
+                source: zod.enum([
+                  "original_generation",
+                  "regenerated",
+                  "generated_gallery",
+                  "local_upload",
+                ]),
+                prompt: zod.string(),
+                acceptedRequestId: zod.string().optional(),
+              }),
+            ),
+          })
+          .optional(),
+        imageCreditCost: zod
+          .number()
+          .min(approveImageReviewResponseManifestOneImageCreditCostMin)
+          .optional(),
+        videoCreditCost: zod
+          .number()
+          .min(approveImageReviewResponseManifestOneVideoCreditCostMin)
+          .optional(),
+        narrativeImages: zod
+          .record(zod.string(), zod.string())
+          .optional()
+          .describe(
+            "Planned visual index to owner-protected source-image object path.",
+          ),
+        bundledLipSyncChildId: zod.string().optional(),
+        bundledLipSyncEnabled: zod.boolean().optional(),
+        baseCreditCost: zod
+          .number()
+          .min(approveImageReviewResponseManifestOneBaseCreditCostMin)
+          .optional(),
+        bundledLipSyncCost: zod
+          .number()
+          .min(approveImageReviewResponseManifestOneBundledLipSyncCostMin)
           .optional(),
         bundledLipSyncActivated: zod.boolean().optional(),
       }),
@@ -2114,6 +2580,8 @@ export const getDashboardStatsResponseRecentJobsItemManifestOneStoryboardShotsIt
 export const getDashboardStatsResponseRecentJobsItemManifestOneStoryboardShotsItemEnergyMin = 0;
 export const getDashboardStatsResponseRecentJobsItemManifestOneStoryboardShotsItemEnergyMax = 1;
 
+export const getDashboardStatsResponseRecentJobsItemManifestOneImageReviewScenesIndexMin = 0;
+
 export const getDashboardStatsResponseRecentJobsItemManifestOneImageCreditCostMin = 0;
 
 export const getDashboardStatsResponseRecentJobsItemManifestOneVideoCreditCostMin = 0;
@@ -2378,6 +2846,33 @@ export const GetDashboardStatsResponse = zod.object({
                 .describe(
                   "Present when every video scene is animated from a persisted source-image plan.",
                 ),
+              imageReview: zod
+                .object({
+                  phase: zod.enum(["awaiting_approval", "approved"]),
+                  revision: zod.number().min(1),
+                  approvedRevision: zod.number().min(1).optional(),
+                  scenes: zod.record(
+                    zod.string(),
+                    zod.object({
+                      index: zod
+                        .number()
+                        .min(
+                          getDashboardStatsResponseRecentJobsItemManifestOneImageReviewScenesIndexMin,
+                        ),
+                      canonicalPath: zod.string(),
+                      revision: zod.number().min(1),
+                      source: zod.enum([
+                        "original_generation",
+                        "regenerated",
+                        "generated_gallery",
+                        "local_upload",
+                      ]),
+                      prompt: zod.string(),
+                      acceptedRequestId: zod.string().optional(),
+                    }),
+                  ),
+                })
+                .optional(),
               imageCreditCost: zod
                 .number()
                 .min(

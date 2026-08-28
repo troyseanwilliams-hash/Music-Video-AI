@@ -607,6 +607,93 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
 
+  /jobs/{id}/image-review/replacements:
+    post:
+      tags: [Jobs]
+      operationId: queueImageReviewReplacements
+      summary: Queue paid replacement images for selected scenes
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImageReviewReplacementRequest'
+      responses:
+        '202':
+          description: Replacement images queued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImageReviewReplacementResponse'
+        '402':
+          description: Not enough credits.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '409':
+          description: Job is not available for review.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /jobs/{id}/image-review/source:
+    post:
+      tags: [Jobs]
+      operationId: chooseImageReviewSource
+      summary: Choose an owned gallery or uploaded image for a scene
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImageReviewSourceRequest'
+      responses:
+        '200':
+          description: Scene source selected.
+        '409':
+          description: Scene has a replacement in progress or the job changed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  /jobs/{id}/image-review/approve:
+    post:
+      tags: [Jobs]
+      operationId: approveImageReview
+      summary: Approve the complete canonical image set and resume animation
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Image set approved and video job requeued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+        '409':
+          description: Job is not ready for approval.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
   /jobs/{id}/remix:
     post:
       tags: [Jobs]
@@ -1755,6 +1842,8 @@ components:
           type: integer
           enum: [1]
           description: Present when every video scene is animated from a persisted source-image plan.
+        imageReview:
+          $ref: '#/components/schemas/ImageReview'
         imageCreditCost:
           type: integer
           minimum: 0
@@ -1778,6 +1867,73 @@ components:
           minimum: 0
         bundledLipSyncActivated:
           type: boolean
+
+    ImageReviewScene:
+      type: object
+      required: [index, canonicalPath, revision, source, prompt]
+      properties:
+        index: { type: integer, minimum: 0 }
+        canonicalPath: { type: string }
+        revision: { type: integer, minimum: 1 }
+        source:
+          type: string
+          enum: [original_generation, regenerated, generated_gallery, local_upload]
+        prompt: { type: string }
+        acceptedRequestId: { type: string }
+
+    ImageReview:
+      type: object
+      required: [phase, revision, scenes]
+      properties:
+        phase:
+          type: string
+          enum: [awaiting_approval, approved]
+        revision: { type: integer, minimum: 1 }
+        approvedRevision: { type: integer, minimum: 1 }
+        scenes:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ImageReviewScene'
+
+    ImageReviewReplacement:
+      type: object
+      required: [index, prompt]
+      properties:
+        index: { type: integer, minimum: 0 }
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 1000
+
+    ImageReviewReplacementRequest:
+      type: object
+      required: [scenes]
+      properties:
+        scenes:
+          type: array
+          minItems: 1
+          maxItems: 64
+          items:
+            $ref: '#/components/schemas/ImageReviewReplacement'
+
+    ImageReviewReplacementResponse:
+      type: object
+      required: [ok, credits, count]
+      properties:
+        ok: { type: boolean, const: true }
+        credits: { type: integer, minimum: 1 }
+        count: { type: integer, minimum: 1 }
+
+    ImageReviewSourceRequest:
+      type: object
+      required: [index, source]
+      properties:
+        index: { type: integer, minimum: 0 }
+        source:
+          type: string
+          enum: [gallery, upload]
+        imageAssetId: { type: string }
+        objectPath: { type: string }
 
     JobStoryboard:
       type: object

@@ -25,6 +25,7 @@ import adminAnalyticsRouter from "./admin-analytics.js";
 import emailPrefsRouter from "./email-prefs.js";
 import suiteRouter from "./suite.js";
 import imageAssetsRouter from "./image-assets.js";
+import imageReviewRouter from "./image-review.js";
 
 const router: IRouter = Router();
 
@@ -54,5 +55,6 @@ router.use(adminAnalyticsRouter);
 router.use(emailPrefsRouter);
 router.use(suiteRouter);
 router.use(imageAssetsRouter);
+router.use(imageReviewRouter);
 
 export default router;

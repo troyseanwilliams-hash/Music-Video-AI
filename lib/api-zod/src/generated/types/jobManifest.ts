@@ -5,6 +5,7 @@
  * BeatVision AI API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ImageReview } from "./imageReview";
 import type { JobManifestImageFirstVersion } from "./jobManifestImageFirstVersion";
 import type { JobManifestNarrativeImages } from "./jobManifestNarrativeImages";
 import type { JobManifestSegmentsItem } from "./jobManifestSegmentsItem";
@@ -21,6 +22,7 @@ export interface JobManifest {
   storyboard?: JobStoryboard;
   /** Present when every video scene is animated from a persisted source-image plan. */
   imageFirstVersion?: JobManifestImageFirstVersion;
+  imageReview?: ImageReview;
   /** @minimum 0 */
   imageCreditCost?: number;
   /** @minimum 0 */

@@ -10,6 +10,9 @@ const PRIVATE_MANIFEST_KEYS = new Set([
   "lipSyncPollUrl",
   "finalizeWithPartial",
   "retryAfter",
+  // imageReview is intentionally public to the owning customer: it contains
+  // canonical scene paths, revisions, and editable prompts, but no billing
+  // bucket or provider submission internals.
 ]);
 
 function sanitizeManifest(manifest: unknown): unknown {
@@ -17,9 +20,33 @@ function sanitizeManifest(manifest: unknown): unknown {
     return manifest;
   }
 
-  return Object.fromEntries(
+  const sanitized = Object.fromEntries(
     Object.entries(manifest).filter(([key]) => !PRIVATE_MANIFEST_KEYS.has(key)),
   );
+  const review = sanitized.imageReview as {
+    pendingReplacements?: Record<string, {
+      id?: string;
+      index: number;
+      prompt: string;
+      status: string;
+      createdAt?: string;
+    }>;
+  } | undefined;
+  if (review?.pendingReplacements) {
+    sanitized.imageReview = {
+      ...review,
+      pendingReplacements: Object.fromEntries(
+        Object.entries(review.pendingReplacements).map(([id, item]) => [id, {
+          id,
+          index: item.index,
+          prompt: item.prompt,
+          status: item.status,
+          createdAt: item.createdAt,
+        }]),
+      ),
+    };
+  }
+  return sanitized;
 }
 
 export function toCustomerJobView<
