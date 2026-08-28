@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LYRICS_BUILD_COST, canAffordCredits } from "@/lib/creditPricing";
+import { saveSceneScriptHandoff } from "@/lib/sceneScriptHandoff";
 import { useGetDashboardStats } from "@workspace/api-client-react";
 import TopUpRequiredDialog from "@/components/TopUpRequiredDialog";
 import {
@@ -149,6 +150,14 @@ export default function PromptStudio() {
   const [videoBusy, setVideoBusy] = useState(false);
   const [videoRes, setVideoRes] = useState<VideoResult | null>(null);
 
+  // Scene Builder tab
+  const [story, setStory] = useState("");
+  const [sceneCount, setSceneCount] = useState(6);
+  const [autoSceneCount, setAutoSceneCount] = useState(true);
+  const [hasReferenceImage, setHasReferenceImage] = useState(false);
+  const [sceneBusy, setSceneBusy] = useState(false);
+  const [sceneRes, setSceneRes] = useState<SceneBuilderResult | null>(null);
+
   // Lyrics tab
   const [theme, setTheme] = useState("");
   const [genre, setGenre] = useState("");
@@ -178,6 +187,46 @@ export default function PromptStudio() {
       setVideoRes(await postJSON<VideoResult>("/api/prompt/video", { description: videoDesc, style: videoStyle || undefined }));
     } catch (err) { fail(err); } finally { setVideoBusy(false); }
   }
+  async function buildScenes() {
+    if (story.trim().length < 2) return;
+    setSceneBusy(true);
+    try {
+      setSceneRes(await postJSON<SceneBuilderResult>("/api/prompt/scene-builder", {
+        story,
+        sceneCount: autoSceneCount ? undefined : sceneCount,
+        hasReferenceImage,
+      }));
+    } catch (err) { fail(err); } finally { setSceneBusy(false); }
+  }
+  function updateScenes(transform: (scenes: SceneBuilderScene[]) => SceneBuilderScene[]) {
+    setSceneRes((current) => {
+      if (!current) return current;
+      const scenes = transform(current.scenes).map((scene, index) => ({
+        ...scene,
+        number: index + 1,
+      }));
+      return {
+        ...current,
+        scenes,
+        sceneCount: scenes.length,
+        script: buildNumberedImageScript(scenes),
+      };
+    });
+  }
+  function updateScene(index: number, patch: Partial<Pick<SceneBuilderScene, "title" | "imagePrompt">>) {
+    updateScenes((scenes) => scenes.map((scene, sceneIndex) =>
+      sceneIndex === index ? { ...scene, ...patch } : scene
+    ));
+  }
+  function moveScene(index: number, direction: -1 | 1) {
+    updateScenes((scenes) => {
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= scenes.length) return scenes;
+      const next = [...scenes];
+      [next[index], next[nextIndex]] = [next[nextIndex]!, next[index]!];
+      return next;
+    });
+  }
   async function buildLyrics() {
     if (theme.trim().length < 2) return;
     // Proactive credit check — show the top-up modal instead of letting the
@@ -197,6 +246,13 @@ export default function PromptStudio() {
       }));
     } catch (err) { fail(err); } finally { setLyricsBusy(false); }
   }
+
+  const sceneScript = sceneRes ? buildNumberedImageScript(sceneRes.scenes) : "";
+  const sceneScriptValid =
+    sceneRes !== null
+    && sceneRes.scenes.length >= 2
+    && sceneRes.scenes.every((scene) => scene.imagePrompt.trim().length > 0)
+    && sceneScript.length <= MAX_CREATIVE_PROMPT_LENGTH;
 
   if (isLoading) {
     return <div className="min-h-[60vh] flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -228,9 +284,10 @@ export default function PromptStudio() {
       </div>
 
       <Tabs defaultValue="audio" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid h-auto w-full grid-cols-2 sm:grid-cols-4">
           <TabsTrigger value="audio"><Music2 className="mr-1.5 h-4 w-4" /> Soundtrack</TabsTrigger>
           <TabsTrigger value="video"><Film className="mr-1.5 h-4 w-4" /> Video</TabsTrigger>
+          <TabsTrigger value="scenes"><ListOrdered className="mr-1.5 h-4 w-4" /> Scenes</TabsTrigger>
           <TabsTrigger value="lyrics"><FileText className="mr-1.5 h-4 w-4" /> Lyrics</TabsTrigger>
         </TabsList>
 
@@ -300,6 +357,197 @@ export default function PromptStudio() {
                   Use in Generate <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                 </Button>
               </div>
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Scene Builder */}
+        <TabsContent value="scenes" className="space-y-4 pt-4">
+          <div>
+            <label htmlFor="scene-builder-story" className="text-sm font-medium">Paste a generic story</label>
+            <p className="mt-1 text-xs text-muted-foreground">
+              We’ll split it into concise, chronological image prompts that fit the Creative Prompt field.
+            </p>
+          </div>
+          <Textarea
+            id="scene-builder-story"
+            value={story}
+            onChange={(event) => setStory(event.target.value)}
+            maxLength={MAX_CREATIVE_PROMPT_LENGTH}
+            placeholder="e.g. A young inventor leaves her quiet village, crosses a dangerous desert, discovers a hidden city, and returns home with a new source of clean energy."
+            className="min-h-[140px]"
+          />
+          <div className="flex justify-end">
+            <span className={`text-xs tabular-nums ${story.length >= MAX_CREATIVE_PROMPT_LENGTH - 500 ? "text-yellow-500" : "text-muted-foreground"}`}>
+              {story.length.toLocaleString()} / {MAX_CREATIVE_PROMPT_LENGTH.toLocaleString()}
+            </span>
+          </div>
+
+          <div className="grid gap-3 rounded-xl border border-border/60 bg-secondary/20 p-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={autoSceneCount}
+                  onChange={(event) => setAutoSceneCount(event.target.checked)}
+                  className="h-4 w-4 rounded border-border accent-primary"
+                />
+                Recommend the scene count
+              </label>
+              {!autoSceneCount && (
+                <div className="flex items-center gap-2">
+                  <label htmlFor="scene-count" className="text-xs text-muted-foreground">Scenes</label>
+                  <Input
+                    id="scene-count"
+                    type="number"
+                    min={2}
+                    max={20}
+                    value={sceneCount}
+                    onChange={(event) => setSceneCount(Math.max(2, Math.min(20, Number(event.target.value) || 2)))}
+                    className="h-9 w-24"
+                  />
+                </div>
+              )}
+            </div>
+            <div>
+              <label className="flex cursor-pointer items-start gap-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={hasReferenceImage}
+                  onChange={(event) => {
+                    setHasReferenceImage(event.target.checked);
+                    setSceneRes(null);
+                  }}
+                  className="mt-0.5 h-4 w-4 rounded border-border accent-primary"
+                />
+                <span>
+                  I’ll attach a reference image
+                  <span className="mt-1 block text-xs font-normal leading-relaxed text-muted-foreground">
+                    Character scenes will refer to the attached image instead of repeating a character description.
+                  </span>
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <Button
+            onClick={buildScenes}
+            disabled={sceneBusy || story.trim().length < 2}
+            className="bg-gradient-electric text-white border-0"
+          >
+            {sceneBusy
+              ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Building scenes…</>
+              : <><Wand2 className="mr-2 h-4 w-4" /> Build scene script</>}
+          </Button>
+
+          {sceneRes && (
+            <div className="space-y-4 rounded-xl border border-border/60 bg-secondary/20 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold">{sceneRes.scenes.length} editable image prompts</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    One still image, moment, and setting per scene.
+                    {sceneRes.hasReferenceImage ? " Character scenes use the attached reference image." : ""}
+                  </p>
+                </div>
+                <span className={`text-xs tabular-nums ${sceneScript.length > MAX_CREATIVE_PROMPT_LENGTH ? "font-medium text-destructive" : "text-muted-foreground"}`}>
+                  {sceneScript.length.toLocaleString()} / {MAX_CREATIVE_PROMPT_LENGTH.toLocaleString()}
+                </span>
+              </div>
+
+              <div className="space-y-3">
+                {sceneRes.scenes.map((scene, index) => (
+                  <div key={`${scene.number}-${index}`} className="rounded-lg border border-border bg-background/70 p-3">
+                    <div className="mb-2 flex items-center gap-2">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                        {index + 1}
+                      </span>
+                      <Input
+                        value={scene.title}
+                        maxLength={70}
+                        onChange={(event) => updateScene(index, { title: event.target.value })}
+                        aria-label={`Scene ${index + 1} title`}
+                        className="h-9 font-medium"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => moveScene(index, -1)}
+                        disabled={index === 0}
+                        aria-label={`Move scene ${index + 1} up`}
+                      >
+                        <ChevronUp className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => moveScene(index, 1)}
+                        disabled={index === sceneRes.scenes.length - 1}
+                        aria-label={`Move scene ${index + 1} down`}
+                      >
+                        <ChevronDown className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => updateScenes((scenes) => scenes.filter((_, sceneIndex) => sceneIndex !== index))}
+                        disabled={sceneRes.scenes.length <= 2}
+                        aria-label={`Delete scene ${index + 1}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <Textarea
+                      value={scene.imagePrompt}
+                      maxLength={MAX_SCENE_IMAGE_PROMPT_LENGTH}
+                      onChange={(event) => updateScene(index, { imagePrompt: event.target.value })}
+                      aria-label={`Scene ${index + 1} image prompt`}
+                      className="min-h-[88px] resize-y"
+                    />
+                    <p className="mt-1 text-right text-[11px] tabular-nums text-muted-foreground">
+                      {scene.imagePrompt.length} / {MAX_SCENE_IMAGE_PROMPT_LENGTH}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={sceneRes.scenes.length >= 20}
+                  onClick={() => updateScenes((scenes) => [
+                    ...scenes,
+                    { number: scenes.length + 1, title: `Scene ${scenes.length + 1}`, imagePrompt: "" },
+                  ])}
+                >
+                  <Plus className="mr-1.5 h-3.5 w-3.5" /> Add scene
+                </Button>
+                <CopyButton text={sceneScript} label="Copy script" />
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={!sceneScriptValid}
+                  onClick={() => {
+                    if (!saveSceneScriptHandoff(sceneScript)) {
+                      fail(new Error("The scene script does not fit the Creative Prompt field."));
+                      return;
+                    }
+                    setLocation("/generate");
+                  }}
+                >
+                  Copy to Image Prompt <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                </Button>
+              </div>
+              {!sceneScriptValid && (
+                <p className="text-xs text-destructive">
+                  Every scene needs an image prompt, and the complete numbered script must stay within 12,000 characters.
+                </p>
+              )}
             </div>
           )}
         </TabsContent>

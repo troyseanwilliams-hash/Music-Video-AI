@@ -7,6 +7,7 @@
 import { createHash } from "node:crypto";
 
 const MAX_FULL_SECONDS = 600;
+export const MAX_GENERATED_IMAGE_PROMPT_LENGTH = 600;
 
 const STYLE_PROMPTS: Record<string, string> = {
   realistic:
@@ -33,6 +34,7 @@ export interface ShotPlanInput {
   prompt?: string | null;
   style?: string | null;
   character?: string | null;
+  hasCharacterReference?: boolean;
   requestedDuration?: string | null;
   generationMode?: GenerationMode | null;
   analysis?: {
@@ -41,6 +43,14 @@ export interface ShotPlanInput {
     durationSeconds?: number | null;
     sections?: ShotSection[] | null;
   } | null;
+}
+
+function conciseImagePrompt(parts: Array<string | null | undefined>): string {
+  const prompt = parts.filter(Boolean).join(", ").replace(/\s+/g, " ").trim();
+  if (prompt.length <= MAX_GENERATED_IMAGE_PROMPT_LENGTH) return prompt;
+  const clipped = prompt.slice(0, MAX_GENERATED_IMAGE_PROMPT_LENGTH - 1).trimEnd();
+  const boundary = clipped.lastIndexOf(" ");
+  return `${(boundary > 360 ? clipped.slice(0, boundary) : clipped)}…`;
 }
 
 export type GenerationMode = "montage" | "narrative";
@@ -286,7 +296,7 @@ function sceneUsesCharacterReference(input: ShotPlanInput, role: string, concept
   const currentScene = `${role} ${concept}`;
   if (CHARACTER_FOCUS_TERMS.test(currentScene)) return true;
   if (ENVIRONMENT_FOCUS_TERMS.test(currentScene)) return false;
-  if (!input.character || input.character === "none") return false;
+  if (!input.hasCharacterReference && (!input.character || input.character === "none")) return false;
   return CHARACTER_MONTAGE_ROLES.has(role) || CHARACTER_NARRATIVE_BEATS.has(role);
 }
 
@@ -468,11 +478,13 @@ function buildPrompt(
         ? "upbeat fluid transitions, dynamic movement"
         : "slow atmospheric panning, long smooth dissolves";
   const characterDesc = usesCharacterReference
-    ? input.character && input.character !== "none"
-      ? `featuring ${input.character}`
-      : "featuring the recurring principal subject"
+    ? input.hasCharacterReference
+      ? "use the attached reference image for the character; do not redescribe the character's appearance"
+      : input.character && input.character !== "none"
+        ? `featuring ${input.character}`
+        : "featuring the recurring principal subject"
     : "environmental or object-focused scene, no featured character unless required by this current visual idea";
-  return [
+  return conciseImagePrompt([
     styleDesc,
     paceDesc,
     `${mood ?? "energetic"} mood`,
@@ -483,7 +495,7 @@ function buildPrompt(
     concept,
     "one focused visual idea, no complete storyline or multi-scene sequence inside this clip",
     "beat-synced cuts, professional music video production, 4K ultra-wide",
-  ].filter(Boolean).join(", ");
+  ]);
 }
 
 function buildNarrativePrompt(
@@ -512,9 +524,11 @@ function buildNarrativePrompt(
         ? "confident forward momentum"
         : "measured cinematic pacing";
   const characterDesc = usesCharacterReference
-    ? input.character && input.character !== "none"
-      ? `keep the same ${input.character} identity, face, wardrobe, and physical details established across character-focused scenes`
-      : "keep the same principal subject identity, wardrobe, and physical details established across character-focused scenes"
+    ? input.hasCharacterReference
+      ? "use the attached reference image for character identity and continuity; do not redescribe the character's appearance"
+      : input.character && input.character !== "none"
+        ? `keep the same ${input.character} identity, face, wardrobe, and physical details established across character-focused scenes`
+        : "keep the same principal subject identity, wardrobe, and physical details established across character-focused scenes"
     : "focus on the environment, objects, or atmosphere for this story beat; do not introduce the recurring person unless the current concept explicitly calls for them";
   const continuity = usesCharacterReference
     ? sceneIndex === 0
@@ -526,21 +540,21 @@ function buildNarrativePrompt(
       ? "deliver a clear visual resolution that completes the story"
       : "end on an action or composition that naturally leads into the next chronological scene";
 
-  return [
+  return conciseImagePrompt([
     styleDesc,
     paceDesc,
     `${mood ?? "cinematic"} mood`,
     energyDesc,
     `chronological story scene ${sceneIndex + 1} of ${sceneCount}`,
     `${beat} story beat`,
+    ending,
     `${section.label} music section`,
     concept,
     characterDesc,
     continuity,
-    ending,
     "one continuous story scene only, no montage, no flashback, no time jump, no multiple locations inside this clip",
     "professional narrative music video production, cinematic composition, no text or titles",
-  ].join(", ");
+  ]);
 }
 
 export function planShots(input: ShotPlanInput): ShotPlan {
@@ -664,7 +678,8 @@ export function planImagePackScenes(input: {
     const planInput: ShotPlanInput = {
       prompt: input.prompt,
       style: input.style,
-      character: input.hasCharacterReference ? "recurring reference character" : "recurring principal subject",
+      character: input.hasCharacterReference ? null : "recurring principal subject",
+      hasCharacterReference: input.hasCharacterReference,
       generationMode: "narrative",
     };
     const usesReference = numberedScript.scenes.map((concept, index) =>
@@ -694,7 +709,7 @@ export function planImagePackScenes(input: {
         startTime: index * 10,
         energy: 0.6,
         usesCharacterReference,
-        prompt: [
+        prompt: conciseImagePrompt([
           styleDesc,
           seriesDirection,
           `strict numbered script scene ${index + 1} of ${imageCount}`,
@@ -705,7 +720,7 @@ export function planImagePackScenes(input: {
             : "preserve chronological continuity for the next image without depicting the next event",
           "one still composition, one moment, one setting, and one camera view",
           "no collage, split screen, panels, storyboard, text, captions, or multiple moments",
-        ].join(", "),
+        ]),
       };
     });
   }
@@ -714,7 +729,8 @@ export function planImagePackScenes(input: {
   return planShots({
     prompt: input.prompt,
     style: input.style,
-    character: input.hasCharacterReference ? "recurring reference character" : null,
+    character: null,
+    hasCharacterReference: input.hasCharacterReference,
     requestedDuration: String(durationSeconds),
     generationMode: "narrative",
     analysis: {

@@ -173,6 +173,7 @@ router.post("/jobs/preview-shots", async (req, res) => {
       requestedDuration,
       silentFilmDurationSeconds,
       generationMode,
+      hasReferenceImage,
       audioAnalysis,
       audioObjectPath,
     } = (req.body ?? {}) as Record<string, unknown>;
@@ -192,6 +193,7 @@ router.post("/jobs/preview-shots", async (req, res) => {
       prompt: prompt as string | null,
       style: style as string | null,
       character: character as string | null,
+      hasCharacterReference: Boolean(hasReferenceImage),
       requestedDuration: previewDuration as string | null,
       generationMode: generationMode === "narrative" ? "narrative" : "montage",
       analysis: verifiedAnalysis as never,
@@ -479,6 +481,7 @@ router.post("/jobs", async (req, res) => {
     prompt,
     style,
     character,
+    hasCharacterReference: Boolean(referenceImagePath),
     requestedDuration: resolvedRequestedDuration,
     generationMode: normalizedGenerationMode,
     analysis: verifiedAudioAnalysis as never,

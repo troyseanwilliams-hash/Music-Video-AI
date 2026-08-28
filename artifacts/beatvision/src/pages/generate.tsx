@@ -39,11 +39,14 @@ import {
 } from "@/lib/creditPricing";
 import { getGenerationTimeEstimate } from "@/lib/jobEstimates";
 import { detectNamedSubject } from "@/lib/promptWarnings";
+import { consumeSceneScriptHandoff } from "@/lib/sceneScriptHandoff";
+import {
+  compactGeneratedImagePromptScript,
+  MAX_CREATIVE_PROMPT_LENGTH,
+} from "@/lib/scenePromptScript";
 
 const NUMBERED_IMAGE_SCENE_LINE =
   /^\s*(?:scene\s+)?(\d{1,2})\s*(?:(?:[.):])\s*|\s+)(?:\(\s*(?:\d+(?:\.\d+)?s?|\d{1,2}:\d{2}(?::\d{2})?)\s*[-–—]\s*(?:\d+(?:\.\d+)?s?|\d{1,2}:\d{2}(?::\d{2})?)\s*\)\s*[:\-]?\s*)?(.+?)\s*$/i;
-
-const MAX_CREATIVE_PROMPT_LENGTH = 12000;
 
 function analyzeNumberedScenes(script: string, maxScenes: number): {
   count: number | null;
@@ -382,14 +385,16 @@ export default function Generate() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const p = params.get("prompt");
+    const sceneScript = consumeSceneScriptHandoff();
     const referenceImagePath = params.get("referenceImagePath");
-    if (p) setPrompt(p);
+    if (sceneScript) setPrompt(sceneScript);
+    else if (p) setPrompt(p);
     if (referenceImagePath?.startsWith("/objects/")) {
       setRefImageObjectPath(referenceImagePath);
       setRefImagePreviewUrl(`/api/storage${referenceImagePath}`);
       setRefImageError(null);
     }
-    if (!p && !referenceImagePath) return;
+    if (!p && !sceneScript && !referenceImagePath) return;
     window.history.replaceState({}, "", window.location.pathname);
   }, []);
 
@@ -845,6 +850,9 @@ export default function Generate() {
     !!shotPlan &&
     reviewedShotIndexes.length === shotPlan.shots.length &&
     shotPlan.shots.every((shot) => reviewedShotIndexes.includes(shot.index));
+  const compactImagePromptScript = shotPlan
+    ? compactGeneratedImagePromptScript(shotPlan.shots)
+    : "";
 
   const buildScenePrompts = useCallback(async () => {
     if (imagePackMode || !prompt.trim() || requiredPromptCount === null) return;
@@ -859,6 +867,7 @@ export default function Generate() {
           style: selectedStyle,
           generationMode,
           character,
+          hasReferenceImage: Boolean(refImageObjectPath),
           requestedDuration: effectiveRequestedDuration,
           silentFilmDurationSeconds:
             sourceType === CreateJobRequestAudioSourceType.none ? silentFilmDurationSeconds : null,
@@ -901,6 +910,7 @@ export default function Generate() {
     selectedStyle,
     generationMode,
     character,
+    refImageObjectPath,
     effectiveRequestedDuration,
     sourceType,
     silentFilmDurationSeconds,
@@ -2834,14 +2844,33 @@ export default function Generate() {
                           variant="ghost"
                           size="sm"
                           onClick={() => {
-                            void navigator.clipboard.writeText(
-                              shotPlan.shots.map((shot) => `${shot.index + 1}. ${shot.prompt}`).join("\n\n"),
-                            );
-                            toast({ title: "Image prompts copied" });
+                            void navigator.clipboard.writeText(compactImagePromptScript);
+                            toast({ title: "Compact image script copied" });
                           }}
                         >
                           <Copy className="mr-1.5 h-3.5 w-3.5" />
-                          Copy all
+                          Copy script
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setPrompt(compactImagePromptScript);
+                            setShotPlan(null);
+                            setReviewedShotIndexes([]);
+                            setFieldErrors((current) => ({ ...current, prompt: undefined }));
+                            void navigator.clipboard.writeText(compactImagePromptScript);
+                            requestAnimationFrame(() => promptRef.current?.focus());
+                            toast({
+                              title: "Copied to Creative Prompt",
+                              description: "The compact numbered script is ready for review in the Creative Prompt field.",
+                            });
+                          }}
+                          data-testid="button-copy-image-prompts-to-creative-prompt"
+                        >
+                          <Copy className="mr-1.5 h-3.5 w-3.5" />
+                          Copy to Creative Prompt
                         </Button>
                         <Button
                           type="button"

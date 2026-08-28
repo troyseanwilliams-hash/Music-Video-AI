@@ -275,7 +275,14 @@ function normalizeSceneBuilderScenes(
     const fallbackPrompt = hasReferenceImage
       ? `Use the attached reference image for the character, ${beats[index]}, cinematic still composition`
       : `Cinematic still image, ${beats[index]}, clear subject and setting, expressive lighting and mood`;
-    const imagePrompt = compactSceneText(record.imagePrompt, maxPromptLength, fallbackPrompt);
+    const generatedPrompt = compactSceneText(record.imagePrompt, maxPromptLength, fallbackPrompt);
+    const imagePrompt = hasReferenceImage && !/attached reference image/i.test(generatedPrompt)
+      ? compactSceneText(
+          `Use the attached reference image for the character, ${generatedPrompt}`,
+          maxPromptLength,
+          fallbackPrompt,
+        )
+      : generatedPrompt;
     const title = compactSceneText(record.title, 70, `Scene ${index + 1}`);
     return { number: index + 1, title, imagePrompt };
   });

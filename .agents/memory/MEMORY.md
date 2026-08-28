@@ -33,3 +33,4 @@
 - [Source-image recovery](source-image-recovery.md) — persist accepted image requests, tolerate transient polling failures, and decode downloaded images before storage.
 - [Worker deployment cutover](worker-deployment-cutover.md) — keep the API processor enabled until an always-on production worker is actually deployed and healthy.
 - [Named-subject reference prompts](named-subject-reference-prompts.md) — preserve the warning; offer reference image, safe description replacement, or continue without one.
+- [Reference-image prompt authoring](reference-image-prompt-authoring.md) — when a reference is attached, generated prompts should point to it instead of repeating character appearance.

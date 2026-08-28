@@ -304,6 +304,22 @@ describe("planImagePackScenes", () => {
 });
 
 describe("planShots narrative planning", () => {
+  it("keeps generated image prompts concise and refers to an attached character image", () => {
+    const plan = planShots({
+      prompt: "A pilot prepares a plane. Then the pilot flies through a storm. Finally the pilot lands at sunrise.",
+      character: "person",
+      hasCharacterReference: true,
+      generationMode: "narrative",
+      requestedDuration: "30",
+    });
+
+    expect(plan.shots.every((shot) => shot.prompt.length <= 600)).toBe(true);
+    expect(plan.shots.filter((shot) => shot.usesCharacterReference).every((shot) =>
+      shot.prompt.includes("attached reference image")
+      && !shot.prompt.includes("featuring person")
+    )).toBe(true);
+  });
+
   it("only marks character-focused story scenes for the character reference", () => {
     const plan = planShots({
       prompt: "A woman steps off a train. Then an empty train station waits in the rain. Finally sunrise fills the city skyline.",
