@@ -21,3 +21,17 @@ uri = "file://previews/user-recovery-email-preview.png"
 type = "image"
 title = "Updated AIBeatSync Email Preview"
 description = "Draft showing a 2,500-credit refund. Nothing has been sent and no credits were changed."
+
+[[outputs]]
+id = "M8-YQTj3JrhA8NU-V1MIj"
+uri = "file://attached_assets/amelia-earhart-exact-21-scene-prompts.txt"
+type = "text"
+title = "Amelia Earhart — Exact 21-Scene Prompts"
+description = "All 21 exact image-foundation and matching animation prompts, plus verified settings and the 2,291-credit cost breakdown."
+
+[[outputs]]
+id = "7AUsM972wEsvF7pxZKxzb"
+uri = "file://attached_assets/amelia-earhart-shortened-exact-20-scene-prompts.txt"
+type = "text"
+title = "Amelia Earhart — Shortened Exact 20-Scene Prompts"
+description = "The corrected 20-scene image-foundation and matching animation prompts, source analysis, validation, and verified 2,182-credit total."
