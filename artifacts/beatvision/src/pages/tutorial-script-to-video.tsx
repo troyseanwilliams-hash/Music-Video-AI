@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { AuroraBackground } from "@/components/AuroraBackground";
 import { Check, CheckCircle2, Copy, XCircle, ArrowRight, ImagePlus, Scissors, Sparkles, Wand2, Layers, Zap, PenTool } from "lucide-react";
 
-const EXAMPLE_SCENE_SCRIPT = [
+const EXAMPLE_MONTAGE_SCRIPT = [
   "1. Dawn over a windswept Kansas prairie, young Amelia Earhart watches a distant biplane rise through golden mist.",
   "2. Amelia Earhart as a young aviation dreamer at an airfield, reaching toward the wing of a bright red vintage aircraft.",
   "3. 1920s women pilots gathered beside a hangar, Amelia stepping forward with calm determination in period aviation clothing.",
@@ -28,16 +28,93 @@ const EXAMPLE_SCENE_SCRIPT = [
   "20. A diverse group of modern young women studying aviation beneath a suspended vintage aircraft, inspired by Amelia's legacy.",
 ].join("\n");
 
-export default function TutorialScriptToVideo() {
-  const [copied, setCopied] = useState(false);
+const EXAMPLE_NARRATIVE_SCRIPT = [
+  "1. Young pilot Amelia Earhart stands on a windswept Kansas prairie at dawn, watching a distant biplane rise through golden mist and feeling the first spark of aviation wonder.",
+  "2. At a sunlit airfield, pilot Amelia approaches a bright red vintage aircraft and reaches toward its wing, newly certain that flying will shape her future.",
+  "3. Amelia studies aviation beside a busy 1920s hangar, surrounded by women pilots, tools, and aircraft plans while she gathers the courage to enter their world.",
+  "4. Pilot Amelia climbs into an open-cockpit biplane before her first major crossing, while mechanics tighten cables and prepare the aircraft around her.",
+  "5. The biplane lifts from the runway and carries Amelia above the Atlantic Ocean, the small aircraft surrounded by vast blue distance and racing clouds.",
+  "6. Inside the vibrating open cockpit, pilot Amelia steadies the controls in her leather helmet and goggles, learning to trust her hands and read the changing sky.",
+  "7. A storm overtakes the aircraft above the ocean, and Amelia holds her course through turbulent air as a narrow beam of sunlight breaks through the clouds.",
+  "8. Night settles over dark water; pilot Amelia studies a softly glowing instrument panel and compass, making a careful correction to keep the aircraft on course.",
+  "9. After the dangerous crossing, a lonely lighthouse and rugged coastline emerge through fog ahead of Amelia, offering the first sign that land is near.",
+  "10. Pilot Amelia lands on a 1920s runway and steps down from the aircraft into camera flashes, waving flags, and a crowd recognizing the historic achievement without readable text.",
+  "11. In the quiet after the celebration, pilot Amelia stands beside her aircraft in a leather jacket while reporters and photographers capture the moment.",
+  "12. Pilot Amelia returns to a worktable and traces a new flight route across an Atlantic map, her gloved hand beside a brass compass and folded navigation lines.",
+  "13. Pilot Amelia walks through a workshop filled with aircraft parts, tools, and blueprints, turning the memory of her crossing into plans for an even greater record.",
+  "14. At a remote runway beneath a copper sunset, a long-distance aircraft is fueled and repaired while Amelia watches the crew prepare for departure.",
+  "15. Pilot Amelia launches again from a grass airfield, scarf lifting in the wind and propeller blurring as the aircraft surges toward another uncertain horizon.",
+  "16. The aircraft crosses snow-covered mountain ranges, deep valleys moving beneath its wings as Amelia continues forward through clear morning light.",
+  "17. At dusk, the aircraft reaches a wide Pacific horizon, silhouetted against rose and indigo clouds as Amelia begins the most uncertain journey of her story.",
+  "18. Empty ocean stretches beneath a fading flight path while a compass turns in the foreground, holding the unanswered tension of Amelia's final journey.",
+  "19. Warm window light falls across Amelia's weathered flight jacket, goggles, and old map resting in stillness, transforming the journey into a quiet memorial.",
+  "20. In the present day, young women study aviation beneath a suspended vintage aircraft, carrying Amelia's courage forward into a hopeful future.",
+].join("\n");
 
-  const copyExampleScript = async () => {
+function ExampleScriptCard({
+  kind,
+  title,
+  description,
+  script,
+  copied,
+  onCopy,
+}: {
+  kind: "montage" | "narrative";
+  title: string;
+  description: string;
+  script: string;
+  copied: boolean;
+  onCopy: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/[0.08] via-card to-accent/[0.05] p-6">
+      <div className="flex flex-col gap-4">
+        <div>
+          <div className="flex items-center gap-2 text-primary font-semibold">
+            <Sparkles className="h-5 w-5" />
+            {kind === "montage" ? "Visual Montage" : "Narrative Story"}
+          </div>
+          <h3 className="mt-2 text-xl font-bold">{title}</h3>
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{description}</p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full border-primary/30 hover:border-primary/60 hover:bg-primary/10"
+          onClick={onCopy}
+          data-testid={`button-copy-${kind}-script`}
+        >
+          {copied ? <Check className="mr-2 h-4 w-4 text-primary" /> : <Copy className="mr-2 h-4 w-4" />}
+          {copied ? "Copied" : "Copy 20-scene script"}
+        </Button>
+      </div>
+      <details className="group mt-6">
+        <summary className="cursor-pointer text-sm font-medium text-primary hover:text-primary/80">
+          Show the complete 20-scene script
+        </summary>
+        <pre className="mt-4 max-h-[26rem] overflow-auto whitespace-pre-wrap rounded-xl border border-border/60 bg-background/70 p-4 text-xs leading-relaxed text-foreground/85">
+          {script}
+        </pre>
+      </details>
+      <div className="mt-5 grid gap-3 text-sm text-muted-foreground">
+        <p><strong className="text-foreground">1.</strong> Select {kind === "montage" ? "Visual Montage" : "Narrative Story"} in Generate.</p>
+        <p><strong className="text-foreground">2.</strong> Paste one numbered line for each analyzed segment.</p>
+        <p><strong className="text-foreground">3.</strong> Confirm the required prompt count before submitting.</p>
+      </div>
+    </div>
+  );
+}
+
+export default function TutorialScriptToVideo() {
+  const [copiedExample, setCopiedExample] = useState<"montage" | "narrative" | null>(null);
+
+  const copyExampleScript = async (kind: "montage" | "narrative", script: string) => {
     try {
-      await navigator.clipboard.writeText(EXAMPLE_SCENE_SCRIPT);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1800);
+      await navigator.clipboard.writeText(script);
+      setCopiedExample(kind);
+      window.setTimeout(() => setCopiedExample(null), 1800);
     } catch {
-      setCopied(false);
+      setCopiedExample(null);
     }
   };
 
@@ -124,44 +201,57 @@ export default function TutorialScriptToVideo() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/[0.08] via-card to-accent/[0.05] p-6 md:p-8">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <div className="flex items-center gap-2 text-primary font-semibold">
-                    <Sparkles className="h-5 w-5" />
-                    Full-track example: Amelia Earhart
-                  </div>
-                  <h3 className="mt-2 text-xl font-bold">One numbered line becomes one visual segment</h3>
-                  <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-                    For a full-track Visual Montage, upload your audio, choose your output settings, and paste one
-                    concrete visual per line. The app analyzes the track, then checks that your numbered scene count
-                    matches the number of timeline segments before showing the final cost.
+            <div className="mb-6 rounded-2xl border border-accent/25 bg-accent/[0.06] p-6 md:p-8">
+              <div className="flex items-center gap-2 text-accent font-semibold">
+                <Layers className="h-5 w-5" />
+                Choose the right generation mode
+              </div>
+              <h3 className="mt-2 text-xl font-bold">Both modes use numbered prompts, but they tell different kinds of stories</h3>
+              <div className="mt-5 grid gap-5 md:grid-cols-2">
+                <div className="rounded-xl border border-border/60 bg-background/40 p-4">
+                  <p className="font-semibold text-foreground">Visual Montage</p>
+                  <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                    Each line is an independent visual idea. The app uses variety, camera changes, and music energy
+                    to create a dynamic sequence. The scenes do not need to form a plot.
                   </p>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="shrink-0 border-primary/30 hover:border-primary/60 hover:bg-primary/10"
-                  onClick={copyExampleScript}
-                  data-testid="button-copy-amelia-script"
-                >
-                  {copied ? <Check className="mr-2 h-4 w-4 text-primary" /> : <Copy className="mr-2 h-4 w-4" />}
-                  {copied ? "Copied" : "Copy 20-scene script"}
-                </Button>
+                <div className="rounded-xl border border-border/60 bg-background/40 p-4">
+                  <p className="font-semibold text-foreground">Narrative Story</p>
+                  <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                    Each line is the next beat in one chronological story. Repeat important character traits, keep
+                    locations and actions connected, and write an ending that resolves the journey.
+                  </p>
+                </div>
               </div>
-              <details className="group mt-6">
-                <summary className="cursor-pointer text-sm font-medium text-primary hover:text-primary/80">
-                  Show the complete 20-scene example
-                </summary>
-                <pre className="mt-4 max-h-[26rem] overflow-auto whitespace-pre-wrap rounded-xl border border-border/60 bg-background/70 p-4 text-xs leading-relaxed text-foreground/85">
-                  {EXAMPLE_SCENE_SCRIPT}
-                </pre>
-              </details>
-              <div className="mt-5 grid gap-3 text-sm text-muted-foreground sm:grid-cols-3">
-                <p><strong className="text-foreground">1.</strong> Upload the full audio track.</p>
-                <p><strong className="text-foreground">2.</strong> Use consecutive numbers with no gaps.</p>
-                <p><strong className="text-foreground">3.</strong> Review the scene count and credits before confirming.</p>
-              </div>
+              <p className="mt-5 text-sm text-muted-foreground">
+                For either mode, the uploaded track is analyzed first. If the analysis says the video needs 20
+                segments, provide exactly 20 numbered lines to control every segment.
+              </p>
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-2">
+              <ExampleScriptCard
+                kind="montage"
+                title="Visual Montage example"
+                description="Use this for a beat-driven Amelia Earhart music video. The images are varied and visually independent rather than written as one continuous plot."
+                script={EXAMPLE_MONTAGE_SCRIPT}
+                copied={copiedExample === "montage"}
+                onCopy={() => copyExampleScript("montage", EXAMPLE_MONTAGE_SCRIPT)}
+              />
+              <ExampleScriptCard
+                kind="narrative"
+                title="Narrative Story example"
+                description="Use this for a chronological Amelia Earhart story. The scenes move from discovery, to achievement, to uncertainty, and finally to her lasting legacy."
+                script={EXAMPLE_NARRATIVE_SCRIPT}
+                copied={copiedExample === "narrative"}
+                onCopy={() => copyExampleScript("narrative", EXAMPLE_NARRATIVE_SCRIPT)}
+              />
+            </div>
+
+            <div className="mt-6 rounded-xl border border-border/50 bg-card p-5 text-sm text-muted-foreground">
+              <strong className="text-foreground">How to use either example:</strong>{" "}
+              Upload the full track, select the matching generation mode, paste one script into Creative Prompt,
+              and wait for the page to confirm the required prompt count before submitting.
             </div>
           </section>
 

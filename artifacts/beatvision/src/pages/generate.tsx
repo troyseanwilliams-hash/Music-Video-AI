@@ -839,6 +839,18 @@ export default function Generate() {
     songDurationSec,
     generationMode as GenerationMode
   );
+  // A Full track prompt count is authoritative only after the selected upload
+  // has been analyzed. Before that, getGenerationClipPlan intentionally uses
+  // its safe maximum fallback, which must not be shown as the user's real
+  // requirement or used to reject their numbered script.
+  const promptCountReady =
+    !imagePackMode &&
+    (
+      sourceType === CreateJobRequestAudioSourceType.none ||
+      !fullTrackSelected ||
+      hasCurrentAudioAnalysis
+    );
+  const requiredPromptCount = promptCountReady ? generationEstimate.unitCount : null;
   const balance = statsData?.creditsRemaining ?? null;
   const canAfford = canAffordCredits(activeCost, balance, isAdmin);
 
@@ -1135,9 +1147,10 @@ export default function Generate() {
     } else if (
       !imagePackMode &&
       numberedVideoSceneAnalysis.count !== null &&
-      numberedVideoSceneAnalysis.count !== generationEstimate.unitCount
+      requiredPromptCount !== null &&
+      numberedVideoSceneAnalysis.count !== requiredPromptCount
     ) {
-      errors.prompt = `This video needs ${generationEstimate.unitCount} numbered scenes, but the script contains ${numberedVideoSceneAnalysis.count}.`;
+      errors.prompt = `This video needs ${requiredPromptCount} numbered scenes, but the script contains ${numberedVideoSceneAnalysis.count}.`;
     }
     if (
       imagePackMode
@@ -2195,6 +2208,39 @@ export default function Generate() {
                       );
                     })()}
 
+                    {!imagePackMode && (
+                      <div
+                        className="mt-3 rounded-xl border border-primary/30 bg-primary/[0.07] px-4 py-3"
+                        role="status"
+                        aria-live="polite"
+                        data-testid="prompt-requirement"
+                      >
+                        <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+                          <FileText className="h-4 w-4 shrink-0" />
+                          Prompt requirement
+                        </div>
+                        {requiredPromptCount === null ? (
+                          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                            We&apos;re analyzing your video to calculate the exact number of prompts needed for the
+                            full track. This count will appear here before you can submit.
+                          </p>
+                        ) : (
+                          <>
+                            <p className="mt-1 text-sm leading-relaxed text-foreground">
+                              This {generationMode === CreateJobRequestGenerationMode.narrative ? "story" : "video"} needs{" "}
+                              <strong>{requiredPromptCount} numbered prompts</strong>.
+                            </p>
+                            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                              Use one complete visual moment per line, numbered consecutively from 1.{" "}
+                              {numberedVideoSceneAnalysis.count === null
+                                ? "No numbered prompts detected yet."
+                                : `${numberedVideoSceneAnalysis.count} of ${requiredPromptCount} required prompts detected.`}
+                            </p>
+                          </>
+                        )}
+                      </div>
+                    )}
+
                     {analyzeAudio.isError && !analyzeAudio.isPending && analysisForPath === objectPath && objectPath && (
                       <div className="flex flex-wrap items-center gap-2 text-xs text-amber-500/80">
                         <span className="inline-flex items-center gap-1.5">
@@ -3072,6 +3118,24 @@ export default function Generate() {
                 </div>}
                 {!imagePackMode && (
                   <>
+                     <div
+                       className="flex justify-between font-medium text-primary"
+                       data-testid="confirmation-prompt-requirement"
+                     >
+                       <span>Prompts required</span>
+                       <span>
+                         {requiredPromptCount ?? "Waiting for analysis"}{" "}
+                         {requiredPromptCount === 1 ? "prompt" : "numbered prompts"}
+                       </span>
+                     </div>
+                     <div className="flex justify-between text-xs">
+                       <span className="text-muted-foreground">Script detected</span>
+                       <span>
+                         {numberedVideoSceneAnalysis.count === null
+                           ? "No numbered prompts"
+                           : `${numberedVideoSceneAnalysis.count} of ${requiredPromptCount ?? "—"}`}
+                       </span>
+                     </div>
                     <div className="flex justify-between text-xs">
                       <span className="text-muted-foreground">Image foundation · {generationEstimate.unitCount} images</span>
                       <span>{generatedImageCost} credits</span>
