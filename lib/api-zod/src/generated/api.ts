@@ -760,7 +760,13 @@ export const CreateJobBody = zod.object({
     .max(createJobBodyApprovedScenePromptsMax)
     .optional()
     .describe(
-      "Exact ordered image prompts reviewed by the user. The server validates them against the current authoritative scene plan before reserving credits.",
+      "Exact ordered scene prompts reviewed by the user. The server validates them against the current authoritative scene plan before reserving credits.",
+    ),
+  scriptApproved: zod
+    .boolean()
+    .optional()
+    .describe(
+      "Explicit user confirmation that the submitted script and scene prompts were reviewed and approved before generation.",
     ),
 });
 

@@ -215,10 +215,11 @@ Return ONLY valid JSON in exactly this shape:
 
 Rules:
 - Create the requested number of scenes, or 3–12 scenes if no count is provided.
-- Every imagePrompt must be 18–35 words, concrete, visual, and self-contained: subject/action, setting, lighting or mood, and a clear composition.
+- Every imagePrompt must be 18–35 words, concrete, visual, and self-contained: start with the scene's subject/action and setting, then add lighting, mood, and composition.
 - Each imagePrompt must describe one still image, one moment, and one location. Do not write video directions, dialogue, narration, camera movement, captions, or abstract plot summaries.
 - Keep every imagePrompt concise enough to combine all numbered scenes into a 12,000-character creative prompt.
 - Preserve chronological story progression and make each scene materially different from the previous one.
+- Describe the supplied story beat first. Keep any aesthetic or style wording brief and place it at the end as a "style footnote"; never let style replace the scene description.
 - Use plain provider-neutral language. Do not mention any image or video provider.
 - If a reference image will be attached, use it only in scenes whose story beat contains or clearly depicts that character. In those character scenes, do not describe the character's face, hair, clothing, identity, age, or other appearance; write "use the attached reference image for the character" instead.
 - Never mention or use the attached reference image in environment-only, object-only, or other scenes where the character does not appear.
@@ -283,8 +284,8 @@ function normalizeSceneBuilderScenes(
     const usesCharacterReference =
       hasReferenceImage && sceneConceptIncludesCharacter(beats[index]!);
     const fallbackPrompt = usesCharacterReference
-      ? `Use the attached reference image for the character, ${beats[index]}, cinematic still composition`
-      : `Cinematic still image, ${beats[index]}, clear subject and setting, expressive lighting and mood`;
+      ? `${beats[index]}, use the attached reference image for the character, clear cinematic still composition, style footnote: cinematic`
+      : `${beats[index]}, clear subject and setting, expressive lighting and mood, style footnote: cinematic`;
     const generatedPromptWithPossibleReference = shortenCompletePrompt(
       String(record.imagePrompt ?? ""),
       maxPromptLength,

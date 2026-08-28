@@ -109,9 +109,11 @@ export interface CreateJobRequest {
    */
   approvedScenePlanFingerprint?: string;
   /**
-   * Exact ordered image prompts reviewed by the user. The server validates them against the current authoritative scene plan before reserving credits.
+   * Exact ordered scene prompts reviewed by the user. The server validates them against the current authoritative scene plan before reserving credits.
    * @minItems 1
    * @maxItems 60
    */
   approvedScenePrompts?: CreateJobRequestApprovedScenePromptsItem[];
+  /** Explicit user confirmation that the submitted script and scene prompts were reviewed and approved before generation. */
+  scriptApproved?: boolean;
 }

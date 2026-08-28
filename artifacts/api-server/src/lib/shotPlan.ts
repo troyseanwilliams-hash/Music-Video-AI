@@ -475,16 +475,16 @@ function buildPrompt(
         : "featuring the recurring principal subject"
     : "environmental or object-focused scene, no featured character unless required by this current visual idea";
   return conciseImagePrompt([
-    styleDesc,
-    paceDesc,
-    `${mood ?? "energetic"} mood`,
-    energyDesc,
-    characterDesc,
+    `scene direction: ${concept}`,
     `${montageRole} visual motif`,
     `${section.label} section visual treatment`,
-    concept,
+    characterDesc,
     "one focused visual idea, no complete storyline or multi-scene sequence inside this clip",
+    `${mood ?? "energetic"} mood`,
+    energyDesc,
+    paceDesc,
     "beat-synced cuts, professional music video production, 4K ultra-wide",
+    `style footnote: ${styleDesc}`,
   ]);
 }
 
@@ -531,19 +531,19 @@ function buildNarrativePrompt(
       : "end on an action or composition that naturally leads into the next chronological scene";
 
   return conciseImagePrompt([
-    styleDesc,
-    paceDesc,
-    `${mood ?? "cinematic"} mood`,
-    energyDesc,
+    `scene direction: ${concept}`,
     `chronological story scene ${sceneIndex + 1} of ${sceneCount}`,
     `${beat} story beat`,
-    ending,
     `${section.label} music section`,
-    concept,
     characterDesc,
     continuity,
+    ending,
     "one continuous story scene only, no montage, no flashback, no time jump, no multiple locations inside this clip",
+    `${mood ?? "cinematic"} mood`,
+    energyDesc,
+    paceDesc,
     "professional narrative music video production, cinematic composition, no text or titles",
+    `style footnote: ${styleDesc}`,
   ]);
 }
 
