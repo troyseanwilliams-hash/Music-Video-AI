@@ -866,8 +866,9 @@ export default function Generate() {
   const generatedPromptLabel = `${generatedPromptKind} prompt`;
   const generatedPromptLabelPlural = `${generatedPromptKind} prompts`;
 
-  const buildScenePrompts = useCallback(async () => {
-    if (imagePackMode || !prompt.trim() || requiredPromptCount === null) return;
+  const buildScenePrompts = useCallback(async (promptOverride?: string) => {
+    const sourcePrompt = promptOverride ?? prompt;
+    if (imagePackMode || !sourcePrompt.trim() || requiredPromptCount === null) return;
     setShotPlanLoading(true);
     try {
       const response = await fetch("/api/jobs/preview-shots", {
@@ -875,7 +876,7 @@ export default function Generate() {
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          prompt,
+          prompt: sourcePrompt,
           style: selectedStyle,
           generationMode,
           character,
@@ -1320,9 +1321,10 @@ export default function Generate() {
       }
       setSubjectReplacementError(null);
       setReferenceChoiceOpen(false);
+      await buildScenePrompts(nextScript);
       toast({
         title: "Script updated",
-        description: `Replaced “${subjectBeingReplaced}” with a visual character description and validated the new prompt.`,
+        description: `Replaced “${subjectBeingReplaced}” with a visual character description and built the updated prompts.`,
       });
     } catch (error) {
       setSubjectReplacementError(error instanceof Error ? error.message : "Could not update the script.");
@@ -2848,7 +2850,13 @@ export default function Generate() {
                     type="button"
                     variant={shotPlan ? "outline" : "default"}
                     size="sm"
-                    onClick={() => void buildScenePrompts()}
+                    onClick={() => {
+                      if (namedSubjectWarning && !refImageObjectPath) {
+                        setReferenceChoiceOpen(true);
+                        return;
+                      }
+                      void buildScenePrompts();
+                    }}
                     disabled={
                       shotPlanLoading ||
                       !prompt.trim() ||
