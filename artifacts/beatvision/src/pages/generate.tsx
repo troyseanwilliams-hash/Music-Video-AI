@@ -4,6 +4,7 @@ import { AudioWaveformSelector } from "@/components/AudioWaveformSelector";
 import SignupTeaser from "@/components/SignupTeaser";
 import { useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
+import { useQuery } from "@tanstack/react-query";
 import {
   useCreateJob,
   useAnalyzeAudio,
@@ -96,7 +97,7 @@ import { motion } from "framer-motion";
 import {
   Upload, Music, Sparkles, Loader2, CheckCircle2, XCircle,
   Users, Clapperboard, Layers, Zap, Film, Wand2, Video as VideoIcon, FileText,
-  ChevronDown, User, Maximize2, Captions, Pencil, MonitorPlay, ImageIcon,
+  ChevronDown, User, Maximize2, Captions, Pencil, MonitorPlay, ImageIcon, X,
   Lock, Crown, Coins, AlertTriangle, CreditCard, Clock, ShieldAlert, Info, VideoOff,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -190,6 +191,19 @@ const CHARACTERS = [
   { value: "an animal", label: "Animal" },
 ] as const;
 type CharacterValue = (typeof CHARACTERS)[number]["value"];
+
+type ReferenceGalleryAsset = {
+  id: string;
+  objectPath: string;
+  assetIndex: number;
+  prompt?: string | null;
+  createdAt?: string;
+};
+
+type ReferenceGalleryResponse = {
+  assets: ReferenceGalleryAsset[];
+  total: number;
+};
 
 function formatDuration(seconds: number | null | undefined): string {
   const safeSeconds = Math.max(0, Math.round(seconds ?? 0));
@@ -327,6 +341,18 @@ export default function Generate() {
   const [refImagePreviewUrl, setRefImagePreviewUrl] = useState<string | null>(null);
   const [isUploadingRefImage, setIsUploadingRefImage] = useState(false);
   const [refImageError, setRefImageError] = useState<string | null>(null);
+  const [galleryPickerOpen, setGalleryPickerOpen] = useState(false);
+  const referenceGalleryQuery = useQuery({
+    queryKey: ["reference-image-gallery"],
+    enabled: isAuthenticated && galleryPickerOpen,
+    queryFn: async () => {
+      const response = await fetch("/api/image-assets?limit=60", {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Could not load your image gallery.");
+      return response.json() as Promise<ReferenceGalleryResponse>;
+    },
+  });
 
   // Handoff from the AI Song Generator: /generate?audioObjectPath=<path>&title=<name>
   // preloads that song as the uploaded audio source, ready to generate a video.
@@ -377,6 +403,16 @@ export default function Generate() {
     } finally {
       setIsUploadingRefImage(false);
     }
+  };
+
+  const handleGalleryReferenceSelect = (asset: ReferenceGalleryAsset) => {
+    if (refImagePreviewUrl?.startsWith("blob:")) {
+      URL.revokeObjectURL(refImagePreviewUrl);
+    }
+    setRefImageObjectPath(asset.objectPath);
+    setRefImagePreviewUrl(`/api/storage${asset.objectPath}`);
+    setRefImageError(null);
+    setGalleryPickerOpen(false);
   };
 
   const handleLipSyncImageSelect = async (file: File) => {
@@ -2344,21 +2380,39 @@ export default function Generate() {
                   >
                     Change image
                   </button>
+                   <button
+                     type="button"
+                     onClick={() => setGalleryPickerOpen(true)}
+                     className="ml-3 text-xs text-primary hover:underline mt-1"
+                   >
+                     Choose from gallery
+                   </button>
                 </div>
               </div>
             ) : (
               <div className="px-4 pb-4">
-                <button
-                  onClick={() => refImageInputRef.current?.click()}
-                  disabled={isUploadingRefImage}
-                  className="w-full flex items-center justify-center gap-2 rounded-lg border border-dashed border-border/60 hover:border-primary/50 hover:bg-primary/5 px-4 py-3 text-sm text-muted-foreground transition-colors"
-                >
-                  <Upload className="h-4 w-4" /> Upload a character (JPG, PNG, WebP)
-                </button>
+                 <div className="grid gap-2 sm:grid-cols-2">
+                   <button
+                     type="button"
+                     onClick={() => refImageInputRef.current?.click()}
+                     disabled={isUploadingRefImage}
+                     className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-border/60 hover:border-primary/50 hover:bg-primary/5 px-4 py-3 text-sm text-muted-foreground transition-colors"
+                   >
+                     <Upload className="h-4 w-4" /> Upload an image
+                   </button>
+                   <button
+                     type="button"
+                     onClick={() => setGalleryPickerOpen(true)}
+                     disabled={isUploadingRefImage}
+                     className="flex items-center justify-center gap-2 rounded-lg border border-border/60 bg-primary/[0.04] hover:border-primary/50 hover:bg-primary/5 px-4 py-3 text-sm text-muted-foreground transition-colors"
+                   >
+                     <ImageIcon className="h-4 w-4" /> Choose from gallery
+                   </button>
+                 </div>
                 <p className="text-xs text-muted-foreground mt-1.5">
                   {imagePackMode
-                    ? "Upload a subject or style reference and every image in the pack will use it for stronger visual consistency."
-                    : "Upload a face or character and it anchors every generated shot, so the same character appears consistently across the whole video."}
+                     ? "Upload a subject or style reference, or reuse one from your gallery. Every image in the pack will use it for stronger visual consistency."
+                     : "Upload a face or character, or reuse one from your gallery. It anchors every generated shot so the same character appears consistently across the whole video."}
                 </p>
                 {refImageError && (
                   <p className="text-xs text-destructive mt-1.5 flex items-center gap-1">
@@ -2367,6 +2421,77 @@ export default function Generate() {
                 )}
               </div>
             )}
+             {galleryPickerOpen && (
+               <div className="mx-4 mb-4 rounded-xl border border-primary/25 bg-background/60 p-3">
+                 <div className="mb-3 flex items-center justify-between gap-3">
+                   <div>
+                     <p className="text-sm font-medium">Choose from your image gallery</p>
+                     <p className="mt-0.5 text-xs text-muted-foreground">
+                       Select a generated image to reuse as the visual reference.
+                     </p>
+                   </div>
+                   <button
+                     type="button"
+                     onClick={() => setGalleryPickerOpen(false)}
+                     className="rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                     aria-label="Close image gallery picker"
+                   >
+                     <X className="h-4 w-4" />
+                   </button>
+                 </div>
+                 {referenceGalleryQuery.isLoading && (
+                   <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+                     <Loader2 className="h-4 w-4 animate-spin" /> Loading your gallery…
+                   </div>
+                 )}
+                 {referenceGalleryQuery.isError && (
+                   <div className="flex items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
+                     <span className="text-destructive">
+                       {referenceGalleryQuery.error instanceof Error
+                         ? referenceGalleryQuery.error.message
+                         : "Could not load your image gallery."}
+                     </span>
+                     <button
+                       type="button"
+                       onClick={() => void referenceGalleryQuery.refetch()}
+                       className="shrink-0 text-xs font-medium text-primary hover:underline"
+                     >
+                       Try again
+                     </button>
+                   </div>
+                 )}
+                 {!referenceGalleryQuery.isLoading &&
+                   !referenceGalleryQuery.isError &&
+                   (referenceGalleryQuery.data?.assets.length ?? 0) === 0 && (
+                     <div className="rounded-lg border border-dashed border-border/60 px-3 py-6 text-center text-sm text-muted-foreground">
+                       Your image gallery is empty. Upload a reference image or generate an image pack first.
+                     </div>
+                   )}
+                 {(referenceGalleryQuery.data?.assets.length ?? 0) > 0 && (
+                   <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                     {referenceGalleryQuery.data!.assets.map((asset) => (
+                       <button
+                         key={asset.id}
+                         type="button"
+                         onClick={() => handleGalleryReferenceSelect(asset)}
+                         className="group relative aspect-square overflow-hidden rounded-lg border border-border/60 bg-muted/30 transition hover:border-primary hover:ring-2 hover:ring-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                         aria-label={`Use gallery image ${asset.assetIndex + 1} as reference`}
+                       >
+                         <img
+                           src={`/api/storage${asset.objectPath}`}
+                           alt={asset.prompt || `Generated image ${asset.assetIndex + 1}`}
+                           loading="lazy"
+                           className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                         />
+                         <span className="absolute inset-x-0 bottom-0 bg-black/65 px-1.5 py-1 text-left text-[10px] text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                           Use this image
+                         </span>
+                       </button>
+                     ))}
+                   </div>
+                 )}
+               </div>
+             )}
           </div>
 
           {/* ── Prompt ── */}
