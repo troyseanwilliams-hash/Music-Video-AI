@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  numberedVideoScriptIssue,
   parseNumberedImagePackScript,
   hasStrictUniqueSourcePlan,
   planImagePackScenes,
@@ -22,6 +23,42 @@ const THREE_MINUTE_ANALYSIS = {
 };
 
 describe("planShots montage planning", () => {
+  it("maps an exact numbered creative script one-to-one onto video scenes", () => {
+    const prompt = [
+      "1. Dawn over a windswept prairie.",
+      "2. A pilot reaches for a bright red aircraft.",
+      "3. The aircraft rises into a golden sky.",
+    ].join("\n");
+    const plan = planShots({
+      prompt,
+      style: "cinematic",
+      requestedDuration: "30",
+      generationMode: "montage",
+    });
+
+    expect(numberedVideoScriptIssue(prompt, plan.numClips)).toBeNull();
+    expect(plan.shots.map((shot) => shot.description)).toEqual([
+      "Establishing world — Dawn over a windswept prairie.",
+      "Hero subject — A pilot reaches for a bright red aircraft.",
+      "Kinetic motion — The aircraft rises into a golden sky.",
+    ]);
+    expect(plan.shots[0]!.prompt).not.toContain("pilot reaches");
+    expect(plan.shots[1]!.prompt).not.toContain("golden sky");
+  });
+
+  it("rejects malformed or count-mismatched numbered video scripts", () => {
+    expect(numberedVideoScriptIssue([
+      "1. Opening shot.",
+      "3. Closing shot.",
+    ].join("\n"), 2)).toContain("consecutively");
+    expect(numberedVideoScriptIssue([
+      "1. Opening shot.",
+      "2. Closing shot.",
+    ].join("\n"), 3)).toBe(
+      "This video needs 3 numbered scenes, but the script contains 2.",
+    );
+  });
+
   it("uses eighteen unique paid visuals for a three-minute track", () => {
     const plan = planShots({
       prompt: "A rider enters the desert. Then a storm arrives. Finally sunrise breaks over the mountains.",

@@ -1,10 +1,46 @@
 import { Helmet } from "react-helmet-async";
 import { Link } from "wouter";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { AuroraBackground } from "@/components/AuroraBackground";
-import { CheckCircle2, XCircle, ArrowRight, ImagePlus, Scissors, Sparkles, Wand2, Layers, Zap, PenTool } from "lucide-react";
+import { Check, CheckCircle2, Copy, XCircle, ArrowRight, ImagePlus, Scissors, Sparkles, Wand2, Layers, Zap, PenTool } from "lucide-react";
+
+const EXAMPLE_SCENE_SCRIPT = [
+  "1. Dawn over a windswept Kansas prairie, young Amelia Earhart watches a distant biplane rise through golden mist.",
+  "2. Amelia Earhart as a young aviation dreamer at an airfield, reaching toward the wing of a bright red vintage aircraft.",
+  "3. 1920s women pilots gathered beside a hangar, Amelia stepping forward with calm determination in period aviation clothing.",
+  "4. Amelia climbing into an open cockpit biplane before a transatlantic attempt, mechanics tightening cables around her.",
+  "5. Aerial view of the Atlantic Ocean beneath a small vintage aircraft, vast blue distance and clouds racing below.",
+  "6. Amelia in a leather flight helmet and goggles, hands steady on the controls inside a vibrating open cockpit.",
+  "7. Storm clouds building over the ocean, the tiny biplane cutting through turbulent air with dramatic sunlight breaking through.",
+  "8. Night flight above dark water, instrument panel glowing softly while Amelia studies a compass and keeps her course.",
+  "9. A lonely lighthouse and rugged coastline emerging through fog as the aircraft approaches land after a dangerous crossing.",
+  "10. Crowds gathering on a 1920s runway, Amelia stepping down from the plane into camera flashes and waving flags without readable text.",
+  "11. Amelia beside her aircraft in a leather jacket, smiling modestly while reporters and photographers surround the historic moment.",
+  "12. Close detail of Amelia's gloved hand tracing a flight map across the Atlantic, brass compass and folded route lines on a table.",
+  "13. Amelia walking through a quiet workshop, aircraft parts, tools, and blueprints surrounding her as she plans the next record.",
+  "14. A long-distance aircraft being prepared at a remote runway, fuel crew moving with urgency under a vast copper sunset.",
+  "15. Amelia launching into open sky from a grass airfield, propeller blur and wind pulling at her scarf, triumphant forward motion.",
+  "16. The aircraft crossing mountain ranges from above, snow peaks and deep valleys sliding beneath the wings in clear morning light.",
+  "17. A wide Pacific horizon at dusk, the aircraft silhouetted against rose and indigo clouds, an uncertain final journey ahead.",
+  "18. Empty ocean and drifting cloud shadows beneath a fading flight path, a single compass turning slowly in the foreground.",
+  "19. A weathered leather flight jacket and goggles resting beside an old map, warm window light and dust motes creating a memorial still life.",
+  "20. A diverse group of modern young women studying aviation beneath a suspended vintage aircraft, inspired by Amelia's legacy.",
+].join("\n");
 
 export default function TutorialScriptToVideo() {
+  const [copied, setCopied] = useState(false);
+
+  const copyExampleScript = async () => {
+    try {
+      await navigator.clipboard.writeText(EXAMPLE_SCENE_SCRIPT);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setCopied(false);
+    }
+  };
+
   return (
     <div className="flex flex-col min-h-[calc(100vh-4rem)]">
       <Helmet>
@@ -85,6 +121,46 @@ export default function TutorialScriptToVideo() {
                   <strong className="block mb-1 text-primary/90">Why it works:</strong>
                   Numbered scenes tell our generator exactly how many images to make. Each line describes a single concrete visual moment without dialogue or complex timelines.
                 </p>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/[0.08] via-card to-accent/[0.05] p-6 md:p-8">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <div className="flex items-center gap-2 text-primary font-semibold">
+                    <Sparkles className="h-5 w-5" />
+                    Full-track example: Amelia Earhart
+                  </div>
+                  <h3 className="mt-2 text-xl font-bold">One numbered line becomes one visual segment</h3>
+                  <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+                    For a full-track Visual Montage, upload your audio, choose your output settings, and paste one
+                    concrete visual per line. The app analyzes the track, then checks that your numbered scene count
+                    matches the number of timeline segments before showing the final cost.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="shrink-0 border-primary/30 hover:border-primary/60 hover:bg-primary/10"
+                  onClick={copyExampleScript}
+                  data-testid="button-copy-amelia-script"
+                >
+                  {copied ? <Check className="mr-2 h-4 w-4 text-primary" /> : <Copy className="mr-2 h-4 w-4" />}
+                  {copied ? "Copied" : "Copy 20-scene script"}
+                </Button>
+              </div>
+              <details className="group mt-6">
+                <summary className="cursor-pointer text-sm font-medium text-primary hover:text-primary/80">
+                  Show the complete 20-scene example
+                </summary>
+                <pre className="mt-4 max-h-[26rem] overflow-auto whitespace-pre-wrap rounded-xl border border-border/60 bg-background/70 p-4 text-xs leading-relaxed text-foreground/85">
+                  {EXAMPLE_SCENE_SCRIPT}
+                </pre>
+              </details>
+              <div className="mt-5 grid gap-3 text-sm text-muted-foreground sm:grid-cols-3">
+                <p><strong className="text-foreground">1.</strong> Upload the full audio track.</p>
+                <p><strong className="text-foreground">2.</strong> Use consecutive numbers with no gaps.</p>
+                <p><strong className="text-foreground">3.</strong> Review the scene count and credits before confirming.</p>
               </div>
             </div>
           </section>

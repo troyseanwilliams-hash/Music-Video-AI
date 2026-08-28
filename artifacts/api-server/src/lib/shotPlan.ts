@@ -245,6 +245,21 @@ export function parseNumberedImagePackScript(prompt: string): NumberedImagePackS
   };
 }
 
+export function numberedVideoScriptIssue(
+  prompt: string,
+  expectedSceneCount: number,
+): string | null {
+  if (!hasNumberedImagePackScript(prompt)) return null;
+  const script = parseNumberedImagePackScript(prompt);
+  if (!script) {
+    return "Number every scene consecutively from 1, with one complete scene on each line.";
+  }
+  if (script.scenes.length !== expectedSceneCount) {
+    return `This video needs ${expectedSceneCount} numbered scenes, but the script contains ${script.scenes.length}.`;
+  }
+  return null;
+}
+
 function splitPromptIntoConcepts(prompt: string, count: number): string[] {
   let parts = promptConcepts(prompt);
 
@@ -433,7 +448,10 @@ export function planShots(input: ShotPlanInput): ShotPlan {
   );
   const hasReal = !!(input.analysis?.sections && input.analysis.sections.length > 0);
   const sections = hasReal ? input.analysis!.sections! : fallbackSections(target || durationSec || 60);
-  const concepts = splitPromptIntoConcepts(input.prompt || "music video", numClips);
+  const numberedScript = parseNumberedImagePackScript(input.prompt || "");
+  const concepts = numberedScript?.scenes.length === numClips
+    ? numberedScript.scenes
+    : splitPromptIntoConcepts(input.prompt || "music video", numClips);
   const orderedStoryConcepts = promptConcepts(input.prompt || "music video");
   const bpm = input.analysis?.bpm ?? null;
   const mood = input.analysis?.mood ?? null;

@@ -527,7 +527,7 @@ export const CreateJobHeader = zod.object({
     .describe("Opaque session token — `Bearer <sid>`."),
 });
 
-export const createJobBodyPromptMax = 1000;
+export const createJobBodyPromptMax = 12000;
 
 export const createJobBodyLyricsTextMax = 50000;
 
@@ -551,7 +551,13 @@ export const createJobBodyFullTrackLipSyncStartTimeDefault = 0;
 export const createJobBodyFullTrackLipSyncStartTimeMin = 0;
 
 export const CreateJobBody = zod.object({
-  prompt: zod.string().min(1).max(createJobBodyPromptMax),
+  prompt: zod
+    .string()
+    .min(1)
+    .max(createJobBodyPromptMax)
+    .describe(
+      "Creative direction or a consecutively numbered scene script with one scene per line",
+    ),
   style: zod.enum([
     "realistic",
     "anime",

@@ -22,7 +22,11 @@ import {
   MAX_FULL_SECONDS,
 } from "../lib/creditCost.js";
 import { getUserTier, canRender4k } from "../lib/tier.js";
-import { hasStrictUniqueSourcePlan, planShots } from "../lib/shotPlan.js";
+import {
+  hasStrictUniqueSourcePlan,
+  numberedVideoScriptIssue,
+  planShots,
+} from "../lib/shotPlan.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { MAX_LYRICS_LENGTH } from "../lib/lyricLimits.js";
 import { verifyAudioAnalysisReceipt } from "../lib/audioAnalysisReceipt.js";
@@ -190,6 +194,15 @@ router.post("/jobs/preview-shots", async (req, res) => {
       generationMode: generationMode === "narrative" ? "narrative" : "montage",
       analysis: verifiedAnalysis as never,
     });
+    const scriptIssue = numberedVideoScriptIssue(String(prompt ?? ""), plan.numClips);
+    if (scriptIssue) {
+      res.status(422).json({
+        error: scriptIssue,
+        code: "NUMBERED_SCRIPT_SCENE_COUNT_MISMATCH",
+        expectedSceneCount: plan.numClips,
+      });
+      return;
+    }
     res.json(plan);
   } catch (err) {
     req.log.error({ err }, "Shot preview failed");
@@ -463,6 +476,15 @@ router.post("/jobs", async (req, res) => {
     generationMode: normalizedGenerationMode,
     analysis: verifiedAudioAnalysis as never,
   });
+  const scriptIssue = numberedVideoScriptIssue(prompt, storyboard.numClips);
+  if (scriptIssue) {
+    res.status(422).json({
+      error: scriptIssue,
+      code: "NUMBERED_SCRIPT_SCENE_COUNT_MISMATCH",
+      expectedSceneCount: storyboard.numClips,
+    });
+    return;
+  }
   if (!hasStrictUniqueSourcePlan(storyboard)) {
     res.status(422).json({
       error: "Could not build a complete one-image-per-segment video plan. Please adjust the prompt and try again.",

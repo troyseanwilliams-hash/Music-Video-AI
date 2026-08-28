@@ -43,7 +43,9 @@ import { detectNamedSubject } from "@/lib/promptWarnings";
 const NUMBERED_IMAGE_SCENE_LINE =
   /^\s*(?:scene\s+)?(\d{1,2})\s*(?:(?:[.):])\s*|\s+)(?:\(\s*(?:\d+(?:\.\d+)?s?|\d{1,2}:\d{2}(?::\d{2})?)\s*[-–—]\s*(?:\d+(?:\.\d+)?s?|\d{1,2}:\d{2}(?::\d{2})?)\s*\)\s*[:\-]?\s*)?(.+?)\s*$/i;
 
-function analyzeNumberedImageScenes(script: string): {
+const MAX_CREATIVE_PROMPT_LENGTH = 12000;
+
+function analyzeNumberedScenes(script: string, maxScenes: number): {
   count: number | null;
   invalid: boolean;
 } {
@@ -60,7 +62,7 @@ function analyzeNumberedImageScenes(script: string): {
     expected += 1;
   }
   const count = expected - 1;
-  return count >= 1 && count <= 30
+  return count >= 1 && count <= maxScenes
     ? { count, invalid: false }
     : { count: null, invalid: true };
 }
@@ -98,7 +100,7 @@ import {
   Upload, Music, Sparkles, Loader2, CheckCircle2, XCircle,
   Users, Clapperboard, Layers, Zap, Film, Wand2, Video as VideoIcon, FileText,
   ChevronDown, User, Maximize2, Captions, Pencil, MonitorPlay, ImageIcon, X,
-  Lock, Crown, Coins, AlertTriangle, CreditCard, Clock, ShieldAlert, Info, VideoOff,
+  Lock, Crown, Coins, AlertTriangle, CreditCard, Clock, ShieldAlert, Info, VideoOff, CircleHelp,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -329,10 +331,13 @@ export default function Generate() {
   const [imagePackPlanLoading, setImagePackPlanLoading] = useState(false);
 
   const numberedImageSceneAnalysis = imagePackMode
-    ? analyzeNumberedImageScenes(prompt)
+    ? analyzeNumberedScenes(prompt, 30)
     : { count: null, invalid: false };
   const numberedImageSceneCount = numberedImageSceneAnalysis.count;
   const effectiveImagePackCount = numberedImageSceneCount ?? imagePackCount;
+  const numberedVideoSceneAnalysis = !imagePackMode
+    ? analyzeNumberedScenes(prompt, 60)
+    : { count: null, invalid: false };
   const namedSubjectWarning = detectNamedSubject(prompt);
 
   // Reference image
@@ -1124,6 +1129,15 @@ export default function Generate() {
 
     if (!prompt.trim()) {
       errors.prompt = "Please describe the visuals you want.";
+    }
+    if (!imagePackMode && numberedVideoSceneAnalysis.invalid) {
+      errors.prompt = "Number every scene consecutively from 1, with one complete scene on each line.";
+    } else if (
+      !imagePackMode &&
+      numberedVideoSceneAnalysis.count !== null &&
+      numberedVideoSceneAnalysis.count !== generationEstimate.unitCount
+    ) {
+      errors.prompt = `This video needs ${generationEstimate.unitCount} numbered scenes, but the script contains ${numberedVideoSceneAnalysis.count}.`;
     }
     if (
       imagePackMode
@@ -2496,16 +2510,67 @@ export default function Generate() {
 
           {/* ── Prompt ── */}
           <div className="space-y-2">
-            <Label htmlFor="prompt">Creative Prompt</Label>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="prompt">Creative Prompt</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="rounded-full text-muted-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    aria-label="How to write a creative prompt"
+                  >
+                    <CircleHelp className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top" align="start" className="max-w-[360px] p-3 text-left text-xs leading-relaxed">
+                  <div className="space-y-2">
+                    <p className="font-semibold text-primary-foreground">How to use Creative Prompt</p>
+                    <p>
+                      For ordinary prompts, describe the subject, setting, action, lighting, and mood. For a
+                      deliberate story or full-track montage, use one numbered scene per line.
+                    </p>
+                    <p>
+                      Example: <strong>1. Dawn over a windswept prairie.</strong> Each numbered line becomes one
+                      source image and one matching animation.
+                    </p>
+                    <p>
+                      Use consecutive numbers with no gaps. After audio analysis, the number of lines must match the
+                      planned video segments or the app will stop before charging.
+                    </p>
+                    <p>
+                      Keep each line to one focused visual moment—no dialogue, multi-panel layouts, or several
+                      locations in one scene.
+                    </p>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            </div>
             <Textarea
               ref={promptRef}
               id="prompt"
-              placeholder="Describe the visual style, subject matter, and mood you want..."
-              className={`min-h-[100px] resize-none bg-background/50 ${fieldErrors.prompt || prompt.length > 1000 ? "border-destructive" : "border-input"}`}
+              placeholder={"Describe the visual direction, or paste a script with one numbered scene per line:\n1. Opening visual...\n2. Next visual..."}
+              className={`min-h-[140px] resize-y bg-background/50 ${fieldErrors.prompt || prompt.length > MAX_CREATIVE_PROMPT_LENGTH ? "border-destructive" : "border-input"}`}
               value={prompt}
-              maxLength={1000}
+              maxLength={MAX_CREATIVE_PROMPT_LENGTH}
               onChange={(e) => { setPrompt(e.target.value); setFieldErrors((fe) => ({ ...fe, prompt: undefined })); }}
             />
+            {!imagePackMode && numberedVideoSceneAnalysis.count !== null && (
+              <p className={`text-xs ${
+                numberedVideoSceneAnalysis.count === generationEstimate.unitCount
+                  ? "text-primary"
+                  : "text-amber-500"
+              }`}>
+                {numberedVideoSceneAnalysis.count} numbered scenes detected
+                {numberedVideoSceneAnalysis.count === generationEstimate.unitCount
+                  ? " — one scene will be used for every video segment."
+                  : ` — this selection needs ${generationEstimate.unitCount} scenes.`}
+              </p>
+            )}
+            {!imagePackMode && numberedVideoSceneAnalysis.invalid && (
+              <p className="text-xs text-destructive">
+                Number scenes consecutively from 1 with one complete scene on each line.
+              </p>
+            )}
             {namedSubjectWarning && (
               <div
                 role="status"
@@ -2528,8 +2593,8 @@ export default function Generate() {
                   </p>
                 )}
               </div>
-              <span className={`text-xs tabular-nums ${prompt.length >= 950 ? (prompt.length >= 1000 ? "text-destructive font-medium" : "text-yellow-500") : "text-muted-foreground"}`}>
-                {prompt.length} / 1000
+              <span className={`text-xs tabular-nums ${prompt.length >= MAX_CREATIVE_PROMPT_LENGTH - 500 ? (prompt.length >= MAX_CREATIVE_PROMPT_LENGTH ? "text-destructive font-medium" : "text-yellow-500") : "text-muted-foreground"}`}>
+                {prompt.length.toLocaleString()} / {MAX_CREATIVE_PROMPT_LENGTH.toLocaleString()}
               </span>
             </div>
           </div>

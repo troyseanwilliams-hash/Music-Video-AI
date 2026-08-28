@@ -670,8 +670,9 @@ export const CreateJobRequestAiProvider = {
 
 export interface CreateJobRequest {
   /**
+   * Creative direction or a consecutively numbered scene script with one scene per line
    * @minLength 1
-   * @maxLength 1000
+   * @maxLength 12000
    */
   prompt: string;
   style: VideoStyle;

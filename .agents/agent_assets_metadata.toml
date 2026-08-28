@@ -35,3 +35,10 @@ uri = "file://attached_assets/amelia-earhart-shortened-exact-20-scene-prompts.tx
 type = "text"
 title = "Amelia Earhart — Shortened Exact 20-Scene Prompts"
 description = "The corrected 20-scene image-foundation and matching animation prompts, source analysis, validation, and verified 2,182-credit total."
+
+[[outputs]]
+id = "Azx6Ujd7-55ZjaY8JhH5u"
+uri = "file://attached_assets/amelia-earhart-20-scene-creative-script.txt"
+type = "text"
+title = "Amelia Earhart — Paste-Ready 20-Scene Script"
+description = "A numbered creative script formatted for the updated Generate page: one scene per line, ready to paste after uploading the 194.69-second source."
