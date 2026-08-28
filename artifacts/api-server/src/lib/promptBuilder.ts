@@ -231,6 +231,8 @@ Rules:
 - If a reference image will be attached, use it only in scenes whose story beat contains or clearly depicts that character. In those character scenes, do not describe the character's face, hair, clothing, identity, age, or other appearance; write "use the attached reference image for the character" instead.
 - Never mention or use the attached reference image in environment-only, object-only, or other scenes where the character does not appear.
 - If no reference image will be attached, include only the minimum visible character traits needed for that scene.
+- Preserve the recurring character's stated sex in every character scene. Never change a woman or girl into a man or boy, or a man or boy into a woman or girl, between scenes.
+- When a reference image is attached, preserve the character's sex exactly as shown in that reference.
 
 Return no markdown and no extra keys.`;
 

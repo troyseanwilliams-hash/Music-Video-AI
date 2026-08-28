@@ -259,9 +259,13 @@ export default function JobStatus() {
   const [sseConnected, setSseConnected] = useState(false);
   const [copied, setCopied] = useState(false);
   const [warningDismissed, setWarningDismissed] = useState(false);
+  const [isCanceling, setIsCanceling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   useEffect(() => {
     setWarningDismissed(false);
+    setIsCanceling(false);
+    setCancelError(null);
   }, [id]);
 
   const { data: job, isLoading } = useGetJob(id as string, {
@@ -484,12 +488,40 @@ export default function JobStatus() {
     job.status,
     gridSlots,
   );
+  const currentJobId = job.id;
 
   function copyLink() {
     navigator.clipboard.writeText(window.location.href).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
+  }
+
+  async function stopGenerating() {
+    if (!window.confirm("Stop generating this job? Work already completed may be kept, and unfinished work will be refunded according to the job's progress.")) {
+      return;
+    }
+
+    setIsCanceling(true);
+    setCancelError(null);
+    try {
+      const response = await fetch(`/api/jobs/${currentJobId}/cancel`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const body = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) {
+        throw new Error(body?.error ?? "Unable to stop this generation.");
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getGetJobQueryKey(currentJobId) }),
+        queryClient.invalidateQueries({ queryKey: ["image-pack-assets", currentJobId] }),
+      ]);
+    } catch (error) {
+      setCancelError(error instanceof Error ? error.message : "Unable to stop this generation.");
+    } finally {
+      setIsCanceling(false);
+    }
   }
 
   return (
@@ -544,8 +576,37 @@ export default function JobStatus() {
             </div>
           </div>
 
-          <StatusBadge status={job.status ?? "queued"} autoRetrying={autoRetrying} />
+          <div className="flex flex-wrap items-center gap-2">
+            {isActive && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                disabled={isCanceling}
+                onClick={stopGenerating}
+                data-testid="button-stop-generating"
+              >
+                {isCanceling ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <X className="h-3.5 w-3.5" />
+                )}
+                {isCanceling ? "Stopping…" : "Stop generating"}
+              </Button>
+            )}
+            <StatusBadge status={job.status ?? "queued"} autoRetrying={autoRetrying} />
+          </div>
         </div>
+
+        {cancelError && (
+          <div
+            role="alert"
+            className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm text-destructive"
+          >
+            {cancelError}
+          </div>
+        )}
 
         {/* Non-fatal notice: some clips were left out but the video still finished. */}
         {isComplete && job.errorMessage && (

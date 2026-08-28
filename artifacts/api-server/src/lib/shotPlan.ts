@@ -285,6 +285,29 @@ const NARRATIVE_BEATS = [
 
 const CHARACTER_FOCUS_TERMS = /\b(?:character|person|people|human|woman|man|girl|boy|child|baby|figure|silhouette|singer|musician|performer|dancer|rider|driver|runner|walker|traveler|traveller|protagonist|hero|heroine|artist|actor|actress|model|subject|face|portrait|couple|family|mother|father|friend|soldier|detective|pilot|he|she|they|him|her|them|his|hers|their)\b/i;
 const ENVIRONMENT_FOCUS_TERMS = /\b(?:landscape|skyline|cityscape|mountain|forest|ocean|sea|river|lake|desert|road|street|building|architecture|room|interior|exterior|station|airport|vehicle|car|train|plane|ship|object|detail|texture|atmosphere|weather|storm|rain|cloud|sunrise|sunset|moon|stars|light|shadow)\b/i;
+const FEMALE_CHARACTER_TERMS = /\b(?:female|woman|women|girl|girls|mother|mothers|daughter|daughters|sister|sisters|wife|wives|heroine|her|hers|she)\b/i;
+const MALE_CHARACTER_TERMS = /\b(?:male|man|men|boy|boys|father|fathers|son|sons|brother|brothers|husband|husbands|hero|him|his|he)\b/i;
+
+export function detectCharacterSex(text: string): "female" | "male" | null {
+  const female = FEMALE_CHARACTER_TERMS.test(text);
+  const male = MALE_CHARACTER_TERMS.test(text);
+  if (female === male) return null;
+  return female ? "female" : "male";
+}
+
+function characterSexContinuity(
+  input: Pick<ShotPlanInput, "prompt" | "character" | "hasCharacterReference">,
+  concept: string,
+): string {
+  if (input.hasCharacterReference) {
+    return "keep the character's sex exactly as shown in the attached reference image across all scenes";
+  }
+  const sex = detectCharacterSex(`${input.character ?? ""} ${input.prompt ?? ""} ${concept}`);
+  return sex
+    ? `keep the recurring character ${sex} across all character scenes; never change sex`
+    : "keep the recurring character's established sex unchanged across scenes";
+}
+
 function narrativeBeat(index: number, count: number): string {
   if (count <= 1) return "complete story moment";
   const position = index / (count - 1);
@@ -496,9 +519,13 @@ function buildPrompt(
         ? `featuring ${input.character}`
         : "featuring the recurring principal subject"
     : null;
+  const sexContinuity = usesCharacterReference
+    ? characterSexContinuity(input, concept)
+    : null;
   return scenePromptWithStyleFootnote([
     `scene direction: ${concept}`,
     characterDesc,
+    sexContinuity,
     `${montageRole} visual motif`,
     `${section.label} section visual treatment`,
     "one focused visual idea, no complete storyline or multi-scene sequence inside this clip",
@@ -541,6 +568,9 @@ function buildNarrativePrompt(
         ? `keep the same ${input.character} identity, face, wardrobe, and physical details established across character-focused scenes`
         : "keep the same principal subject identity, wardrobe, and physical details established across character-focused scenes"
     : null;
+  const sexContinuity = usesCharacterReference
+    ? characterSexContinuity(input, concept)
+    : null;
   const continuity = usesCharacterReference
     ? sceneIndex === 0
       ? "establish the recurring subject, world, lighting language, and visual rules for all following scenes"
@@ -554,11 +584,12 @@ function buildNarrativePrompt(
   return scenePromptWithStyleFootnote([
     `scene direction: ${concept}`,
     characterDesc,
+    sexContinuity,
     `chronological story scene ${sceneIndex + 1} of ${sceneCount}`,
     `${beat} story beat`,
+    ending,
     `${section.label} music section`,
     continuity,
-    ending,
     "one continuous story scene only, no montage, no flashback, no time jump, no multiple locations inside this clip",
     `${mood ?? "cinematic"} mood`,
     energyDesc,
@@ -719,6 +750,13 @@ export function planImagePackScenes(input: {
             ? "establish the recurring principal character clearly; this image becomes the identity and wardrobe reference for later character scenes"
             : "match the established principal character reference exactly: same identity, face, age, hair, wardrobe, and physical details"
         : "focus only on this scene's environment, objects, or atmosphere; do not add the recurring character unless explicitly requested";
+      const sexContinuity = usesCharacterReference
+        ? characterSexContinuity({
+            prompt: `${numberedScript.seriesDirection} ${input.prompt}`,
+            character: null,
+            hasCharacterReference: input.hasCharacterReference,
+          }, concept)
+        : null;
       const seriesDirection = numberedScript.seriesDirection
         ? `series-wide visual direction: ${
             input.hasCharacterReference
@@ -740,6 +778,7 @@ export function planImagePackScenes(input: {
           `strict numbered script scene ${index + 1} of ${imageCount}`,
           `show exactly this scene and no other script beat: ${concept}`,
           characterContinuity,
+          sexContinuity,
           index === imageCount - 1
             ? "compose this as the final chronological image"
             : "preserve chronological continuity for the next image without depicting the next event",

@@ -307,6 +307,36 @@ describe("planImagePackScenes", () => {
 });
 
 describe("planShots narrative planning", () => {
+  it("locks a recurring woman's sex across every character-focused scene", () => {
+    const plan = planShots({
+      prompt: "A woman detective enters a hotel. She questions the clerk. The empty hallway sits in darkness.",
+      generationMode: "narrative",
+      requestedDuration: "30",
+    });
+
+    const characterShots = plan.shots.filter((shot) => shot.usesCharacterReference);
+    expect(characterShots).toHaveLength(2);
+    expect(characterShots.every((shot) =>
+      shot.prompt.includes("recurring character female")
+      && shot.prompt.includes("never change sex")
+    )).toBe(true);
+    expect(plan.shots.find((shot) => shot.description.includes("empty hallway"))?.prompt)
+      .not.toContain("character remains female");
+  });
+
+  it("uses the uploaded reference as the authority for character sex", () => {
+    const plan = planShots({
+      prompt: "A detective enters a hotel. The detective questions the clerk.",
+      hasCharacterReference: true,
+      generationMode: "narrative",
+      requestedDuration: "20",
+    });
+
+    expect(plan.shots.filter((shot) => shot.usesCharacterReference).every((shot) =>
+      shot.prompt.includes("sex exactly as shown in the attached reference image")
+    )).toBe(true);
+  });
+
   it("keeps generated image prompts concise and refers to an attached character image", () => {
     const plan = planShots({
       prompt: "A pilot prepares a plane. Then the pilot flies through a storm. Finally the pilot lands at sunrise.",
