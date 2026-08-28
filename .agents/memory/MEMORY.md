@@ -38,3 +38,4 @@
 - [Image-first partial settlement](image-first-partial-settlement.md) — retained images and accepted scenes stay charged; refund only unfinished work once under a job-row lock.
 - [Complete prompt shortening](complete-prompt-shortening.md) — generated image prompts must end at whole words without ellipses while preserving ordered visual instructions.
 - [Script approval gate](script-approval-gate.md) — video jobs require explicit approval of the exact script and scene prompts before credit reservation.
+- [Lyrics topic separation](lyrics-topic-separation.md) — lyric writing uses its own required subject brief; never silently substitute the music style prompt.

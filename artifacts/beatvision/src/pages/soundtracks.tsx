@@ -4,6 +4,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -108,6 +110,16 @@ function fmtLen(s: Soundtrack): string {
   return "";
 }
 
+async function readApiResponse(res: Response): Promise<Record<string, unknown>> {
+  const text = await res.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return { error: res.ok ? "The music engine returned an unreadable response." : "The music engine had an internal error. Please try again." };
+  }
+}
+
 export default function Soundtracks() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
@@ -118,6 +130,7 @@ export default function Soundtracks() {
   const [lengthKey, setLengthKey] = useState("loop10");
   const [loopKey, setLoopKey] = useState("off");
   const [withVocals, setWithVocals] = useState(false);
+  const [lyricsTopic, setLyricsTopic] = useState("");
   const [lyrics, setLyrics] = useState("");
   const [vocalLengthKey, setVocalLengthKey] = useState("v120");
   const [vocalStyle, setVocalStyle] = useState("auto");
@@ -140,6 +153,22 @@ export default function Soundtracks() {
   // an LLM is configured). "enhance" polishes the current draft; "write" drafts
   // fresh lyrics from the vibe prompt.
   const writeLyrics = async (mode: "write" | "enhance") => {
+    if (mode === "write" && lyricsTopic.trim().length < 2) {
+      toast({
+        title: "Add a song topic",
+        description: "Tell the lyric writer what the song should be about.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (mode === "enhance" && lyrics.trim().length < 2) {
+      toast({
+        title: "Add lyrics to enhance",
+        description: "Type or paste your existing lyrics into the editor first.",
+        variant: "destructive",
+      });
+      return;
+    }
     // Proactive credit check — show the top-up modal instead of letting the
     // user hit a backend failure after submitting.
     if (!canAffordCredits(LYRICS_BUILD_COST, status?.creditsRemaining)) {
@@ -152,20 +181,20 @@ export default function Soundtracks() {
       const extras = { explicit, bpm: bpm.trim() ? Number(bpm) : undefined };
       const body =
         mode === "enhance"
-          ? { lyrics: lyrics.trim(), targetSeconds: duration, ...extras }
-          : { theme: prompt.trim() || "an original, heartfelt song", targetSeconds: duration, ...extras };
+          ? { lyrics: lyrics.trim(), theme: lyricsTopic.trim() || undefined, targetSeconds: duration, ...extras }
+          : { theme: lyricsTopic.trim(), targetSeconds: duration, ...extras };
       const res = await fetch("/api/prompt/lyrics", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Couldn't generate lyrics");
-      setLyrics((data.lyrics ?? "").trim());
+      const data = await readApiResponse(res);
+      if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "Couldn't generate lyrics");
+      setLyrics(typeof data.lyrics === "string" ? data.lyrics.trim() : "");
       toast({
         title: mode === "enhance" ? "Lyrics enhanced" : "Lyrics written",
-        description: data.charged ? `${data.charged} credits used.` : undefined,
+        description: typeof data.charged === "number" && data.charged > 0 ? `${data.charged} credits used.` : undefined,
       });
       queryClient.invalidateQueries({ queryKey: ["soundtracks", "status"] });
     } catch (e) {
@@ -223,8 +252,8 @@ export default function Soundtracks() {
               : {}),
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Generation failed");
+      const data = await readApiResponse(res);
+      if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "The music engine couldn't finish this track. Please try again.");
       return data as { wasFree: boolean; creditsCharged: number; freeRemaining: number | null };
     },
     onSuccess: (data) => {
@@ -365,24 +394,24 @@ export default function Soundtracks() {
 
   return (
     <>
-    <div className="container mx-auto px-4 py-8 max-w-5xl">
-      <div className="flex items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Music2 className="h-6 w-6 text-primary" /> Soundtracks
+    <div className="container mx-auto px-4 py-8 max-w-4xl">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
+        <div className="max-w-2xl">
+          <h1 className="text-3xl font-bold tracking-tight mb-2 flex items-center gap-2">
+            <Music2 className="h-7 w-7 text-primary" /> Studio
           </h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Create original full songs with vocals or instrumentals from a prompt. Use them in a video, or download and share your music on its own.
+          <p className="text-muted-foreground text-base">
+            Compose original tracks from scratch. Start with a vibe, add lyrics if you want vocals, and produce high-fidelity music.
           </p>
         </div>
         {freeLabel && (
-          <div className="hidden sm:flex items-center gap-2 rounded-full border border-border/50 bg-secondary/40 px-3 py-1.5 text-sm shrink-0">
-            <Sparkles className="h-4 w-4 text-primary" /> {freeLabel}
+          <div className="hidden sm:flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-2 text-sm font-medium text-primary shadow-sm shrink-0">
+            <Sparkles className="h-4 w-4" /> {freeLabel}
           </div>
         )}
       </div>
 
-      <div className="mb-6">
+      <div className="mb-8">
         <TutorialTip
           id={withVocals ? "soundtracks-vocals" : "soundtracks"}
           title={withVocals ? "How vocal songs work" : "How Soundtracks work"}
@@ -403,207 +432,269 @@ export default function Soundtracks() {
         </TutorialTip>
       </div>
 
-      {/* Generator */}
-      <Card className="bg-card/50 border-card-border overflow-hidden mb-8">
-        <div className="h-1 w-full bg-gradient-electric" />
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">New Soundtrack</CardTitle>
-          <CardDescription>
-            {withVocals
-              ? `Write or paste lyrics (or let AI write them), pick a voice, and generate a full royalty-free song with vocals — ${status?.vocalCost ?? 15} credits each.`
-              : <>Describe the vibe. {status && !status.subscriptionActive && !status.admin
-                  ? "New users get 3 free to try — no credits used. Subscribe for a batch every month."
-                  : "Free Soundtracks use your monthly free allowance and don't touch your credit balance. Only tracks beyond the free allowance cost credits (5–10 each)."}</>}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <div className="bg-card border border-border shadow-sm rounded-2xl overflow-hidden mb-12">
+        {/* Type Toggle */}
+        <div className="flex border-b border-border bg-muted/20">
+          <button
+            type="button"
+            onClick={() => setWithVocals(false)}
+            className={`flex-1 py-4 text-sm font-semibold transition-all border-b-2 ${!withVocals ? "border-primary text-primary bg-background shadow-[0_2px_0_0_hsl(var(--primary))_inset]" : "border-transparent text-muted-foreground hover:bg-muted/40 hover:text-foreground"}`}
+          >
+            Instrumental
+          </button>
+          <button
+            type="button"
+            onClick={() => setWithVocals(true)}
+            disabled={status?.vocalsEnabled === false}
+            title={status?.vocalsEnabled === false ? "Vocal songs aren't available yet" : undefined}
+            className={`flex-1 py-4 text-sm font-semibold transition-all border-b-2 disabled:opacity-40 disabled:cursor-not-allowed ${withVocals ? "border-primary text-primary bg-background shadow-[0_2px_0_0_hsl(var(--primary))_inset]" : "border-transparent text-muted-foreground hover:bg-muted/40 hover:text-foreground"}`}
+          >
+            With Vocals
+          </button>
+        </div>
+
+        <div className="p-6 md:p-8 space-y-12">
           {status && !status.enabled ? (
-            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-300 px-3 py-2 text-sm">
-              <b>Coming soon.</b> Soundtracks isn't open on your account yet — check back shortly.
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 p-4 text-sm font-medium">
+              Coming soon. Soundtracks isn't open on your account yet — check back shortly.
             </div>
           ) : (
             <>
-              {/* Instrumental vs. full vocal song */}
-              <div className="grid grid-cols-2 gap-2 rounded-xl border border-border bg-background/40 p-1">
-                <button type="button" onClick={() => setWithVocals(false)}
-                  className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${!withVocals ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"}`}>
-                  Instrumental
-                </button>
-                <button type="button" onClick={() => setWithVocals(true)}
-                  disabled={status?.vocalsEnabled === false}
-                  title={status?.vocalsEnabled === false ? "Vocal songs aren't available yet" : undefined}
-                  className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors disabled:opacity-40 ${withVocals ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"}`}>
-                  With vocals
-                </button>
-              </div>
-
-              <Textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                rows={3}
-                placeholder={withVocals
-                  ? "Describe the song's style & vibe — e.g. anthemic pop-rock, female vocal, hopeful, 120 BPM"
-                  : "e.g. warm lofi hip hop, mellow Rhodes, vinyl crackle, 72 BPM"}
-                className="resize-none"
-              />
-              <div className="flex flex-wrap gap-1.5">
-                {PRESETS.map((p) => (
-                  <button key={p.label} type="button" onClick={() => setPrompt(p.prompt)} title={p.prompt}
-                    className="text-xs px-2.5 py-1 rounded-full border border-border bg-background/40 text-muted-foreground hover:border-primary hover:text-primary transition-colors">
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-
-              {withVocals && (
-                <div className="rounded-xl border border-border bg-background/30 p-3 space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-semibold">Vocal song</span>
-                    <span className="text-xs font-semibold text-primary">{status?.vocalCost ?? 15} credits</span>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground">Voice</label>
-                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5 mt-1">
-                      {VOCAL_STYLES.map((v) => (
-                        <button key={v.key} type="button" onClick={() => setVocalStyle(v.key)}
-                          className={`rounded-lg border px-1 py-1.5 text-xs font-medium transition-colors ${vocalStyle === v.key ? "border-primary bg-primary/10 text-primary" : "border-border bg-background/40 text-muted-foreground hover:border-primary/50"}`}>
-                          {v.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <label className="text-sm font-medium">Lyrics</label>
-                    <div className="flex items-center gap-3">
-                      <button type="button" onClick={() => writeLyrics("write")} disabled={lyricsBusy}
-                        className="text-xs font-medium text-primary hover:underline disabled:opacity-50 inline-flex items-center gap-1">
-                        {lyricsBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />} Write for me
-                      </button>
-                      <button type="button" onClick={() => writeLyrics("enhance")} disabled={lyricsBusy || lyrics.trim().length < 2}
-                        className="text-xs font-medium text-primary hover:underline disabled:opacity-40 inline-flex items-center gap-1">
-                        <Wand2 className="h-3 w-3" /> Enhance
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Lyric-writer options — apply to Write for me / Enhance */}
-                  <div className="flex flex-wrap items-end gap-3">
-                    <div>
-                      <label className="text-[11px] font-medium text-muted-foreground">Language</label>
-                      <div className="mt-1 flex items-center gap-1 rounded-lg border border-border p-0.5">
-                        <button type="button" onClick={() => setExplicit(false)}
-                          className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${!explicit ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"}`}>
-                          Clean
-                        </button>
-                        <button type="button" onClick={() => setExplicit(true)}
-                          className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${explicit ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"}`}>
-                          Explicit
-                        </button>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-[11px] font-medium text-muted-foreground">Tempo (BPM)</label>
-                      <input type="number" inputMode="numeric" min={40} max={240} value={bpm}
-                        onChange={(e) => setBpm(e.target.value)} placeholder="optional"
-                        className="mt-1 w-24 rounded-lg border border-border bg-background/40 px-2 py-1.5 text-xs" />
-                    </div>
-                  </div>
-
+              {/* 1. The Vibe */}
+              <section className="space-y-5">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-sm">1</div>
+                  <h2 className="text-xl font-semibold">The Sound</h2>
+                </div>
+                <div className="pl-10 space-y-4">
                   <Textarea
-                    value={lyrics}
-                    onChange={(e) => setLyrics(e.target.value)}
-                    rows={5}
-                    placeholder={"Type or paste lyrics. Use [Verse] / [Chorus] / [Bridge] tags to shape the song.\nLeave blank and we'll write them from your vibe."}
-                    className="resize-none text-sm"
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    rows={3}
+                    placeholder={withVocals
+                      ? "Describe the style & vibe — e.g. anthemic pop-rock, hopeful, driving beat, 120 BPM"
+                      : "Describe the vibe — e.g. warm lofi hip hop, mellow Rhodes, vinyl crackle, 72 BPM"}
+                    className="resize-none text-base min-h-[100px]"
                   />
-                  <p className="text-[11px] text-muted-foreground">
-                    Optional: Write for me &amp; Enhance use the lyrics engine ({LYRICS_BUILD_COST} credits each) — separate from the {status?.vocalCost ?? 15}-credit song. Leave blank and the song model writes lyrics from your prompt at no extra charge.
-                  </p>
-                </div>
-              )}
-
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-sm font-medium">Length</label>
-                  <span className="text-xs text-muted-foreground">
-                    {withVocals
-                      ? `${status?.vocalCost ?? 15} credits`
-                      : status?.admin || (status?.freeRemaining ?? 0) > 0
-                        ? "0 credits"
-                        : `≈ ${songCredits(duration)} credits`}
-                  </span>
-                </div>
-                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                  {(withVocals ? VOCAL_LENGTH_OPTIONS : LENGTH_OPTIONS).map((l) => {
-                    const activeKey = withVocals ? vocalLengthKey : lengthKey;
-                    return (
-                      <button key={l.key} type="button"
-                        onClick={() => (withVocals ? setVocalLengthKey(l.key) : setLengthKey(l.key))}
-                        className={`rounded-lg border px-2 py-2 text-xs font-medium transition-colors ${activeKey === l.key ? "border-primary bg-primary/10 text-primary" : "border-border bg-background/40 text-muted-foreground hover:border-primary/50"}`}>
-                        {l.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {!withVocals && (
-                <div>
-                  <label className="text-sm font-medium">Loop to fill (optional)</label>
-                  <p className="text-[11px] text-muted-foreground mt-0.5 mb-1.5">
-                    Generate a short clip and repeat it to this length — free, no extra credits (great for looping backgrounds).
-                  </p>
-                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                    {LOOP_OPTIONS.map((l) => (
-                      <button key={l.key} type="button" onClick={() => setLoopKey(l.key)}
-                        className={`rounded-lg border px-2 py-2 text-xs font-medium transition-colors ${loopKey === l.key ? "border-primary bg-primary/10 text-primary" : "border-border bg-background/40 text-muted-foreground hover:border-primary/50"}`}>
-                        {l.label}
+                  <div className="flex flex-wrap gap-2">
+                    {PRESETS.map((p) => (
+                      <button key={p.label} type="button" onClick={() => setPrompt(p.prompt)} title={p.prompt}
+                        className="text-xs px-3 py-1.5 rounded-full border border-border bg-background/50 text-muted-foreground hover:border-primary hover:text-primary transition-colors">
+                        {p.label}
                       </button>
                     ))}
                   </div>
                 </div>
+              </section>
+
+              {/* 2. Vocals & Lyrics */}
+              {withVocals && (
+                <section className="space-y-5">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-sm">2</div>
+                    <div className="flex items-center gap-3">
+                      <h2 className="text-xl font-semibold">Vocals & Lyrics</h2>
+                      <Badge variant="secondary" className="font-medium text-xs">{status?.vocalCost ?? 15} credits</Badge>
+                    </div>
+                  </div>
+                  <div className="pl-10 space-y-8">
+                    {/* Voice */}
+                    <div className="space-y-3">
+                      <Label className="text-base">Lead Voice</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {VOCAL_STYLES.map((v) => (
+                          <button key={v.key} type="button" onClick={() => setVocalStyle(v.key)}
+                            className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${vocalStyle === v.key ? "border-primary bg-primary/10 text-primary" : "border-border bg-background/40 text-muted-foreground hover:border-primary/50"}`}>
+                            {v.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Topic & Generator */}
+                    <div className="space-y-4 p-5 rounded-xl border border-border bg-muted/10">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-base font-semibold">AI Lyric Writer</Label>
+                        <span className="text-xs text-muted-foreground font-medium">{LYRICS_BUILD_COST} credits per use</span>
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <div className="flex-1">
+                           <Input
+                             placeholder="What should the song be about? (e.g. Neon city nights, winning a race)"
+                             value={lyricsTopic}
+                             onChange={(e) => setLyricsTopic(e.target.value)}
+                             className="bg-background"
+                           />
+                        </div>
+                        <Button
+                          onClick={() => writeLyrics("write")}
+                          disabled={lyricsBusy || lyricsTopic.trim().length < 3}
+                          variant="secondary"
+                          className="shrink-0"
+                        >
+                          {lyricsBusy ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sparkles className="h-4 w-4 mr-2" />}
+                          Write lyrics
+                        </Button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4 pt-2">
+                        <div>
+                          <Label className="text-xs text-muted-foreground mb-1.5 block">Language</Label>
+                          <div className="flex items-center gap-1 rounded-lg border border-border p-0.5 bg-background w-fit">
+                            <button type="button" onClick={() => setExplicit(false)}
+                              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${!explicit ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"}`}>
+                              Clean
+                            </button>
+                            <button type="button" onClick={() => setExplicit(true)}
+                              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${explicit ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"}`}>
+                              Explicit
+                            </button>
+                          </div>
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground mb-1.5 block">Tempo (BPM) <span className="opacity-60 font-normal">Optional</span></Label>
+                          <Input type="number" inputMode="numeric" min={40} max={240} value={bpm}
+                            onChange={(e) => setBpm(e.target.value)} placeholder="e.g. 120"
+                            className="w-24 bg-background h-8 text-sm" />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Lyrics Textarea */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-base">Lyrics</Label>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => writeLyrics("enhance")}
+                          disabled={lyricsBusy || lyrics.trim().length < 5}
+                          className="h-8 text-primary hover:text-primary hover:bg-primary/10"
+                        >
+                          <Wand2 className="h-3.5 w-3.5 mr-1.5" /> Enhance existing lyrics ({LYRICS_BUILD_COST} credits)
+                        </Button>
+                      </div>
+                      <Textarea
+                        value={lyrics}
+                        onChange={(e) => setLyrics(e.target.value)}
+                        rows={8}
+                        className="text-sm font-medium leading-relaxed resize-y bg-background"
+                        placeholder="Type or paste your lyrics here. Use [Verse], [Chorus], and [Bridge] tags to structure the song.&#10;&#10;If you leave this blank, the song generator can write lyrics from your sound description at no extra charge."
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Enhance existing lyrics rewrites the text in this editor while preserving its story and voice. The topic above is optional guidance.
+                      </p>
+                    </div>
+                  </div>
+                </section>
               )}
 
-              {gen.isPending || progress > 0 ? (
-                <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/[0.04] p-3">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="flex items-center gap-1.5 font-medium text-foreground">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> {genPhase(progress)}
-                    </span>
-                    <span className="tabular-nums text-muted-foreground">{Math.round(progress)}%</span>
+              {/* 3. Duration */}
+              <section className="space-y-5">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-sm">
+                    {withVocals ? "3" : "2"}
                   </div>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-secondary/60">
-                    <div
-                      className="h-full rounded-full bg-gradient-electric transition-[width] duration-300 ease-out"
-                      style={{ width: `${progress}%` }}
-                    />
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">This usually takes 15–40 seconds — hang tight.</p>
+                  <h2 className="text-xl font-semibold">Track Length</h2>
                 </div>
-              ) : (
-                <Button
-                  onClick={() => {
-                    // Proactive credit check — show the top-up modal instead
-                    // of letting the user hit a backend failure after submitting.
-                    if (!canAffordCredits(status?.vocalCost ?? 0, status?.creditsRemaining)) {
-                      setTopUpCost(status?.vocalCost ?? 0);
-                      setTopUpOpen(true);
-                      return;
-                    }
-                    gen.mutate();
-                  }}
-                  disabled={prompt.trim().length < 3 || lyricsBusy}
-                  className="bg-gradient-electric text-white border-0"
-                >
-                  <Wand2 className="h-4 w-4 mr-2" /> {withVocals
-                    ? `Generate Song · ${status?.vocalCost ?? 15} credits`
-                    : `Generate Soundtrack · ${status?.admin || (status?.freeRemaining ?? 0) > 0 ? "0 credits" : `${songCredits(duration)} credits`}`}
-                </Button>
-              )}
+                <div className="pl-10 space-y-6">
+                  <div className="flex flex-wrap gap-2">
+                    {(withVocals ? VOCAL_LENGTH_OPTIONS : LENGTH_OPTIONS).map((l) => {
+                      const activeKey = withVocals ? vocalLengthKey : lengthKey;
+                      return (
+                        <button key={l.key} type="button"
+                          onClick={() => (withVocals ? setVocalLengthKey(l.key) : setLengthKey(l.key))}
+                          className={`rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${activeKey === l.key ? "border-primary bg-primary/10 text-primary" : "border-border bg-background/40 text-muted-foreground hover:border-primary/50"}`}>
+                          {l.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {!withVocals && (
+                    <div className="space-y-3 pt-2">
+                      <Label className="text-base block">Loop Target <span className="text-muted-foreground font-normal text-sm ml-2">Repeat the track to fill this duration (Free)</span></Label>
+                      <div className="flex flex-wrap gap-2">
+                        {LOOP_OPTIONS.map((l) => (
+                          <button key={l.key} type="button" onClick={() => setLoopKey(l.key)}
+                            className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${loopKey === l.key ? "border-primary bg-primary/10 text-primary" : "border-border bg-background/40 text-muted-foreground hover:border-primary/50"}`}>
+                            {l.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </section>
             </>
           )}
-        </CardContent>
-      </Card>
+        </div>
+
+        {/* Generate Footer */}
+        {status && status.enabled && (
+          <div className="bg-muted/30 border-t border-border p-6 md:px-8 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="text-sm text-muted-foreground w-full md:w-auto text-center md:text-left">
+              {withVocals
+                ? `Generating this vocal song costs ${status?.vocalCost ?? 15} credits.`
+                : status?.admin || (status?.freeRemaining ?? 0) > 0
+                  ? "You are using a free soundtrack generation."
+                  : `Generating this soundtrack will use ≈ ${songCredits(duration)} credits.`}
+            </div>
+
+            {gen.isPending || progress > 0 ? (
+              <div className="w-full md:w-80 flex flex-col gap-2 bg-background p-3 rounded-xl border border-border">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 font-medium text-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> {genPhase(progress)}
+                  </span>
+                  <span className="tabular-nums text-muted-foreground">{Math.round(progress)}%</span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-secondary/60">
+                  <div
+                    className="h-full rounded-full bg-gradient-electric transition-[width] duration-300 ease-out"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <Button
+                size="lg"
+                className="w-full md:w-auto bg-gradient-electric text-white text-base font-bold px-8 h-12 shadow-md hover:shadow-lg transition-all"
+                disabled={prompt.trim().length < 3 || lyricsBusy}
+                onClick={() => {
+                  const generationIsFree = !withVocals && (status?.admin || (status?.freeRemaining ?? 0) > 0);
+                  const requiredCredits = withVocals ? (status?.vocalCost ?? 15) : generationIsFree ? 0 : songCredits(duration);
+                  if (!canAffordCredits(requiredCredits, status?.creditsRemaining)) {
+                    setTopUpCost(requiredCredits);
+                    setTopUpOpen(true);
+                    return;
+                  }
+                  gen.mutate();
+                }}
+              >
+                <Sparkles className="h-5 w-5 mr-2" />
+                Generate Track
+              </Button>
+            )}
+          </div>
+        )}
+        {gen.isError && !gen.isPending && progress === 0 && (
+          <div className="border-t border-destructive/20 bg-destructive/5 px-6 py-4 md:px-8">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-destructive">This track wasn’t generated</p>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  {gen.error instanceof Error ? gen.error.message : "The music engine had an internal error. Please try again."}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">No soundtrack credits are charged unless generation succeeds.</p>
+              </div>
+              <Button variant="outline" onClick={() => gen.mutate()} disabled={lyricsBusy}>
+                Try again
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Library */}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
