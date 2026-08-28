@@ -1084,14 +1084,12 @@ export default function Generate() {
       });
       return;
     }
-    if (!shotPromptValidation.valid || !allShotPromptsReviewed || !shotPlan) {
+    if (!shotPromptValidation.valid || !shotPlan) {
       setConfirmOpen(false);
       setErrorDialog({
         open: true,
-          title: `Review the ${generatedPromptLabelPlural}`,
-        message: !shotPromptValidation.valid
-            ? `Build ${requiredPromptCount ?? "the required"} distinct, non-empty ${generatedPromptLabelPlural} before generating.`
-            : `Approve all ${shotPlan?.shots.length ?? requiredPromptCount ?? ""} ${generatedPromptLabelPlural} before generating.`,
+        title: `Review the ${generatedPromptLabelPlural}`,
+        message: `Build ${requiredPromptCount ?? "the required"} distinct, non-empty ${generatedPromptLabelPlural} before generating.`,
         code: "APPROVED_PROMPTS_INCOMPLETE",
       });
       return;
@@ -3760,13 +3758,11 @@ export default function Generate() {
             </span>
           </div>
         )}
-        {!imagePackMode && !shotPlanLoading && (!shotPromptValidation.valid || !allShotPromptsReviewed) && (
+        {!imagePackMode && !shotPlanLoading && !shotPromptValidation.valid && (
           <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>
-              {!shotPromptValidation.valid
-                ? `Build ${requiredPromptCount ?? "all required"} distinct ${generatedPromptLabelPlural} before generating.`
-                : `Review and approve all ${shotPlan?.shots.length ?? requiredPromptCount ?? ""} ${generatedPromptLabelPlural} before generating.`}
+              Build {requiredPromptCount ?? "all required"} distinct {generatedPromptLabelPlural} before generating.
             </span>
           </div>
         )}
@@ -3787,7 +3783,6 @@ export default function Generate() {
               (!imagePackMode && (
                 shotPlanLoading ||
                 !shotPromptValidation.valid ||
-               !allShotPromptsReviewed ||
                !scriptApproved
               )) ||
               (imagePackMode && (!isImagePackPlanValid || imagePackPlanLoading))
