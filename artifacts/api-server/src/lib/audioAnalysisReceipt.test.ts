@@ -55,6 +55,7 @@ describe("audio analysis receipts", () => {
       prompt: "Rainy cinematic mystery",
       style: "cinematic",
       audioSourceType: "upload",
+      scriptApproved: true,
       audioObjectPath: objectPath,
       requestedDuration: "full",
       audioAnalysis: { ...analysis, analysisReceipt: receipt },

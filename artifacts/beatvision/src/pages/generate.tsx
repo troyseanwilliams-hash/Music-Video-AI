@@ -312,6 +312,7 @@ export default function Generate() {
   const [subjectReplacementBusy, setSubjectReplacementBusy] = useState(false);
   const [subjectReplacementError, setSubjectReplacementError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [scriptApproved, setScriptApproved] = useState(false);
   const [topUpOpen, setTopUpOpen] = useState(false);
   // Storyboard preview shown in the confirm dialog (no charge, no render).
   type PlannedShot = {
@@ -903,6 +904,7 @@ export default function Generate() {
       }
       setShotPlan(data as NonNullable<typeof shotPlan>);
       setReviewedShotIndexes([]);
+      setScriptApproved(false);
     } catch (error) {
       setShotPlan(null);
       setReviewedShotIndexes([]);
@@ -937,6 +939,7 @@ export default function Generate() {
   useEffect(() => {
     setShotPlan(null);
     setReviewedShotIndexes([]);
+    setScriptApproved(false);
   }, [
     prompt,
     selectedStyle,
@@ -1093,6 +1096,15 @@ export default function Generate() {
       });
       return;
     }
+    if (!scriptApproved) {
+      setErrorDialog({
+        open: true,
+        title: "Approve your script",
+        message: "Review the script and scene prompts, then check the approval box before generating.",
+        code: "SCRIPT_APPROVAL_REQUIRED",
+      });
+      return;
+    }
     setConfirmOpen(false);
     createJob.mutate(
       {
@@ -1139,6 +1151,7 @@ export default function Generate() {
             index: shot.index,
             prompt: shot.prompt.trim(),
           })),
+          scriptApproved,
           // Copyright/ownership attestation (gated by the checkbox above) —
           // not applicable to a silent "no audio" render, so it's implicitly
           // satisfied for that mode.
@@ -1174,6 +1187,7 @@ export default function Generate() {
 
           if (code === "INSUFFICIENT_CREDITS") title = "Not enough credits";
           else if (code === "SUBSCRIPTION_REQUIRED") title = "Subscription required";
+          else if (code === "SCRIPT_APPROVAL_REQUIRED") title = "Approve your script";
           else if (code === "AUDIO_ANALYSIS_REQUIRED") {
             title = "Audio analysis not ready";
             message = "Audio analysis did not finish. Retry the analysis or choose a specific video duration.";
@@ -1261,6 +1275,7 @@ export default function Generate() {
       return;
     }
 
+    setScriptApproved(false);
     setConfirmOpen(true);
   };
 
@@ -3499,6 +3514,7 @@ export default function Generate() {
                 disabled={createJob.isPending}
                 onClick={() => {
                   setDurationWarningOpen(false);
+                  setScriptApproved(false);
                   setConfirmOpen(true);
                 }}
               >
@@ -3556,7 +3572,7 @@ export default function Generate() {
                 {!imagePackMode && refImageObjectPath && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Character</span>
-                    <span className="font-medium text-primary">🔒 Locked across all shots</span>
+                    <span className="font-medium text-primary">Used in relevant character scenes</span>
                   </div>
                 )}
                 {!imagePackMode && <div className="flex justify-between">
@@ -3715,6 +3731,23 @@ export default function Generate() {
             </div>
           </DialogDescription>
         </DialogHeader>
+        {!imagePackMode && (
+          <label className="mt-2 flex cursor-pointer items-start gap-3 rounded-lg border border-primary/30 bg-primary/[0.06] px-3 py-3 group">
+            <input
+              type="checkbox"
+              checked={scriptApproved}
+              onChange={(event) => setScriptApproved(event.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-primary"
+              data-testid="checkbox-approve-script"
+            />
+            <span className="text-sm leading-relaxed text-foreground/90">
+              I have reviewed and approve this script and all scene prompts shown above.
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                Generation will use these exact approved scene descriptions.
+              </span>
+            </span>
+          </label>
+        )}
         {!imagePackMode && (fullTrackNeedsAnalysis || fullTrackOverLimit) && (
           <div
             className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300"
@@ -3768,7 +3801,8 @@ export default function Generate() {
               (!imagePackMode && (
                 shotPlanLoading ||
                 !shotPromptValidation.valid ||
-                !allShotPromptsReviewed
+               !allShotPromptsReviewed ||
+               !scriptApproved
               )) ||
               (imagePackMode && (!isImagePackPlanValid || imagePackPlanLoading))
             }

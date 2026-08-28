@@ -1832,7 +1832,7 @@ components:
 
     CreateJobRequest:
       type: object
-      required: [prompt, style, audioSourceType]
+      required: [prompt, style, audioSourceType, scriptApproved]
       properties:
         prompt:
           type: string

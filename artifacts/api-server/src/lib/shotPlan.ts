@@ -51,6 +51,22 @@ function conciseImagePrompt(parts: Array<string | null | undefined>): string {
   return shortenCompletePrompt(prompt, MAX_GENERATED_IMAGE_PROMPT_LENGTH);
 }
 
+function scenePromptWithStyleFootnote(
+  parts: Array<string | null | undefined>,
+  styleDescription: string,
+): string {
+  const styleFootnote = `Style footnote: ${styleDescription}.`;
+  const availableSceneLength = Math.max(
+    1,
+    MAX_GENERATED_IMAGE_PROMPT_LENGTH - styleFootnote.length - 1,
+  );
+  const sceneDescription = shortenCompletePrompt(
+    parts.filter(Boolean).join(", ").replace(/\s+/g, " ").trim(),
+    availableSceneLength,
+  );
+  return `${sceneDescription} ${styleFootnote}`.trim();
+}
+
 export type GenerationMode = "montage" | "narrative";
 
 export interface PlannedShot {
@@ -474,18 +490,17 @@ function buildPrompt(
         ? `featuring ${input.character}`
         : "featuring the recurring principal subject"
     : "environmental or object-focused scene, no featured character unless required by this current visual idea";
-  return conciseImagePrompt([
+  return scenePromptWithStyleFootnote([
     `scene direction: ${concept}`,
+    characterDesc,
     `${montageRole} visual motif`,
     `${section.label} section visual treatment`,
-    characterDesc,
     "one focused visual idea, no complete storyline or multi-scene sequence inside this clip",
     `${mood ?? "energetic"} mood`,
     energyDesc,
     paceDesc,
     "beat-synced cuts, professional music video production, 4K ultra-wide",
-    `style footnote: ${styleDesc}`,
-  ]);
+  ], styleDesc);
 }
 
 function buildNarrativePrompt(
@@ -530,12 +545,12 @@ function buildNarrativePrompt(
       ? "deliver a clear visual resolution that completes the story"
       : "end on an action or composition that naturally leads into the next chronological scene";
 
-  return conciseImagePrompt([
+  return scenePromptWithStyleFootnote([
     `scene direction: ${concept}`,
+    characterDesc,
     `chronological story scene ${sceneIndex + 1} of ${sceneCount}`,
     `${beat} story beat`,
     `${section.label} music section`,
-    characterDesc,
     continuity,
     ending,
     "one continuous story scene only, no montage, no flashback, no time jump, no multiple locations inside this clip",
@@ -543,8 +558,7 @@ function buildNarrativePrompt(
     energyDesc,
     paceDesc,
     "professional narrative music video production, cinematic composition, no text or titles",
-    `style footnote: ${styleDesc}`,
-  ]);
+  ], styleDesc);
 }
 
 export function planShots(input: ShotPlanInput): ShotPlan {

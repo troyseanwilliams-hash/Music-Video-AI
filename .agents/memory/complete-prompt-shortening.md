@@ -7,4 +7,4 @@ Generated image prompts must never be clipped with an ellipsis or end on a parti
 
 **Why:** Character-limit clipping produced visible fragments such as `th…` and could remove scene-specific instructions when only the first complete sentence was retained.
 
-**How to apply:** Preserve the original order of visual instructions. When shortening is necessary, keep the longest whole-word prefix that fits, strip a dangling article, preposition, or conjunction, and finish with a period. Apply this to Scene Builder output, storyboard prompts, and Creative Prompt handoffs.
+**How to apply:** Put the supplied scene action and setting first so shortening cannot replace the story with aesthetic boilerplate. Reserve room for a brief style footnote at the end. Keep the longest whole-word prefix that fits, strip dangling connector words, and finish with punctuation. Apply this to Scene Builder output, storyboard prompts, and Creative Prompt handoffs.

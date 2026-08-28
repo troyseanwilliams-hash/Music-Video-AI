@@ -764,7 +764,6 @@ export const CreateJobBody = zod.object({
     ),
   scriptApproved: zod
     .boolean()
-    .optional()
     .describe(
       "Explicit user confirmation that the submitted script and scene prompts were reviewed and approved before generation.",
     ),

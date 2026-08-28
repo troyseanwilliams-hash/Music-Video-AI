@@ -308,6 +308,7 @@ router.post("/jobs", async (req, res) => {
     fullTrackLipSyncImagePath,
     approvedScenePrompts,
     approvedScenePlanFingerprint,
+    scriptApproved,
   } =
     parseResult.data;
   const normalizedGenerationMode =
@@ -316,6 +317,14 @@ router.post("/jobs", async (req, res) => {
   // value in the request contract for old clients, but image packs remain a
   // separate job type and never come through this route.
   const normalizedNarrativeVisualSource = "generated_images";
+
+  if (scriptApproved !== true) {
+    res.status(422).json({
+      error: "Review and approve the script and scene prompts before generating.",
+      code: "SCRIPT_APPROVAL_REQUIRED",
+    });
+    return;
+  }
 
   // "No audio" jobs render a silent video (soundtrack added later in the
   // Editor) — there's no audio to attest ownership of, and no song to derive

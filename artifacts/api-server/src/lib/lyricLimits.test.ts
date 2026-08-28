@@ -7,6 +7,7 @@ const baseJob = {
   prompt: "A cinematic performance",
   style: "cinematic" as const,
   audioSourceType: "upload" as const,
+  scriptApproved: true,
 };
 
 describe("long timed lyrics", () => {

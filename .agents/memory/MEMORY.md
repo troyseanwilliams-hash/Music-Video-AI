@@ -35,3 +35,4 @@
 - [Named-subject reference prompts](named-subject-reference-prompts.md) — preserve the warning; offer reference image, safe description replacement, or continue without one.
 - [Reference-image prompt authoring](reference-image-prompt-authoring.md) — when a reference is attached, generated prompts should point to it instead of repeating character appearance.
 - [Complete prompt shortening](complete-prompt-shortening.md) — generated image prompts must end at whole words without ellipses while preserving ordered visual instructions.
+- [Script approval gate](script-approval-gate.md) — video jobs require explicit approval of the exact script and scene prompts before credit reservation.

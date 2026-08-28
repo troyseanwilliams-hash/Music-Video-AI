@@ -780,7 +780,7 @@ export interface CreateJobRequest {
    */
   approvedScenePrompts?: CreateJobRequestApprovedScenePromptsItem[];
   /** Explicit user confirmation that the submitted script and scene prompts were reviewed and approved before generation. */
-  scriptApproved?: boolean;
+  scriptApproved: boolean;
 }
 
 export interface RemixJobRequest {

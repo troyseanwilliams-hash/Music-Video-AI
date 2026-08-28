@@ -69,6 +69,9 @@ describe("planShots montage planning", () => {
     expect(plan.shots[0]!.prompt).not.toContain("1.");
     expect(plan.shots[0]!.prompt).not.toContain("crosses a stormy ocean");
     expect(plan.shots[2]!.prompt).toContain("deliver a clear visual resolution");
+    expect(plan.shots[0]!.prompt.indexOf("A pilot discovers the open sky"))
+      .toBeLessThan(plan.shots[0]!.prompt.indexOf("Style footnote"));
+    expect(plan.shots[0]!.prompt).toMatch(/style footnote: cinematic 35mm film/i);
   });
 
   it("rejects malformed or count-mismatched numbered video scripts", () => {
