@@ -8,7 +8,7 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import { writeFile, unlink } from "fs/promises";
 import { join } from "path";
-import { tmpdir } from "os";
+import { hostname, tmpdir } from "os";
 import { logger } from "./logger.js";
 import { notifyRenderReady, notifyRenderFailed, notifyAdminRenderFailed } from "./renderEmail.js";
 import { ObjectStorageService } from "./objectStorage.js";
@@ -95,6 +95,46 @@ function buildGenerationPlan(
 const storageService = new ObjectStorageService();
 const activeClaimTokens = new Map<string, Date>();
 type JobRow = typeof jobsTable.$inferSelect;
+
+const WORKER_ID = process.env.WORKER_ID?.trim() || `${hostname()}-${process.pid}`;
+const WORKER_CAPACITY = 1;
+const DEFAULT_SHUTDOWN_TIMEOUT_MS = 30_000;
+
+export type JobProcessorStatus = {
+  workerId: string;
+  state: "starting" | "ready" | "draining" | "stopped";
+  capacity: number;
+  activeJobs: number;
+  activeJobIds: string[];
+  jobsStarted: number;
+  jobsCompleted: number;
+  jobsFailed: number;
+  startedAt: string | null;
+};
+
+type QueueMetrics = {
+  queued: number;
+  active: number;
+  oldestQueuedAt: string | null;
+  oldestQueuedAgeMs: number | null;
+  database: "ok" | "degraded";
+};
+
+let processorState: JobProcessorStatus = {
+  workerId: WORKER_ID,
+  state: "stopped",
+  capacity: WORKER_CAPACITY,
+  activeJobs: 0,
+  activeJobIds: [],
+  jobsStarted: 0,
+  jobsCompleted: 0,
+  jobsFailed: 0,
+  startedAt: null,
+};
+let processorBusy = false;
+let pollTimer: NodeJS.Timeout | null = null;
+let recoveryTimer: NodeJS.Timeout | null = null;
+let currentJobPromise: Promise<void> | null = null;
 
 // ---- AI-video billing + clip-salvage state ---------------------------------
 // AI jobs stash billing/salvage state in the (otherwise unused for AI jobs)
