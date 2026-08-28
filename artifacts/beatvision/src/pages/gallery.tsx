@@ -33,6 +33,7 @@ import {
   IMAGE_REMIX_KIND,
   type ImageRemixAsset,
 } from "@/lib/imageRemixHandoff";
+import { orderGalleryImages } from "@/lib/imageGallery";
 
 interface ImageAsset extends ImageRemixAsset {
   id: string;
@@ -117,19 +118,7 @@ export default function Gallery() {
   });
   const generatedImages = (() => {
     const assets = imageAssetsQuery.data?.pages.flatMap((page) => page.assets) ?? [];
-    const packs = new Map<string, ImageAsset[]>();
-    for (const asset of assets) {
-      const pack = packs.get(asset.jobId) ?? [];
-      pack.push(asset);
-      packs.set(asset.jobId, pack);
-    }
-    return [...packs.values()]
-      .sort((a, b) => {
-        const newestA = Math.max(...a.map((asset) => new Date(asset.createdAt).getTime()));
-        const newestB = Math.max(...b.map((asset) => new Date(asset.createdAt).getTime()));
-        return newestB - newestA;
-      })
-      .flatMap((pack) => pack.sort((a, b) => a.assetIndex - b.assetIndex));
+    return orderGalleryImages(assets);
   })();
   const selectedImages = selectedImageIds.flatMap((id) => {
     const asset = generatedImages.find((candidate) => candidate.id === id);

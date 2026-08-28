@@ -2687,6 +2687,39 @@ export default function Generate() {
               onChange={(e) => { setPrompt(e.target.value); setFieldErrors((fe) => ({ ...fe, prompt: undefined })); }}
             />
             {!imagePackMode && (
+              <div
+                className="flex items-start gap-3 rounded-xl border border-primary/30 bg-primary/[0.07] px-4 py-3"
+                role="status"
+                aria-live="polite"
+                data-testid="prompt-count-for-entry"
+              >
+                <FileText className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <div className="min-w-0">
+                  {requiredPromptCount === null ? (
+                    <>
+                      <p className="text-sm font-semibold text-primary">Scene prompts needed</p>
+                      <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                        Analyze this song first to see the exact number of numbered prompts required for the full track.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm font-semibold text-primary">
+                        Enter exactly {requiredPromptCount}{" "}
+                        {requiredPromptCount === 1 ? "scene prompt" : "scene prompts"}
+                      </p>
+                      <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                        Use one complete visual moment per numbered line, from 1 through {requiredPromptCount}.{" "}
+                        {numberedVideoSceneAnalysis.count === null
+                          ? "This count is saved with the analyzed-song plan so self-submitted prompts match the render."
+                          : `${numberedVideoSceneAnalysis.count} of ${requiredPromptCount} numbered prompts entered.`}
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+            {!imagePackMode && (
               <div className="space-y-3 rounded-xl border border-primary/20 bg-primary/[0.035] p-3.5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>

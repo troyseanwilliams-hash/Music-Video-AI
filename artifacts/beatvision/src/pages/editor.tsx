@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useLocation, Link } from "wouter";
 import SignupTeaser from "@/components/SignupTeaser";
 import { useAuth } from "@/hooks/useAuth";
@@ -391,17 +391,29 @@ export default function Editor() {
       },
     },
   );
-  const { data: imageAssetsData, isLoading: imageAssetsLoading } = useQuery<{
+  const imageAssetsQuery = useInfiniteQuery<{
     assets: ImageAsset[];
+    total: number;
+    page: number;
+    limit: number;
   }>({
     queryKey: ["/api/image-assets"],
+    initialPageParam: 1,
     enabled: isAuthenticated && imageAssetsOpen,
-    queryFn: async () => {
-      const response = await fetch("/api/image-assets?limit=60", { credentials: "include" });
+    queryFn: async ({ pageParam }) => {
+      const response = await fetch(`/api/image-assets?page=${pageParam}&limit=60`, { credentials: "include" });
       if (!response.ok) throw new Error("Failed to load generated images");
       return response.json();
     },
+    getNextPageParam: (lastPage) =>
+      lastPage.page * lastPage.limit < lastPage.total
+        ? lastPage.page + 1
+        : undefined,
   });
+  const imageAssetsLoading = imageAssetsQuery.isLoading;
+  const imageAssetsData = imageAssetsQuery.data
+    ? { assets: imageAssetsQuery.data.pages.flatMap((page) => page.assets) }
+    : undefined;
 
   // Preview state
   const [playing, setPlaying] = useState(false);
@@ -1741,38 +1753,63 @@ export default function Editor() {
               <div className="flex min-h-48 items-center justify-center">
                 <Loader2 className="h-6 w-6 animate-spin text-primary" />
               </div>
-            ) : imageAssetsData?.assets?.length ? (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                {imageAssetsData.assets.map((asset) => {
-                  const selected = selectedImageAssetIds.includes(asset.id);
-                  return (
-                    <button
-                      key={asset.id}
-                      type="button"
-                      aria-pressed={selected}
-                      onClick={() => toggleImageAsset(asset.id)}
-                      className={`group relative overflow-hidden rounded-xl border bg-card text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-                        selected ? "border-primary ring-2 ring-primary/30" : "border-border hover:border-primary/60"
-                      }`}
-                    >
-                      {selected && (
-                        <span className="absolute right-2 top-2 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
-                          <Check className="h-4 w-4" aria-hidden="true" />
-                          <span className="sr-only">Selected</span>
-                        </span>
-                      )}
-                      <img
-                        src={`/api/storage${asset.objectPath}`}
-                        alt=""
-                        className="aspect-[9/16] w-full bg-muted object-cover transition-transform group-hover:scale-[1.02]"
-                      />
-                      <div className="p-2.5">
-                        <p className="line-clamp-2 text-xs text-muted-foreground">{asset.prompt}</p>
-                      </div>
-                    </button>
-                  );
-                })}
+            ) : imageAssetsQuery.isError ? (
+              <div className="flex min-h-48 flex-col items-center justify-center rounded-xl border border-dashed border-destructive/40 px-6 text-center">
+                <p className="font-medium">Couldn't load your generated images</p>
+                <p className="mt-1 text-sm text-muted-foreground">Try again to refresh your saved image picker.</p>
+                <Button type="button" variant="outline" className="mt-4" onClick={() => void imageAssetsQuery.refetch()}>
+                  Try again
+                </Button>
               </div>
+            ) : imageAssetsData?.assets?.length ? (
+              <>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                  {imageAssetsData.assets.map((asset) => {
+                    const selected = selectedImageAssetIds.includes(asset.id);
+                    return (
+                      <button
+                        key={asset.id}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => toggleImageAsset(asset.id)}
+                        className={`group relative overflow-hidden rounded-xl border bg-card text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                          selected ? "border-primary ring-2 ring-primary/30" : "border-border hover:border-primary/60"
+                        }`}
+                      >
+                        {selected && (
+                          <span className="absolute right-2 top-2 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
+                            <Check className="h-4 w-4" aria-hidden="true" />
+                            <span className="sr-only">Selected</span>
+                          </span>
+                        )}
+                        <img
+                          src={`/api/storage${asset.objectPath}`}
+                          alt={`Generated image ${asset.assetIndex + 1}`}
+                          className="aspect-[9/16] w-full bg-muted object-cover transition-transform group-hover:scale-[1.02]"
+                        />
+                        <div className="p-2.5">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-primary">Scene {asset.assetIndex + 1}</p>
+                          <p className="line-clamp-2 text-xs text-muted-foreground">{asset.prompt}</p>
+                          <p className="mt-1 text-[10px] text-muted-foreground/80">{new Date(asset.createdAt).toLocaleDateString()}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {imageAssetsQuery.hasNextPage && (
+                  <div className="flex justify-center pt-4">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void imageAssetsQuery.fetchNextPage()}
+                      disabled={imageAssetsQuery.isFetchingNextPage}
+                    >
+                      {imageAssetsQuery.isFetchingNextPage ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      Load older images
+                    </Button>
+                  </div>
+                )}
+              </>
             ) : (
               <div className="flex min-h-48 flex-col items-center justify-center rounded-xl border border-dashed border-border px-6 text-center">
                 <ImageIcon className="mb-3 h-8 w-8 text-muted-foreground/60" />
