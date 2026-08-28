@@ -4,6 +4,8 @@
 // if that logic changes. Pure functions, no heavy deps — safe to import in routes.
 // No credits are charged and nothing is rendered by this module.
 
+import { createHash } from "node:crypto";
+
 const MAX_FULL_SECONDS = 600;
 
 const STYLE_PROMPTS: Record<string, string> = {
@@ -72,6 +74,110 @@ export interface ShotPlan {
   timelineSceneCount: number;
   reuseCount: number;
   approximate: boolean; // true when real audio analysis wasn't available
+}
+
+export interface ApprovedScenePrompt {
+  index: number;
+  prompt: string;
+}
+
+export type ApprovedShotPlanResult =
+  | { ok: true; plan: ShotPlan }
+  | { ok: false; error: string; code: string };
+
+export function shotPlanFingerprint(plan: ShotPlan): string {
+  return createHash("sha256")
+    .update(JSON.stringify({
+      generationMode: plan.generationMode,
+      numClips: plan.numClips,
+      clipDurationSec: plan.clipDurationSec,
+      targetOutputDuration: plan.targetOutputDuration,
+      timeline: plan.timeline.map((entry) => ({
+        index: entry.index,
+        visualIndex: entry.visualIndex,
+        startTime: entry.startTime,
+        duration: entry.duration,
+        label: entry.label,
+      })),
+      shots: plan.shots.map((shot) => ({
+        index: shot.index,
+        label: shot.label,
+        description: shot.description,
+        startTime: shot.startTime,
+        prompt: shot.prompt,
+      })),
+    }))
+    .digest("hex");
+}
+
+export function applyApprovedScenePrompts(
+  plan: ShotPlan,
+  approvedPrompts: ApprovedScenePrompt[] | null | undefined,
+  submittedFingerprint: string | null | undefined,
+): ApprovedShotPlanResult {
+  if (!approvedPrompts && !submittedFingerprint) return { ok: true, plan };
+  if (!approvedPrompts || !submittedFingerprint) {
+    return {
+      ok: false,
+      code: "APPROVED_PROMPTS_INCOMPLETE",
+      error: "The reviewed image prompts are incomplete. Rebuild and review them before submitting.",
+    };
+  }
+  if (submittedFingerprint !== shotPlanFingerprint(plan)) {
+    return {
+      ok: false,
+      code: "APPROVED_PROMPTS_STALE",
+      error: "The video settings changed after these image prompts were built. Rebuild and review the prompts before submitting.",
+    };
+  }
+  if (approvedPrompts.length !== plan.shots.length) {
+    return {
+      ok: false,
+      code: "APPROVED_PROMPTS_COUNT_MISMATCH",
+      error: `This video needs ${plan.shots.length} reviewed image prompts, but ${approvedPrompts.length} were submitted.`,
+    };
+  }
+
+  const cleaned = approvedPrompts.map((item) => ({
+    index: item.index,
+    prompt: item.prompt.trim(),
+  }));
+  for (let index = 0; index < cleaned.length; index++) {
+    const item = cleaned[index]!;
+    if (item.index !== index) {
+      return {
+        ok: false,
+        code: "APPROVED_PROMPTS_ORDER_INVALID",
+        error: "Reviewed image prompts must remain in their original scene order.",
+      };
+    }
+    if (!item.prompt) {
+      return {
+        ok: false,
+        code: "APPROVED_PROMPTS_EMPTY",
+        error: `Image prompt ${index + 1} is empty.`,
+      };
+    }
+  }
+  const normalized = cleaned.map((item) => item.prompt.toLocaleLowerCase());
+  if (new Set(normalized).size !== normalized.length) {
+    return {
+      ok: false,
+      code: "APPROVED_PROMPTS_DUPLICATE",
+      error: "Every scene needs a distinct image prompt. Remove duplicate prompts before submitting.",
+    };
+  }
+
+  return {
+    ok: true,
+    plan: {
+      ...plan,
+      shots: plan.shots.map((shot, index) => ({
+        ...shot,
+        prompt: cleaned[index]!.prompt,
+      })),
+    },
+  };
 }
 
 // A reasonable section list when real analysis isn't available yet, so the

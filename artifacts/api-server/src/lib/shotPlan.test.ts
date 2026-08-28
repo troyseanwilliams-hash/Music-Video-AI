@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyApprovedScenePrompts,
   numberedVideoScriptIssue,
   parseNumberedImagePackScript,
   hasStrictUniqueSourcePlan,
   planImagePackScenes,
   planShots,
+  shotPlanFingerprint,
 } from "./shotPlan.js";
 
 const THREE_MINUTE_ANALYSIS = {
@@ -137,6 +139,86 @@ describe("planShots montage planning", () => {
     expect(plan.shots.some((shot) => shot.prompt.includes("rider enters the desert"))).toBe(true);
     expect(plan.shots.some((shot) => shot.prompt.includes("storm arrives"))).toBe(true);
     expect(plan.shots.some((shot) => shot.prompt.includes("sunrise breaks over the mountains"))).toBe(true);
+  });
+});
+
+describe("approved scene prompts", () => {
+  const buildPlan = () => planShots({
+    prompt: "A pilot crosses an ocean and reaches a sunrise coast.",
+    style: "cinematic",
+    requestedDuration: "30",
+    generationMode: "narrative",
+  });
+
+  it("preserves reviewed prompt edits on the authoritative scene plan", () => {
+    const plan = buildPlan();
+    const fingerprint = shotPlanFingerprint(plan);
+    const approved = plan.shots.map((shot) => ({
+      index: shot.index,
+      prompt: `Reviewed image prompt ${shot.index + 1}`,
+    }));
+
+    const result = applyApprovedScenePrompts(plan, approved, fingerprint);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.plan.shots.map((shot) => shot.prompt)).toEqual(
+        approved.map((item) => item.prompt),
+      );
+      expect(result.plan.timeline).toEqual(plan.timeline);
+    }
+  });
+
+  it("rejects reviewed prompts when the authoritative plan changed", () => {
+    const original = buildPlan();
+    const changed = planShots({
+      prompt: "A pilot crosses an ocean and reaches a sunrise coast.",
+      style: "vintage",
+      requestedDuration: "30",
+      generationMode: "narrative",
+    });
+    const result = applyApprovedScenePrompts(
+      changed,
+      original.shots.map((shot) => ({ index: shot.index, prompt: shot.prompt })),
+      shotPlanFingerprint(original),
+    );
+
+    expect(result).toMatchObject({ ok: false, code: "APPROVED_PROMPTS_STALE" });
+  });
+
+  it("rejects reordered, empty, duplicate, and count-mismatched prompt sets", () => {
+    const plan = buildPlan();
+    const fingerprint = shotPlanFingerprint(plan);
+    const valid = plan.shots.map((shot) => ({ index: shot.index, prompt: shot.prompt }));
+
+    expect(applyApprovedScenePrompts(
+      plan,
+      [{ ...valid[0]!, index: 1 }, valid[1]!, valid[2]!],
+      fingerprint,
+    )).toMatchObject({ ok: false, code: "APPROVED_PROMPTS_ORDER_INVALID" });
+    expect(applyApprovedScenePrompts(
+      plan,
+      [{ ...valid[0]!, prompt: " " }, valid[1]!, valid[2]!],
+      fingerprint,
+    )).toMatchObject({ ok: false, code: "APPROVED_PROMPTS_EMPTY" });
+    expect(applyApprovedScenePrompts(
+      plan,
+      [{ ...valid[0]!, prompt: "same" }, { ...valid[1]!, prompt: "SAME" }, valid[2]!],
+      fingerprint,
+    )).toMatchObject({ ok: false, code: "APPROVED_PROMPTS_DUPLICATE" });
+    expect(applyApprovedScenePrompts(
+      plan,
+      valid.slice(0, 2),
+      fingerprint,
+    )).toMatchObject({ ok: false, code: "APPROVED_PROMPTS_COUNT_MISMATCH" });
+  });
+
+  it("keeps legacy submissions without reviewed prompts compatible", () => {
+    const plan = buildPlan();
+    expect(applyApprovedScenePrompts(plan, undefined, undefined)).toEqual({
+      ok: true,
+      plan,
+    });
   });
 });
 

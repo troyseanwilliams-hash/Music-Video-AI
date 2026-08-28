@@ -101,6 +101,7 @@ import {
   Users, Clapperboard, Layers, Zap, Film, Wand2, Video as VideoIcon, FileText,
   ChevronDown, User, Maximize2, Captions, Pencil, MonitorPlay, ImageIcon, X,
   Lock, Crown, Coins, AlertTriangle, CreditCard, Clock, ShieldAlert, Info, VideoOff, CircleHelp,
+  Copy, RotateCcw, CheckCheck,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -321,8 +322,10 @@ export default function Generate() {
     timelineSceneCount: number;
     reuseCount: number;
     approximate: boolean;
+    fingerprint: string;
   } | null>(null);
   const [shotPlanLoading, setShotPlanLoading] = useState(false);
+  const [reviewedShotIndexes, setReviewedShotIndexes] = useState<number[]>([]);
 
   // Image Pack Planning
   const planImagePack = usePlanImagePack();
@@ -556,45 +559,6 @@ export default function Generate() {
   const fullTrackLabel = songDurationSec
     ? `Full track · ${formatDuration(songDurationSec)}`
     : "Full track";
-
-  // Fetch a video storyboard only for video confirmation. Images only is an
-  // independent product and never needs the video planning route.
-  useEffect(() => {
-    if (!confirmOpen) return;
-    if (imagePackMode) {
-      setShotPlan(null);
-      setShotPlanLoading(false);
-      return;
-    }
-    let active = true;
-    setShotPlan(null);
-    setShotPlanLoading(true);
-    fetch("/api/jobs/preview-shots", {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        prompt,
-        style: selectedStyle,
-        generationMode,
-        character,
-        requestedDuration: effectiveRequestedDuration,
-        silentFilmDurationSeconds:
-          sourceType === CreateJobRequestAudioSourceType.none ? silentFilmDurationSeconds : null,
-        audioObjectPath: selectedAudioObjectPath,
-        audioAnalysis:
-          analyzeAudio.isSuccess && analysisForPath === selectedAudioObjectPath
-            ? analyzeAudio.data
-            : null,
-      }),
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => { if (active) setShotPlan(data); })
-      .catch(() => {})
-      .finally(() => { if (active) setShotPlanLoading(false); });
-    return () => { active = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [confirmOpen, imagePackMode]);
 
   useEffect(() => {
     if (imagePackMode) {
@@ -851,6 +815,111 @@ export default function Generate() {
       hasCurrentAudioAnalysis
     );
   const requiredPromptCount = promptCountReady ? generationEstimate.unitCount : null;
+  const shotPromptValidation = useMemo(() => {
+    if (!shotPlan || requiredPromptCount === null) {
+      return { valid: false, readyCount: 0, hasDuplicates: false };
+    }
+    const prompts = shotPlan.shots.map((shot) => shot.prompt.trim());
+    const normalized = prompts.filter(Boolean).map((value) => value.toLocaleLowerCase());
+    return {
+      valid:
+        shotPlan.shots.length === requiredPromptCount &&
+        normalized.length === requiredPromptCount &&
+        new Set(normalized).size === normalized.length,
+      readyCount: prompts.filter(Boolean).length,
+      hasDuplicates: new Set(normalized).size !== normalized.length,
+    };
+  }, [requiredPromptCount, shotPlan]);
+  const allShotPromptsReviewed =
+    !!shotPlan &&
+    reviewedShotIndexes.length === shotPlan.shots.length &&
+    shotPlan.shots.every((shot) => reviewedShotIndexes.includes(shot.index));
+
+  const buildScenePrompts = useCallback(async () => {
+    if (imagePackMode || !prompt.trim() || requiredPromptCount === null) return;
+    setShotPlanLoading(true);
+    try {
+      const response = await fetch("/api/jobs/preview-shots", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt,
+          style: selectedStyle,
+          generationMode,
+          character,
+          requestedDuration: effectiveRequestedDuration,
+          silentFilmDurationSeconds:
+            sourceType === CreateJobRequestAudioSourceType.none ? silentFilmDurationSeconds : null,
+          audioObjectPath: selectedAudioObjectPath,
+          audioAnalysis:
+            analyzeAudio.isSuccess && analysisForPath === selectedAudioObjectPath
+              ? analyzeAudio.data
+              : null,
+        }),
+      });
+      const data = await response.json() as {
+        error?: string;
+        shots?: PlannedShot[];
+        numClips?: number;
+        timelineSceneCount?: number;
+        reuseCount?: number;
+        approximate?: boolean;
+        fingerprint?: string;
+      };
+      if (!response.ok || !data.shots || !data.fingerprint) {
+        throw new Error(data.error || "Could not build image prompts.");
+      }
+      setShotPlan(data as NonNullable<typeof shotPlan>);
+      setReviewedShotIndexes([]);
+    } catch (error) {
+      setShotPlan(null);
+      setReviewedShotIndexes([]);
+      toast({
+        title: "Image prompts were not built",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setShotPlanLoading(false);
+    }
+  }, [
+    imagePackMode,
+    prompt,
+    requiredPromptCount,
+    selectedStyle,
+    generationMode,
+    character,
+    effectiveRequestedDuration,
+    sourceType,
+    silentFilmDurationSeconds,
+    selectedAudioObjectPath,
+    analyzeAudio.isSuccess,
+    analyzeAudio.data,
+    analysisForPath,
+    toast,
+  ]);
+
+  useEffect(() => {
+    setShotPlan(null);
+    setReviewedShotIndexes([]);
+  }, [
+    prompt,
+    selectedStyle,
+    generationMode,
+    character,
+    effectiveRequestedDuration,
+    silentFilmDurationSeconds,
+    selectedAudioObjectPath,
+    analysisForPath,
+    (analyzeAudio.data as { analysisReceipt?: string } | undefined)?.analysisReceipt,
+  ]);
+
+  useEffect(() => {
+    if (!confirmOpen || imagePackMode || shotPlan || shotPlanLoading) return;
+    void buildScenePrompts();
+  }, [buildScenePrompts, confirmOpen, imagePackMode, shotPlan, shotPlanLoading]);
+
   const balance = statsData?.creditsRemaining ?? null;
   const canAfford = canAffordCredits(activeCost, balance, isAdmin);
 
@@ -978,6 +1047,18 @@ export default function Generate() {
       });
       return;
     }
+    if (!shotPromptValidation.valid || !allShotPromptsReviewed || !shotPlan) {
+      setConfirmOpen(false);
+      setErrorDialog({
+        open: true,
+        title: "Review the image prompts",
+        message: !shotPromptValidation.valid
+          ? `Build ${requiredPromptCount ?? "the required"} distinct, non-empty image prompts before generating.`
+          : `Approve all ${shotPlan?.shots.length ?? requiredPromptCount ?? ""} image prompts before generating.`,
+        code: "APPROVED_PROMPTS_INCOMPLETE",
+      });
+      return;
+    }
     setConfirmOpen(false);
     createJob.mutate(
       {
@@ -1019,6 +1100,11 @@ export default function Generate() {
                   ...analyzeAudio.data,
                 }
               : null,
+          approvedScenePlanFingerprint: shotPlan.fingerprint,
+          approvedScenePrompts: shotPlan.shots.map((shot) => ({
+            index: shot.index,
+            prompt: shot.prompt.trim(),
+          })),
           // Copyright/ownership attestation (gated by the checkbox above) —
           // not applicable to a silent "no audio" render, so it's implicitly
           // satisfied for that mode.
@@ -2600,6 +2686,161 @@ export default function Generate() {
               maxLength={MAX_CREATIVE_PROMPT_LENGTH}
               onChange={(e) => { setPrompt(e.target.value); setFieldErrors((fe) => ({ ...fe, prompt: undefined })); }}
             />
+            {!imagePackMode && (
+              <div className="space-y-3 rounded-xl border border-primary/20 bg-primary/[0.035] p-3.5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Build your image prompts</p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                      Turn this creative direction into the exact engine-ready prompts used for each source image. Planning is free.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant={shotPlan ? "outline" : "default"}
+                    size="sm"
+                    onClick={() => void buildScenePrompts()}
+                    disabled={
+                      shotPlanLoading ||
+                      !prompt.trim() ||
+                      requiredPromptCount === null ||
+                      numberedVideoSceneAnalysis.invalid ||
+                      (
+                        numberedVideoSceneAnalysis.count !== null &&
+                        numberedVideoSceneAnalysis.count !== requiredPromptCount
+                      )
+                    }
+                    data-testid="button-build-image-prompts"
+                  >
+                    {shotPlanLoading ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : shotPlan ? (
+                      <RotateCcw className="mr-2 h-4 w-4" />
+                    ) : (
+                      <Wand2 className="mr-2 h-4 w-4" />
+                    )}
+                    {shotPlan ? "Rebuild prompts" : "Build image prompts"}
+                  </Button>
+                </div>
+
+                {requiredPromptCount === null && (
+                  <p className="text-xs text-amber-600 dark:text-amber-300">
+                    Audio analysis must finish before the exact prompt count can be built.
+                  </p>
+                )}
+
+                {shotPlan && (
+                  <div className="space-y-3" data-testid="image-prompt-review-panel">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3">
+                      <div className="text-xs">
+                        <span className="font-semibold text-foreground">
+                          {reviewedShotIndexes.length} of {shotPlan.shots.length} reviewed
+                        </span>
+                        <span className="ml-2 text-muted-foreground">
+                          · {shotPromptValidation.readyCount} non-empty prompts
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            void navigator.clipboard.writeText(
+                              shotPlan.shots.map((shot) => `${shot.index + 1}. ${shot.prompt}`).join("\n\n"),
+                            );
+                            toast({ title: "Image prompts copied" });
+                          }}
+                        >
+                          <Copy className="mr-1.5 h-3.5 w-3.5" />
+                          Copy all
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={!shotPromptValidation.valid}
+                          onClick={() => setReviewedShotIndexes(shotPlan.shots.map((shot) => shot.index))}
+                        >
+                          <CheckCheck className="mr-1.5 h-3.5 w-3.5" />
+                          Approve all
+                        </Button>
+                      </div>
+                    </div>
+
+                    {!shotPromptValidation.valid && (
+                      <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        <span>
+                          {shotPromptValidation.hasDuplicates
+                            ? "Every scene needs a distinct prompt. Edit the duplicate prompts before approval."
+                            : `All ${requiredPromptCount} prompts must be non-empty before approval.`}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="max-h-[520px] space-y-3 overflow-y-auto pr-1 custom-scrollbar">
+                      {shotPlan.shots.map((shot, shotIndex) => {
+                        const reviewed = reviewedShotIndexes.includes(shot.index);
+                        return (
+                          <div
+                            key={shot.index}
+                            className={`rounded-lg border p-3 ${
+                              reviewed ? "border-primary/35 bg-primary/[0.04]" : "border-border bg-background/70"
+                            }`}
+                          >
+                            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 text-xs">
+                                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/15 px-1 font-semibold text-primary">
+                                  {shot.index + 1}
+                                </span>
+                                <span className="font-medium text-foreground">{shot.description ?? shot.label}</span>
+                                <span className="text-muted-foreground">· {formatDuration(shot.startTime)}</span>
+                              </div>
+                              <Button
+                                type="button"
+                                variant={reviewed ? "default" : "outline"}
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                disabled={!shot.prompt.trim()}
+                                onClick={() => setReviewedShotIndexes((current) =>
+                                  reviewed
+                                    ? current.filter((index) => index !== shot.index)
+                                    : [...current, shot.index],
+                                )}
+                                data-testid={`button-review-scene-prompt-${shot.index}`}
+                              >
+                                <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+                                {reviewed ? "Reviewed" : "Mark reviewed"}
+                              </Button>
+                            </div>
+                            <Textarea
+                              value={shot.prompt}
+                              maxLength={5000}
+                              onChange={(event) => {
+                                const nextPrompt = event.target.value;
+                                setShotPlan((current) => current ? {
+                                  ...current,
+                                  shots: current.shots.map((item, index) =>
+                                    index === shotIndex ? { ...item, prompt: nextPrompt } : item,
+                                  ),
+                                } : current);
+                                setReviewedShotIndexes((current) =>
+                                  current.filter((index) => index !== shot.index),
+                                );
+                              }}
+                              className="min-h-28 resize-y bg-background text-xs leading-relaxed"
+                              aria-label={`Image prompt ${shot.index + 1}`}
+                              data-testid={`input-scene-image-prompt-${shot.index}`}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             {!imagePackMode && numberedVideoSceneAnalysis.count !== null && (
               <p className={`text-xs ${
                 numberedVideoSceneAnalysis.count === generationEstimate.unitCount
@@ -3136,6 +3377,12 @@ export default function Generate() {
                            : `${numberedVideoSceneAnalysis.count} of ${requiredPromptCount ?? "—"}`}
                        </span>
                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Image prompts reviewed</span>
+                        <span className={allShotPromptsReviewed ? "text-primary font-medium" : "text-amber-500"}>
+                          {reviewedShotIndexes.length} of {shotPlan?.shots.length ?? requiredPromptCount ?? "—"}
+                        </span>
+                      </div>
                     <div className="flex justify-between text-xs">
                       <span className="text-muted-foreground">Image foundation · {generationEstimate.unitCount} images</span>
                       <span>{generatedImageCost} credits</span>
@@ -3234,9 +3481,9 @@ export default function Generate() {
                       {shotPlan.timelineSceneCount} {generationMode === CreateJobRequestGenerationMode.narrative ? "chronological scenes" : "music-timed cuts"}
                       {" · one distinct source image for every timeline segment"}
                     </p>
-                    <div className="max-h-44 overflow-y-auto space-y-2 pr-1">
+                    <div className="max-h-64 overflow-y-auto space-y-3 pr-1">
                       {shotPlan.shots.map((s) => (
-                        <div key={s.index} className="text-xs">
+                        <div key={s.index} className="rounded-md border border-border/60 bg-background/70 p-2.5 text-xs">
                           <div className="flex items-center gap-2 font-medium text-foreground">
                             <span className="inline-flex h-4 min-w-[1rem] px-1 items-center justify-center rounded bg-primary/15 text-primary text-[10px]">
                               {s.index + 1}
@@ -3244,10 +3491,8 @@ export default function Generate() {
                             <span>{s.description ?? s.label}</span>
                             <span className="text-muted-foreground font-normal">· {Math.round(s.energy * 100)}% energy</span>
                           </div>
-                          <p className="text-muted-foreground mt-0.5 leading-snug">
-                            {generationMode === CreateJobRequestGenerationMode.narrative
-                              ? `${s.label} scene`
-                              : `${s.label} visual`}
+                          <p className="mt-1.5 leading-relaxed text-muted-foreground">
+                            {s.prompt}
                           </p>
                         </div>
                       ))}
@@ -3284,6 +3529,16 @@ export default function Generate() {
             </span>
           </div>
         )}
+        {!imagePackMode && !shotPlanLoading && (!shotPromptValidation.valid || !allShotPromptsReviewed) && (
+          <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              {!shotPromptValidation.valid
+                ? `Build ${requiredPromptCount ?? "all required"} distinct image prompts before generating.`
+                : `Review and approve all ${shotPlan?.shots.length ?? requiredPromptCount ?? ""} image prompts before generating.`}
+            </span>
+          </div>
+        )}
         <DialogFooter className="flex-col sm:flex-row gap-2 mt-2">
           <Button
             variant="outline"
@@ -3298,6 +3553,11 @@ export default function Generate() {
               createJob.isPending ||
               imagePackSubmitting ||
               (!imagePackMode && (fullTrackNeedsAnalysis || fullTrackOverLimit)) ||
+              (!imagePackMode && (
+                shotPlanLoading ||
+                !shotPromptValidation.valid ||
+                !allShotPromptsReviewed
+              )) ||
               (imagePackMode && (!isImagePackPlanValid || imagePackPlanLoading))
             }
             onClick={submitJob}

@@ -23,9 +23,11 @@ import {
 } from "../lib/creditCost.js";
 import { getUserTier, canRender4k } from "../lib/tier.js";
 import {
+  applyApprovedScenePrompts,
   hasStrictUniqueSourcePlan,
   numberedVideoScriptIssue,
   planShots,
+  shotPlanFingerprint,
 } from "../lib/shotPlan.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { MAX_LYRICS_LENGTH } from "../lib/lyricLimits.js";
@@ -203,7 +205,10 @@ router.post("/jobs/preview-shots", async (req, res) => {
       });
       return;
     }
-    res.json(plan);
+    res.json({
+      ...plan,
+      fingerprint: shotPlanFingerprint(plan),
+    });
   } catch (err) {
     req.log.error({ err }, "Shot preview failed");
     res.status(500).json({ error: "Could not build a preview." });
@@ -299,6 +304,8 @@ router.post("/jobs", async (req, res) => {
     fullTrackLipSyncSeconds,
     fullTrackLipSyncStartTime,
     fullTrackLipSyncImagePath,
+    approvedScenePrompts,
+    approvedScenePlanFingerprint,
   } =
     parseResult.data;
   const normalizedGenerationMode =
@@ -468,7 +475,7 @@ router.post("/jobs", async (req, res) => {
   // Kling (via Pixazo) is cheaper than Runway, so the charge scales with the
   // chosen engine. Only "kling" is offered as an alternative for now.
   const engine = String(aiProvider ?? "").toLowerCase() === "kling" ? "kling" : "runway";
-  const storyboard = planShots({
+  const plannedStoryboard = planShots({
     prompt,
     style,
     character,
@@ -476,15 +483,29 @@ router.post("/jobs", async (req, res) => {
     generationMode: normalizedGenerationMode,
     analysis: verifiedAudioAnalysis as never,
   });
-  const scriptIssue = numberedVideoScriptIssue(prompt, storyboard.numClips);
+  const scriptIssue = numberedVideoScriptIssue(prompt, plannedStoryboard.numClips);
   if (scriptIssue) {
     res.status(422).json({
       error: scriptIssue,
       code: "NUMBERED_SCRIPT_SCENE_COUNT_MISMATCH",
-      expectedSceneCount: storyboard.numClips,
+      expectedSceneCount: plannedStoryboard.numClips,
     });
     return;
   }
+  const approvedStoryboard = applyApprovedScenePrompts(
+    plannedStoryboard,
+    approvedScenePrompts,
+    approvedScenePlanFingerprint,
+  );
+  if (!approvedStoryboard.ok) {
+    res.status(422).json({
+      error: approvedStoryboard.error,
+      code: approvedStoryboard.code,
+      expectedSceneCount: plannedStoryboard.numClips,
+    });
+    return;
+  }
+  const storyboard = approvedStoryboard.plan;
   if (!hasStrictUniqueSourcePlan(storyboard)) {
     res.status(422).json({
       error: "Could not build a complete one-image-per-segment video plan. Please adjust the prompt and try again.",

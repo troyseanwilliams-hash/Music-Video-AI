@@ -668,6 +668,19 @@ export const CreateJobRequestAiProvider = {
   luma: "luma",
 } as const;
 
+export type CreateJobRequestApprovedScenePromptsItem = {
+  /**
+   * @minimum 0
+   * @maximum 59
+   */
+  index: number;
+  /**
+   * @minLength 1
+   * @maxLength 5000
+   */
+  prompt: string;
+};
+
 export interface CreateJobRequest {
   /**
    * Creative direction or a consecutively numbered scene script with one scene per line
@@ -755,6 +768,17 @@ export interface CreateJobRequest {
    * @nullable
    */
   fullTrackLipSyncImagePath?: string | null;
+  /**
+   * Fingerprint returned by the no-charge scene prompt planning step. Required when approvedScenePrompts is submitted.
+   * @pattern ^[a-f0-9]{64}$
+   */
+  approvedScenePlanFingerprint?: string;
+  /**
+   * Exact ordered image prompts reviewed by the user. The server validates them against the current authoritative scene plan before reserving credits.
+   * @minItems 1
+   * @maxItems 60
+   */
+  approvedScenePrompts?: CreateJobRequestApprovedScenePromptsItem[];
 }
 
 export interface RemixJobRequest {

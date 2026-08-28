@@ -1917,6 +1917,27 @@ components:
         fullTrackLipSyncImagePath:
           type: [string, 'null']
           description: Object storage path for the face image used by the bundled Lip Sync video
+        approvedScenePlanFingerprint:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+          description: Fingerprint returned by the no-charge scene prompt planning step. Required when approvedScenePrompts is submitted.
+        approvedScenePrompts:
+          type: array
+          minItems: 1
+          maxItems: 60
+          description: Exact ordered image prompts reviewed by the user. The server validates them against the current authoritative scene plan before reserving credits.
+          items:
+            type: object
+            required: [index, prompt]
+            properties:
+              index:
+                type: integer
+                minimum: 0
+                maximum: 59
+              prompt:
+                type: string
+                minLength: 1
+                maxLength: 5000
 
     VideoClip:
       type: object

@@ -7,6 +7,7 @@
  */
 import type { AudioAnalysis } from "./audioAnalysis";
 import type { CreateJobRequestAiProvider } from "./createJobRequestAiProvider";
+import type { CreateJobRequestApprovedScenePromptsItem } from "./createJobRequestApprovedScenePromptsItem";
 import type { CreateJobRequestAspectRatio } from "./createJobRequestAspectRatio";
 import type { CreateJobRequestAudioSourceType } from "./createJobRequestAudioSourceType";
 import type { CreateJobRequestGenerationMode } from "./createJobRequestGenerationMode";
@@ -102,4 +103,15 @@ export interface CreateJobRequest {
    * @nullable
    */
   fullTrackLipSyncImagePath?: string | null;
+  /**
+   * Fingerprint returned by the no-charge scene prompt planning step. Required when approvedScenePrompts is submitted.
+   * @pattern ^[a-f0-9]{64}$
+   */
+  approvedScenePlanFingerprint?: string;
+  /**
+   * Exact ordered image prompts reviewed by the user. The server validates them against the current authoritative scene plan before reserving credits.
+   * @minItems 1
+   * @maxItems 60
+   */
+  approvedScenePrompts?: CreateJobRequestApprovedScenePromptsItem[];
 }

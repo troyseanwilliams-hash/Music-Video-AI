@@ -550,6 +550,16 @@ export const createJobBodyFullTrackLipSyncSecondsMax = 30;
 export const createJobBodyFullTrackLipSyncStartTimeDefault = 0;
 export const createJobBodyFullTrackLipSyncStartTimeMin = 0;
 
+export const createJobBodyApprovedScenePlanFingerprintRegExp = new RegExp(
+  "^[a-f0-9]{64}$",
+);
+export const createJobBodyApprovedScenePromptsItemIndexMin = 0;
+export const createJobBodyApprovedScenePromptsItemIndexMax = 59;
+
+export const createJobBodyApprovedScenePromptsItemPromptMax = 5000;
+
+export const createJobBodyApprovedScenePromptsMax = 60;
+
 export const CreateJobBody = zod.object({
   prompt: zod
     .string()
@@ -725,6 +735,32 @@ export const CreateJobBody = zod.object({
     .nullish()
     .describe(
       "Object storage path for the face image used by the bundled Lip Sync video",
+    ),
+  approvedScenePlanFingerprint: zod
+    .string()
+    .regex(createJobBodyApprovedScenePlanFingerprintRegExp)
+    .optional()
+    .describe(
+      "Fingerprint returned by the no-charge scene prompt planning step. Required when approvedScenePrompts is submitted.",
+    ),
+  approvedScenePrompts: zod
+    .array(
+      zod.object({
+        index: zod
+          .number()
+          .min(createJobBodyApprovedScenePromptsItemIndexMin)
+          .max(createJobBodyApprovedScenePromptsItemIndexMax),
+        prompt: zod
+          .string()
+          .min(1)
+          .max(createJobBodyApprovedScenePromptsItemPromptMax),
+      }),
+    )
+    .min(1)
+    .max(createJobBodyApprovedScenePromptsMax)
+    .optional()
+    .describe(
+      "Exact ordered image prompts reviewed by the user. The server validates them against the current authoritative scene plan before reserving credits.",
     ),
 });
 

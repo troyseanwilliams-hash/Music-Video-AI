@@ -25,6 +25,7 @@ export * from "./createImagePackRequest";
 export * from "./createImagePackRequestAspectRatio";
 export * from "./createJobRequest";
 export * from "./createJobRequestAiProvider";
+export * from "./createJobRequestApprovedScenePromptsItem";
 export * from "./createJobRequestAspectRatio";
 export * from "./createJobRequestAudioSourceType";
 export * from "./createJobRequestGenerationMode";
