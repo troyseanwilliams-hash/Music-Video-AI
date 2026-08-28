@@ -6,6 +6,11 @@
 
 import { createHash } from "node:crypto";
 import { shortenCompletePrompt } from "./promptText.js";
+import {
+  containsNamedSubject,
+  detectNamedSubject,
+  replaceNamedSubjectWithReference,
+} from "./namedSubject.js";
 
 const MAX_FULL_SECONDS = 600;
 export const MAX_GENERATED_IMAGE_PROMPT_LENGTH = 600;
@@ -581,6 +586,9 @@ export function planShots(input: ShotPlanInput): ShotPlan {
     : promptConcepts(input.prompt || "music video");
   const bpm = input.analysis?.bpm ?? null;
   const mood = input.analysis?.mood ?? null;
+  const referenceSubjectName = input.hasCharacterReference
+    ? detectNamedSubject(input.prompt || "")
+    : null;
 
   if (generationMode === "narrative") {
     const shots = Array.from({ length: numClips }, (_, index) => {
@@ -592,8 +600,13 @@ export function planShots(input: ShotPlanInput): ShotPlan {
         orderedStoryConcepts.length - 1,
         Math.floor((index * orderedStoryConcepts.length) / numClips),
       );
-      const concept = orderedStoryConcepts[conceptIndex]!;
-       const usesCharacterReference = sceneConceptIncludesCharacter(concept);
+      const sourceConcept = orderedStoryConcepts[conceptIndex]!;
+      const usesCharacterReference =
+        containsNamedSubject(sourceConcept, referenceSubjectName)
+        || sceneConceptIncludesCharacter(sourceConcept);
+      const concept = usesCharacterReference
+        ? replaceNamedSubjectWithReference(sourceConcept, referenceSubjectName)
+        : sourceConcept;
       return {
         index,
         label: beat,
@@ -644,8 +657,13 @@ export function planShots(input: ShotPlanInput): ShotPlan {
   for (let i = 0; i < numClips; i++) {
     const s = motifSections[i]!;
     const role = MONTAGE_ROLES[i % MONTAGE_ROLES.length]!;
-    const concept = concepts[i]!;
-    const usesCharacterReference = sceneConceptIncludesCharacter(concept);
+    const sourceConcept = concepts[i]!;
+    const usesCharacterReference =
+      containsNamedSubject(sourceConcept, referenceSubjectName)
+      || sceneConceptIncludesCharacter(sourceConcept);
+    const concept = usesCharacterReference
+      ? replaceNamedSubjectWithReference(sourceConcept, referenceSubjectName)
+      : sourceConcept;
     shots.push({
       index: i,
       label: role,
@@ -678,16 +696,23 @@ export function planImagePackScenes(input: {
 }): PlannedShot[] {
   const imageCount = Math.max(1, Math.min(30, Math.round(input.imageCount)));
   const numberedScript = parseNumberedImagePackScript(input.prompt);
+  const referenceSubjectName = input.hasCharacterReference
+    ? detectNamedSubject(input.prompt)
+    : null;
   if (numberedScript && numberedScript.scenes.length === imageCount) {
     const usesReference = numberedScript.scenes.map((concept) =>
-      sceneConceptIncludesCharacter(concept)
+      containsNamedSubject(concept, referenceSubjectName)
+      || sceneConceptIncludesCharacter(concept)
     );
     const firstCharacterSceneIndex = usesReference.findIndex(Boolean);
     const style = input.style ?? "cinematic";
     const styleDesc = STYLE_PROMPTS[style] ?? STYLE_PROMPTS.cinematic!;
 
-    return numberedScript.scenes.map((concept, index) => {
+    return numberedScript.scenes.map((sourceConcept, index) => {
       const usesCharacterReference = usesReference[index]!;
+      const concept = usesCharacterReference
+        ? replaceNamedSubjectWithReference(sourceConcept, referenceSubjectName)
+        : sourceConcept;
       const characterContinuity = usesCharacterReference
         ? input.hasCharacterReference
           ? "match the uploaded character reference exactly: same identity, face, age, hair, wardrobe, and physical details"
@@ -696,7 +721,7 @@ export function planImagePackScenes(input: {
             : "match the established principal character reference exactly: same identity, face, age, hair, wardrobe, and physical details"
         : "focus only on this scene's environment, objects, or atmosphere; do not add the recurring character unless explicitly requested";
       const seriesDirection = numberedScript.seriesDirection
-        ? `series-wide visual direction: ${numberedScript.seriesDirection}`
+        ? `series-wide visual direction: ${replaceNamedSubjectWithReference(numberedScript.seriesDirection, referenceSubjectName)}`
         : "keep one cohesive visual world, period, palette, lighting language, and camera language across the entire image pack";
 
       return {

@@ -34,6 +34,19 @@ describe("scene builder", () => {
     expect(result.scenes[1]!.imagePrompt).not.toMatch(/attached reference image/i);
     expect(result.scenes[2]!.imagePrompt).not.toMatch(/attached reference image/i);
   });
+
+  it("removes a named subject from character-reference scene prompts", async () => {
+    const result = await buildScenePlan({
+      story: "Amelia Earhart prepares her aircraft. Amelia Earhart takes flight. The empty runway waits at dusk.",
+      sceneCount: 3,
+      hasReferenceImage: true,
+    });
+
+    expect(result.scenes[0]!.imagePrompt).toMatch(/attached reference image/i);
+    expect(result.scenes[0]!.imagePrompt).not.toMatch(/Amelia Earhart/i);
+    expect(result.scenes[1]!.imagePrompt).not.toMatch(/Amelia Earhart/i);
+    expect(result.scenes[2]!.imagePrompt).not.toMatch(/attached reference image/i);
+  });
 });
 
 describe("named subject script replacement", () => {

@@ -323,6 +323,21 @@ describe("planShots narrative planning", () => {
     )).toBe(true);
   });
 
+  it("replaces a named subject with the attached character reference", () => {
+    const plan = planShots({
+      prompt: "Amelia Earhart prepares her aircraft. Amelia Earhart takes flight over the ocean. The empty runway waits at dusk.",
+      hasCharacterReference: true,
+      generationMode: "narrative",
+      requestedDuration: "30",
+    });
+
+    expect(plan.shots[0]).toMatchObject({ usesCharacterReference: true });
+    expect(plan.shots[0]!.prompt).toContain("attached reference image");
+    expect(plan.shots[0]!.prompt).not.toMatch(/Amelia Earhart/i);
+    expect(plan.shots[0]!.description).not.toMatch(/Amelia Earhart/i);
+    expect(plan.shots[2]).toMatchObject({ usesCharacterReference: false });
+  });
+
   it("only marks character-focused story scenes for the character reference", () => {
     const plan = planShots({
       prompt: "A woman steps off a train. Then an empty train station waits in the rain. Finally sunrise fills the city skyline.",

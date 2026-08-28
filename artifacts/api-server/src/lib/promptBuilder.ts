@@ -6,6 +6,11 @@
 import { logger } from "./logger.js";
 import { shortenCompletePrompt } from "./promptText.js";
 import { sceneConceptIncludesCharacter } from "./shotPlan.js";
+import {
+  containsNamedSubject,
+  detectNamedSubject,
+  replaceNamedSubjectWithReference,
+} from "./namedSubject.js";
 
 // ── Shared LLM call ──────────────────────────────────────────────────────────
 
@@ -273,6 +278,7 @@ function normalizeSceneBuilderScenes(
 ): SceneBuilderScene[] {
   const sourceScenes = Array.isArray(rawScenes) ? rawScenes : [];
   const beats = splitStoryIntoBeats(story, sceneCount);
+  const referenceSubjectName = hasReferenceImage ? detectNamedSubject(story) : null;
   const maxPromptLength = Math.min(
     MAX_SCENE_IMAGE_PROMPT_LENGTH,
     Math.floor((MAX_SCENE_SCRIPT_LENGTH - sceneCount * 8) / sceneCount),
@@ -281,19 +287,31 @@ function normalizeSceneBuilderScenes(
   return Array.from({ length: sceneCount }, (_, index) => {
     const raw = sourceScenes[index];
     const record = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+    const sourceBeat = beats[index]!;
     const usesCharacterReference =
-      hasReferenceImage && sceneConceptIncludesCharacter(beats[index]!);
+      hasReferenceImage
+      && (
+        containsNamedSubject(sourceBeat, referenceSubjectName)
+        || sceneConceptIncludesCharacter(sourceBeat)
+      );
+    const beat = usesCharacterReference
+      ? replaceNamedSubjectWithReference(sourceBeat, referenceSubjectName)
+      : sourceBeat;
     const fallbackPrompt = usesCharacterReference
-      ? `${beats[index]}, use the attached reference image for the character, clear cinematic still composition, style footnote: cinematic`
-      : `${beats[index]}, clear subject and setting, expressive lighting and mood, style footnote: cinematic`;
+      ? `${beat}, use the attached reference image for the character, clear cinematic still composition, style footnote: cinematic`
+      : `${beat}, clear subject and setting, expressive lighting and mood, style footnote: cinematic`;
     const generatedPromptWithPossibleReference = shortenCompletePrompt(
       String(record.imagePrompt ?? ""),
       maxPromptLength,
       shortenCompletePrompt(fallbackPrompt, maxPromptLength),
     );
+    const generatedPromptWithoutName = replaceNamedSubjectWithReference(
+      generatedPromptWithPossibleReference,
+      referenceSubjectName,
+    );
     const generatedPrompt = usesCharacterReference
-      ? generatedPromptWithPossibleReference
-      : generatedPromptWithPossibleReference
+      ? generatedPromptWithoutName
+      : generatedPromptWithoutName
           .replace(/\b(?:use|match|refer to)\s+the attached reference image[^,.;]*[,.;]?\s*/gi, "")
           .replace(/\s+/g, " ")
           .trim();

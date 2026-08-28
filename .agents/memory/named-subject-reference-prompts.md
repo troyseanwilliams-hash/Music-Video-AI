@@ -9,4 +9,4 @@ The replacement choice uses the current script as context, generates a concise h
 
 **Why:** Named people and fictional characters may be rejected by image services, but users must retain control over whether to provide a reference image, rewrite the prompt safely, or accept that risk and submit without one.
 
-**How to apply:** Keep the choice simple: let the user open the existing reference-image picker, request the server-side description rewrite, or continue into the normal confirmation flow without a reference.
+**How to apply:** Keep the choice simple: let the user open the existing reference-image picker, request the server-side description rewrite, or continue into the normal confirmation flow without a reference. When a reference is attached, use the original script only to identify relevant character scenes; replace the subject's name with reference-neutral wording before previewing, persisting, or sending scene prompts to an image service.
