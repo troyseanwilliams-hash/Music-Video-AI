@@ -5,6 +5,7 @@
 
 import { logger } from "./logger.js";
 import { shortenCompletePrompt } from "./promptText.js";
+import { sceneConceptIncludesCharacter } from "./shotPlan.js";
 
 // ── Shared LLM call ──────────────────────────────────────────────────────────
 
@@ -219,7 +220,8 @@ Rules:
 - Keep every imagePrompt concise enough to combine all numbered scenes into a 12,000-character creative prompt.
 - Preserve chronological story progression and make each scene materially different from the previous one.
 - Use plain provider-neutral language. Do not mention any image or video provider.
-- If a reference image will be attached, do not describe the character's face, hair, clothing, identity, age, or other appearance. When a character is needed, write "use the attached reference image for the character" instead.
+- If a reference image will be attached, use it only in scenes whose story beat contains or clearly depicts that character. In those character scenes, do not describe the character's face, hair, clothing, identity, age, or other appearance; write "use the attached reference image for the character" instead.
+- Never mention or use the attached reference image in environment-only, object-only, or other scenes where the character does not appear.
 - If no reference image will be attached, include only the minimum visible character traits needed for that scene.
 
 Return no markdown and no extra keys.`;
@@ -278,21 +280,29 @@ function normalizeSceneBuilderScenes(
   return Array.from({ length: sceneCount }, (_, index) => {
     const raw = sourceScenes[index];
     const record = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
-    const fallbackPrompt = hasReferenceImage
+    const usesCharacterReference =
+      hasReferenceImage && sceneConceptIncludesCharacter(beats[index]!);
+    const fallbackPrompt = usesCharacterReference
       ? `Use the attached reference image for the character, ${beats[index]}, cinematic still composition`
       : `Cinematic still image, ${beats[index]}, clear subject and setting, expressive lighting and mood`;
-    const generatedPrompt = shortenCompletePrompt(
+    const generatedPromptWithPossibleReference = shortenCompletePrompt(
       String(record.imagePrompt ?? ""),
       maxPromptLength,
       shortenCompletePrompt(fallbackPrompt, maxPromptLength),
     );
-    const imagePrompt = hasReferenceImage && !/attached reference image/i.test(generatedPrompt)
+    const generatedPrompt = usesCharacterReference
+      ? generatedPromptWithPossibleReference
+      : generatedPromptWithPossibleReference
+          .replace(/\b(?:use|match|refer to)\s+the attached reference image[^,.;]*[,.;]?\s*/gi, "")
+          .replace(/\s+/g, " ")
+          .trim();
+    const imagePrompt = usesCharacterReference && !/attached reference image/i.test(generatedPrompt)
       ? shortenCompletePrompt(
           `Use the attached reference image for the character, ${generatedPrompt}`,
           maxPromptLength,
           fallbackPrompt,
         )
-      : generatedPrompt;
+      : generatedPrompt || shortenCompletePrompt(fallbackPrompt, maxPromptLength);
     const title = compactSceneText(record.title, 70, `Scene ${index + 1}`);
     return { number: index + 1, title, imagePrompt };
   });

@@ -280,7 +280,7 @@ function sceneDescription(role: string, concept: string): string {
   return `${title} — ${shortened || "cinematic music video imagery"}`;
 }
 
-function sceneUsesCharacterReference(concept: string): boolean {
+export function sceneConceptIncludesCharacter(concept: string): boolean {
   // Reference usage is scene-specific. Do not let a generated beat/role such as
   // "hero subject" or "climax" pull the character into an otherwise unrelated
   // environment scene.
@@ -579,7 +579,7 @@ export function planShots(input: ShotPlanInput): ShotPlan {
         Math.floor((index * orderedStoryConcepts.length) / numClips),
       );
       const concept = orderedStoryConcepts[conceptIndex]!;
-       const usesCharacterReference = sceneUsesCharacterReference(concept);
+       const usesCharacterReference = sceneConceptIncludesCharacter(concept);
       return {
         index,
         label: beat,
@@ -631,7 +631,7 @@ export function planShots(input: ShotPlanInput): ShotPlan {
     const s = motifSections[i]!;
     const role = MONTAGE_ROLES[i % MONTAGE_ROLES.length]!;
     const concept = concepts[i]!;
-    const usesCharacterReference = sceneUsesCharacterReference(concept);
+    const usesCharacterReference = sceneConceptIncludesCharacter(concept);
     shots.push({
       index: i,
       label: role,
@@ -665,15 +665,8 @@ export function planImagePackScenes(input: {
   const imageCount = Math.max(1, Math.min(30, Math.round(input.imageCount)));
   const numberedScript = parseNumberedImagePackScript(input.prompt);
   if (numberedScript && numberedScript.scenes.length === imageCount) {
-    const planInput: ShotPlanInput = {
-      prompt: input.prompt,
-      style: input.style,
-      character: input.hasCharacterReference ? null : "recurring principal subject",
-      hasCharacterReference: input.hasCharacterReference,
-      generationMode: "narrative",
-    };
-    const usesReference = numberedScript.scenes.map((concept, index) =>
-      sceneUsesCharacterReference(concept)
+    const usesReference = numberedScript.scenes.map((concept) =>
+      sceneConceptIncludesCharacter(concept)
     );
     const firstCharacterSceneIndex = usesReference.findIndex(Boolean);
     const style = input.style ?? "cinematic";

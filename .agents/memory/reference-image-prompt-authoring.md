@@ -7,4 +7,4 @@ When a character reference image is attached, generated image prompts should ref
 
 **Why:** The image already supplies appearance, identity, wardrobe, and physical details. Re-describing them wastes the prompt budget and can conflict with the actual reference.
 
-**How to apply:** Keep each generated image prompt concise. Include a short instruction to use the attached reference image only for character-focused scenes, while environment-only scenes should remain focused on the setting or action.
+**How to apply:** Keep each generated image prompt concise. Decide reference relevance from the actual scene concept, never from generated planning labels such as “climax” or “hero subject.” Include the reference instruction only for character-focused scenes; environment-only and generic scenes must not receive the reference image.

@@ -22,15 +22,17 @@ describe("scene builder", () => {
     )).toBe(true);
   });
 
-  it("refers to an attached reference image instead of inventing a character description", async () => {
+  it("uses an attached character reference only in relevant scenes", async () => {
     const result = await buildScenePlan({
-      story: "A pilot prepares a plane, flies through a storm, and lands safely at sunrise.",
+      story: "A pilot prepares a plane. An empty hangar waits in the rain. Sunrise fills the distant skyline.",
       sceneCount: 3,
       hasReferenceImage: true,
     });
 
     expect(result.hasReferenceImage).toBe(true);
-    expect(result.scenes.every((scene) => /attached reference image/i.test(scene.imagePrompt))).toBe(true);
+    expect(result.scenes[0]!.imagePrompt).toMatch(/attached reference image/i);
+    expect(result.scenes[1]!.imagePrompt).not.toMatch(/attached reference image/i);
+    expect(result.scenes[2]!.imagePrompt).not.toMatch(/attached reference image/i);
   });
 });
 
