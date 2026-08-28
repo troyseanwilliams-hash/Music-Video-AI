@@ -39,10 +39,16 @@ async function purgeExpiredDeletedVideos(): Promise<void> {
 }
 
 // Start the recurring sweep: once shortly after boot, then daily.
-export function startDeletedVideoPurgeSweep(): void {
+export function startDeletedVideoPurgeSweep(): () => void {
   const run = () =>
     purgeExpiredDeletedVideos().catch((err) => logger.error({ err }, "Purge sweep error"));
-  setTimeout(run, 60_000).unref?.();
-  setInterval(run, SWEEP_INTERVAL_MS).unref?.();
+  const initialTimer = setTimeout(run, 60_000);
+  const intervalTimer = setInterval(run, SWEEP_INTERVAL_MS);
+  initialTimer.unref?.();
+  intervalTimer.unref?.();
   logger.info({ retentionDays: RETENTION_DAYS }, "Deleted-video purge sweep scheduled");
+  return () => {
+    clearTimeout(initialTimer);
+    clearInterval(intervalTimer);
+  };
 }

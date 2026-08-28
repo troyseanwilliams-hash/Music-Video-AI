@@ -1,10 +1,14 @@
 import app from "./app.js";
 import { logger } from "./lib/logger.js";
-import { startJobProcessor } from "./lib/jobProcessor.js";
+import {
+  getJobProcessorStatus,
+  startJobProcessor,
+  stopJobProcessor,
+} from "./lib/jobProcessor.js";
 import { ensureAdminUser } from "./lib/ensureAdminUser.js";
 import { initStripe } from "./lib/stripeClient.js";
 import { replayRecentStripeEvents } from "./lib/webhookHandlers.js";
-import { db, usersTable, creditsTable } from "@workspace/db";
+import { db, pool, usersTable, creditsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
@@ -34,7 +38,12 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-app.listen(port, (err) => {
+const runProcessor =
+  process.env.NODE_ENV !== "production" ||
+  process.env.RUN_JOB_PROCESSOR === "true";
+let shuttingDown = false;
+
+const server = app.listen(port, (err) => {
   if (err) {
     logger.error({ err }, "Error listening on port");
     process.exit(1);
@@ -81,9 +90,6 @@ app.listen(port, (err) => {
 
   // In production the dedicated worker artifact runs the job processor.
   // In development (or when explicitly opted in) run it here too.
-  const runProcessor =
-    process.env.NODE_ENV !== "production" ||
-    process.env.RUN_JOB_PROCESSOR === "true";
   if (runProcessor) {
     startJobProcessor().catch((err) => {
       logger.error({ err }, "Failed to start job processor");
@@ -92,3 +98,90 @@ app.listen(port, (err) => {
     logger.info("Job processor disabled (handled by worker artifact in production)");
   }
 });
+
+function boundedTimeoutEnv(
+  name: string,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
+  const parsed = Number.parseInt(process.env[name] ?? "", 10);
+  return Number.isInteger(parsed)
+    ? Math.min(Math.max(parsed, minimum), maximum)
+    : fallback;
+}
+
+// Bound slow or abusive connections so one API process can keep serving other
+// users under burst traffic. Media uploads use direct object-storage URLs, so
+// normal API requests should not need an unbounded socket lifetime.
+server.requestTimeout = boundedTimeoutEnv(
+  "API_REQUEST_TIMEOUT_MS",
+  120_000,
+  15_000,
+  600_000,
+);
+server.headersTimeout = boundedTimeoutEnv(
+  "API_HEADERS_TIMEOUT_MS",
+  30_000,
+  5_000,
+  Math.min(server.requestTimeout, 120_000),
+);
+server.keepAliveTimeout = boundedTimeoutEnv(
+  "API_KEEP_ALIVE_TIMEOUT_MS",
+  5_000,
+  1_000,
+  60_000,
+);
+server.maxRequestsPerSocket = boundedTimeoutEnv(
+  "API_MAX_REQUESTS_PER_SOCKET",
+  1_000,
+  100,
+  10_000,
+);
+
+async function shutdown(signal: NodeJS.Signals): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logger.info({ signal }, "API shutdown requested — draining requests and job processor");
+
+  const timeout = Number.parseInt(
+    process.env.API_SHUTDOWN_TIMEOUT_MS ??
+      process.env.WORKER_SHUTDOWN_TIMEOUT_MS ??
+      "30000",
+    10,
+  );
+  const boundedTimeout =
+    Number.isFinite(timeout) && timeout > 0 ? Math.min(timeout, 300_000) : 30_000;
+  const forceExitTimer = setTimeout(() => {
+    logger.error(
+      { signal, processor: getJobProcessorStatus() },
+      "API graceful shutdown exceeded hard deadline",
+    );
+    process.exit(1);
+  }, boundedTimeout + 10_000);
+  forceExitTimer.unref();
+
+  const closeServer = new Promise<void>((resolve) => {
+    server.close(() => resolve());
+    server.closeIdleConnections?.();
+  });
+  const stopProcessor = runProcessor
+    ? stopJobProcessor(boundedTimeout)
+    : Promise.resolve({ drained: true, activeJobIds: [] as string[] });
+
+  const [, processorResult] = await Promise.all([closeServer, stopProcessor]);
+  if (!processorResult.drained) {
+    logger.warn(
+      { signal, activeJobIds: processorResult.activeJobIds },
+      "API process stopped before active job completed; watchdog will recover it",
+    );
+  }
+  await pool.end().catch((err: unknown) => {
+    logger.warn({ err }, "Failed to close API database pool cleanly");
+  });
+  clearTimeout(forceExitTimer);
+  process.exit(0);
+}
+
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
+process.on("SIGINT", () => void shutdown("SIGINT"));

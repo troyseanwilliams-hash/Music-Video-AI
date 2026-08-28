@@ -8,7 +8,7 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import { writeFile, unlink } from "fs/promises";
 import { join } from "path";
-import { tmpdir } from "os";
+import { hostname, tmpdir } from "os";
 import { logger } from "./logger.js";
 import { notifyRenderReady, notifyRenderFailed, notifyAdminRenderFailed } from "./renderEmail.js";
 import { ObjectStorageService } from "./objectStorage.js";
@@ -28,6 +28,54 @@ const POLL_INTERVAL_MS = 5000;
 const storageService = new ObjectStorageService();
 const activeClaimTokens = new Map<string, Date>();
 type JobRow = typeof jobsTable.$inferSelect;
+
+const WORKER_ID = process.env.WORKER_ID?.trim() || `${hostname()}-${process.pid}`;
+const WORKER_CAPACITY = 1;
+const DEFAULT_SHUTDOWN_TIMEOUT_MS = 30_000;
+const WORKER_METRICS_INTERVAL_MS = (() => {
+  const parsed = Number.parseInt(process.env.WORKER_METRICS_INTERVAL_MS ?? "", 10);
+  return Number.isInteger(parsed) && parsed >= 30_000
+    ? Math.min(parsed, 600_000)
+    : 60_000;
+})();
+
+export type JobProcessorStatus = {
+  workerId: string;
+  state: "starting" | "ready" | "draining" | "stopped";
+  capacity: number;
+  activeJobs: number;
+  activeJobIds: string[];
+  jobsStarted: number;
+  jobsCompleted: number;
+  jobsFailed: number;
+  startedAt: string | null;
+};
+
+type QueueMetrics = {
+  queued: number;
+  active: number;
+  oldestQueuedAt: string | null;
+  oldestQueuedAgeMs: number | null;
+  database: "ok" | "degraded";
+};
+
+let processorState: JobProcessorStatus = {
+  workerId: WORKER_ID,
+  state: "stopped",
+  capacity: WORKER_CAPACITY,
+  activeJobs: 0,
+  activeJobIds: [],
+  jobsStarted: 0,
+  jobsCompleted: 0,
+  jobsFailed: 0,
+  startedAt: null,
+};
+let processorBusy = false;
+let pollTimer: NodeJS.Timeout | null = null;
+let recoveryTimer: NodeJS.Timeout | null = null;
+let metricsTimer: NodeJS.Timeout | null = null;
+let currentJobPromise: Promise<void> | null = null;
+let pollInFlight: Promise<void> | null = null;
 
 function targetOutputDuration(
   requestedDuration: string | null | undefined,
@@ -1195,6 +1243,32 @@ async function claimNextJob(): Promise<JobRow | null> {
     .limit(1);
 
   return job ?? null;
+}
+
+async function releaseUnstartedClaim(job: JobRow): Promise<void> {
+  if (!job.claimedAt) return;
+  const released = await db
+    .update(jobsTable)
+    .set({
+      status: "queued",
+      claimedAt: null,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(jobsTable.id, job.id),
+        eq(jobsTable.status, "analyzing"),
+        eq(jobsTable.claimedAt, new Date(job.claimedAt)),
+      ),
+    )
+    .returning({ id: jobsTable.id });
+  if (released.length > 0) {
+    logger.info(
+      { jobId: job.id, workerId: WORKER_ID },
+      "Released newly claimed job during worker shutdown",
+    );
+    await notifyJobUpdate(job.id);
+  }
 }
 
 // Heartbeat: while a job is actively processing, bump updated_at every 60s so
@@ -3505,49 +3579,254 @@ async function recoverStaleJobs(): Promise<void> {
 }
 
 let isRunning = false;
+let stopping = false;
+
+function syncProcessorActivity(activeJobId: string | null): void {
+  processorState = {
+    ...processorState,
+    activeJobs: activeJobId ? 1 : 0,
+    activeJobIds: activeJobId ? [activeJobId] : [],
+  };
+}
+
+export function getJobProcessorStatus(): JobProcessorStatus {
+  return {
+    ...processorState,
+    activeJobIds: [...processorState.activeJobIds],
+  };
+}
+
+export async function getJobProcessorHealth(): Promise<
+  JobProcessorStatus & { queue: QueueMetrics }
+> {
+  let queue: QueueMetrics = {
+    queued: 0,
+    active: processorState.activeJobs,
+    oldestQueuedAt: null,
+    oldestQueuedAgeMs: null,
+    database: "degraded",
+  };
+
+  try {
+    const result = await db.execute<{
+      queued: string;
+      active: string;
+      oldest_queued_at: Date | string | null;
+    }>(sql`
+      SELECT
+        COUNT(*) FILTER (WHERE status = 'queued')::text AS queued,
+        COUNT(*) FILTER (
+          WHERE status IN ('analyzing', 'generating', 'stitching')
+        )::text AS active,
+        MIN(created_at) FILTER (WHERE status = 'queued') AS oldest_queued_at
+      FROM jobs
+    `);
+    const row = result.rows[0];
+    const oldest = row?.oldest_queued_at
+      ? new Date(row.oldest_queued_at)
+      : null;
+    queue = {
+      queued: Number.parseInt(row?.queued ?? "0", 10) || 0,
+      active: Number.parseInt(row?.active ?? "0", 10) || 0,
+      oldestQueuedAt: oldest && Number.isFinite(oldest.getTime())
+        ? oldest.toISOString()
+        : null,
+      oldestQueuedAgeMs: oldest && Number.isFinite(oldest.getTime())
+        ? Math.max(0, Date.now() - oldest.getTime())
+        : null,
+      database: "ok",
+    };
+  } catch (err) {
+    logger.warn({ err, workerId: WORKER_ID }, "Worker health queue query failed");
+  }
+
+  return {
+    ...getJobProcessorStatus(),
+    queue,
+  };
+}
+
+function parseShutdownTimeout(timeoutMs?: number): number {
+  if (timeoutMs !== undefined && Number.isFinite(timeoutMs) && timeoutMs > 0) {
+    return Math.min(Math.floor(timeoutMs), 300_000);
+  }
+  const configured = Number.parseInt(
+    process.env.WORKER_SHUTDOWN_TIMEOUT_MS ?? "",
+    10,
+  );
+  return Number.isInteger(configured) && configured > 0
+    ? Math.min(configured, 300_000)
+    : DEFAULT_SHUTDOWN_TIMEOUT_MS;
+}
+
+export async function stopJobProcessor(
+  timeoutMs?: number,
+): Promise<{ drained: boolean; activeJobIds: string[] }> {
+  if (!isRunning && !currentJobPromise) {
+    processorState = { ...processorState, state: "stopped" };
+    return { drained: true, activeJobIds: [] };
+  }
+
+  stopping = true;
+  processorState = { ...processorState, state: "draining" };
+  if (pollTimer) clearTimeout(pollTimer);
+  if (recoveryTimer) clearInterval(recoveryTimer);
+  if (metricsTimer) clearInterval(metricsTimer);
+  pollTimer = null;
+  recoveryTimer = null;
+  metricsTimer = null;
+
+  if (pollInFlight) {
+    await pollInFlight.catch((err) => {
+      logger.warn({ err, workerId: WORKER_ID }, "Worker poll failed while draining");
+    });
+  }
+
+  const activeJobIds = [...processorState.activeJobIds];
+  const active = currentJobPromise;
+  if (!active) {
+    isRunning = false;
+    processorState = { ...processorState, state: "stopped" };
+    return { drained: true, activeJobIds };
+  }
+
+  const timeout = parseShutdownTimeout(timeoutMs);
+  let timer: NodeJS.Timeout | null = null;
+  const drained = await Promise.race([
+    active.then(() => true),
+    new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(false), timeout);
+      timer.unref();
+    }),
+  ]);
+  if (timer) clearTimeout(timer);
+
+  if (drained) {
+    isRunning = false;
+    processorState = { ...processorState, state: "stopped" };
+  }
+  return {
+    drained,
+    activeJobIds: drained ? [] : [...processorState.activeJobIds],
+  };
+}
 
 export async function startJobProcessor(): Promise<void> {
   if (isRunning) return;
   isRunning = true;
-  logger.info("Job processor started");
+  stopping = false;
+  processorState = {
+    ...processorState,
+    state: "starting",
+    startedAt: new Date().toISOString(),
+  };
+  logger.info(
+    { workerId: WORKER_ID, capacity: WORKER_CAPACITY },
+    "Job processor started",
+  );
 
   // Run stale-job recovery immediately on startup (catches jobs stuck across
   // a deployment restart), then on a regular interval.
-  recoverStaleJobs();
-  setInterval(recoverStaleJobs, STALE_CHECK_INTERVAL_MS);
+  void recoverStaleJobs();
+  recoveryTimer = setInterval(
+    () => void recoverStaleJobs(),
+    STALE_CHECK_INTERVAL_MS,
+  );
+  recoveryTimer.unref();
+  metricsTimer = setInterval(() => {
+    void getJobProcessorHealth().then((health) => {
+      if (
+        health.queue.queued > 0 ||
+        health.queue.active > 0 ||
+        health.queue.database !== "ok"
+      ) {
+        logger.info(
+          {
+            workerId: health.workerId,
+            state: health.state,
+            capacity: health.capacity,
+            activeJobs: health.activeJobs,
+            queuedJobs: health.queue.queued,
+            totalActiveJobs: health.queue.active,
+            oldestQueuedAgeMs: health.queue.oldestQueuedAgeMs,
+            database: health.queue.database,
+          },
+          "Worker capacity snapshot",
+        );
+      }
+    });
+  }, WORKER_METRICS_INTERVAL_MS);
+  metricsTimer.unref();
 
   // Only one job at a time per process: renders run heavy ffmpeg pipelines,
   // and two concurrent renders can exhaust memory and crash the whole server
   // (which re-queues both jobs and repeats the crash loop). Claiming is
-  // skipped while a job is in flight; other workers still pick up queued jobs
-  // via FOR UPDATE SKIP LOCKED.
-  let busy = false;
-  const poll = async () => {
-    if (!busy) {
+  // skipped while a job is in flight; independent worker processes still pick
+  // up queued jobs via FOR UPDATE SKIP LOCKED.
+  const poll = async (): Promise<void> => {
+    if (!processorBusy && !stopping) {
       try {
         const job = await claimNextJob();
         if (job) {
-          busy = true;
+          if (stopping) {
+            await releaseUnstartedClaim(job);
+            return;
+          }
+          processorBusy = true;
+          processorState = {
+            ...processorState,
+            state: "ready",
+            jobsStarted: processorState.jobsStarted + 1,
+          };
+          syncProcessorActivity(job.id);
           inFlightJobIds.add(job.id);
           if (job.claimedAt) activeClaimTokens.set(job.id, new Date(job.claimedAt));
           const stopHeartbeat = startJobHeartbeat(job);
-          processJob(job)
-            .catch((err) =>
-              logger.error({ err, jobId: job.id }, "Unhandled job error"),
-            )
+          currentJobPromise = processJob(job)
+            .then(() => {
+              processorState = {
+                ...processorState,
+                jobsCompleted: processorState.jobsCompleted + 1,
+              };
+            })
+            .catch((err) => {
+              processorState = {
+                ...processorState,
+                jobsFailed: processorState.jobsFailed + 1,
+              };
+              logger.error({ err, jobId: job.id }, "Unhandled job error");
+            })
             .finally(() => {
               stopHeartbeat();
               inFlightJobIds.delete(job.id);
               activeClaimTokens.delete(job.id);
-              busy = false;
+              processorBusy = false;
+              currentJobPromise = null;
+              syncProcessorActivity(null);
+              if (stopping) {
+                isRunning = false;
+                processorState = { ...processorState, state: "stopped" };
+              }
             });
+        } else if (processorState.state === "starting") {
+          processorState = { ...processorState, state: "ready" };
         }
       } catch (err) {
         logger.error({ err }, "Poll error");
       }
     }
-    setTimeout(poll, POLL_INTERVAL_MS);
+    if (!stopping) {
+      pollTimer = setTimeout(() => void runPoll(), POLL_INTERVAL_MS);
+    }
   };
 
-  poll();
+  const runPoll = (): Promise<void> => {
+    const run = poll();
+    pollInFlight = run;
+    return run.finally(() => {
+      if (pollInFlight === run) pollInFlight = null;
+    });
+  };
+
+  await runPoll();
 }

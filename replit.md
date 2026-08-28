@@ -98,10 +98,10 @@ Push schema changes: `pnpm --filter @workspace/db run push`
 | Artifact       | Type      | Notes                                              |
 |---------------|-----------|----------------------------------------------------|
 | beatvision    | Static    | React+Vite SPA, no server                          |
-| api-server    | VM        | Runs job processor in prod (`RUN_JOB_PROCESSOR=true`) |
-| worker        | VM        | Dedicated job processor, health at `/worker/health` |
+| api-server    | HTTP      | Concurrent API; embedded worker is controlled by `RUN_JOB_PROCESSOR` |
+| worker        | Reserved VM | Supervised dedicated workers; readiness at `/worker/ready` |
 
-In production, both api-server and worker can run the job processor safely — `FOR UPDATE SKIP LOCKED` ensures each job is claimed by exactly one worker.
+Multiple worker processes are safe because `FOR UPDATE SKIP LOCKED` and claim-token fencing ensure each job is owned by exactly one worker. Keep one heavy render per process; set `WORKER_PROCESS_COUNT` to add independent processes only when the worker VM has matching memory. Prefer a dedicated Reserved VM worker and disable the API's embedded processor after that worker is live. See `docs/async-capacity.md`.
 
 ## Key Commands
 
