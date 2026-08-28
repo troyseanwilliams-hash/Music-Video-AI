@@ -306,6 +306,8 @@ export default function Generate() {
   const [copyrightAcknowledged, setCopyrightAcknowledged] = useState(false);
   const [durationWarningOpen, setDurationWarningOpen] = useState(false);
   const [referenceChoiceOpen, setReferenceChoiceOpen] = useState(false);
+  const [subjectReplacementBusy, setSubjectReplacementBusy] = useState(false);
+  const [subjectReplacementError, setSubjectReplacementError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [topUpOpen, setTopUpOpen] = useState(false);
   // Storyboard preview shown in the confirm dialog (no charge, no render).
@@ -1237,6 +1239,41 @@ export default function Generate() {
     }
 
     setConfirmOpen(true);
+  };
+
+  const replaceNamedSubject = async () => {
+    if (!namedSubjectWarning || subjectReplacementBusy) return;
+    setSubjectReplacementBusy(true);
+    setSubjectReplacementError(null);
+    try {
+      const response = await fetch("/api/prompt/replace-subject", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          script: prompt,
+          namedSubject: namedSubjectWarning,
+        }),
+      });
+      const data = await response.json().catch(() => ({})) as {
+        script?: string;
+        characterDescription?: string;
+        error?: string;
+      };
+      if (!response.ok || !data.script) {
+        throw new Error(data.error || "Could not update the script.");
+      }
+      setPrompt(data.script);
+      setReferenceChoiceOpen(false);
+      toast({
+        title: "Script updated",
+        description: `Replaced “${namedSubjectWarning}” with a visual character description. Review it before submitting.`,
+      });
+    } catch (error) {
+      setSubjectReplacementError(error instanceof Error ? error.message : "Could not update the script.");
+    } finally {
+      setSubjectReplacementBusy(false);
+    }
   };
 
   const handleGenerate = () => {
@@ -3275,6 +3312,9 @@ export default function Generate() {
             Your prompt names “{namedSubjectWarning}”, but no reference image is attached. Add an image to help keep the subject consistent, or submit without one.
           </DialogDescription>
         </DialogHeader>
+        {subjectReplacementError && (
+          <p className="text-sm text-destructive">{subjectReplacementError}</p>
+        )}
         <DialogFooter className="flex-col-reverse sm:flex-row gap-2">
           <Button
             type="button"
@@ -3296,6 +3336,19 @@ export default function Generate() {
           >
             <Upload className="mr-2 h-4 w-4" />
             Add reference image
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={subjectReplacementBusy}
+            onClick={() => void replaceNamedSubject()}
+          >
+            {subjectReplacementBusy ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Wand2 className="mr-2 h-4 w-4" />
+            )}
+            {subjectReplacementBusy ? "Replacing…" : "Replace name with description"}
           </Button>
         </DialogFooter>
       </DialogContent>

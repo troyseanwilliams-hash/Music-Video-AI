@@ -4,6 +4,7 @@ import { logger } from "../lib/logger.js";
 import {
   generateAudioPrompt,
   generateVideoPrompt,
+  replaceNamedSubjectInScript,
   promptProviderAvailable,
 } from "../lib/promptBuilder.js";
 import { generateLyrics, lyricsProviderAvailable } from "../lib/lyricsGen.js";
@@ -130,6 +131,25 @@ router.post("/prompt/video", async (req: Request, res: Response) => {
   } catch (err) {
     logger.error({ err }, "Video prompt build failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Prompt build failed" });
+  }
+});
+
+const ReplaceSubjectBody = z.object({
+  script: z.string().min(2).max(12_000),
+  namedSubject: z.string().trim().min(2).max(100),
+});
+router.post("/prompt/replace-subject", async (req: Request, res: Response) => {
+  if (!guard(req, res)) return;
+  const parsed = ReplaceSubjectBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid script or subject." });
+    return;
+  }
+  try {
+    res.json(await replaceNamedSubjectInScript(parsed.data.script, parsed.data.namedSubject));
+  } catch (err) {
+    logger.error({ err }, "Named subject replacement failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Could not update the script." });
   }
 });
 
