@@ -10,8 +10,8 @@ describe("sanitizeGeneratedMediaPrompt", () => {
     expect(result.changed).toBe(true);
     expect(result.reasons).toContain("minor-contact");
     expect(result.prompt).toContain("A tiny robot rolls across a rug");
-    expect(result.prompt).toContain("supervising parent");
-    expect(result.prompt).toMatch(/^Family-friendly non-contact composition/);
+    expect(result.prompt).toContain("parent");
+    expect(result.prompt).toMatch(/^Wholesome supervised family scene/);
     expect(result.prompt).not.toMatch(/nuzzles|play with a curious baby|scene direction: scene direction:/i);
   });
 

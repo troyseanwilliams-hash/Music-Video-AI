@@ -12,12 +12,12 @@ const REWRITES: Array<{
   {
     reason: "minor-contact",
     pattern: /\b(?:nuzzles?|kisses?|caresses?|touches?|cuddles?)\s+(?:the\s+)?(?:baby|infant|toddler|young child|child)(?:['’]s)?(?:\s+(?:hand|face|body))?/gi,
-    replacement: "stays at a respectful distance while a supervising parent remains beside the child",
+    replacement: "stays at a respectful distance while a parent remains beside the child",
   },
   {
     reason: "minor-contact",
-    pattern: /\bplay(?:s|ing)?\s+with\s+(?:a\s+|the\s+)?(?:curious\s+)?(?:baby|infant|toddler|young child|child)\b/gi,
-    replacement: "performs a playful routine nearby while a supervising parent holds the fully clothed child",
+    pattern: /\b(?:to\s+)?play(?:s|ing)?\s+with\s+(?:a\s+|the\s+)?(?:curious\s+)?(?:baby|infant|toddler|young child|child)\b/gi,
+    replacement: "to perform a playful routine nearby while a parent holds the child",
   },
   {
     reason: "adult-content",
@@ -52,7 +52,7 @@ export function sanitizeGeneratedMediaPrompt(input: string): SafeMediaPrompt {
   }
 
   if (reasons.has("minor-contact")) {
-    prompt = `Family-friendly non-contact composition, child supervised by an adult, everyone fully clothed, no distress or danger. ${prompt}`;
+    prompt = `Wholesome supervised family scene. ${prompt}`;
   }
 
   prompt = prompt.replace(/\s+/g, " ").replace(/\s+([,.;:])/g, "$1").trim();

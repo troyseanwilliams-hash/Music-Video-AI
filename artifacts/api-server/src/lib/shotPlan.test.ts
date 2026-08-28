@@ -68,10 +68,10 @@ describe("planShots montage planning", () => {
     ]);
     expect(plan.shots[0]!.prompt).not.toContain("1.");
     expect(plan.shots[0]!.prompt).not.toContain("crosses a stormy ocean");
-    expect(plan.shots[2]!.prompt).toContain("deliver a clear visual resolution");
+    expect(plan.shots[2]!.prompt).toContain("final image composition");
     expect(plan.shots[0]!.prompt.indexOf("A pilot discovers the open sky"))
-      .toBeLessThan(plan.shots[0]!.prompt.indexOf("Style footnote"));
-    expect(plan.shots[0]!.prompt).toMatch(/style footnote: cinematic 35mm film/i);
+      .toBeLessThan(plan.shots[0]!.prompt.indexOf("Visual style"));
+    expect(plan.shots[0]!.prompt).toMatch(/visual style: cinematic 35mm film/i);
   });
 
   it("rejects malformed or count-mismatched numbered video scripts", () => {
@@ -138,7 +138,7 @@ describe("planShots montage planning", () => {
     });
 
     expect(plan.shots.every((shot) => shot.prompt.includes(prompt))).toBe(false);
-    expect(plan.shots.every((shot) => shot.prompt.includes("one focused visual idea"))).toBe(true);
+    expect(plan.shots.every((shot) => shot.prompt.includes("one focused cinematic still"))).toBe(true);
     expect(plan.shots.some((shot) => shot.prompt.includes("rider enters the desert"))).toBe(true);
     expect(plan.shots.some((shot) => shot.prompt.includes("storm arrives"))).toBe(true);
     expect(plan.shots.some((shot) => shot.prompt.includes("sunrise breaks over the mountains"))).toBe(true);
@@ -317,8 +317,7 @@ describe("planShots narrative planning", () => {
     const characterShots = plan.shots.filter((shot) => shot.usesCharacterReference);
     expect(characterShots).toHaveLength(2);
     expect(characterShots.every((shot) =>
-      shot.prompt.includes("recurring character female")
-      && shot.prompt.includes("never change gender")
+      shot.prompt.includes("same recurring female subject")
     )).toBe(true);
     expect(plan.shots.find((shot) => shot.description.includes("empty hallway"))?.prompt)
       .not.toContain("character remains female");
@@ -333,7 +332,8 @@ describe("planShots narrative planning", () => {
     });
 
     expect(plan.shots.filter((shot) => shot.usesCharacterReference).every((shot) =>
-      shot.prompt.includes("gender presentation exactly as shown in the attached reference image")
+      shot.prompt.includes("attached reference image")
+      && shot.prompt.includes("preserve its gender presentation")
     )).toBe(true);
   });
 
@@ -430,7 +430,7 @@ describe("planShots narrative planning", () => {
       Array.from({ length: 18 }, (_, index) => index),
     );
     expect(new Set(plan.shots.map((shot) => shot.prompt)).size).toBe(18);
-    expect(plan.shots[0]!.prompt).toContain("chronological story scene 1 of 18");
+    expect(plan.shots[0]!.prompt).toContain("opening image composition");
     expect(plan.shots[0]!.description).toContain("Opening image — A rider enters the desert");
     expect(plan.shots[0]!.prompt).toContain("rider enters the desert");
     expect(plan.shots[8]!.prompt).toContain("storm arrives");
@@ -438,7 +438,30 @@ describe("planShots narrative planning", () => {
     expect(plan.shots[17]!.prompt).toContain("sunrise breaks over the mountains");
     expect(plan.shots[17]!.description).toContain("sunrise breaks over the mountains");
     expect(plan.shots[17]!.prompt).not.toContain("rider enters the desert");
-    expect(plan.shots[17]!.prompt).toContain("deliver a clear visual resolution");
+    expect(plan.shots[17]!.prompt).toContain("final image composition");
+  });
+
+  it("writes clean safety-adjusted image briefs without production instructions", () => {
+    const plan = planShots({
+      prompt: [
+        "1. A tiny round robot rolls across a soft living-room rug to play with a curious baby.",
+        "2. It slows down and looks sad.",
+        "3. It spins happily and nuzzles the baby's hand.",
+      ].join("\n"),
+      style: "cinematic",
+      requestedDuration: "30",
+      generationMode: "narrative",
+    });
+
+    expect(plan.shots).toHaveLength(3);
+    expect(plan.shots[0]!.prompt).toMatch(/^Wholesome supervised family scene\./);
+    expect(plan.shots[0]!.prompt).toContain("to perform a playful routine nearby");
+    expect(plan.shots[1]!.prompt).toMatch(/^The recurring principal subject slows down and looks sad/);
+    expect(plan.shots[2]!.prompt).toContain("stays at a respectful distance");
+    expect(plan.shots.every((shot) => shot.prompt.length < 400)).toBe(true);
+    expect(plan.shots.every((shot) =>
+      !/scene direction|story scene \d|music section|no montage|no flashback/i.test(shot.prompt)
+    )).toBe(true);
   });
 
   it("scales every ten-minute full track to sixty unique paid scenes", () => {

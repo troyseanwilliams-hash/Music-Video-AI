@@ -22,7 +22,7 @@ const STYLE_PROMPTS: Record<string, string> = {
     "photorealistic cinematography, real performers, professional film lighting, shallow depth of field",
   anime: "anime art style, expressive characters, vibrant cel shading, dynamic speed lines",
   cinematic:
-    "cinematic 35mm film, anamorphic bokeh, dramatic chiaroscuro lighting, movie-grade color grade",
+    "cinematic 35mm film, dramatic lighting, movie-grade color",
   abstract: "abstract geometric visuals, fluid particle simulations, fractals, morphing shapes",
   neon: "neon cyberpunk, glowing signs, rain-slicked streets, vivid purples and electric blues",
   vintage: "super-8 film grain, warm analog tones, light leaks, retro 70s aesthetic",
@@ -55,7 +55,12 @@ export interface ShotPlanInput {
 
 function conciseImagePrompt(parts: Array<string | null | undefined>): string {
   const prompt = sanitizeGeneratedMediaPrompt(
-    parts.filter(Boolean).join(", ").replace(/\s+/g, " ").trim(),
+    parts
+      .filter(Boolean)
+      .map((part) => String(part).trim().replace(/[.,;:]+$/, ""))
+      .join(", ")
+      .replace(/\s+/g, " ")
+      .trim(),
   ).prompt;
   return shortenCompletePrompt(prompt, MAX_GENERATED_IMAGE_PROMPT_LENGTH);
 }
@@ -64,19 +69,24 @@ function scenePromptWithStyleFootnote(
   parts: Array<string | null | undefined>,
   styleDescription: string,
 ): string {
-  const styleFootnote = `Style footnote: ${styleDescription}.`;
+  const styleFootnote = `Visual style: ${styleDescription}.`;
   const availableSceneLength = Math.max(
     1,
     MAX_GENERATED_IMAGE_PROMPT_LENGTH - styleFootnote.length - 1,
   );
   const safeSceneDescription = sanitizeGeneratedMediaPrompt(
-    parts.filter(Boolean).join(", ").replace(/\s+/g, " ").trim(),
+    parts
+      .filter(Boolean)
+      .map((part) => String(part).trim().replace(/[.,;:]+$/, ""))
+      .join(", ")
+      .replace(/\s+/g, " ")
+      .trim(),
   ).prompt;
   const sceneDescription = shortenCompletePrompt(
     safeSceneDescription,
     availableSceneLength,
   );
-  return `${sceneDescription} ${styleFootnote}`.trim();
+  return `${sceneDescription.replace(/[.!?]+$/, "")}. ${styleFootnote}`.trim();
 }
 
 export type GenerationMode = "montage" | "narrative";
@@ -289,6 +299,36 @@ const NARRATIVE_BEATS = [
   "final image",
 ];
 
+const CAMERA_FRAMINGS = [
+  "wide establishing frame",
+  "medium environmental frame",
+  "intimate close-up",
+  "low-angle medium frame",
+  "high-angle wide frame",
+  "profile composition",
+  "over-the-shoulder frame",
+  "symmetrical centered frame",
+  "foreground-layered frame",
+  "silhouette composition",
+];
+
+const CAMERA_VIEWPOINTS = [
+  "eye-level viewpoint",
+  "three-quarter viewpoint",
+  "ground-level viewpoint",
+  "elevated viewpoint",
+  "long-lens viewpoint",
+  "wide-lens viewpoint",
+];
+
+function sceneCameraDirection(index: number): string {
+  const framing = CAMERA_FRAMINGS[index % CAMERA_FRAMINGS.length]!;
+  const viewpoint = CAMERA_VIEWPOINTS[
+    Math.floor(index / CAMERA_FRAMINGS.length) % CAMERA_VIEWPOINTS.length
+  ]!;
+  return `${framing}, ${viewpoint}`;
+}
+
 const CHARACTER_FOCUS_TERMS = /\b(?:character|person|people|human|woman|man|girl|boy|child|baby|figure|silhouette|singer|musician|performer|dancer|rider|driver|runner|walker|traveler|traveller|protagonist|hero|heroine|artist|actor|actress|model|subject|face|portrait|couple|family|mother|father|friend|soldier|detective|pilot|he|she|they|him|her|them|his|hers|their)\b/i;
 const ENVIRONMENT_FOCUS_TERMS = /\b(?:landscape|skyline|cityscape|mountain|forest|ocean|sea|river|lake|desert|road|street|building|architecture|room|interior|exterior|station|airport|vehicle|car|train|plane|ship|object|detail|texture|atmosphere|weather|storm|rain|cloud|sunrise|sunset|moon|stars|light|shadow)\b/i;
 const FEMALE_CHARACTER_TERMS = /\b(?:female|woman|women|girl|girls|mother|mothers|daughter|daughters|sister|sisters|wife|wives|heroine|her|hers|she)\b/i;
@@ -497,110 +537,62 @@ export function hasStrictUniqueSourcePlan(plan: ShotPlan): boolean {
 
 function buildPrompt(
   input: ShotPlanInput,
-  section: ShotSection,
-  bpm: number | null,
   mood: string | null,
   concept: string,
   montageRole: string,
+  sceneIndex: number,
   usesCharacterReference: boolean,
 ): string {
   const style = input.style ?? "cinematic";
   const styleDesc = STYLE_PROMPTS[style] ?? STYLE_PROMPTS.cinematic!;
-  const energyDesc =
-    section.energy > 0.75
-      ? "intense dynamic action, explosive motion, vivid dramatic visuals"
-      : section.energy > 0.5
-        ? "flowing vibrant movement, colorful engaging transitions"
-        : "calm atmospheric wide shots, subtle elegant motion";
-  const paceDesc =
-    (bpm ?? 0) > 140
-      ? "rapid-cut editing, high-energy fast motion"
-      : (bpm ?? 0) > 100
-        ? "upbeat fluid transitions, dynamic movement"
-        : "slow atmospheric panning, long smooth dissolves";
   const characterDesc = usesCharacterReference
     ? input.hasCharacterReference
-      ? "use the attached reference image for the character; do not redescribe the character's appearance"
-      : input.character && input.character !== "none"
-        ? `featuring ${input.character}`
-        : "featuring the recurring principal subject"
-    : null;
-  const sexContinuity = usesCharacterReference
-    ? characterGenderContinuity(input, concept)
+      ? "use the attached reference image for the character"
+      : "consistent recurring subject, wardrobe, and gender presentation"
     : null;
   return scenePromptWithStyleFootnote([
-    `scene direction: ${concept}`,
+    concept,
     characterDesc,
-    sexContinuity,
-    `${montageRole} visual motif`,
-    `${section.label} section visual treatment`,
-    "one focused visual idea, no complete storyline or multi-scene sequence inside this clip",
     `${mood ?? "energetic"} mood`,
-    energyDesc,
-    paceDesc,
-    "beat-synced cuts, professional music video production, 4K ultra-wide",
+    `${montageRole} composition`,
+    sceneCameraDirection(sceneIndex),
+    "one focused cinematic still",
   ], styleDesc);
 }
 
 function buildNarrativePrompt(
   input: ShotPlanInput,
-  section: ShotSection,
-  bpm: number | null,
   mood: string | null,
   concept: string,
   beat: string,
   sceneIndex: number,
-  sceneCount: number,
   usesCharacterReference: boolean,
 ): string {
   const style = input.style ?? "cinematic";
   const styleDesc = STYLE_PROMPTS[style] ?? STYLE_PROMPTS.cinematic!;
-  const energyDesc =
-    section.energy > 0.75
-      ? "intense dramatic action and decisive movement"
-      : section.energy > 0.5
-        ? "purposeful movement with growing dramatic tension"
-        : "controlled atmospheric movement with clear emotional focus";
-  const paceDesc =
-    (bpm ?? 0) > 140
-      ? "urgent visual pacing"
-      : (bpm ?? 0) > 100
-        ? "confident forward momentum"
-        : "measured cinematic pacing";
   const characterDesc = usesCharacterReference
     ? input.hasCharacterReference
-      ? "use the attached reference image for character identity and continuity; do not redescribe the character's appearance"
-      : input.character && input.character !== "none"
-        ? `keep the same ${input.character} identity, face, wardrobe, and physical details established across character-focused scenes`
-        : "keep the same principal subject identity, wardrobe, and physical details established across character-focused scenes"
+      ? "use the attached reference image for the character and preserve its gender presentation"
+      : (() => {
+          const gender = detectCharacterGender(`${input.character ?? ""} ${input.prompt ?? ""}`);
+          return gender
+            ? `same recurring ${gender} subject, identity, and wardrobe`
+            : sceneIndex > 0
+              ? "same recurring subject, wardrobe, and gender presentation"
+              : null;
+        })()
     : null;
-  const sexContinuity = usesCharacterReference
-    ? characterGenderContinuity(input, concept)
-    : null;
-  const continuity = usesCharacterReference
-    ? sceneIndex === 0
-      ? "establish the recurring subject, world, lighting language, and visual rules for all following scenes"
-      : "continue directly from the previous character-focused scene with consistent subject identity, world, wardrobe, lighting language, and screen direction"
-    : "continue the established world, lighting language, and screen direction";
-  const ending =
-    sceneIndex === sceneCount - 1
-      ? "deliver a clear visual resolution that completes the story"
-      : "end on an action or composition that naturally leads into the next chronological scene";
+  const resolvedConcept = sceneIndex > 0
+    ? concept.replace(/^(?:it|he|she|they)\b/i, "The recurring principal subject")
+    : concept;
 
   return scenePromptWithStyleFootnote([
-    `scene direction: ${concept}`,
+    resolvedConcept,
     characterDesc,
-    sexContinuity,
-    `chronological story scene ${sceneIndex + 1} of ${sceneCount}`,
-    `${beat} story beat`,
-    ending,
-    `${section.label} music section`,
-    continuity,
-    "one continuous story scene only, no montage, no flashback, no time jump, no multiple locations inside this clip",
+    `${beat} composition`,
     `${mood ?? "cinematic"} mood`,
-    energyDesc,
-    paceDesc,
-    "professional narrative music video production, cinematic composition, no text or titles",
+    sceneCameraDirection(sceneIndex),
+    "one cinematic still",
   ], styleDesc);
 }
 
@@ -652,13 +644,10 @@ export function planShots(input: ShotPlanInput): ShotPlan {
         usesCharacterReference,
         prompt: buildNarrativePrompt(
           input,
-          section,
-          bpm,
           mood,
           concept,
           beat,
           index,
-          numClips,
           usesCharacterReference,
         ),
       };
@@ -707,7 +696,7 @@ export function planShots(input: ShotPlanInput): ShotPlan {
       startTime: s.startTime,
       energy: Math.round(s.energy * 100) / 100,
       usesCharacterReference,
-      prompt: buildPrompt(input, s, bpm, mood, concept, role, usesCharacterReference),
+      prompt: buildPrompt(input, mood, concept, role, i, usesCharacterReference),
     });
   }
   const timeline = buildMontageTimeline(shots, sections, target, clipDurationSec);
