@@ -42,7 +42,7 @@ Autoscale instances can scale to zero when HTTP traffic is idle.
 
 | Variable | Default | Purpose |
 | --- | ---: | --- |
-| `WORKER_PROCESS_COUNT` | `1` | Independent worker child processes supervised by the worker service. Valid range is 1–8. |
+| `WORKER_PROCESS_COUNT` | `1` | Independent worker child processes supervised by the worker service. Must be a whole number from 1–8; invalid values stop startup instead of silently reducing capacity. |
 | `WORKER_ID` | host + PID | Stable prefix used to identify worker processes in logs and health responses. |
 | `WORKER_SHUTDOWN_TIMEOUT_MS` | `30000` | Time allowed for an active job to drain before process shutdown. Maximum 5 minutes. |
 | `WORKER_METRICS_INTERVAL_MS` | `60000` | Queue/capacity log interval while work exists. Valid range is 30 seconds–10 minutes. |
@@ -71,7 +71,9 @@ Readiness reports:
 
 - configured and ready worker process counts
 - total process capacity
+- per-child identity, PID, state, active job IDs, and completion/failure totals
 - queued and active job counts
+- retrying and stale active job counts
 - oldest queued job and queue age
 - database availability
 

@@ -26,6 +26,8 @@ export function buildReadinessResponse(
         capacity: embeddedProcessor ? processor.capacity : 0,
         activeJobs: processor.queue.active,
         queuedJobs: processor.queue.queued,
+        retryingJobs: processor.queue.retrying,
+        staleJobs: processor.queue.stale,
         oldestQueuedAt: processor.queue.oldestQueuedAt,
         oldestQueuedAgeMs: processor.queue.oldestQueuedAgeMs,
       },

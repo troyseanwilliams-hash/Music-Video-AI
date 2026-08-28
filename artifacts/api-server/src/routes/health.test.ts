@@ -14,6 +14,8 @@ const healthyProcessor = {
   queue: {
     queued: 2,
     active: 1,
+    retrying: 1,
+    stale: 0,
     oldestQueuedAt: "2026-08-28T00:00:00.000Z",
     oldestQueuedAgeMs: 10_000,
     database: "ok" as const,
@@ -39,6 +41,8 @@ describe("service readiness", () => {
         capacity: 1,
         activeJobs: 1,
         queuedJobs: 2,
+        retryingJobs: 1,
+        staleJobs: 0,
         oldestQueuedAgeMs: 10_000,
       },
       ts: 123,

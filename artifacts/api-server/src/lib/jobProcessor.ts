@@ -54,6 +54,8 @@ export type JobProcessorStatus = {
 type QueueMetrics = {
   queued: number;
   active: number;
+  retrying: number;
+  stale: number;
   oldestQueuedAt: string | null;
   oldestQueuedAgeMs: number | null;
   database: "ok" | "degraded";
@@ -2253,6 +2255,7 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
       WITH target AS (
         SELECT id FROM jobs
         WHERE id = ${job.id} AND status IN ('analyzing', 'generating', 'stitching')
+          AND claimed_at = ${job.claimedAt}
         FOR UPDATE SKIP LOCKED
       ),
       charged AS (
@@ -2289,6 +2292,7 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
           error_message = ${`${errMsg} (not enough credits to retry — each attempt costs ${retryCost} credits)`},
           updated_at = NOW()
         WHERE id = ${job.id} AND status IN ('analyzing', 'generating', 'stitching')
+          AND claimed_at = ${job.claimedAt}
           AND ${retryCost} > 0
           AND NOT EXISTS (
             SELECT 1 FROM credits
@@ -3315,6 +3319,7 @@ async function recoverStaleJobs(): Promise<void> {
           WHERE id = ${imagePack.id}
             AND status IN ('analyzing', 'generating', 'stitching')
             AND job_type = 'image_pack'
+            AND claimed_at = ${imagePack.claimedAt}
             AND ${staleWindow}
           RETURNING id
         `);
@@ -3332,6 +3337,7 @@ async function recoverStaleJobs(): Promise<void> {
         WHERE id = ${imagePack.id}
           AND status IN ('analyzing', 'generating', 'stitching')
           AND job_type = 'image_pack'
+          AND claimed_at = ${imagePack.claimedAt}
           AND ${staleWindow}
         RETURNING id
       `);
@@ -3422,6 +3428,7 @@ async function recoverStaleJobs(): Promise<void> {
           updated_at = NOW()
       WHERE status IN ('analyzing', 'generating', 'stitching')
         AND manifest->>'imageFirstVersion' = '1'
+        AND claimed_at IS NOT NULL
         AND ${staleWindow}
         ${notInFlight}
         AND (
@@ -3439,8 +3446,9 @@ async function recoverStaleJobs(): Promise<void> {
       id: string;
       user_id: string;
       manifest: unknown;
+      claimed_at: Date | string | null;
     }>(sql`
-      SELECT id, user_id, manifest FROM jobs
+      SELECT id, user_id, manifest, claimed_at FROM jobs
       WHERE status IN ('analyzing', 'generating', 'stitching')
         AND job_type <> 'image_pack'
         AND COALESCE(manifest->>'imageFirstVersion', '') <> '1'
@@ -3471,6 +3479,7 @@ async function recoverStaleJobs(): Promise<void> {
           SELECT id FROM jobs
           WHERE id = ${row.id}
             AND status IN ('analyzing', 'generating', 'stitching')
+            AND claimed_at = ${row.claimed_at}
             AND ${staleWindow}
           FOR UPDATE SKIP LOCKED
         ),
@@ -3516,6 +3525,7 @@ async function recoverStaleJobs(): Promise<void> {
               updated_at = NOW()
           WHERE id = ${row.id}
             AND status IN ('analyzing', 'generating', 'stitching')
+            AND claimed_at = ${row.claimed_at}
             AND ${staleWindow}
             AND NOT EXISTS (
               SELECT 1 FROM credits
@@ -3549,6 +3559,7 @@ async function recoverStaleJobs(): Promise<void> {
         updated_at = NOW()
       WHERE status IN ('analyzing', 'generating', 'stitching')
         AND job_type <> 'image_pack'
+        AND claimed_at IS NOT NULL
         AND ${staleWindow}
         AND retry_count >= ${MAX_RETRIES - 1}
         ${notInFlight}
@@ -3603,6 +3614,8 @@ export async function getJobProcessorHealth(): Promise<
   let queue: QueueMetrics = {
     queued: 0,
     active: processorState.activeJobs,
+    retrying: 0,
+    stale: 0,
     oldestQueuedAt: null,
     oldestQueuedAgeMs: null,
     database: "degraded",
@@ -3612,6 +3625,8 @@ export async function getJobProcessorHealth(): Promise<
     const result = await db.execute<{
       queued: string;
       active: string;
+      retrying: string;
+      stale: string;
       oldest_queued_at: Date | string | null;
     }>(sql`
       SELECT
@@ -3619,6 +3634,17 @@ export async function getJobProcessorHealth(): Promise<
         COUNT(*) FILTER (
           WHERE status IN ('analyzing', 'generating', 'stitching')
         )::text AS active,
+        COUNT(*) FILTER (
+          WHERE status IN ('queued', 'analyzing', 'generating', 'stitching')
+            AND retry_count > 0
+        )::text AS retrying,
+        COUNT(*) FILTER (
+          WHERE status IN ('analyzing', 'generating', 'stitching')
+            AND (
+              (job_type = 'editor_render' AND updated_at < NOW() - INTERVAL '60 minutes')
+              OR (job_type <> 'editor_render' AND updated_at < NOW() - INTERVAL '15 minutes')
+            )
+        )::text AS stale,
         MIN(created_at) FILTER (WHERE status = 'queued') AS oldest_queued_at
       FROM jobs
     `);
@@ -3629,6 +3655,8 @@ export async function getJobProcessorHealth(): Promise<
     queue = {
       queued: Number.parseInt(row?.queued ?? "0", 10) || 0,
       active: Number.parseInt(row?.active ?? "0", 10) || 0,
+      retrying: Number.parseInt(row?.retrying ?? "0", 10) || 0,
+      stale: Number.parseInt(row?.stale ?? "0", 10) || 0,
       oldestQueuedAt: oldest && Number.isFinite(oldest.getTime())
         ? oldest.toISOString()
         : null,
@@ -3749,6 +3777,8 @@ export async function startJobProcessor(): Promise<void> {
             activeJobs: health.activeJobs,
             queuedJobs: health.queue.queued,
             totalActiveJobs: health.queue.active,
+            retryingJobs: health.queue.retrying,
+            staleJobs: health.queue.stale,
             oldestQueuedAgeMs: health.queue.oldestQueuedAgeMs,
             database: health.queue.database,
           },

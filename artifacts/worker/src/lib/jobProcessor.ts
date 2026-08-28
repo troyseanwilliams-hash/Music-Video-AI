@@ -121,6 +121,8 @@ export type JobProcessorStatus = {
 type QueueMetrics = {
   queued: number;
   active: number;
+  retrying: number;
+  stale: number;
   oldestQueuedAt: string | null;
   oldestQueuedAgeMs: number | null;
   database: "ok" | "degraded";
@@ -2285,6 +2287,7 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
       WITH target AS (
         SELECT id FROM jobs
         WHERE id = ${job.id} AND status IN ('analyzing', 'generating', 'stitching')
+          AND claimed_at = ${job.claimedAt}
         FOR UPDATE SKIP LOCKED
       ),
       charged AS (
@@ -2321,6 +2324,7 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
           error_message = ${`${errMsg} (not enough credits to retry — each attempt costs ${retryCost} credits)`},
           updated_at = NOW()
         WHERE id = ${job.id} AND status IN ('analyzing', 'generating', 'stitching')
+          AND claimed_at = ${job.claimedAt}
           AND ${retryCost} > 0
           AND NOT EXISTS (
             SELECT 1 FROM credits
@@ -3330,6 +3334,7 @@ async function recoverStaleTimeoutJobs(): Promise<void> {
           WHERE id = ${imagePack.id}
             AND status IN ('analyzing', 'generating', 'stitching')
             AND job_type = 'image_pack'
+            AND claimed_at = ${imagePack.claimedAt}
             AND ${staleWindow}
           RETURNING id
         `);
@@ -3347,6 +3352,7 @@ async function recoverStaleTimeoutJobs(): Promise<void> {
         WHERE id = ${imagePack.id}
           AND status IN ('analyzing', 'generating', 'stitching')
           AND job_type = 'image_pack'
+          AND claimed_at = ${imagePack.claimedAt}
           AND ${staleWindow}
         RETURNING id
       `);
@@ -3412,6 +3418,7 @@ async function recoverStaleTimeoutJobs(): Promise<void> {
           updated_at = NOW()
       WHERE status IN ('analyzing', 'generating', 'stitching')
         AND manifest->>'imageFirstVersion' = '1'
+        AND claimed_at IS NOT NULL
         AND retry_count < ${MAX_RETRIES - 1}
         AND ${staleWindow}
         ${notInFlight}
@@ -3430,6 +3437,7 @@ async function recoverStaleTimeoutJobs(): Promise<void> {
           updated_at = NOW()
       WHERE status IN ('analyzing', 'generating', 'stitching')
         AND manifest->>'imageFirstVersion' = '1'
+        AND claimed_at IS NOT NULL
         AND ${staleWindow}
         ${notInFlight}
         AND (
@@ -3440,6 +3448,122 @@ async function recoverStaleTimeoutJobs(): Promise<void> {
     `);
     for (const row of failed.rows) {
       await refundReservation(row.id, row.user_id, "stale-image-foundation");
+      await notifyJobUpdate(row.id);
+    }
+
+    // Recover every other abandoned job type in the dedicated worker. The API
+    // processor has the same path, but production intentionally disables it.
+    const staleCandidates = await db.execute<{
+      id: string;
+      user_id: string;
+      manifest: unknown;
+      claimed_at: Date | string;
+    }>(sql`
+      SELECT id, user_id, manifest, claimed_at FROM jobs
+      WHERE status IN ('analyzing', 'generating', 'stitching')
+        AND job_type <> 'image_pack'
+        AND COALESCE(manifest->>'imageFirstVersion', '') <> '1'
+        AND claimed_at IS NOT NULL
+        AND ${staleWindow}
+        AND retry_count < ${MAX_RETRIES - 1}
+        ${notInFlight}
+    `);
+    const recoveredGeneric: string[] = [];
+    for (const row of staleCandidates.rows) {
+      const meta =
+        row.manifest && typeof row.manifest === "object" ? (row.manifest as AiJobMeta) : {};
+      const pendingBundle =
+        meta.bundledLipSyncEnabled === true && meta.bundledLipSyncActivated !== true;
+      const retryCost =
+        meta.finalizeWithPartial === true || pendingBundle
+          ? 0
+          : (meta.reservedCredits ?? 0);
+      const requeued = await db.execute<{ id: string }>(sql`
+        WITH target AS (
+          SELECT id FROM jobs
+          WHERE id = ${row.id}
+            AND status IN ('analyzing', 'generating', 'stitching')
+            AND claimed_at = ${row.claimed_at}
+            AND ${staleWindow}
+          FOR UPDATE SKIP LOCKED
+        ),
+        charged AS (
+          UPDATE credits SET
+            subscription_credits = GREATEST(subscription_credits - ${retryCost}, 0),
+            topup_credits = GREATEST(topup_credits - GREATEST(${retryCost} - subscription_credits, 0), 0),
+            credits_remaining = credits_remaining - ${retryCost},
+            credits_used = credits_used + ${retryCost},
+            updated_at = NOW()
+          WHERE ${retryCost} > 0
+            AND user_id = ${row.user_id}
+            AND credits_remaining >= ${retryCost}
+            AND EXISTS (SELECT 1 FROM target)
+          RETURNING user_id
+        )
+        UPDATE jobs
+        SET status = 'queued',
+            claimed_at = NULL,
+            error_message = 'Auto-recovered: stuck without progress',
+            retry_count = retry_count + 1,
+            updated_at = NOW()
+        WHERE id IN (SELECT id FROM target)
+          AND (${retryCost} <= 0 OR EXISTS (SELECT 1 FROM charged))
+        RETURNING id
+      `);
+      if (requeued.rows.length > 0) {
+        recoveredGeneric.push(row.id);
+        continue;
+      }
+      if (retryCost > 0) {
+        const permanentlyFailed = await db.execute<{ id: string }>(sql`
+          UPDATE jobs
+          SET status = 'failed',
+              claimed_at = NULL,
+              error_message = 'Failed: stuck without progress and not enough credits to retry',
+              updated_at = NOW()
+          WHERE id = ${row.id}
+            AND status IN ('analyzing', 'generating', 'stitching')
+            AND claimed_at = ${row.claimed_at}
+            AND ${staleWindow}
+            AND NOT EXISTS (
+              SELECT 1 FROM credits
+              WHERE user_id = ${row.user_id} AND credits_remaining >= ${retryCost}
+            )
+          RETURNING id
+        `);
+        if (permanentlyFailed.rows.length > 0) await notifyJobUpdate(row.id);
+      }
+    }
+    for (const id of recoveredGeneric) await notifyJobUpdate(id);
+
+    const exhausted = await db.execute<{
+      id: string;
+      user_id: string;
+      manifest: unknown;
+    }>(sql`
+      UPDATE jobs
+      SET status = 'failed',
+          claimed_at = NULL,
+          error_message = 'Failed: stuck repeatedly without progress (max retries reached)',
+          updated_at = NOW()
+      WHERE status IN ('analyzing', 'generating', 'stitching')
+        AND job_type <> 'image_pack'
+        AND claimed_at IS NOT NULL
+        AND ${staleWindow}
+        AND retry_count >= ${MAX_RETRIES - 1}
+        ${notInFlight}
+      RETURNING id, user_id, manifest
+    `);
+    for (const row of exhausted.rows) {
+      const meta =
+        row.manifest && typeof row.manifest === "object" ? (row.manifest as AiJobMeta) : {};
+      if (meta.bundledLipSyncEnabled && !meta.bundledLipSyncActivated) {
+        await refundReservation(
+          row.id,
+          row.user_id,
+          "bundled-source-watchdog-retries-exhausted",
+        );
+      }
       await notifyJobUpdate(row.id);
     }
   } catch (err) {
@@ -3471,6 +3595,8 @@ export async function getJobProcessorHealth(): Promise<
   let queue: QueueMetrics = {
     queued: 0,
     active: processorState.activeJobs,
+    retrying: 0,
+    stale: 0,
     oldestQueuedAt: null,
     oldestQueuedAgeMs: null,
     database: "degraded",
@@ -3480,6 +3606,8 @@ export async function getJobProcessorHealth(): Promise<
     const result = await db.execute<{
       queued: string;
       active: string;
+      retrying: string;
+      stale: string;
       oldest_queued_at: Date | string | null;
     }>(sql`
       SELECT
@@ -3487,6 +3615,14 @@ export async function getJobProcessorHealth(): Promise<
         COUNT(*) FILTER (
           WHERE status IN ('analyzing', 'generating', 'stitching')
         )::text AS active,
+        COUNT(*) FILTER (
+          WHERE status IN ('queued', 'analyzing', 'generating', 'stitching')
+            AND retry_count > 0
+        )::text AS retrying,
+        COUNT(*) FILTER (
+          WHERE status IN ('analyzing', 'generating', 'stitching')
+            AND updated_at < NOW() - INTERVAL '15 minutes'
+        )::text AS stale,
         MIN(created_at) FILTER (WHERE status = 'queued') AS oldest_queued_at
       FROM jobs
     `);
@@ -3497,6 +3633,8 @@ export async function getJobProcessorHealth(): Promise<
     queue = {
       queued: Number.parseInt(row?.queued ?? "0", 10) || 0,
       active: Number.parseInt(row?.active ?? "0", 10) || 0,
+      retrying: Number.parseInt(row?.retrying ?? "0", 10) || 0,
+      stale: Number.parseInt(row?.stale ?? "0", 10) || 0,
       oldestQueuedAt: oldest && Number.isFinite(oldest.getTime())
         ? oldest.toISOString()
         : null,
@@ -3615,6 +3753,8 @@ export async function startJobProcessor(): Promise<void> {
             activeJobs: health.activeJobs,
             queuedJobs: health.queue.queued,
             totalActiveJobs: health.queue.active,
+            retryingJobs: health.queue.retrying,
+            staleJobs: health.queue.stale,
             oldestQueuedAgeMs: health.queue.oldestQueuedAgeMs,
             database: health.queue.database,
           },

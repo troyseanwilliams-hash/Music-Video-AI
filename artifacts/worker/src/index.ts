@@ -14,8 +14,16 @@ import { logger } from "./lib/logger.js";
 const port = Number(process.env.PORT ?? 9000);
 const isWorkerChild = process.env.WORKER_CHILD_PROCESS === "true";
 const workerProcessCount = (() => {
-  const parsed = Number.parseInt(process.env.WORKER_PROCESS_COUNT ?? "", 10);
-  return Number.isInteger(parsed) && parsed > 0 ? Math.min(parsed, 8) : 1;
+  const raw = process.env.WORKER_PROCESS_COUNT?.trim();
+  if (!raw) return 1;
+  if (!/^\d+$/.test(raw)) {
+    throw new Error("WORKER_PROCESS_COUNT must be a whole number between 1 and 8");
+  }
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 8) {
+    throw new Error("WORKER_PROCESS_COUNT must be a whole number between 1 and 8");
+  }
+  return parsed;
 })();
 const supervisorId =
   process.env.WORKER_ID?.trim() || `${hostname()}-${process.pid}`;
@@ -23,7 +31,19 @@ let shuttingDown = false;
 const workerChildren = new Map<number, ChildProcess>();
 const readyWorkerSlots = new Set<number>();
 const restartAttempts = new Map<number, number>();
+type ProcessorHealth = Awaited<ReturnType<typeof getJobProcessorHealth>>;
+type ChildSnapshot = Pick<
+  ProcessorHealth,
+  "workerId" | "state" | "capacity" | "activeJobs" | "activeJobIds" | "jobsStarted" | "jobsCompleted" | "jobsFailed"
+> & {
+  slot: number;
+  pid: number | null;
+  lastReportedAt: string;
+};
+const childSnapshots = new Map<number, ChildSnapshot>();
 let stopPurgeSweep: (() => void) | null = null;
+let childShuttingDown = false;
+let childStatusTimer: NodeJS.Timeout | null = null;
 
 function sendJson(
   res: http.ServerResponse,
@@ -53,6 +73,7 @@ function startWorkerChild(slot: number): void {
   });
   workerChildren.set(slot, child);
   readyWorkerSlots.delete(slot);
+  childSnapshots.delete(slot);
 
   child.on("message", (message: unknown) => {
     if (
@@ -67,12 +88,38 @@ function startWorkerChild(slot: number): void {
         { slot, workerId: childWorkerId(slot), pid: child.pid },
         "Worker child ready",
       );
+      return;
+    }
+    if (
+      message &&
+      typeof message === "object" &&
+      "type" in message &&
+      message.type === "status" &&
+      "health" in message &&
+      message.health &&
+      typeof message.health === "object"
+    ) {
+      const health = message.health as ProcessorHealth;
+      childSnapshots.set(slot, {
+        slot,
+        pid: child.pid ?? null,
+        workerId: health.workerId,
+        state: health.state,
+        capacity: health.capacity,
+        activeJobs: health.activeJobs,
+        activeJobIds: [...health.activeJobIds],
+        jobsStarted: health.jobsStarted,
+        jobsCompleted: health.jobsCompleted,
+        jobsFailed: health.jobsFailed,
+        lastReportedAt: new Date().toISOString(),
+      });
     }
   });
 
   child.once("exit", (code, signal) => {
     workerChildren.delete(slot);
     readyWorkerSlots.delete(slot);
+    childSnapshots.delete(slot);
     logger[shuttingDown ? "info" : "error"](
       { slot, workerId: childWorkerId(slot), pid: child.pid, code, signal },
       shuttingDown ? "Worker child stopped" : "Worker child exited unexpectedly",
@@ -88,6 +135,10 @@ function startWorkerChild(slot: number): void {
 }
 
 async function shutdownWorkerChild(signal: NodeJS.Signals): Promise<void> {
+  if (childShuttingDown) return;
+  childShuttingDown = true;
+  if (childStatusTimer) clearInterval(childStatusTimer);
+  childStatusTimer = null;
   logger.info(
     { signal, workerId: process.env.WORKER_ID },
     "Worker child shutdown requested",
@@ -113,11 +164,19 @@ async function runWorkerChild(): Promise<void> {
   process.on("SIGTERM", () => void shutdownWorkerChild("SIGTERM"));
   process.on("SIGINT", () => void shutdownWorkerChild("SIGINT"));
   await startJobProcessor();
+  const reportStatus = () => {
+    void getJobProcessorHealth()
+      .then((health) => process.send?.({ type: "status", health }))
+      .catch((err: unknown) => logger.warn({ err }, "Worker child status report failed"));
+  };
   process.send?.({
     type: "ready",
     workerId: process.env.WORKER_ID,
     pid: process.pid,
   });
+  reportStatus();
+  childStatusTimer = setInterval(reportStatus, 10_000);
+  childStatusTimer.unref();
 }
 
 const server = http.createServer((req, res) => {
@@ -133,7 +192,9 @@ const server = http.createServer((req, res) => {
         readyProcesses: healthyProcesses,
         perProcess: 1,
         total: workerProcessCount,
+        active: [...childSnapshots.values()].reduce((sum, worker) => sum + worker.activeJobs, 0),
       },
+      workers: [...childSnapshots.values()].sort((a, b) => a.slot - b.slot),
       ts: Date.now(),
     });
     return;
@@ -157,7 +218,9 @@ const server = http.createServer((req, res) => {
             readyProcesses: healthyProcesses,
             perProcess: 1,
             total: workerProcessCount,
+            active: [...childSnapshots.values()].reduce((sum, worker) => sum + worker.activeJobs, 0),
           },
+          workers: [...childSnapshots.values()].sort((a, b) => a.slot - b.slot),
           queue: processor.queue,
           ts: Date.now(),
         });
