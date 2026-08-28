@@ -46,6 +46,29 @@ describe("planShots montage planning", () => {
     expect(plan.shots[1]!.prompt).not.toContain("golden sky");
   });
 
+  it("maps numbered scripts to clean chronological Narrative Story scenes", () => {
+    const prompt = [
+      "1. A pilot discovers the open sky.",
+      "2. The pilot crosses a stormy ocean.",
+      "3. The pilot returns home to inspire others.",
+    ].join("\n");
+    const plan = planShots({
+      prompt,
+      style: "cinematic",
+      requestedDuration: "30",
+      generationMode: "narrative",
+    });
+
+    expect(plan.shots.map((shot) => shot.description)).toEqual([
+      "Opening image — A pilot discovers the open sky.",
+      "Turning point — The pilot crosses a stormy ocean.",
+      "Final image — The pilot returns home to inspire others.",
+    ]);
+    expect(plan.shots[0]!.prompt).not.toContain("1.");
+    expect(plan.shots[0]!.prompt).not.toContain("crosses a stormy ocean");
+    expect(plan.shots[2]!.prompt).toContain("deliver a clear visual resolution");
+  });
+
   it("rejects malformed or count-mismatched numbered video scripts", () => {
     expect(numberedVideoScriptIssue([
       "1. Opening shot.",

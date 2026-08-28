@@ -42,3 +42,10 @@ uri = "file://attached_assets/amelia-earhart-20-scene-creative-script.txt"
 type = "text"
 title = "Amelia Earhart — Paste-Ready 20-Scene Script"
 description = "A numbered creative script formatted for the updated Generate page: one scene per line, ready to paste after uploading the 194.69-second source."
+
+[[outputs]]
+id = "AGUfWcV8D7l3ZQ6R-cnHg"
+uri = "file://attached_assets/amelia-earhart-20-scene-narrative-story-script.txt"
+type = "text"
+title = "Amelia Earhart — 20-Scene Narrative Story Script"
+description = "A paste-ready chronological story script for Narrative Story mode, validated for the 194.69-second full-track source."

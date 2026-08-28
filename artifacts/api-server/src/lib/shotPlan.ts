@@ -452,7 +452,9 @@ export function planShots(input: ShotPlanInput): ShotPlan {
   const concepts = numberedScript?.scenes.length === numClips
     ? numberedScript.scenes
     : splitPromptIntoConcepts(input.prompt || "music video", numClips);
-  const orderedStoryConcepts = promptConcepts(input.prompt || "music video");
+  const orderedStoryConcepts = numberedScript?.scenes.length === numClips
+    ? numberedScript.scenes
+    : promptConcepts(input.prompt || "music video");
   const bpm = input.analysis?.bpm ?? null;
   const mood = input.analysis?.mood ?? null;
 
