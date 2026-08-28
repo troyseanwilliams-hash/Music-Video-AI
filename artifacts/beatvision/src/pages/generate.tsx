@@ -305,6 +305,7 @@ export default function Generate() {
   const [errorDialog, setErrorDialog] = useState<ErrorDialogState>({ open: false, title: "", message: "" });
   const [copyrightAcknowledged, setCopyrightAcknowledged] = useState(false);
   const [durationWarningOpen, setDurationWarningOpen] = useState(false);
+  const [referenceChoiceOpen, setReferenceChoiceOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [topUpOpen, setTopUpOpen] = useState(false);
   // Storyboard preview shown in the confirm dialog (no charge, no render).
@@ -374,11 +375,19 @@ export default function Generate() {
     window.history.replaceState({}, "", window.location.pathname);
   }, []);
 
-  // Handoff from Prompt Studio: /generate?prompt=<text> prefills the prompt field.
+  // Handoff from another page: prefill the engine prompt and optionally attach
+  // a private reference image.
   useEffect(() => {
-    const p = new URLSearchParams(window.location.search).get("prompt");
-    if (!p) return;
-    setPrompt(p);
+    const params = new URLSearchParams(window.location.search);
+    const p = params.get("prompt");
+    const referenceImagePath = params.get("referenceImagePath");
+    if (p) setPrompt(p);
+    if (referenceImagePath?.startsWith("/objects/")) {
+      setRefImageObjectPath(referenceImagePath);
+      setRefImagePreviewUrl(`/api/storage${referenceImagePath}`);
+      setRefImageError(null);
+    }
+    if (!p && !referenceImagePath) return;
     window.history.replaceState({}, "", window.location.pathname);
   }, []);
 
@@ -1217,6 +1226,19 @@ export default function Generate() {
     });
   };
 
+  const openGenerationReview = () => {
+    const durSec = effectiveRequestedDuration === CreateJobRequestRequestedDuration.full
+      ? null
+      : parseInt(effectiveRequestedDuration as string, 10);
+
+    if (durSec !== null && durSec >= 90) {
+      setDurationWarningOpen(true);
+      return;
+    }
+
+    setConfirmOpen(true);
+  };
+
   const handleGenerate = () => {
     const errors: {
       prompt?: string;
@@ -1303,16 +1325,12 @@ export default function Generate() {
       return;
     }
 
-    const durSec = effectiveRequestedDuration === CreateJobRequestRequestedDuration.full
-      ? null
-      : parseInt(effectiveRequestedDuration as string, 10);
-
-    if (durSec !== null && durSec >= 90) {
-      setDurationWarningOpen(true);
+    if (namedSubjectWarning && !refImageObjectPath) {
+      setReferenceChoiceOpen(true);
       return;
     }
 
-    setConfirmOpen(true);
+    openGenerationReview();
   };
 
   return (
@@ -2902,6 +2920,7 @@ export default function Generate() {
                   <strong className="font-semibold">Person or character name detected:</strong>{" "}
                   “{namedSubjectWarning}”. Some image providers may reject named people or characters.
                   For a better chance of success, describe the subject&apos;s appearance, clothing, era, and mood instead.
+                  If you do not have a reference image, you can continue without one.
                 </p>
               </div>
             )}
@@ -3241,6 +3260,46 @@ export default function Generate() {
         </div>
       </motion.div>
     </div>
+
+    {/* ── Named Subject Reference Choice ── */}
+    <Dialog open={referenceChoiceOpen} onOpenChange={setReferenceChoiceOpen}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <div className="flex items-center gap-3 mb-1">
+            <div className="h-10 w-10 rounded-full bg-yellow-500/15 flex items-center justify-center shrink-0">
+              <AlertTriangle className="h-5 w-5 text-yellow-500" />
+            </div>
+            <DialogTitle className="text-left">Add a reference image?</DialogTitle>
+          </div>
+          <DialogDescription className="text-left text-sm leading-relaxed">
+            Your prompt names “{namedSubjectWarning}”, but no reference image is attached. Add an image to help keep the subject consistent, or submit without one.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="flex-col-reverse sm:flex-row gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setReferenceChoiceOpen(false);
+              openGenerationReview();
+            }}
+          >
+            Continue without reference
+          </Button>
+          <Button
+            type="button"
+            className="bg-gradient-electric text-white border-0"
+            onClick={() => {
+              setReferenceChoiceOpen(false);
+              refImageInputRef.current?.click();
+            }}
+          >
+            <Upload className="mr-2 h-4 w-4" />
+            Add reference image
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     {/* ── Duration Warning Dialog ── */}
     {(() => {
