@@ -263,16 +263,6 @@ const NARRATIVE_BEATS = [
 
 const CHARACTER_FOCUS_TERMS = /\b(?:character|person|people|human|woman|man|girl|boy|child|baby|figure|silhouette|singer|musician|performer|dancer|rider|driver|runner|walker|traveler|traveller|protagonist|hero|heroine|artist|actor|actress|model|subject|face|portrait|couple|family|mother|father|friend|soldier|detective|pilot|he|she|they|him|her|them|his|hers|their)\b/i;
 const ENVIRONMENT_FOCUS_TERMS = /\b(?:landscape|skyline|cityscape|mountain|forest|ocean|sea|river|lake|desert|road|street|building|architecture|room|interior|exterior|station|airport|vehicle|car|train|plane|ship|object|detail|texture|atmosphere|weather|storm|rain|cloud|sunrise|sunset|moon|stars|light|shadow)\b/i;
-const CHARACTER_MONTAGE_ROLES = new Set(["hero subject", "kinetic motion", "intimate close-up", "high-energy visual", "closing callback"]);
-const CHARACTER_NARRATIVE_BEATS = new Set([
-  "inciting moment",
-  "rising action",
-  "escalation",
-  "turning point",
-  "climax",
-  "resolution",
-]);
-
 function narrativeBeat(index: number, count: number): string {
   if (count <= 1) return "complete story moment";
   const position = index / (count - 1);
@@ -290,12 +280,14 @@ function sceneDescription(role: string, concept: string): string {
   return `${title} — ${shortened || "cinematic music video imagery"}`;
 }
 
-function sceneUsesCharacterReference(input: ShotPlanInput, role: string, concept: string): boolean {
-  const currentScene = `${role} ${concept}`;
+function sceneUsesCharacterReference(concept: string): boolean {
+  // Reference usage is scene-specific. Do not let a generated beat/role such as
+  // "hero subject" or "climax" pull the character into an otherwise unrelated
+  // environment scene.
+  const currentScene = concept;
   if (CHARACTER_FOCUS_TERMS.test(currentScene)) return true;
   if (ENVIRONMENT_FOCUS_TERMS.test(currentScene)) return false;
-  if (!input.hasCharacterReference && (!input.character || input.character === "none")) return false;
-  return CHARACTER_MONTAGE_ROLES.has(role) || CHARACTER_NARRATIVE_BEATS.has(role);
+  return false;
 }
 
 function promptConcepts(prompt: string): string[] {
@@ -587,7 +579,7 @@ export function planShots(input: ShotPlanInput): ShotPlan {
         Math.floor((index * orderedStoryConcepts.length) / numClips),
       );
       const concept = orderedStoryConcepts[conceptIndex]!;
-      const usesCharacterReference = sceneUsesCharacterReference(input, beat, concept);
+       const usesCharacterReference = sceneUsesCharacterReference(concept);
       return {
         index,
         label: beat,
@@ -639,7 +631,7 @@ export function planShots(input: ShotPlanInput): ShotPlan {
     const s = motifSections[i]!;
     const role = MONTAGE_ROLES[i % MONTAGE_ROLES.length]!;
     const concept = concepts[i]!;
-    const usesCharacterReference = sceneUsesCharacterReference(input, role, concept);
+    const usesCharacterReference = sceneUsesCharacterReference(concept);
     shots.push({
       index: i,
       label: role,
@@ -681,7 +673,7 @@ export function planImagePackScenes(input: {
       generationMode: "narrative",
     };
     const usesReference = numberedScript.scenes.map((concept, index) =>
-      sceneUsesCharacterReference(planInput, narrativeBeat(index, imageCount), concept)
+      sceneUsesCharacterReference(concept)
     );
     const firstCharacterSceneIndex = usesReference.findIndex(Boolean);
     const style = input.style ?? "cinematic";

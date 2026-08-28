@@ -335,6 +335,18 @@ describe("planShots narrative planning", () => {
       .toMatchObject({ usesCharacterReference: false });
   });
 
+  it("does not apply a character reference to generic narrative beats", () => {
+    const plan = planShots({
+      prompt: "A quiet morning begins. Then rain covers the empty rooftops. Finally the city lights fade into the night.",
+      hasCharacterReference: true,
+      generationMode: "narrative",
+      requestedDuration: "30",
+    });
+
+    expect(plan.shots.every((shot) => shot.usesCharacterReference === false)).toBe(true);
+    expect(plan.shots.every((shot) => !shot.prompt.includes("attached reference image"))).toBe(true);
+  });
+
   it("creates eighteen unique chronological scenes for a three-minute story", () => {
     const plan = planShots({
       prompt: "A rider enters the desert. Then a storm arrives. Finally sunrise breaks over the mountains.",
