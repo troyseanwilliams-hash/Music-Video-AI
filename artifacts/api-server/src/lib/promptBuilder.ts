@@ -9,6 +9,8 @@ import { sceneConceptIncludesCharacter } from "./shotPlan.js";
 import {
   containsNamedSubject,
   detectNamedSubject,
+  fallbackNamedSubjectDescription,
+  replaceNamedSubjectWithDescription,
   replaceNamedSubjectWithReference,
 } from "./namedSubject.js";
 
@@ -278,7 +280,7 @@ function normalizeSceneBuilderScenes(
 ): SceneBuilderScene[] {
   const sourceScenes = Array.isArray(rawScenes) ? rawScenes : [];
   const beats = splitStoryIntoBeats(story, sceneCount);
-  const referenceSubjectName = hasReferenceImage ? detectNamedSubject(story) : null;
+  const namedSubject = detectNamedSubject(story);
   const maxPromptLength = Math.min(
     MAX_SCENE_IMAGE_PROMPT_LENGTH,
     Math.floor((MAX_SCENE_SCRIPT_LENGTH - sceneCount * 8) / sceneCount),
@@ -291,12 +293,12 @@ function normalizeSceneBuilderScenes(
     const usesCharacterReference =
       hasReferenceImage
       && (
-        containsNamedSubject(sourceBeat, referenceSubjectName)
+        containsNamedSubject(sourceBeat, namedSubject)
         || sceneConceptIncludesCharacter(sourceBeat)
       );
-    const beat = usesCharacterReference
-      ? replaceNamedSubjectWithReference(sourceBeat, referenceSubjectName)
-      : sourceBeat;
+    const beat = hasReferenceImage
+      ? replaceNamedSubjectWithReference(sourceBeat, namedSubject)
+      : replaceNamedSubjectWithDescription(sourceBeat, namedSubject);
     const fallbackPrompt = usesCharacterReference
       ? `${beat}, use the attached reference image for the character, clear cinematic still composition, style footnote: cinematic`
       : `${beat}, clear subject and setting, expressive lighting and mood, style footnote: cinematic`;
@@ -307,11 +309,14 @@ function normalizeSceneBuilderScenes(
     );
     const generatedPromptWithoutName = replaceNamedSubjectWithReference(
       generatedPromptWithPossibleReference,
-      referenceSubjectName,
+      namedSubject,
     );
-    const generatedPrompt = usesCharacterReference
+    const generatedPromptWithoutNameOrReference = hasReferenceImage
       ? generatedPromptWithoutName
-      : generatedPromptWithoutName
+      : replaceNamedSubjectWithDescription(generatedPromptWithPossibleReference, namedSubject);
+    const generatedPrompt = usesCharacterReference
+      ? generatedPromptWithoutNameOrReference
+      : generatedPromptWithoutNameOrReference
           .replace(/\b(?:use|match|refer to)\s+the attached reference image[^,.;]*[,.;]?\s*/gi, "")
           .replace(/\s+/g, " ")
           .trim();
@@ -380,18 +385,6 @@ export interface SubjectReplacementResult {
   source: string;
 }
 
-const KNOWN_SUBJECT_DESCRIPTIONS: Record<string, string> = {
-  "amelia earhart": "a pioneering early-20th-century woman aviator with short auburn hair, a confident gaze, and period-accurate leather flight gear",
-  "albert einstein": "an elderly theoretical physicist with wild white hair, a full moustache, and a dark period suit",
-  "frida kahlo": "a Mexican painter with dark braided hair adorned with flowers, strong brows, and a colorful traditional blouse",
-  "bob marley": "a Jamaican reggae musician with long dreadlocks, warm expressive eyes, and relaxed 1970s attire",
-  "david bowie": "a distinctive British rock performer with angular features, styled hair, and bold era-specific stage clothing",
-  "elvis presley": "a charismatic mid-century rock-and-roll singer with swept-back dark hair and a sharp vintage stage suit",
-  "marilyn monroe": "a classic mid-century film actress with platinum curls, softly arched brows, and an elegant vintage dress",
-  "nelson mandela": "an elder South African statesman with close-cropped white hair, kind eyes, and a dignified formal suit",
-  "vincent van gogh": "a nineteenth-century Dutch painter with reddish hair, a short beard, and a worn blue work jacket",
-};
-
 const SUBJECT_REPLACEMENT_SYSTEM = `You create concise provider-safe visual descriptions for named people or characters in image and video prompts.
 Return ONLY valid JSON in exactly this shape:
 {"characterDescription":"..."}
@@ -399,8 +392,7 @@ The description must be 12–40 words, describe observable appearance, clothing,
 Do not include the supplied name, pronouns that refer back to it, commentary, or claims about an exact likeness. Prefer historically grounded visual traits when the subject is a historical figure.`;
 
 function fallbackCharacterDescription(namedSubject: string): string {
-  return KNOWN_SUBJECT_DESCRIPTIONS[namedSubject.trim().toLocaleLowerCase()]
-    ?? "a historically grounded figure with distinctive period-appropriate features, clothing, and demeanor based on the surrounding scene";
+  return fallbackNamedSubjectDescription(namedSubject);
 }
 
 function removeSubjectName(value: string, namedSubject: string): string {

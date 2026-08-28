@@ -9,6 +9,7 @@ import { shortenCompletePrompt } from "./promptText.js";
 import {
   containsNamedSubject,
   detectNamedSubject,
+  replaceNamedSubjectWithDescription,
   replaceNamedSubjectWithReference,
 } from "./namedSubject.js";
 
@@ -586,9 +587,7 @@ export function planShots(input: ShotPlanInput): ShotPlan {
     : promptConcepts(input.prompt || "music video");
   const bpm = input.analysis?.bpm ?? null;
   const mood = input.analysis?.mood ?? null;
-  const referenceSubjectName = input.hasCharacterReference
-    ? detectNamedSubject(input.prompt || "")
-    : null;
+  const namedSubject = detectNamedSubject(input.prompt || "");
 
   if (generationMode === "narrative") {
     const shots = Array.from({ length: numClips }, (_, index) => {
@@ -602,11 +601,11 @@ export function planShots(input: ShotPlanInput): ShotPlan {
       );
       const sourceConcept = orderedStoryConcepts[conceptIndex]!;
       const usesCharacterReference =
-        containsNamedSubject(sourceConcept, referenceSubjectName)
+        containsNamedSubject(sourceConcept, namedSubject)
         || sceneConceptIncludesCharacter(sourceConcept);
-      const concept = usesCharacterReference
-        ? replaceNamedSubjectWithReference(sourceConcept, referenceSubjectName)
-        : sourceConcept;
+      const concept = input.hasCharacterReference
+        ? replaceNamedSubjectWithReference(sourceConcept, namedSubject)
+        : replaceNamedSubjectWithDescription(sourceConcept, namedSubject);
       return {
         index,
         label: beat,
@@ -659,11 +658,11 @@ export function planShots(input: ShotPlanInput): ShotPlan {
     const role = MONTAGE_ROLES[i % MONTAGE_ROLES.length]!;
     const sourceConcept = concepts[i]!;
     const usesCharacterReference =
-      containsNamedSubject(sourceConcept, referenceSubjectName)
+      containsNamedSubject(sourceConcept, namedSubject)
       || sceneConceptIncludesCharacter(sourceConcept);
-    const concept = usesCharacterReference
-      ? replaceNamedSubjectWithReference(sourceConcept, referenceSubjectName)
-      : sourceConcept;
+    const concept = input.hasCharacterReference
+      ? replaceNamedSubjectWithReference(sourceConcept, namedSubject)
+      : replaceNamedSubjectWithDescription(sourceConcept, namedSubject);
     shots.push({
       index: i,
       label: role,
@@ -696,12 +695,10 @@ export function planImagePackScenes(input: {
 }): PlannedShot[] {
   const imageCount = Math.max(1, Math.min(30, Math.round(input.imageCount)));
   const numberedScript = parseNumberedImagePackScript(input.prompt);
-  const referenceSubjectName = input.hasCharacterReference
-    ? detectNamedSubject(input.prompt)
-    : null;
+  const namedSubject = detectNamedSubject(input.prompt);
   if (numberedScript && numberedScript.scenes.length === imageCount) {
     const usesReference = numberedScript.scenes.map((concept) =>
-      containsNamedSubject(concept, referenceSubjectName)
+      containsNamedSubject(concept, namedSubject)
       || sceneConceptIncludesCharacter(concept)
     );
     const firstCharacterSceneIndex = usesReference.findIndex(Boolean);
@@ -711,8 +708,10 @@ export function planImagePackScenes(input: {
     return numberedScript.scenes.map((sourceConcept, index) => {
       const usesCharacterReference = usesReference[index]!;
       const concept = usesCharacterReference
-        ? replaceNamedSubjectWithReference(sourceConcept, referenceSubjectName)
-        : sourceConcept;
+        ? input.hasCharacterReference
+          ? replaceNamedSubjectWithReference(sourceConcept, namedSubject)
+          : replaceNamedSubjectWithDescription(sourceConcept, namedSubject)
+        : replaceNamedSubjectWithDescription(sourceConcept, namedSubject);
       const characterContinuity = usesCharacterReference
         ? input.hasCharacterReference
           ? "match the uploaded character reference exactly: same identity, face, age, hair, wardrobe, and physical details"
@@ -721,7 +720,11 @@ export function planImagePackScenes(input: {
             : "match the established principal character reference exactly: same identity, face, age, hair, wardrobe, and physical details"
         : "focus only on this scene's environment, objects, or atmosphere; do not add the recurring character unless explicitly requested";
       const seriesDirection = numberedScript.seriesDirection
-        ? `series-wide visual direction: ${replaceNamedSubjectWithReference(numberedScript.seriesDirection, referenceSubjectName)}`
+        ? `series-wide visual direction: ${
+            input.hasCharacterReference
+              ? replaceNamedSubjectWithReference(numberedScript.seriesDirection, namedSubject)
+              : replaceNamedSubjectWithDescription(numberedScript.seriesDirection, namedSubject)
+          }`
         : "keep one cohesive visual world, period, palette, lighting language, and camera language across the entire image pack";
 
       return {

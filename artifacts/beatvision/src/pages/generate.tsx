@@ -3391,7 +3391,7 @@ export default function Generate() {
             <DialogTitle className="text-left">Add a reference image?</DialogTitle>
           </div>
           <DialogDescription className="text-left text-sm leading-relaxed">
-            Your prompt names “{namedSubjectWarning}”, but no reference image is attached. Add an image to help keep the subject consistent, or submit without one.
+            Your prompt names “{namedSubjectWarning}”, but no reference image is attached. Add an image, or continue with a descriptive visual replacement instead.
           </DialogDescription>
         </DialogHeader>
         {subjectReplacementError && (
@@ -3402,11 +3402,10 @@ export default function Generate() {
             type="button"
             variant="outline"
             onClick={() => {
-              setReferenceChoiceOpen(false);
-              openGenerationReview();
+               void replaceNamedSubject();
             }}
           >
-            Continue without reference
+             Continue with description
           </Button>
           <Button
             type="button"
@@ -3430,7 +3429,7 @@ export default function Generate() {
             ) : (
               <Wand2 className="mr-2 h-4 w-4" />
             )}
-            {subjectReplacementBusy ? "Replacing…" : "Replace name with description"}
+             {subjectReplacementBusy ? "Replacing…" : "Use descriptive replacement"}
           </Button>
         </DialogFooter>
       </DialogContent>
