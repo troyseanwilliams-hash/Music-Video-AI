@@ -4,10 +4,6 @@ function shortenCompletePrompt(value: string, maxLength: number): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   if (normalized.length <= maxLength) return normalized;
 
-  const sentences = normalized.match(/[^.!?]+[.!?]+(?=\s|$)/g) ?? [];
-  const completeSentence = sentences.find((sentence) => sentence.trim().length <= maxLength)?.trim();
-  if (completeSentence) return completeSentence;
-
   const words = normalized.split(" ");
   let shortened = "";
   for (const word of words) {
@@ -16,7 +12,10 @@ function shortenCompletePrompt(value: string, maxLength: number): string {
     shortened = candidate;
   }
   if (!shortened) return normalized.slice(0, maxLength).trimEnd();
-  shortened = shortened.replace(/[,:;—-]+$/g, "").trim();
+  shortened = shortened
+    .replace(/\s+(?:a|an|the|and|or|of|to|from|with|without|in|on|at|by|for|as|through|under|over|into|across|beside)$/i, "")
+    .replace(/[,:;—-]+$/g, "")
+    .trim();
   return /[.!?]$/.test(shortened) ? shortened : `${shortened}.`.slice(0, maxLength);
 }
 

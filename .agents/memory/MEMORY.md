@@ -34,3 +34,4 @@
 - [Worker deployment cutover](worker-deployment-cutover.md) — keep the API processor enabled until an always-on production worker is actually deployed and healthy.
 - [Named-subject reference prompts](named-subject-reference-prompts.md) — preserve the warning; offer reference image, safe description replacement, or continue without one.
 - [Reference-image prompt authoring](reference-image-prompt-authoring.md) — when a reference is attached, generated prompts should point to it instead of repeating character appearance.
+- [Complete prompt shortening](complete-prompt-shortening.md) — generated image prompts must end at whole words without ellipses while preserving ordered visual instructions.

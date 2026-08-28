@@ -17,7 +17,7 @@ describe("shortenCompletePrompt", () => {
       28,
     );
 
-    expect(shortened).toBe("The character walks through.");
+    expect(shortened).toBe("The character walks.");
     expect(shortened).not.toContain("…");
     expect(shortened).not.toMatch(/[A-Za-z]…$/);
   });
