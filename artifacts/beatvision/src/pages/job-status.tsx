@@ -128,13 +128,31 @@ function inferClipProgress(
   return `Generating scene ${completed + 1} of ${n}…`;
 }
 
-function customerFailureMessage(): {
+function customerFailureMessage(message?: string | null): {
   headline: string;
   detail: string;
 } {
+  if (/automated safety checks/i.test(message ?? "")) {
+    return {
+      headline: "A scene needs different wording",
+      detail: message!,
+    };
+  }
+  if (/source images/i.test(message ?? "")) {
+    return {
+      headline: "We couldn't create the scene images",
+      detail: message!,
+    };
+  }
+  if (/took too long/i.test(message ?? "")) {
+    return {
+      headline: "Generation timed out",
+      detail: message!,
+    };
+  }
   return {
-    headline: "Generation unavailable",
-    detail: "We couldn't complete this generation. We're working on the issue.",
+    headline: "We couldn't complete this generation",
+    detail: message || "No credits were charged for unfinished work. Please start a new generation or contact support if it happens again.",
   };
 }
 
@@ -417,7 +435,7 @@ export default function JobStatus() {
     (!jobAudio.audioSourceType || jobAudio.audioSourceType === "none") &&
     !jobAudio.audioObjectPath &&
     !jobAudio.audioSourceUrl;
-  const errInfo = customerFailureMessage();
+  const errInfo = customerFailureMessage(job.errorMessage);
 
   // Remix Lab renders one final output video regardless of its timeline size.
   const isRemixJob = job.jobType === "editor_render";

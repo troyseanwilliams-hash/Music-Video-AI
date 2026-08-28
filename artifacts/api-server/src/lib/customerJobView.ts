@@ -49,6 +49,30 @@ function sanitizeManifest(manifest: unknown): unknown {
   return sanitized;
 }
 
+function publicFailureMessage(errorMessage: unknown, manifest: unknown): string {
+  const raw = typeof errorMessage === "string" ? errorMessage : "";
+  const meta = manifest && typeof manifest === "object" && !Array.isArray(manifest)
+    ? manifest as Record<string, unknown>
+    : {};
+  const refunded =
+    meta.refunded === true
+    || /credits? (?:for unfinished work )?were returned|reserved credits were returned/i.test(raw);
+  const refundNote = refunded
+    ? " Your reserved credits were returned."
+    : " You were not charged for unfinished work.";
+
+  if (/content checker|content policy|safety check|request was rejected/i.test(raw)) {
+    return `A source image was blocked by automated safety checks.${refundNote} Review the scene wording, remove sensitive or ambiguous details, and start a new generation.`;
+  }
+  if (/source[- ]image|image generation|image pack/i.test(raw)) {
+    return `We couldn't finish creating the source images.${refundNote} Review your scene prompts and start a new generation.`;
+  }
+  if (/timed? out|timeout/i.test(raw)) {
+    return `Generation took too long and was stopped safely.${refundNote} Please start a new generation.`;
+  }
+  return `We couldn't complete this generation.${refundNote} Please start a new generation or contact support if it happens again.`;
+}
+
 export function toCustomerJobView<
   T extends {
     status?: string | null;
@@ -58,7 +82,9 @@ export function toCustomerJobView<
 >(job: T): T {
   return {
     ...job,
-    errorMessage: null,
+    errorMessage: job.status === "failed"
+      ? publicFailureMessage(job.errorMessage, job.manifest)
+      : null,
     manifest: sanitizeManifest(job.manifest),
   } as T;
 }
