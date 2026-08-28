@@ -349,6 +349,12 @@ export default function Generate() {
     : { count: null, invalid: false };
   const namedSubjectWarning = detectNamedSubject(prompt);
 
+  // The replacement dialog has its own request error. Clear it as soon as the
+  // current prompt no longer contains the subject that caused the warning.
+  useEffect(() => {
+    if (!namedSubjectWarning) setSubjectReplacementError(null);
+  }, [namedSubjectWarning]);
+
   // Reference image
   const refImageInputRef = useRef<HTMLInputElement>(null);
   const [refImageObjectPath, setRefImageObjectPath] = useState<string | null>(null);
@@ -1253,8 +1259,12 @@ export default function Generate() {
 
   const replaceNamedSubject = async () => {
     if (!namedSubjectWarning || subjectReplacementBusy) return;
+    const subjectBeingReplaced = namedSubjectWarning;
     setSubjectReplacementBusy(true);
     setSubjectReplacementError(null);
+    setShotPlan(null);
+    setReviewedShotIndexes([]);
+    setFieldErrors((current) => ({ ...current, prompt: undefined }));
     try {
       const response = await fetch("/api/prompt/replace-subject", {
         method: "POST",
@@ -1262,7 +1272,7 @@ export default function Generate() {
         credentials: "include",
         body: JSON.stringify({
           script: prompt,
-          namedSubject: namedSubjectWarning,
+          namedSubject: subjectBeingReplaced,
         }),
       });
       const data = await response.json().catch(() => ({})) as {
@@ -1273,11 +1283,26 @@ export default function Generate() {
       if (!response.ok || !data.script) {
         throw new Error(data.error || "Could not update the script.");
       }
-      setPrompt(data.script);
+      const nextScript = data.script.trim();
+      const remainingNamedSubject = detectNamedSubject(nextScript);
+      setPrompt(nextScript);
+      if (remainingNamedSubject) {
+        const validationMessage =
+          `The new prompt still contains “${remainingNamedSubject}”. Remove the name or choose another reference option.`;
+        setSubjectReplacementError(validationMessage);
+        setReferenceChoiceOpen(true);
+        toast({
+          title: "Name still detected",
+          description: validationMessage,
+          variant: "destructive",
+        });
+        return;
+      }
+      setSubjectReplacementError(null);
       setReferenceChoiceOpen(false);
       toast({
         title: "Script updated",
-        description: `Replaced “${namedSubjectWarning}” with a visual character description. Review it before submitting.`,
+        description: `Replaced “${subjectBeingReplaced}” with a visual character description and validated the new prompt.`,
       });
     } catch (error) {
       setSubjectReplacementError(error instanceof Error ? error.message : "Could not update the script.");
@@ -2749,7 +2774,11 @@ export default function Generate() {
               className={`min-h-[140px] resize-y bg-background/50 ${fieldErrors.prompt || prompt.length > MAX_CREATIVE_PROMPT_LENGTH ? "border-destructive" : "border-input"}`}
               value={prompt}
               maxLength={MAX_CREATIVE_PROMPT_LENGTH}
-              onChange={(e) => { setPrompt(e.target.value); setFieldErrors((fe) => ({ ...fe, prompt: undefined })); }}
+               onChange={(e) => {
+                 setPrompt(e.target.value);
+                 setSubjectReplacementError(null);
+                 setFieldErrors((fe) => ({ ...fe, prompt: undefined }));
+               }}
             />
             {!imagePackMode && (
               <div

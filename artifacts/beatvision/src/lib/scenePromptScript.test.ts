@@ -14,6 +14,7 @@ describe("compact generated image prompt script", () => {
     expect(script).toBe("1.A quiet cabin beside a lake.\n2.A storm crosses the valley.");
     expect(script).not.toContain("\n\n");
     expect(script).not.toMatch(/[ \t]{2,}/);
+    expect(script).not.toContain("…");
   });
 
   it("keeps a large generated script within the Creative Prompt limit", () => {
@@ -27,7 +28,10 @@ describe("compact generated image prompt script", () => {
     expect(script.length).toBeLessThanOrEqual(MAX_CREATIVE_PROMPT_LENGTH);
     expect(script.split("\n")).toHaveLength(60);
     expect(script.split("\n").every((line, index) =>
-      line.startsWith(`${index + 1}.`) && line.length > `${index + 1}.`.length
+      line.startsWith(`${index + 1}.`)
+      && line.length > `${index + 1}.`.length
+      && !line.includes("…")
+      && !line.endsWith(" th")
     )).toBe(true);
   });
 });

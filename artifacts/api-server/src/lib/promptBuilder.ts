@@ -4,6 +4,7 @@
 // OPENAI_API_KEY; falls back to a deterministic template so the flow always works.
 
 import { logger } from "./logger.js";
+import { shortenCompletePrompt } from "./promptText.js";
 
 // ── Shared LLM call ──────────────────────────────────────────────────────────
 
@@ -227,9 +228,14 @@ function compactSceneText(value: unknown, maxLength: number, fallback: string): 
   const normalized = String(value ?? "").replace(/\s+/g, " ").trim();
   if (!normalized) return fallback;
   if (normalized.length <= maxLength) return normalized;
-  const clipped = normalized.slice(0, maxLength - 1).trimEnd();
-  const boundary = clipped.lastIndexOf(" ");
-  return `${(boundary > Math.floor(maxLength * 0.55) ? clipped.slice(0, boundary) : clipped)}…`;
+  const words = normalized.split(" ");
+  let shortened = "";
+  for (const word of words) {
+    const candidate = shortened ? `${shortened} ${word}` : word;
+    if (candidate.length > maxLength) break;
+    shortened = candidate;
+  }
+  return shortened || normalized.slice(0, maxLength).trimEnd();
 }
 
 function recommendedSceneCount(story: string): number {
@@ -275,9 +281,13 @@ function normalizeSceneBuilderScenes(
     const fallbackPrompt = hasReferenceImage
       ? `Use the attached reference image for the character, ${beats[index]}, cinematic still composition`
       : `Cinematic still image, ${beats[index]}, clear subject and setting, expressive lighting and mood`;
-    const generatedPrompt = compactSceneText(record.imagePrompt, maxPromptLength, fallbackPrompt);
+    const generatedPrompt = shortenCompletePrompt(
+      String(record.imagePrompt ?? ""),
+      maxPromptLength,
+      shortenCompletePrompt(fallbackPrompt, maxPromptLength),
+    );
     const imagePrompt = hasReferenceImage && !/attached reference image/i.test(generatedPrompt)
-      ? compactSceneText(
+      ? shortenCompletePrompt(
           `Use the attached reference image for the character, ${generatedPrompt}`,
           maxPromptLength,
           fallbackPrompt,

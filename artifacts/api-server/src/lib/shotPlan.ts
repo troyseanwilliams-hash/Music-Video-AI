@@ -5,6 +5,7 @@
 // No credits are charged and nothing is rendered by this module.
 
 import { createHash } from "node:crypto";
+import { shortenCompletePrompt } from "./promptText.js";
 
 const MAX_FULL_SECONDS = 600;
 export const MAX_GENERATED_IMAGE_PROMPT_LENGTH = 600;
@@ -47,10 +48,7 @@ export interface ShotPlanInput {
 
 function conciseImagePrompt(parts: Array<string | null | undefined>): string {
   const prompt = parts.filter(Boolean).join(", ").replace(/\s+/g, " ").trim();
-  if (prompt.length <= MAX_GENERATED_IMAGE_PROMPT_LENGTH) return prompt;
-  const clipped = prompt.slice(0, MAX_GENERATED_IMAGE_PROMPT_LENGTH - 1).trimEnd();
-  const boundary = clipped.lastIndexOf(" ");
-  return `${(boundary > 360 ? clipped.slice(0, boundary) : clipped)}…`;
+  return shortenCompletePrompt(prompt, MAX_GENERATED_IMAGE_PROMPT_LENGTH);
 }
 
 export type GenerationMode = "montage" | "narrative";
@@ -285,9 +283,7 @@ function narrativeBeat(index: number, count: number): string {
 
 function sceneDescription(role: string, concept: string): string {
   const normalized = concept.replace(/\s+/g, " ").trim();
-  const shortened = normalized.length > 180
-    ? `${normalized.slice(0, 177).trimEnd()}…`
-    : normalized;
+  const shortened = shortenCompletePrompt(normalized, 180);
   const title = role.charAt(0).toUpperCase() + role.slice(1);
   return `${title} — ${shortened || "cinematic music video imagery"}`;
 }
