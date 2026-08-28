@@ -86,6 +86,15 @@ export default function GenerationStoryboard({
   const energyPercent = Math.round(Math.max(0, Math.min(1, activeShot.energy)) * 100);
   const targetDuration = timestamp(storyboard.targetOutputDuration);
   const activeReferenceImage = referenceImages?.[activeShot.index];
+  const completedReferenceCount = referenceImages ? Object.keys(referenceImages).length : 0;
+  const isBuildingReferences =
+    status === "generating"
+    && completedReferenceCount > 0
+    && completedReferenceCount < shots.length;
+  const progressFocusIndex =
+    isBuildingReferences && latestReferenceIndex !== null
+      ? latestReferenceIndex
+      : activeShot.index;
   const stage =
     status === "analyzing"
       ? {
@@ -335,16 +344,20 @@ export default function GenerationStoryboard({
             <span
               key={shot.index}
               aria-label={`${isNarrative ? "Scene" : "Visual"} ${shot.index + 1}: ${
-                completedSet.has(shot.index)
+                 isBuildingReferences && shot.index === progressFocusIndex
+                   ? "latest reference image completed"
+                   : completedSet.has(shot.index)
                   ? "rendered"
-                  : shot.index === activeShot.index && status === "generating"
+                   : shot.index === progressFocusIndex && status === "generating"
                     ? "being generated"
                     : "planned"
               }`}
               className={`flex h-2 min-w-6 flex-1 rounded-full ${
-                completedSet.has(shot.index)
+                 isBuildingReferences && shot.index === progressFocusIndex
+                   ? "bg-primary"
+                   : completedSet.has(shot.index)
                   ? "bg-green-500/70"
-                  : shot.index === activeShot.index && status === "generating"
+                   : shot.index === progressFocusIndex && status === "generating"
                     ? "bg-primary"
                     : "bg-muted"
               }`}
