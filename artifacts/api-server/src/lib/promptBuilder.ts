@@ -229,14 +229,14 @@ Rules:
 - Preserve chronological story progression and make each scene materially different from the previous one.
 - Describe the supplied story beat first. Keep any aesthetic or style wording brief and place it at the end as a "style footnote"; never let style replace the scene description.
 - Write prompts that are likely to pass standard image and video safety checks. Keep minors fully clothed, supervised, safe, and free of intimate physical contact, danger, distress, weapons, or adult themes.
-- Replace nudity or sexual material with fully clothed, non-sexual imagery; replace graphic injury, gore, self-harm, or suicide with non-graphic tension, compassionate support, or a safe aftermath.
+- Replace nudity or adult intimate material with fully clothed, family-friendly, non-romantic imagery; replace graphic injury, gore, self-harm, or suicide with non-graphic tension, compassionate support, or a safe aftermath.
 - Preserve the story's emotional intent when making a safety adjustment, but never include ambiguous sensitive interactions that could cancel downstream image or video generation.
 - Use plain provider-neutral language. Do not mention any image or video provider.
 - If a reference image will be attached, use it only in scenes whose story beat contains or clearly depicts that character. In those character scenes, do not describe the character's face, hair, clothing, identity, age, or other appearance; write "use the attached reference image for the character" instead.
 - Never mention or use the attached reference image in environment-only, object-only, or other scenes where the character does not appear.
 - If no reference image will be attached, include only the minimum visible character traits needed for that scene.
-- Preserve the recurring character's stated sex in every character scene. Never change a woman or girl into a man or boy, or a man or boy into a woman or girl, between scenes.
-- When a reference image is attached, preserve the character's sex exactly as shown in that reference.
+- Preserve the recurring character's stated gender in every character scene. Never change a woman or girl into a man or boy, or a man or boy into a woman or girl, between scenes.
+- When a reference image is attached, preserve the character's gender presentation exactly as shown in that reference.
 
 Return no markdown and no extra keys.`;
 

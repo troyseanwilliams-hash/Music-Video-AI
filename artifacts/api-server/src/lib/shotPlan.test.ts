@@ -307,7 +307,7 @@ describe("planImagePackScenes", () => {
 });
 
 describe("planShots narrative planning", () => {
-  it("locks a recurring woman's sex across every character-focused scene", () => {
+  it("locks a recurring woman's gender across every character-focused scene", () => {
     const plan = planShots({
       prompt: "A woman detective enters a hotel. She questions the clerk. The empty hallway sits in darkness.",
       generationMode: "narrative",
@@ -318,13 +318,13 @@ describe("planShots narrative planning", () => {
     expect(characterShots).toHaveLength(2);
     expect(characterShots.every((shot) =>
       shot.prompt.includes("recurring character female")
-      && shot.prompt.includes("never change sex")
+      && shot.prompt.includes("never change gender")
     )).toBe(true);
     expect(plan.shots.find((shot) => shot.description.includes("empty hallway"))?.prompt)
       .not.toContain("character remains female");
   });
 
-  it("uses the uploaded reference as the authority for character sex", () => {
+  it("uses the uploaded reference as the authority for character gender", () => {
     const plan = planShots({
       prompt: "A detective enters a hotel. The detective questions the clerk.",
       hasCharacterReference: true,
@@ -333,7 +333,7 @@ describe("planShots narrative planning", () => {
     });
 
     expect(plan.shots.filter((shot) => shot.usesCharacterReference).every((shot) =>
-      shot.prompt.includes("sex exactly as shown in the attached reference image")
+      shot.prompt.includes("gender presentation exactly as shown in the attached reference image")
     )).toBe(true);
   });
 

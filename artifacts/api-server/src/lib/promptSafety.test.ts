@@ -21,7 +21,7 @@ describe("sanitizeGeneratedMediaPrompt", () => {
     );
 
     expect(result.reasons).toEqual(expect.arrayContaining([
-      "sexual-content",
+      "adult-content",
       "graphic-violence",
       "self-harm",
     ]));

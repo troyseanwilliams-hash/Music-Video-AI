@@ -82,7 +82,7 @@ function tempoGuidance(bpm?: number): string {
 function contentGuidance(explicit?: boolean): string {
   return explicit
     ? "Explicit language is permitted where it genuinely serves the emotion — never gratuitous, and don't force it in."
-    : "Keep it radio-clean: no profanity, slurs, or explicit sexual content.";
+    : "Keep it radio-clean: no profanity, slurs, or explicit adult intimate content.";
 }
 
 // Strip anything that isn't the song: model preambles ("Here are your lyrics:"),

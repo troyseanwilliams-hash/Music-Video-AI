@@ -20,9 +20,9 @@ const REWRITES: Array<{
     replacement: "performs a playful routine nearby while a supervising parent holds the fully clothed child",
   },
   {
-    reason: "sexual-content",
+    reason: "adult-content",
     pattern: /\b(?:nude|naked|topless|explicit sexual|sexually explicit|erotic)\b/gi,
-    replacement: "fully clothed, non-sexual",
+    replacement: "fully clothed, family-friendly, and non-romantic",
   },
   {
     reason: "graphic-violence",
