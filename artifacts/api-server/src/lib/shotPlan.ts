@@ -6,6 +6,7 @@
 
 import { createHash } from "node:crypto";
 import { shortenCompletePrompt } from "./promptText.js";
+import { sanitizeGeneratedMediaPrompt } from "./promptSafety.js";
 import {
   containsNamedSubject,
   detectNamedSubject,
@@ -53,7 +54,9 @@ export interface ShotPlanInput {
 }
 
 function conciseImagePrompt(parts: Array<string | null | undefined>): string {
-  const prompt = parts.filter(Boolean).join(", ").replace(/\s+/g, " ").trim();
+  const prompt = sanitizeGeneratedMediaPrompt(
+    parts.filter(Boolean).join(", ").replace(/\s+/g, " ").trim(),
+  ).prompt;
   return shortenCompletePrompt(prompt, MAX_GENERATED_IMAGE_PROMPT_LENGTH);
 }
 
@@ -66,8 +69,11 @@ function scenePromptWithStyleFootnote(
     1,
     MAX_GENERATED_IMAGE_PROMPT_LENGTH - styleFootnote.length - 1,
   );
-  const sceneDescription = shortenCompletePrompt(
+  const safeSceneDescription = sanitizeGeneratedMediaPrompt(
     parts.filter(Boolean).join(", ").replace(/\s+/g, " ").trim(),
+  ).prompt;
+  const sceneDescription = shortenCompletePrompt(
+    safeSceneDescription,
     availableSceneLength,
   );
   return `${sceneDescription} ${styleFootnote}`.trim();
@@ -172,7 +178,7 @@ export function applyApprovedScenePrompts(
 
   const cleaned = approvedPrompts.map((item) => ({
     index: item.index,
-    prompt: item.prompt.trim(),
+    prompt: sanitizeGeneratedMediaPrompt(item.prompt).prompt,
   }));
   for (let index = 0; index < cleaned.length; index++) {
     const item = cleaned[index]!;

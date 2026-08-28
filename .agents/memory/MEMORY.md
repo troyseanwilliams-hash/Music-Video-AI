@@ -40,3 +40,4 @@
 - [Script approval gate](script-approval-gate.md) — video jobs require explicit approval of the exact script and scene prompts before credit reservation.
 - [Lyrics topic separation](lyrics-topic-separation.md) — lyric writing uses its own required subject brief; never silently substitute the music style prompt.
 - [Customer-safe generation errors](customer-safe-generation-errors.md) — classify failures at the API boundary; expose actionable guidance without provider diagnostics.
+- [Generated-media prompt safety](generated-media-prompt-safety.md) — safety-adjust prompts during generation, approval, and final image/video submission; keep rewrites idempotent across processors.

@@ -1,3 +1,4 @@
+import { sanitizeGeneratedMediaPrompt } from "./promptSafety.js";
 export interface ClipRequest {
   prompt: string;
   durationSeconds: number;
@@ -264,7 +265,7 @@ async function generateWithLuma(req: ClipRequest): Promise<string> {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      prompt: req.prompt.slice(0, 2000),
+      prompt: sanitizeGeneratedMediaPrompt(req.prompt).prompt.slice(0, 2000),
       aspect_ratio: req.aspectRatio ?? "16:9",
     }),
     signal: AbortSignal.timeout(30_000),
@@ -393,7 +394,7 @@ async function generateWithRunway(req: ClipRequest): Promise<string> {
   const endpoint = `${RUNWAY_BASE}/${hasImage ? "image_to_video" : "text_to_video"}`;
   const body: Record<string, unknown> = {
     model: RUNWAY_VIDEO_MODEL,
-    promptText: req.prompt.slice(0, 1000),
+    promptText: sanitizeGeneratedMediaPrompt(req.prompt).prompt.slice(0, 1000),
     ratio: runwayRatio(req.aspectRatio, hasImage),
     duration: Math.max(2, Math.min(10, Math.round(req.durationSeconds))),
   };
@@ -516,7 +517,7 @@ async function generateWithPixazo(
     model = t2vOverride || process.env.PIXAZO_MODEL?.trim() || "kling-video-v3-turbo-pro-text-to-video";
   }
 
-  const body: Record<string, unknown> = { prompt: req.prompt.slice(0, 2500) };
+  const body: Record<string, unknown> = { prompt: sanitizeGeneratedMediaPrompt(req.prompt).prompt.slice(0, 2500) };
   const endpoint = `https://gateway.pixazo.ai/${model}/v1/${model}-request`;
   body.duration = duration;
   if (hasImage) {

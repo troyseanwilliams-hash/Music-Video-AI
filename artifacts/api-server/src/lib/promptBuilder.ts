@@ -5,6 +5,7 @@
 
 import { logger } from "./logger.js";
 import { shortenCompletePrompt } from "./promptText.js";
+import { sanitizeGeneratedMediaPrompt } from "./promptSafety.js";
 import { sceneConceptIncludesCharacter } from "./shotPlan.js";
 import {
   containsNamedSubject,
@@ -227,6 +228,9 @@ Rules:
 - Keep every imagePrompt concise enough to combine all numbered scenes into a 12,000-character creative prompt.
 - Preserve chronological story progression and make each scene materially different from the previous one.
 - Describe the supplied story beat first. Keep any aesthetic or style wording brief and place it at the end as a "style footnote"; never let style replace the scene description.
+- Write prompts that are likely to pass standard image and video safety checks. Keep minors fully clothed, supervised, safe, and free of intimate physical contact, danger, distress, weapons, or adult themes.
+- Replace nudity or sexual material with fully clothed, non-sexual imagery; replace graphic injury, gore, self-harm, or suicide with non-graphic tension, compassionate support, or a safe aftermath.
+- Preserve the story's emotional intent when making a safety adjustment, but never include ambiguous sensitive interactions that could cancel downstream image or video generation.
 - Use plain provider-neutral language. Do not mention any image or video provider.
 - If a reference image will be attached, use it only in scenes whose story beat contains or clearly depicts that character. In those character scenes, do not describe the character's face, hair, clothing, identity, age, or other appearance; write "use the attached reference image for the character" instead.
 - Never mention or use the attached reference image in environment-only, object-only, or other scenes where the character does not appear.
@@ -322,13 +326,18 @@ function normalizeSceneBuilderScenes(
           .replace(/\b(?:use|match|refer to)\s+the attached reference image[^,.;]*[,.;]?\s*/gi, "")
           .replace(/\s+/g, " ")
           .trim();
-    const imagePrompt = usesCharacterReference && !/attached reference image/i.test(generatedPrompt)
+    const unsanitizedImagePrompt = usesCharacterReference && !/attached reference image/i.test(generatedPrompt)
       ? shortenCompletePrompt(
           `Use the attached reference image for the character, ${generatedPrompt}`,
           maxPromptLength,
           fallbackPrompt,
         )
       : generatedPrompt || shortenCompletePrompt(fallbackPrompt, maxPromptLength);
+    const imagePrompt = shortenCompletePrompt(
+      sanitizeGeneratedMediaPrompt(unsanitizedImagePrompt).prompt,
+      maxPromptLength,
+      sanitizeGeneratedMediaPrompt(fallbackPrompt).prompt,
+    );
     const title = compactSceneText(record.title, 70, `Scene ${index + 1}`);
     return { number: index + 1, title, imagePrompt };
   });

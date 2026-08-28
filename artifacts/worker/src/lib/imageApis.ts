@@ -4,6 +4,7 @@ import { writeFile, unlink } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { promisify } from "util";
+import { sanitizeGeneratedMediaPrompt } from "./promptSafety.js";
 
 export const IMAGE_API_FAILURE = "[IMAGE_API_FAILURE]";
 export const IMAGE_POLL_TIMEOUT = "[IMAGE_POLL_TIMEOUT]";
@@ -47,7 +48,8 @@ export function singleSceneImagePrompt(segmentPrompt: string): string {
     "If the brief mentions other events, show only the single current segment for this request.",
   ].join("\n");
   const maxSegmentLength = Math.max(0, 3000 - outputRule.length - 2);
-  return [segmentPrompt.trim().slice(0, maxSegmentLength), outputRule].join("\n\n");
+  const safePrompt = sanitizeGeneratedMediaPrompt(segmentPrompt).prompt;
+  return [safePrompt.slice(0, maxSegmentLength), outputRule].join("\n\n");
 }
 
 /**
