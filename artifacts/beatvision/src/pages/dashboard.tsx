@@ -367,7 +367,7 @@ export default function Dashboard() {
                 {activeJobs.map((j) => {
                   const pct = typeof j.progressPercent === "number" ? j.progressPercent : null;
                   const label =
-                    j.status === "pending_approval" ? "Preparing"
+                     j.status === "pending_approval" ? "Gen Preview · Review required"
                     : j.status === "queued" ? "Queued"
                     : j.status === "analyzing" ? "Analyzing audio"
                     : j.status === "generating" ? "Generating clips"
@@ -386,7 +386,7 @@ export default function Dashboard() {
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
                           <Button size="sm" variant="outline" onClick={() => setLocation(`/jobs/${j.id}`)}>
-                            View status
+                            {j.status === "pending_approval" ? "Open Gen Preview" : "View status"}
                           </Button>
                           <Button
                             size="sm"

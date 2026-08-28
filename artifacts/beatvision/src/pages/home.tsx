@@ -328,7 +328,7 @@ export default function Home() {
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               {[
                 { icon: Lock, title: "Character Lock", body: "Lock a face or look from a reference image so the same character carries across every clip — no shape-shifting between shots.", tag: "New" },
-                { icon: Clapperboard, title: "Storyboard Preview", body: "See the planned shots — timing, energy, and prompt for each — before you spend a single credit. Approve, then render.", tag: "New" },
+                { icon: Clapperboard, title: "Gen Preview", body: "We generate the images first and pause before animation. Review every scene, regenerate any image, or use your own—then approve the video.", tag: "New" },
                 { icon: Share2, title: "Release Kit", body: "One click turns your finished video into a full set of social exports — vertical, square, and Spotify Canvas — sized for every platform.", tag: "New" },
                 { icon: Mic2, title: "Karaoke Lyric Videos", body: "Type or paste your lyrics — or let Auto-sync time them for you — and we burn beat-synced karaoke captions right into the video. Ready to sing along.", tag: "New" },
                 { icon: Wand2, title: "Prompt", body: "Describe a vibe in plain words and get a polished video or soundtrack prompt — or full, original lyrics — in seconds.", tag: "New" },

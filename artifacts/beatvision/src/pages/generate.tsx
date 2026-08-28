@@ -3558,7 +3558,7 @@ export default function Generate() {
               <p className="text-sm text-muted-foreground leading-relaxed">
                 {imagePackMode
                   ? `Review the image pack below. The saved ${imagePackAspectRatio === "9:16" ? "portrait" : "landscape"} images will be ready to add directly to Remix Lab.`
-                  : "Review the details below. Once confirmed, the job will be submitted for admin approval before processing begins."}
+                  : "Your Gen Preview creates every source image first, then pauses before animation. Review all images, regenerate individual scenes, or use another image before you approve the final video."}
               </p>
               <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm space-y-1.5">
                 <div className="flex justify-between">

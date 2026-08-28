@@ -709,7 +709,11 @@ export default function JobStatus() {
                 ) : (
                   <X className="h-3.5 w-3.5" />
                 )}
-                {isCanceling ? "Stopping…" : "Stop generating"}
+                {isCanceling
+                  ? "Stopping…"
+                  : isReviewingImages
+                    ? "Cancel Gen Preview"
+                    : "Stop generating"}
               </Button>
             )}
             <StatusBadge status={job.status ?? "queued"} autoRetrying={autoRetrying} />
@@ -974,7 +978,7 @@ export default function JobStatus() {
             <CardHeader className="border-b border-border/60 pb-4">
               <CardTitle className="flex flex-wrap items-center gap-2 text-base">
                 <ImageIcon className="h-4 w-4 text-primary" />
-                {isImagePackJob ? "Generated images" : "Image foundation"}
+                {isImagePackJob ? "Generated images" : "Gen Preview"}
                 <Badge variant="secondary" className="font-mono">
                   {imagePackAssets.length}/{visualImageCount}
                 </Badge>
@@ -990,7 +994,7 @@ export default function JobStatus() {
                       ? "Images that finished successfully remain available for Remix Lab."
                       : "Your completed images are ready to arrange in Remix Lab."
                   : isReviewingImages
-                    ? "All source images are ready. Review and approve the complete storyboard before any animation request starts."
+                    ? "Your video is paused before animation. Review every image, regenerate any scene, or use another image for free."
                   : isActive && imagePackAssets.length < visualImageCount
                     ? "The complete source-image pack is created first. Scene animation begins only after every planned image is ready."
                     : isActive
@@ -1002,12 +1006,26 @@ export default function JobStatus() {
             </CardHeader>
             <CardContent className="pt-5">
             {isReviewingImages && (
-              <div className="mb-6 rounded-xl border border-primary/30 bg-primary/5 p-4">
+              <div className="mb-6 rounded-xl border border-primary/40 bg-primary/5 p-4 shadow-[0_0_30px_-20px_hsl(var(--primary))]">
+                <div className="mb-4 grid gap-2 sm:grid-cols-3">
+                  {[
+                    ["1", "Paused before animation"],
+                    ["2", "Review or regenerate images"],
+                    ["3", "Approve and create video"],
+                  ].map(([step, label]) => (
+                    <div key={step} className="flex items-center gap-2 rounded-lg border border-border/70 bg-background/60 px-3 py-2 text-xs">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+                        {step}
+                      </span>
+                      <span className="font-medium">{label}</span>
+                    </div>
+                  ))}
+                </div>
                 <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className="font-semibold">Review your storyboard before animation</p>
+                    <p className="font-semibold">Your Gen Preview is ready</p>
                     <p className="text-xs text-muted-foreground">
-                      Select scenes to replace. Existing images remain approved until a replacement succeeds.
+                      Nothing is animating yet. Select any image you want to regenerate; the current image stays in place unless its replacement succeeds.
                     </p>
                   </div>
                   <Button
@@ -1016,7 +1034,7 @@ export default function JobStatus() {
                     size="sm"
                   >
                     <Sparkles className="mr-2 h-4 w-4" />
-                    Generate replacement
+                    Regenerate selected images
                     <span className="ml-2 text-xs opacity-80">
                       +{selectedReviewScenes.length * 7} credits
                     </span>
@@ -1105,7 +1123,7 @@ export default function JobStatus() {
                             disabled={reviewBusy || pending}
                             onClick={() => setSelectedReviewScenes((current) => current.filter((index) => index !== scene.index))}
                           >
-                            <Check className="mr-1.5 h-3.5 w-3.5" /> Keep current
+                            <Check className="mr-1.5 h-3.5 w-3.5" /> Keep this image
                           </Button>
                           <select
                             className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs"
@@ -1115,7 +1133,7 @@ export default function JobStatus() {
                               if (event.target.value) chooseReviewSource(scene.index, "gallery", event.target.value);
                             }}
                           >
-                            <option value="">Choose generated gallery image (free)</option>
+                            <option value="">Use another generated image (free)</option>
                             {reviewGallery.map((galleryAsset) => (
                               <option key={galleryAsset.id} value={galleryAsset.id}>
                                 {galleryAsset.prompt.slice(0, 55)} · {job.aspectRatio === "16:9" ? "16:9" : "9:16"}
@@ -1498,7 +1516,7 @@ function StatusBadge({ status, autoRetrying }: { status: string; autoRetrying: b
   if (status === "pending_approval") {
     return (
       <span className="inline-flex items-center gap-2 rounded-full border border-yellow-500/30 bg-yellow-500/10 px-4 py-1.5 text-sm font-medium text-yellow-400">
-        <ShieldAlert className="h-4 w-4" /> Preparing
+        <ShieldAlert className="h-4 w-4" /> Gen Preview · Review required
       </span>
     );
   }
