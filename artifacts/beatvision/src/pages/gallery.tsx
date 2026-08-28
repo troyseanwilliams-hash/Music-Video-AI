@@ -115,7 +115,22 @@ export default function Gallery() {
         ? lastPage.page + 1
         : undefined,
   });
-  const generatedImages = imageAssetsQuery.data?.pages.flatMap((page) => page.assets) ?? [];
+  const generatedImages = (() => {
+    const assets = imageAssetsQuery.data?.pages.flatMap((page) => page.assets) ?? [];
+    const packs = new Map<string, ImageAsset[]>();
+    for (const asset of assets) {
+      const pack = packs.get(asset.jobId) ?? [];
+      pack.push(asset);
+      packs.set(asset.jobId, pack);
+    }
+    return [...packs.values()]
+      .sort((a, b) => {
+        const newestA = Math.max(...a.map((asset) => new Date(asset.createdAt).getTime()));
+        const newestB = Math.max(...b.map((asset) => new Date(asset.createdAt).getTime()));
+        return newestB - newestA;
+      })
+      .flatMap((pack) => pack.sort((a, b) => a.assetIndex - b.assetIndex));
+  })();
   const selectedImages = selectedImageIds.flatMap((id) => {
     const asset = generatedImages.find((candidate) => candidate.id === id);
     return asset ? [asset] : [];
@@ -131,11 +146,15 @@ export default function Gallery() {
 
   function addSelectedImagesToRemix() {
     if (selectedImages.length === 0) return;
+    const orderedImages = [...selectedImages].sort((a, b) => {
+      if (a.jobId === b.jobId) return a.assetIndex - b.assetIndex;
+      return selectedImageIds.indexOf(a.id) - selectedImageIds.indexOf(b.id);
+    });
     sessionStorage.setItem(
       "editor:init",
       JSON.stringify({
         kind: IMAGE_REMIX_KIND,
-        images: selectedImages.map(({ objectPath, prompt, assetIndex }) => ({
+        images: orderedImages.map(({ objectPath, prompt, assetIndex }) => ({
           objectPath,
           prompt,
           assetIndex,
@@ -747,7 +766,7 @@ export default function Gallery() {
                           onClick={() => toggleImageVisibility(asset.id, !asset.isPublic)}
                           disabled={togglingId === asset.id}
                           title={asset.isPublic ? "Remove from Explore" : "Post to Explore"}
-                          className={`text-[10px] font-medium px-2 py-1 rounded-md inline-flex items-center gap-1 transition-colors ${
+                          className={`text-[10px] font-medium px-2 py-1 rounded-md inline-flex items-center gap-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                             asset.isPublic ? "bg-primary/15 text-primary" : "bg-secondary text-secondary-foreground hover:text-foreground"
                           }`}
                           data-testid={`toggle-image-visibility-${asset.id}`}
@@ -767,7 +786,7 @@ export default function Gallery() {
                               ? "This post does not expose your profile name. Click to turn anonymity off."
                               : "Post this image anonymously on Explore"
                           }
-                          className={`text-[10px] font-medium px-2 py-1 rounded-md inline-flex items-center gap-1 transition-colors ${
+                          className={`text-[10px] font-medium px-2 py-1 rounded-md inline-flex items-center gap-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                             asset.isCreatorAnonymous
                               ? "bg-primary/15 text-primary"
                               : "bg-secondary text-secondary-foreground hover:text-foreground"

@@ -232,7 +232,7 @@ function ImageCard({
         <div className="flex items-center gap-1 shrink-0">
           <button
             onClick={() => handleShare()}
-            className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
+            className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             title="Share link"
             aria-label="Share link"
             data-testid={`share-image-btn-${image.id}`}
@@ -241,7 +241,7 @@ function ImageCard({
           </button>
           <button
             onClick={() => onLikeToggle(image.id, image.liked)}
-            className={`flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-sm transition-colors ${
+            className={`flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
               image.liked ? "text-primary" : "text-muted-foreground hover:bg-primary/10 hover:text-foreground"
             }`}
             title={isAuthed ? (image.liked ? "Unlike image" : "Like image") : "Sign in to like image"}

@@ -56,6 +56,19 @@ type PublicImageRow = {
   creatorName: string | null;
 };
 
+export function parsePublicImagePagination(query: unknown) {
+  const contract = ListPublicImageAssetsQueryParams.safeParse(query);
+  const parsed = z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(60).default(24),
+  }).safeParse(query);
+  if (!contract.success || !parsed.success) return null;
+  return {
+    page: parsed.data.page,
+    limit: parsed.data.limit,
+  };
+}
+
 /** Public DTO allowlist. Keep prompts, job IDs, and owner IDs out by construction. */
 export function toPublicImageAsset(row: PublicImageRow, liked: boolean) {
   return {
@@ -388,9 +401,12 @@ const publicImageSelection = {
 };
 
 router.get("/image-gallery", async (req, res): Promise<void> => {
-  const parsed = ListPublicImageAssetsQueryParams.safeParse(req.query);
-  const page = parsed.success ? (parsed.data.page ?? 1) : 1;
-  const limit = parsed.success ? (parsed.data.limit ?? 24) : 24;
+  const pagination = parsePublicImagePagination(req.query);
+  if (!pagination) {
+    res.status(400).json({ error: "Invalid public generated-image query." });
+    return;
+  }
+  const { page, limit } = pagination;
   const publicOnly = and(eq(imageAssetsTable.isPublic, true), isNull(imageAssetsTable.deletedAt));
   const [rows, totalResult] = await Promise.all([
     db

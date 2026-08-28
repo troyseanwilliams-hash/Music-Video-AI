@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Heart, Loader2, Share2, Scissors, Image as ImageIcon, Sparkles, BookOpen } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { IMAGE_REMIX_KIND } from "@/lib/imageRemixHandoff";
 
 export default function PublicImageDetail() {
   const { id } = useParams<{ id: string }>();
@@ -78,6 +79,18 @@ export default function PublicImageDetail() {
   }
 
   function openRemixLab() {
+    if (!asset) return;
+    sessionStorage.setItem(
+      "editor:init",
+      JSON.stringify({
+        kind: IMAGE_REMIX_KIND,
+        images: [{
+          objectPath: asset.objectPath,
+          prompt: "",
+          assetIndex: asset.assetIndex,
+        }],
+      }),
+    );
     setLocation("/editor");
   }
 
@@ -143,7 +156,7 @@ export default function PublicImageDetail() {
               <div className="flex items-center gap-4">
                 <button
                   onClick={handleLike}
-                  className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${
+                  className={`flex items-center gap-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                     asset.liked ? "text-primary" : "text-muted-foreground hover:text-foreground"
                   }`}
                   title={asset.liked ? "Unlike image" : "Like image"}
@@ -155,7 +168,7 @@ export default function PublicImageDetail() {
                 </button>
                 <button
                   onClick={handleShare}
-                  className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   title="Share image link"
                   aria-label="Share image link"
                   data-testid={`share-btn-${asset.id}`}
@@ -195,7 +208,7 @@ export default function PublicImageDetail() {
                 data-testid={`remix-btn-${asset.id}`}
               >
                 <Scissors className="mr-2 h-4 w-4" />
-                Open Remix Lab
+                Use this image in Remix Lab
               </Button>
               
               <Link href="/generate">

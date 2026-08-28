@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildImagePackPlan,
+  parsePublicImagePagination,
   toPublicImageAsset,
   toPersistedImagePackScenes,
   validateApprovedImageScenes,
@@ -50,6 +51,22 @@ describe("public generated-image DTO", () => {
 
     expect(result.creatorName).toBe("Anonymous");
     expect(result.liked).toBe(false);
+  });
+});
+
+describe("public generated-image pagination", () => {
+  it("uses stable defaults and rejects invalid page requests", () => {
+    expect(parsePublicImagePagination({})).toEqual({ page: 1, limit: 24 });
+    expect(parsePublicImagePagination({ page: "2", limit: "12" })).toEqual({
+      page: 2,
+      limit: 12,
+    });
+    expect(parsePublicImagePagination({ page: "0", limit: "12" })).toBeNull();
+    expect(parsePublicImagePagination({ page: "1", limit: "999" })).toBeNull();
+    expect(parsePublicImagePagination({ page: "not-a-page" })).toBeNull();
+    expect(parsePublicImagePagination({ page: "1.5", limit: "12" })).toBeNull();
+    expect(parsePublicImagePagination({ page: "1", limit: "12.5" })).toBeNull();
+    expect(parsePublicImagePagination({ page: ["1", "2"] })).toBeNull();
   });
 });
 
