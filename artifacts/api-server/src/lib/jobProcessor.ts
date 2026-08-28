@@ -2237,6 +2237,10 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
     const retryCost = assemblyOnlyRetry || pendingBundle ? 0 : (liveMeta.reservedCredits ?? 0);
     const delayMs = Math.pow(2, nextRetry) * 60_000;
     const retryAfter = Date.now() + delayMs;
+    const retryManifestPatch = JSON.stringify({
+      retryAfter,
+      finalizeWithPartial: assemblyOnlyRetry,
+    });
     const noteMsg = assemblyOnlyRetry
       ? `${errMsg} — retry ${nextRetry}/${maxRetries} in ${delayMs / 60_000}m using saved scenes at no charge`
       : `${errMsg} — retry ${nextRetry}/${maxRetries} in ${delayMs / 60_000}m`;
@@ -2267,10 +2271,7 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
         error_message = ${noteMsg},
         retry_count = ${nextRetry},
         claimed_at = NULL,
-        manifest = COALESCE(manifest, '{}'::jsonb) || jsonb_build_object(
-          'retryAfter', ${retryAfter}::bigint,
-          'finalizeWithPartial', ${assemblyOnlyRetry}
-        ),
+        manifest = COALESCE(manifest, '{}'::jsonb) || ${retryManifestPatch}::jsonb,
         updated_at = NOW()
       WHERE id IN (SELECT id FROM target)
         AND (${retryCost} <= 0 OR EXISTS (SELECT 1 FROM charged))

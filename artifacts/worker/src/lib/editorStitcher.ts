@@ -71,6 +71,18 @@ export interface EditorStitchResult {
   transitionDropReason?: string;
 }
 
+export function editorMusicTempPaths(dir: string, ext?: string): {
+  inputPath: string;
+  outputPath: string;
+} {
+  const normalizedExt =
+    ext && /^[a-z0-9]{1,10}$/i.test(ext) ? ext.toLowerCase() : "mp3";
+  return {
+    inputPath: join(dir, `music-input.${normalizedExt}`),
+    outputPath: join(dir, "with-music.mp4"),
+  };
+}
+
 const SAR = 48000;
 
 // Transitions use a segment-and-concat crossfade (see the join step below):
@@ -452,11 +464,11 @@ export async function stitchEditorTimeline(
     // audio. We hard-cap output to the probed video duration.
     if (input.music) {
       const videoDuration = await probeDuration(current);
-      const musicPath = join(dir, `music.${input.music.ext || "mp3"}`);
+      const { inputPath: musicPath, outputPath: withMusic } =
+        editorMusicTempPaths(dir, input.music.ext);
       await writeFile(musicPath, input.music.buffer);
       const vol = Math.max(0, Math.min(2, input.music.volume || 0.6));
       const loop = input.music.mode === "mix" && input.music.loop !== false;
-      const withMusic = join(dir, "music.mp4");
 
       // Optional fade in/out on the music (scaled down for very short videos so
       // the two fades never overlap).
