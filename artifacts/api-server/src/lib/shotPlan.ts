@@ -333,6 +333,8 @@ const CHARACTER_FOCUS_TERMS = /\b(?:character|person|people|human|woman|man|girl
 const ENVIRONMENT_FOCUS_TERMS = /\b(?:landscape|skyline|cityscape|mountain|forest|ocean|sea|river|lake|desert|road|street|building|architecture|room|interior|exterior|station|airport|vehicle|car|train|plane|ship|object|detail|texture|atmosphere|weather|storm|rain|cloud|sunrise|sunset|moon|stars|light|shadow)\b/i;
 const FEMALE_CHARACTER_TERMS = /\b(?:female|woman|women|girl|girls|mother|mothers|daughter|daughters|sister|sisters|wife|wives|heroine|her|hers|she)\b/i;
 const MALE_CHARACTER_TERMS = /\b(?:male|man|men|boy|boys|father|fathers|son|sons|brother|brothers|husband|husbands|hero|him|his|he)\b/i;
+const ATTACHED_CHARACTER_REFERENCE_DIRECTIVE =
+  "use the same exact character shown in the attached reference image as the single canonical identity; preserve its gender presentation, identity, face, hair, age, wardrobe, and distinguishing physical details; do not invent, substitute, or redesign the character";
 
 export function detectCharacterGender(text: string): "female" | "male" | null {
   const female = FEMALE_CHARACTER_TERMS.test(text);
@@ -346,7 +348,7 @@ function characterGenderContinuity(
   concept: string,
 ): string {
   if (input.hasCharacterReference) {
-    return "keep the character's gender presentation exactly as shown in the attached reference image across all scenes";
+    return "keep the same exact character shown in the attached reference image across all referenced scenes, including the character's gender presentation";
   }
   const gender = detectCharacterGender(`${input.character ?? ""} ${input.prompt ?? ""} ${concept}`);
   return gender
@@ -547,7 +549,7 @@ function buildPrompt(
   const styleDesc = STYLE_PROMPTS[style] ?? STYLE_PROMPTS.cinematic!;
   const characterDesc = usesCharacterReference
     ? input.hasCharacterReference
-      ? "use the attached reference image for the character"
+      ? ATTACHED_CHARACTER_REFERENCE_DIRECTIVE
       : "consistent recurring subject, wardrobe, and gender presentation"
     : null;
   return scenePromptWithStyleFootnote([
@@ -572,7 +574,7 @@ function buildNarrativePrompt(
   const styleDesc = STYLE_PROMPTS[style] ?? STYLE_PROMPTS.cinematic!;
   const characterDesc = usesCharacterReference
     ? input.hasCharacterReference
-      ? "use the attached reference image for the character and preserve its gender presentation"
+      ? ATTACHED_CHARACTER_REFERENCE_DIRECTIVE
       : (() => {
           const gender = detectCharacterGender(`${input.character ?? ""} ${input.prompt ?? ""}`);
           return gender
@@ -740,7 +742,7 @@ export function planImagePackScenes(input: {
         : replaceNamedSubjectWithDescription(sourceConcept, namedSubject);
       const characterContinuity = usesCharacterReference
         ? input.hasCharacterReference
-          ? "match the uploaded character reference exactly: same identity, face, age, hair, wardrobe, and physical details"
+          ? ATTACHED_CHARACTER_REFERENCE_DIRECTIVE
           : index === firstCharacterSceneIndex
             ? "establish the recurring principal character clearly; this image becomes the identity and wardrobe reference for later character scenes"
             : "match the established principal character reference exactly: same identity, face, age, hair, wardrobe, and physical details"

@@ -363,6 +363,8 @@ describe("planShots narrative planning", () => {
 
     expect(plan.shots[0]).toMatchObject({ usesCharacterReference: true });
     expect(plan.shots[0]!.prompt).toContain("attached reference image");
+    expect(plan.shots[0]!.prompt).toContain("single canonical identity");
+    expect(plan.shots[0]!.prompt).toContain("do not invent, substitute, or redesign the character");
     expect(plan.shots[0]!.prompt).not.toMatch(/Amelia Earhart/i);
     expect(plan.shots[0]!.description).not.toMatch(/Amelia Earhart/i);
     expect(plan.shots[2]).toMatchObject({ usesCharacterReference: false });
