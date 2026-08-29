@@ -1,11 +1,9 @@
-// AI lyric generation — fetch-based, no SDK dependency (mirrors renderEmail).
-//
-// Uses whichever LLM key is set: ANTHROPIC_API_KEY (preferred) or
-// OPENAI_API_KEY. Falls back to a structured template so the admin flow works
-// with no key at all. Output uses [Verse]/[Chorus]/[Bridge] section tags that
-// both ACE-Step and the karaoke engine understand.
+// AI lyric generation through the managed Anthropic integration, with a legacy
+// direct OpenAI path for environments that already configure it. The structured
+// template is used only when no paid provider is configured.
 
 import { logger } from "./logger.js";
+import { anthropic } from "@workspace/integrations-anthropic-ai";
 
 export interface LyricsRequest {
   theme: string; // what the song is about
@@ -163,26 +161,20 @@ function buildUserPrompt(req: LyricsRequest): string {
 // ── Providers ────────────────────────────────────────────────────────────────
 
 async function viaAnthropic(req: LyricsRequest): Promise<string> {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": process.env.ANTHROPIC_API_KEY!,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      // Lyrics quality is very model-sensitive, and it's one short, infrequent
-      // call per song — worth Sonnet. Override with LYRICS_ANTHROPIC_MODEL.
-      model: process.env.LYRICS_ANTHROPIC_MODEL ?? "claude-sonnet-4-5",
-      max_tokens: 2000,
-      temperature: 0.9,
-      system: req.existingLyrics?.trim() ? ENHANCE_SYSTEM_PROMPT : SYSTEM_PROMPT,
-      messages: [{ role: "user", content: buildUserPrompt(req) }],
-    }),
+  const message = await anthropic.messages.create({
+    // Lyrics quality is very model-sensitive, and it is one short, infrequent
+    // call per song. Override with LYRICS_ANTHROPIC_MODEL when needed.
+    model: process.env.LYRICS_ANTHROPIC_MODEL ?? "claude-sonnet-4-5",
+    max_tokens: 8192,
+    temperature: req.existingLyrics?.trim() ? 0.25 : 0.9,
+    system: req.existingLyrics?.trim() ? ENHANCE_SYSTEM_PROMPT : SYSTEM_PROMPT,
+    messages: [{ role: "user", content: buildUserPrompt(req) }],
   });
-  if (!res.ok) throw new Error(`Anthropic ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const data = (await res.json()) as { content?: { text?: string }[] };
-  const text = data.content?.map((b) => b.text ?? "").join("").trim();
+  const text = message.content
+    .filter((block) => block.type === "text")
+    .map((block) => block.text)
+    .join("")
+    .trim();
   if (!text) throw new Error("Anthropic returned no lyrics");
   return sanitizeLyrics(text);
 }
@@ -258,7 +250,9 @@ function templateLyrics(_req: LyricsRequest): string {
 // ── Public entry ─────────────────────────────────────────────────────────────
 
 export function lyricsProviderAvailable(): "anthropic" | "openai" | "template" {
-  if (process.env.ANTHROPIC_API_KEY) return "anthropic";
+  if (process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL && process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY) {
+    return "anthropic";
+  }
   if (process.env.OPENAI_API_KEY) return "openai";
   return "template";
 }
@@ -301,28 +295,45 @@ export function preserveDraftIfRewritten(draft: string, candidate: string): stri
   return similarity >= 0.35 ? edited : original;
 }
 
-export async function generateLyrics(req: LyricsRequest): Promise<{ lyrics: string; source: string }> {
-  try {
-    if (process.env.ANTHROPIC_API_KEY) {
+export async function generateLyrics(
+  req: LyricsRequest,
+): Promise<{ lyrics: string; source: string; changed: boolean }> {
+  const original = req.existingLyrics?.trim();
+
+  if (lyricsProviderAvailable() === "anthropic") {
+    try {
       const lyrics = await viaAnthropic(req);
+      const accepted = original ? preserveDraftIfRewritten(original, lyrics) : lyrics;
       return {
-        lyrics: req.existingLyrics?.trim() ? preserveDraftIfRewritten(req.existingLyrics, lyrics) : lyrics,
+        lyrics: accepted,
         source: "anthropic",
+        changed: !original || accepted !== original,
       };
+    } catch (err) {
+      logger.error({ err }, "Anthropic lyric generation failed");
+      throw err;
     }
-    if (process.env.OPENAI_API_KEY) {
-      const lyrics = await viaOpenAI(req);
-      return {
-        lyrics: req.existingLyrics?.trim() ? preserveDraftIfRewritten(req.existingLyrics, lyrics) : lyrics,
-        source: "openai",
-      };
-    }
-  } catch (err) {
-    logger.error({ err }, "LLM lyric generation failed — falling back to template");
   }
-  // Never replace a user's draft with an unrelated fallback song.
+
+  if (lyricsProviderAvailable() === "openai") {
+    try {
+      const lyrics = await viaOpenAI(req);
+      const accepted = original ? preserveDraftIfRewritten(original, lyrics) : lyrics;
+      return {
+        lyrics: accepted,
+        source: "openai",
+        changed: !original || accepted !== original,
+      };
+    } catch (err) {
+      logger.error({ err }, "OpenAI lyric generation failed");
+      throw err;
+    }
+  }
+
+  // The free fallback is never reported or billed as a paid model result.
   return {
-    lyrics: req.existingLyrics?.trim() ?? templateLyrics(req),
-    source: req.existingLyrics?.trim() ? "preserved-draft" : "template",
+    lyrics: original ?? templateLyrics(req),
+    source: original ? "preserved-draft" : "template",
+    changed: !original,
   };
 }

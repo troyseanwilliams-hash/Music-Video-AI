@@ -248,7 +248,13 @@ router.post("/prompt/lyrics", async (req: Request, res: Response) => {
       explicit: parsed.data.explicit,
       bpm: parsed.data.bpm,
     });
-    res.json({ ...result, charged: willUseLLM ? LYRICS_BUILD_COST : 0, enhanced: !!parsed.data.lyrics?.trim() });
+    let charged = willUseLLM ? LYRICS_BUILD_COST : 0;
+    if (debit && parsed.data.lyrics?.trim() && !result.changed) {
+      await refundCredits(user.id, debit.subDebit, debit.topDebit);
+      debit = null;
+      charged = 0;
+    }
+    res.json({ ...result, charged, enhanced: !!parsed.data.lyrics?.trim() });
   } catch (err) {
     if (debit) await refundCredits(user.id, debit.subDebit, debit.topDebit);
     logger.error({ err }, "Lyrics build failed");

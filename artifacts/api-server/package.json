@@ -22,6 +22,7 @@
     "cors": "^2",
     "drizzle-orm": "catalog:",
     "express": "^5",
+    "@workspace/integrations-anthropic-ai": "workspace:*",
     "fluent-ffmpeg": "^2.1.3",
     "google-auth-library": "^10.6.2",
     "music-metadata": "^11.12.3",
