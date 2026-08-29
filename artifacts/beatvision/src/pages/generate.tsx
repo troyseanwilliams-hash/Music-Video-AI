@@ -2954,6 +2954,11 @@ export default function Generate() {
                           chronological scene plan that fills the selected video length.
                         </p>
                         <p>
+                          Use the video duration to control the story’s pacing. A longer story with more story beats
+                          will be split into more segments, while a shorter story or runtime will be compressed into
+                          fewer segments. Choose a longer duration when you want to show more moments from the script.
+                        </p>
+                        <p>
                           Describe the recurring character once with the identity, clothing, and important details
                           you want preserved throughout the story.
                         </p>
