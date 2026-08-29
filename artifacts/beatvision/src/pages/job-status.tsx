@@ -23,7 +23,6 @@ import {
   WifiOff, Wifi, Plus, Link2, Check, ShieldAlert,
   TriangleAlert, X, ImageIcon,
 } from "lucide-react";
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from "recharts";
 import { motion, AnimatePresence } from "framer-motion";
 import { Switch } from "@/components/ui/switch";
 import SocialExportsPanel from "@/components/SocialExportsPanel";
@@ -712,7 +711,7 @@ export default function JobStatus() {
                 {isCanceling
                   ? "Stopping…"
                   : isReviewingImages
-                    ? "Cancel Gen Preview"
+                    ? "Cancel generation"
                     : "Stop generating"}
               </Button>
             )}
@@ -973,12 +972,12 @@ export default function JobStatus() {
           )}
         </AnimatePresence>
 
-        {(isImagePackJob || imageFirstVideoJob) && (
+        {(isImagePackJob || isReviewingImages) && (
           <Card className="overflow-hidden border-primary/20 bg-card/60">
             <CardHeader className="border-b border-border/60 pb-4">
               <CardTitle className="flex flex-wrap items-center gap-2 text-base">
                 <ImageIcon className="h-4 w-4 text-primary" />
-                {isImagePackJob ? "Generated images" : "Gen Preview"}
+                {isImagePackJob ? "Generated images" : "Source images"}
                 <Badge variant="secondary" className="font-mono">
                   {imagePackAssets.length}/{visualImageCount}
                 </Badge>
@@ -994,14 +993,8 @@ export default function JobStatus() {
                       ? "Images that finished successfully remain available for Remix Lab."
                       : "Your completed images are ready to arrange in Remix Lab."
                   : isReviewingImages
-                    ? "Your video is paused before animation. Review every image, regenerate any scene, or use another image for free."
-                  : isActive && imagePackAssets.length < visualImageCount
-                    ? "The complete source-image pack is created first. Scene animation begins only after every planned image is ready."
-                    : isActive
-                      ? "The image foundation is complete. Each video segment is now animated from its assigned source image."
-                      : isFailed
-                        ? "Finished source images remain available in Generated images and Remix Lab."
-                        : "These are the source images used to keep the finished video visually consistent."}
+                    ? "Review every source image, regenerate any scene, or use another image before creating the video."
+                    : ""}
               </p>
             </CardHeader>
             <CardContent className="pt-5">
@@ -1023,7 +1016,7 @@ export default function JobStatus() {
                 </div>
                 <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className="font-semibold">Your Gen Preview is ready</p>
+                    <p className="font-semibold">Your source images are ready</p>
                     <p className="text-xs text-muted-foreground">
                       Nothing is animating yet. Select any image you want to regenerate; the current image stays in place unless its replacement succeeds.
                     </p>
@@ -1393,8 +1386,7 @@ export default function JobStatus() {
 
         {/* ── Audio analysis ── */}
         {analysis && !noAudioJob && (
-          <div className="grid md:grid-cols-3 gap-6">
-            <div className="md:col-span-1">
+          <div className="max-w-md">
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base font-semibold flex items-center gap-2">
@@ -1440,63 +1432,6 @@ export default function JobStatus() {
                   </dl>
                 </CardContent>
               </Card>
-            </div>
-
-            <div className="md:col-span-2">
-              <Card className="h-full">
-                <CardHeader>
-                  <CardTitle className="text-base font-semibold">Track Structure</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {Array.isArray(analysis.sections) && (analysis.sections as unknown[]).length > 0 ? (
-                    <div className="h-[220px] w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart
-                          data={analysis.sections as Record<string, unknown>[]}
-                          margin={{ top: 0, right: 0, left: -20, bottom: 0 }}
-                        >
-                          <XAxis
-                            dataKey="label"
-                            tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
-                            axisLine={false}
-                            tickLine={false}
-                          />
-                          <YAxis hide />
-                          <Tooltip
-                            contentStyle={{
-                              backgroundColor: "hsl(var(--card))",
-                              borderColor: "hsl(var(--border))",
-                              borderRadius: "8px",
-                              fontSize: "12px",
-                            }}
-                            formatter={(value: number) => [`${Math.round(value * 100)}% energy`, "Intensity"]}
-                            labelStyle={{ color: "hsl(var(--muted-foreground))", marginBottom: "4px" }}
-                          />
-                          <Bar dataKey="energy" radius={[4, 4, 0, 0]}>
-                            {(analysis.sections as Record<string, unknown>[]).map((entry, i) => (
-                              <Cell
-                                key={`cell-${i}`}
-                                fill={
-                                  Number(entry.energy) > 0.75
-                                    ? "hsl(var(--primary))"
-                                    : Number(entry.energy) > 0.5
-                                      ? "hsl(var(--accent))"
-                                      : "hsl(var(--muted-foreground))"
-                                }
-                              />
-                            ))}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  ) : (
-                    <div className="h-[220px] flex items-center justify-center text-muted-foreground border border-dashed rounded-lg text-sm">
-                      Analysis data pending…
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
           </div>
         )}
 
@@ -1516,7 +1451,7 @@ function StatusBadge({ status, autoRetrying }: { status: string; autoRetrying: b
   if (status === "pending_approval") {
     return (
       <span className="inline-flex items-center gap-2 rounded-full border border-yellow-500/30 bg-yellow-500/10 px-4 py-1.5 text-sm font-medium text-yellow-400">
-        <ShieldAlert className="h-4 w-4" /> Gen Preview · Review required
+        <ShieldAlert className="h-4 w-4" /> Images ready · Review required
       </span>
     );
   }
