@@ -8,7 +8,14 @@ import { randomUUID } from "crypto";
 import { z } from "zod";
 import { db, creditsTable, usersTable, soundtracksTable, soundtrackLikesTable } from "@workspace/db";
 import { eq, sql, and, desc, isNull, inArray } from "drizzle-orm";
-import { generateSong, getActiveMusicProvider, loopAudioToLength, MAX_SONG_SECONDS, type MusicProvider } from "../lib/musicApis.js";
+import {
+  generateSong,
+  getActiveMusicProvider,
+  inferVocalDurationSeconds,
+  loopAudioToLength,
+  MAX_SONG_SECONDS,
+  type MusicProvider,
+} from "../lib/musicApis.js";
 import { generateLyrics, lyricsProviderAvailable } from "../lib/lyricsGen.js";
 import { calculateSongCost, freeSoundtracksFor, NEW_USER_FREE_SOUNDTRACKS, SONG_VOCAL_CREDITS } from "../lib/creditCost.js";
 import { notifyFeatureRequest } from "../lib/notifications.js";
@@ -96,9 +103,9 @@ router.post("/admin/music/lyrics", async (req: Request, res: Response) => {
 const GenerateBody = z.object({
   prompt: z.string().min(3).max(600),
   lyrics: z.string().max(5000).optional(),
-  // Vocal (MiniMax) songs can run up to 5 min; instrumental is still clamped to
-  // MAX_SONG_SECONDS internally by the generator + looper.
-  durationSeconds: z.number().int().min(5).max(300).default(30),
+  // Instrumentals accept an explicit target. Vocal song length is derived from
+  // the supplied lyrics because the vocal provider follows lyric structure.
+  durationSeconds: z.number().int().min(5).max(300).optional(),
   // Loop the generated clip (via ffmpeg, free) to this length to match a video.
   loopToSeconds: z.number().int().min(1).max(MAX_SONG_SECONDS).optional(),
   provider: z.enum(["simulation", "acestep", "musicgen", "pixazo"]).optional(),
@@ -127,7 +134,10 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
   }
 
   const wantsVocals = parsed.data.withVocals === true;
-  const cost = calculateSongCost(parsed.data.durationSeconds, wantsVocals);
+  const durationSeconds = wantsVocals
+    ? inferVocalDurationSeconds(parsed.data.lyrics)
+    : parsed.data.durationSeconds ?? 30;
+  const cost = calculateSongCost(durationSeconds, wantsVocals);
 
   // Freemium metering. Admins are unlimited. Subscribers get a monthly free
   // "Soundtracks" allowance by tier (a bonus that upsells higher plans); beyond
@@ -210,7 +220,7 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
     const song = await generateSong({
       prompt: parsed.data.prompt,
       lyrics: parsed.data.lyrics,
-      durationSeconds: parsed.data.durationSeconds,
+      durationSeconds,
       provider: parsed.data.provider as MusicProvider | undefined,
       withVocals: wantsVocals,
       lyricsOptimizer: parsed.data.lyricsOptimizer,
@@ -221,7 +231,7 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
     let audioBuffer = song.audioBuffer;
     let ext = song.ext;
     let loopedToSeconds: number | null = null;
-    if (parsed.data.loopToSeconds && parsed.data.loopToSeconds > parsed.data.durationSeconds) {
+    if (parsed.data.loopToSeconds && parsed.data.loopToSeconds > durationSeconds) {
       const looped = await loopAudioToLength(song.audioBuffer, song.ext, parsed.data.loopToSeconds);
       audioBuffer = looped.buffer;
       ext = looped.ext;
@@ -268,7 +278,7 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
         hasVocals: song.hasVocals,
         objectPath,
         ext,
-        durationSeconds: parsed.data.durationSeconds,
+        durationSeconds,
         loopedToSeconds,
         provider: song.provider,
       });

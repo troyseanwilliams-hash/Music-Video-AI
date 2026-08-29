@@ -15,13 +15,36 @@ export type MusicProvider = "simulation" | "acestep" | "musicgen" | "pixazo";
 export interface SongRequest {
   prompt: string; // style/genre description
   lyrics?: string; // used by vocal models (acestep / MiniMax); ignored by instrumental models
-  durationSeconds: number; // target length
+  durationSeconds?: number; // instrumental target; vocal songs infer this from lyrics
   provider?: MusicProvider; // explicit override
   // Generate a full song WITH vocals (routes to MiniMax Music on Pixazo) instead
   // of an instrumental. Requires lyrics OR lyricsOptimizer.
   withVocals?: boolean;
   // Let the vocal model write the lyrics from the prompt (MiniMax lyrics_optimizer).
   lyricsOptimizer?: boolean;
+}
+
+const DEFAULT_VOCAL_SONG_SECONDS = 180;
+const MAX_VOCAL_SONG_SECONDS = 300;
+
+export function inferVocalDurationSeconds(lyrics?: string): number {
+  const sectionCount = lyrics?.match(/^\s*\[[^\]]+\]\s*$/gm)?.length ?? 0;
+  const words = (lyrics ?? "")
+    .replace(/^\s*\[[^\]]+\]\s*$/gm, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+
+  if (words === 0) return DEFAULT_VOCAL_SONG_SECONDS;
+
+  // Singing is slower than speech. Add room for intros, transitions, breaks,
+  // and section changes, then round to a provider-friendly five-second target.
+  const sungSeconds = (words / 75) * 60;
+  const arrangementSeconds = Math.max(20, Math.min(45, sectionCount * 5));
+  return Math.max(
+    60,
+    Math.min(MAX_VOCAL_SONG_SECONDS, Math.round((sungSeconds + arrangementSeconds) / 5) * 5),
+  );
 }
 
 export interface SongResult {
@@ -163,7 +186,8 @@ async function simulateSong(durationSeconds: number): Promise<SongResult> {
 // PIXAZO_MUSIC_MODEL / PIXAZO_MUSIC_OP.
 async function generateWithPixazoMusic(req: SongRequest): Promise<string> {
   const key = getEnv("PIXAZO_API_KEY")!;
-  const duration = Math.min(Math.max(req.durationSeconds || 10, 3), MAX_SONG_SECONDS);
+  const maxDuration = req.withVocals ? MAX_VOCAL_SONG_SECONDS : MAX_SONG_SECONDS;
+  const duration = Math.min(Math.max(req.durationSeconds || 10, 3), maxDuration);
   // Vocals need either explicit lyrics or the "write it for me" optimizer.
   const wantsVocals = !!(
     req.withVocals &&
@@ -300,7 +324,8 @@ export const MAX_SONG_SECONDS = 120;
 
 export async function generateSong(req: SongRequest): Promise<SongResult> {
   const provider = getActiveMusicProvider(req.provider ?? null);
-  const dur = Math.min(Math.max(req.durationSeconds || 30, 5), MAX_SONG_SECONDS);
+  const maxDuration = req.withVocals ? MAX_VOCAL_SONG_SECONDS : MAX_SONG_SECONDS;
+  const dur = Math.min(Math.max(req.durationSeconds || 30, 5), maxDuration);
 
   if (provider === "simulation") {
     return simulateSong(dur);

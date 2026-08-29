@@ -51,6 +51,12 @@ STRUCTURE — use section tags on their own lines exactly like: [Intro], [Verse]
 
 Return ONLY the finished lyrics with section tags — no title, notes, commentary, or explanation of any kind.`;
 
+const ENHANCE_SYSTEM_PROMPT = `You are a careful lyric editor, not a replacement songwriter.
+
+When given a draft, preserve the writer's song. Make only small, surgical edits for typos, grammar, singability, or an unmistakably awkward line. Preserve the draft's story, point of view, emotional intent, images, memorable phrases, chorus hook, section order, repeated sections, and line breaks. Keep the same approximate line count and do not add, remove, or reorder sections. Preserve most lines exactly as written. If the draft already works, return it unchanged.
+
+Never write a new song, change the subject, replace the voice with your own, invent a new hook, or force a genre/style rewrite. Return ONLY the complete edited lyrics — no title, notes, commentary, or explanation.`;
+
 // Nudge diction/rhythm toward the requested genre so a trap song and a folk
 // ballad don't read the same. Free-text genres fall through to a generic note.
 function genreGuidance(genre?: string): string {
@@ -124,14 +130,15 @@ function buildUserPrompt(req: LyricsRequest): string {
   // Enhance mode: polish the user's draft rather than writing fresh lyrics.
   if (req.existingLyrics && req.existingLyrics.trim()) {
     const parts = [
-      "Polish and elevate these draft song lyrics. Keep their core meaning, theme, and voice, but: replace any abstract or clichéd lines with concrete, sensory images; fix meter so each section sings evenly; strengthen the rhymes without forcing them; and sharpen the chorus into one memorable, repeatable hook. Add [Verse] / [Chorus] / [Bridge] structure tags where they help. Return ONLY the improved lyrics — no commentary.",
+      "Lightly edit these draft lyrics. This is a preservation pass, not a rewrite.",
+      "Keep the same story, voice, point of view, imagery, hook, section order, repeated sections, line breaks, and approximate line count.",
+      "Change only clear typos, grammar problems, or a small number of genuinely awkward phrases that prevent the lyrics from singing naturally.",
+      "Do not replace lines just to make them more poetic, do not add or remove sections, do not invent new imagery, and do not adjust the song to a target length.",
+      "If no small change is clearly needed, return the draft exactly as provided.",
+      "Return ONLY the complete edited lyrics — no commentary.",
     ];
-    if (req.genre) parts.push(`Genre: ${req.genre}. ${genreGuidance(req.genre)}`);
-    if (req.mood) parts.push(`Mood: ${req.mood}.`);
-    if (req.theme && req.theme.trim()) parts.push(`Emphasize this theme: ${req.theme}.`);
-    if (req.bpm) parts.push(tempoGuidance(req.bpm));
-    parts.push(contentGuidance(req.explicit));
-    if (len) parts.push(`Adjust the length to fit a ${len} song — add or trim sections as needed.`);
+    if (req.bpm) parts.push(`Keep the existing words and structure aligned to approximately ${req.bpm} BPM; make only minimal syllable edits where necessary.`);
+    if (req.explicit === false) parts.push(contentGuidance(false));
     parts.push(`\n\nDraft lyrics:\n${req.existingLyrics.trim()}`);
     return parts.join(" ");
   }
@@ -169,7 +176,7 @@ async function viaAnthropic(req: LyricsRequest): Promise<string> {
       model: process.env.LYRICS_ANTHROPIC_MODEL ?? "claude-sonnet-4-5",
       max_tokens: 2000,
       temperature: 0.9,
-      system: SYSTEM_PROMPT,
+      system: req.existingLyrics?.trim() ? ENHANCE_SYSTEM_PROMPT : SYSTEM_PROMPT,
       messages: [{ role: "user", content: buildUserPrompt(req) }],
     }),
   });
@@ -190,9 +197,9 @@ async function viaOpenAI(req: LyricsRequest): Promise<string> {
     body: JSON.stringify({
       model: process.env.LYRICS_OPENAI_MODEL ?? "gpt-4o",
       max_tokens: 2000,
-      temperature: 0.95,
+      temperature: req.existingLyrics?.trim() ? 0.25 : 0.95,
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: req.existingLyrics?.trim() ? ENHANCE_SYSTEM_PROMPT : SYSTEM_PROMPT },
         { role: "user", content: buildUserPrompt(req) },
       ],
     }),
@@ -256,16 +263,66 @@ export function lyricsProviderAvailable(): "anthropic" | "openai" | "template" {
   return "template";
 }
 
+function lyricTokens(text: string): Set<string> {
+  return new Set(
+    text
+      .replace(/\[[^\]]+\]/g, " ")
+      .toLowerCase()
+      .match(/[a-z0-9]+(?:['’][a-z0-9]+)?/g) ?? [],
+  );
+}
+
+function sectionTags(text: string): string[] {
+  return (text.match(/\[(?:intro|verse|pre-?chorus|chorus|bridge|hook|refrain|outro)\b[^\]]*\]/gi) ?? [])
+    .map((tag) => tag.toLowerCase().replace(/\s+/g, ""));
+}
+
+export function preserveDraftIfRewritten(draft: string, candidate: string): string {
+  const original = draft.trim();
+  const edited = candidate.trim();
+  if (!original || !edited) return original;
+
+  const originalTags = sectionTags(original);
+  const editedTags = sectionTags(edited);
+  const tagsChanged =
+    originalTags.length !== editedTags.length ||
+    originalTags.some((tag, index) => tag !== editedTags[index]);
+  if (tagsChanged) return original;
+
+  const originalLines = original.split(/\r?\n/).filter((line) => line.trim()).length;
+  const editedLines = edited.split(/\r?\n/).filter((line) => line.trim()).length;
+  const lineRatio = editedLines / Math.max(originalLines, 1);
+  if (lineRatio < 0.6 || lineRatio > 1.5) return original;
+
+  const originalWords = lyricTokens(original);
+  const editedWords = lyricTokens(edited);
+  const sharedWords = [...originalWords].filter((word) => editedWords.has(word)).length;
+  const similarity = sharedWords / Math.max(originalWords.size, editedWords.size, 1);
+  return similarity >= 0.35 ? edited : original;
+}
+
 export async function generateLyrics(req: LyricsRequest): Promise<{ lyrics: string; source: string }> {
   try {
     if (process.env.ANTHROPIC_API_KEY) {
-      return { lyrics: await viaAnthropic(req), source: "anthropic" };
+      const lyrics = await viaAnthropic(req);
+      return {
+        lyrics: req.existingLyrics?.trim() ? preserveDraftIfRewritten(req.existingLyrics, lyrics) : lyrics,
+        source: "anthropic",
+      };
     }
     if (process.env.OPENAI_API_KEY) {
-      return { lyrics: await viaOpenAI(req), source: "openai" };
+      const lyrics = await viaOpenAI(req);
+      return {
+        lyrics: req.existingLyrics?.trim() ? preserveDraftIfRewritten(req.existingLyrics, lyrics) : lyrics,
+        source: "openai",
+      };
     }
   } catch (err) {
     logger.error({ err }, "LLM lyric generation failed — falling back to template");
   }
-  return { lyrics: templateLyrics(req), source: "template" };
+  // Never replace a user's draft with an unrelated fallback song.
+  return {
+    lyrics: req.existingLyrics?.trim() ?? templateLyrics(req),
+    source: req.existingLyrics?.trim() ? "preserved-draft" : "template",
+  };
 }

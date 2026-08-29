@@ -52,15 +52,6 @@ const LENGTH_OPTIONS = [
   { key: "long", label: "~1.5 min", seconds: 90 },
   { key: "full", label: "Max (2 min)", seconds: 120 },
 ];
-// Vocal (full-song) lengths run longer than instrumental loops.
-const VOCAL_LENGTH_OPTIONS = [
-  { key: "v60", label: "~1 min", seconds: 60 },
-  { key: "v90", label: "~1.5 min", seconds: 90 },
-  { key: "v120", label: "~2 min", seconds: 120 },
-  { key: "v180", label: "~3 min", seconds: 180 },
-  { key: "v240", label: "~4 min", seconds: 240 },
-  { key: "v300", label: "~5 min", seconds: 300 },
-];
 // Vocal styles fold into the song prompt (MiniMax reads voice from the prompt).
 const VOCAL_STYLES = [
   { key: "auto", label: "Auto", desc: "" },
@@ -132,7 +123,6 @@ export default function Soundtracks() {
   const [withVocals, setWithVocals] = useState(false);
   const [lyricsTopic, setLyricsTopic] = useState("");
   const [lyrics, setLyrics] = useState("");
-  const [vocalLengthKey, setVocalLengthKey] = useState("v120");
   const [vocalStyle, setVocalStyle] = useState("auto");
   const [explicit, setExplicit] = useState(false);
   const [bpm, setBpm] = useState("");
@@ -144,9 +134,7 @@ export default function Soundtracks() {
   const [libSort, setLibSort] = useState<"new" | "old" | "name">("new");
   const [topUpOpen, setTopUpOpen] = useState(false);
   const [topUpCost, setTopUpCost] = useState(0);
-  const duration = withVocals
-    ? VOCAL_LENGTH_OPTIONS.find((l) => l.key === vocalLengthKey)?.seconds ?? 120
-    : LENGTH_OPTIONS.find((l) => l.key === lengthKey)?.seconds ?? 10;
+  const duration = LENGTH_OPTIONS.find((l) => l.key === lengthKey)?.seconds ?? 10;
   const loopToSeconds = withVocals ? 0 : LOOP_OPTIONS.find((l) => l.key === loopKey)?.seconds ?? 0;
 
   // Write or enhance lyrics via the Prompt Studio lyrics engine (3 credits when
@@ -181,8 +169,8 @@ export default function Soundtracks() {
       const extras = { explicit, bpm: bpm.trim() ? Number(bpm) : undefined };
       const body =
         mode === "enhance"
-          ? { lyrics: lyrics.trim(), theme: lyricsTopic.trim() || undefined, targetSeconds: duration, ...extras }
-          : { theme: lyricsTopic.trim(), targetSeconds: duration, ...extras };
+          ? { lyrics: lyrics.trim(), theme: lyricsTopic.trim() || undefined, ...extras }
+          : { theme: lyricsTopic.trim(), ...extras };
       const res = await fetch("/api/prompt/lyrics", {
         method: "POST",
         credentials: "include",
@@ -240,16 +228,16 @@ export default function Soundtracks() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt: effectivePrompt,
-          durationSeconds: duration,
           ...(withVocals
             ? {
                 withVocals: true,
                 // Typed lyrics win; otherwise let the model write them from the vibe.
                 ...(lyrics.trim() ? { lyrics: lyrics.trim() } : { lyricsOptimizer: true }),
               }
-            : loopToSeconds > duration
-              ? { loopToSeconds }
-              : {}),
+            : {
+                durationSeconds: duration,
+                ...(loopToSeconds > duration ? { loopToSeconds } : {}),
+              }),
         }),
       });
       const data = await readApiResponse(res);
@@ -419,9 +407,9 @@ export default function Soundtracks() {
           {withVocals ? (
             <>
               Write or paste your own lyrics (or tap <strong>Write for me</strong>, then <strong>Enhance</strong> to
-              polish them), choose a voice and length, and we'll generate a full royalty-free song with vocals. Use
-              [Verse] / [Chorus] / [Bridge] tags to shape it — or leave the lyrics blank and the model writes the words
-              from your vibe.
+              polish them), choose a voice, and we'll generate a full royalty-free song whose length follows the
+              lyrics and arrangement. Use [Verse] / [Chorus] / [Bridge] tags to shape it — or leave the lyrics blank
+              and the model writes the words from your vibe.
             </>
           ) : (
             <>
@@ -582,50 +570,46 @@ export default function Soundtracks() {
                         placeholder="Type or paste your lyrics here. Use [Verse], [Chorus], and [Bridge] tags to structure the song.&#10;&#10;If you leave this blank, the song generator can write lyrics from your sound description at no extra charge."
                       />
                       <p className="text-xs text-muted-foreground">
-                        Enhance existing lyrics rewrites the text in this editor while preserving its story and voice. The topic above is optional guidance.
+                        Enhance existing lyrics rewrites the text in this editor while preserving its story and voice.
+                        The song length follows the amount and structure of the lyrics. The topic above is optional guidance.
                       </p>
                     </div>
                   </div>
                 </section>
               )}
 
-              {/* 3. Duration */}
-              <section className="space-y-5">
+              {/* Instrumental duration */}
+              {!withVocals && <section className="space-y-5">
                 <div className="flex items-center gap-3">
                   <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-sm">
-                    {withVocals ? "3" : "2"}
+                    2
                   </div>
                   <h2 className="text-xl font-semibold">Track Length</h2>
                 </div>
                 <div className="pl-10 space-y-6">
                   <div className="flex flex-wrap gap-2">
-                    {(withVocals ? VOCAL_LENGTH_OPTIONS : LENGTH_OPTIONS).map((l) => {
-                      const activeKey = withVocals ? vocalLengthKey : lengthKey;
-                      return (
-                        <button key={l.key} type="button"
-                          onClick={() => (withVocals ? setVocalLengthKey(l.key) : setLengthKey(l.key))}
-                          className={`rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${activeKey === l.key ? "border-primary bg-primary/10 text-primary" : "border-border bg-background/40 text-muted-foreground hover:border-primary/50"}`}>
-                          {l.label}
-                        </button>
-                      );
-                    })}
+                    {LENGTH_OPTIONS.map((l) => (
+                      <button key={l.key} type="button"
+                        onClick={() => setLengthKey(l.key)}
+                        className={`rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${lengthKey === l.key ? "border-primary bg-primary/10 text-primary" : "border-border bg-background/40 text-muted-foreground hover:border-primary/50"}`}>
+                        {l.label}
+                      </button>
+                    ))}
                   </div>
 
-                  {!withVocals && (
-                    <div className="space-y-3 pt-2">
-                      <Label className="text-base block">Loop Target <span className="text-muted-foreground font-normal text-sm ml-2">Repeat the track to fill this duration (Free)</span></Label>
-                      <div className="flex flex-wrap gap-2">
-                        {LOOP_OPTIONS.map((l) => (
-                          <button key={l.key} type="button" onClick={() => setLoopKey(l.key)}
-                            className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${loopKey === l.key ? "border-primary bg-primary/10 text-primary" : "border-border bg-background/40 text-muted-foreground hover:border-primary/50"}`}>
-                            {l.label}
-                          </button>
-                        ))}
-                      </div>
+                  <div className="space-y-3 pt-2">
+                    <Label className="text-base block">Loop Target <span className="text-muted-foreground font-normal text-sm ml-2">Repeat the track to fill this duration (Free)</span></Label>
+                    <div className="flex flex-wrap gap-2">
+                      {LOOP_OPTIONS.map((l) => (
+                        <button key={l.key} type="button" onClick={() => setLoopKey(l.key)}
+                          className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${loopKey === l.key ? "border-primary bg-primary/10 text-primary" : "border-border bg-background/40 text-muted-foreground hover:border-primary/50"}`}>
+                          {l.label}
+                        </button>
+                      ))}
                     </div>
-                  )}
+                  </div>
                 </div>
-              </section>
+              </section>}
             </>
           )}
         </div>

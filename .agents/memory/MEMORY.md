@@ -43,3 +43,5 @@
 - [Generated-media prompt safety](generated-media-prompt-safety.md) — safety-adjust prompts during generation, approval, and final image/video submission; keep rewrites idempotent across processors.
 - [Narrative text-only continuity](narrative-text-only-continuity.md) — new Narrative Story plans use one script and a text character bible; reference-image continuity remains for Montage and image packs.
 - [Storyboard fingerprint invalidation](storyboard-fingerprint-invalidation.md) — any setting used to build reviewed prompts must invalidate that plan client-side before submission.
+- [Lyrics-driven vocal duration](lyrics-driven-vocal-duration.md) — vocal songs have no manual length picker; lyrics and arrangement determine runtime while instrumental duration controls remain explicit.
+- [Lyrics enhancement preservation](lyrics-enhancement-preservation.md) — Enhance is a light editing pass; reject structural rewrites and never replace a draft with fallback lyrics.
