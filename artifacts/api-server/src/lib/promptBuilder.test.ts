@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   buildScenePlan,
+  generatedPromptRespectsStoryBeat,
   MAX_SCENE_IMAGE_PROMPT_LENGTH,
   MAX_SCENE_SCRIPT_LENGTH,
+  normalizeSceneBuilderScenes,
   replaceNamedSubjectInScript,
 } from "./promptBuilder.js";
 
@@ -77,6 +79,51 @@ describe("scene builder", () => {
     expect(result.scenes.every((scene) =>
       !/attached reference image/i.test(scene.imagePrompt)
     )).toBe(true);
+  });
+
+  it("rejects model prompts that introduce alternate character roles", () => {
+    expect(generatedPromptRespectsStoryBeat(
+      "A woman pilot checks the aircraft controls.",
+      "A male navigator checks the aircraft controls under warm cockpit light.",
+    )).toBe(false);
+    expect(generatedPromptRespectsStoryBeat(
+      "The woman pilot and male navigator study charts.",
+      "The woman aviator and male navigator study charts under amber light.",
+    )).toBe(true);
+  });
+
+  it("keeps environment-only beats free of model-invented characters", () => {
+    const result = normalizeSceneBuilderScenes(
+      [
+        {
+          title: "Empty hangar",
+          imagePrompt: "A lone mechanic crosses the empty hangar under dramatic blue light.",
+        },
+      ],
+      "An empty hangar waits in the rain.",
+      1,
+      false,
+    );
+
+    expect(result[0]!.imagePrompt).toContain("An empty hangar waits in the rain");
+    expect(result[0]!.imagePrompt).not.toMatch(/\bmechanic\b/i);
+  });
+
+  it("falls back to the source beat when a model changes the character", () => {
+    const result = normalizeSceneBuilderScenes(
+      [
+        {
+          title: "Cockpit check",
+          imagePrompt: "A male navigator checks the aircraft controls in a tense cockpit.",
+        },
+      ],
+      "A woman pilot checks the aircraft controls.",
+      1,
+      false,
+    );
+
+    expect(result[0]!.imagePrompt).toContain("A woman pilot checks the aircraft controls");
+    expect(result[0]!.imagePrompt).not.toMatch(/\bmale navigator\b/i);
   });
 });
 

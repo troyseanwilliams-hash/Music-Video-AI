@@ -243,6 +243,8 @@ Rules:
 - If a reference image will be attached, use it only in scenes whose story beat contains or clearly depicts that character. In those character scenes, do not describe the character's face, hair, clothing, identity, age, or other appearance; write "use the attached reference image for the character" instead.
 - Never mention or use the attached reference image in environment-only, object-only, or other scenes where the character does not appear.
 - If no reference image will be attached, include only the minimum visible character traits needed for that scene.
+- The supplied story beat is authoritative. Never replace its subject, action, location, or cast with a different person, role, or alternate character. Do not add a second person, new named character, or supporting role unless that beat explicitly contains them.
+- Environment-only beats must remain environment-only, even if a previous or later scene contains a recurring character.
 - Preserve the recurring character's stated gender in every character scene. Never change a woman or girl into a man or boy, or a man or boy into a woman or girl, between scenes.
 - When a reference image is attached, preserve the character's gender presentation exactly as shown in that reference.
 
@@ -260,6 +262,78 @@ function compactSceneText(value: unknown, maxLength: number, fallback: string): 
     shortened = candidate;
   }
   return shortened || normalized.slice(0, maxLength).trimEnd();
+}
+
+const CHARACTER_MULTIPLICITY_TERMS = /\b(?:two|three|several|multiple|group|crowd|team|couple|family|people|persons|characters|men|women|girls|boys|children|workers|operators|mechanics|searchers)\b/i;
+
+// Role-level checks catch substitutions such as changing a pilot into a
+// navigator without rejecting harmless visual wording around the same person.
+const CHARACTER_ROLE_GROUPS: Array<[string, RegExp]> = [
+  ["pilot", /\b(?:pilot|aviator|flyer|airman|airwoman)\b/i],
+  ["navigator", /\bnavigator\b/i],
+  ["mechanic", /\bmechanic(?:s)?\b/i],
+  ["operator", /\boperator(?:s)?\b/i],
+  ["crew", /\bcrew(?:men|members)?\b/i],
+  ["searcher", /\b(?:searcher|searchers|search crew|search team)\b/i],
+  ["detective", /\bdetective(?:s)?\b/i],
+  ["clerk", /\bclerk(?:s)?\b/i],
+  ["photographer", /\bphotographer(?:s)?\b/i],
+  ["inventor", /\binventor(?:s)?\b/i],
+  ["rider", /\brider(?:s)?\b/i],
+  ["driver", /\bdriver(?:s)?\b/i],
+  ["sailor", /\bsailor(?:s)?\b/i],
+  ["captain", /\bcaptain(?:s)?\b/i],
+  ["soldier", /\bsoldier(?:s)?\b/i],
+  ["doctor", /\bdoctor(?:s)?\b/i],
+  ["nurse", /\bnurse(?:s)?\b/i],
+  ["teacher", /\bteacher(?:s)?\b/i],
+  ["student", /\bstudent(?:s)?\b/i],
+];
+
+function characterRoleGroups(value: string): Set<string> {
+  return new Set(
+    CHARACTER_ROLE_GROUPS
+      .filter(([, pattern]) => pattern.test(value))
+      .map(([group]) => group),
+  );
+}
+
+function hasExplicitCharacterConflict(sourceBeat: string, generatedPrompt: string): boolean {
+  const sourceHasFemale = /\b(?:female|woman|girl|mother|daughter|sister|wife|heroine|she|her)\b/i.test(sourceBeat);
+  const sourceHasMale = /\b(?:male|man|boy|father|son|brother|husband|hero|he|him|his)\b/i.test(sourceBeat);
+  const generatedHasFemale = /\b(?:female|woman|girl|mother|daughter|sister|wife|heroine|she|her)\b/i.test(generatedPrompt);
+  const generatedHasMale = /\b(?:male|man|boy|father|son|brother|husband|hero|he|him|his)\b/i.test(generatedPrompt);
+  if (sourceHasFemale && !sourceHasMale && generatedHasMale && !generatedHasFemale) return true;
+  if (sourceHasMale && !sourceHasFemale && generatedHasFemale && !generatedHasMale) return true;
+
+  const sourceRoles = characterRoleGroups(sourceBeat);
+  const generatedRoles = characterRoleGroups(generatedPrompt);
+  if (generatedRoles.size > 0 && sourceRoles.size === 0) return true;
+  if ([...generatedRoles].some((role) => !sourceRoles.has(role))) return true;
+
+  if (
+    CHARACTER_MULTIPLICITY_TERMS.test(generatedPrompt)
+    && !CHARACTER_MULTIPLICITY_TERMS.test(sourceBeat)
+  ) {
+    return true;
+  }
+
+  // New multi-word proper names are strong evidence that the model invented
+  // another person. Named-subject replacement runs before this comparison.
+  const properNames = (value: string) =>
+    value.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b/g) ?? [];
+  const sourceNames = new Set(properNames(sourceBeat).map((name) => name.toLocaleLowerCase()));
+  return properNames(generatedPrompt)
+    .some((name) => !sourceNames.has(name.toLocaleLowerCase()));
+}
+
+export function generatedPromptRespectsStoryBeat(
+  sourceBeat: string,
+  generatedPrompt: string,
+): boolean {
+  if (!generatedPrompt.trim()) return false;
+  if (!sceneConceptIncludesCharacter(sourceBeat)) return false;
+  return !hasExplicitCharacterConflict(sourceBeat, generatedPrompt);
 }
 
 function recommendedSceneCount(story: string): number {
@@ -286,7 +360,7 @@ function sceneScript(scenes: SceneBuilderScene[]): string {
   return scenes.map((scene, index) => `${index + 1}. ${scene.imagePrompt}`).join("\n");
 }
 
-function normalizeSceneBuilderScenes(
+export function normalizeSceneBuilderScenes(
   rawScenes: unknown,
   story: string,
   sceneCount: number,
@@ -328,12 +402,22 @@ function normalizeSceneBuilderScenes(
     const generatedPromptWithoutNameOrReference = hasReferenceImage
       ? generatedPromptWithoutName
       : replaceNamedSubjectWithDescription(generatedPromptWithPossibleReference, namedSubject);
-    const generatedPrompt = usesCharacterReference
+    const cleanedGeneratedPrompt = usesCharacterReference
       ? generatedPromptWithoutNameOrReference
       : generatedPromptWithoutNameOrReference
           .replace(/\b(?:use|match|refer to)\s+the attached reference image[^,.;]*[,.;]?\s*/gi, "")
           .replace(/\s+/g, " ")
           .trim();
+    const generatedPrompt = generatedPromptRespectsStoryBeat(
+      sourceBeat,
+      cleanedGeneratedPrompt,
+    )
+      ? shortenCompletePrompt(
+          `${beat}, ${cleanedGeneratedPrompt}`,
+          maxPromptLength,
+          fallbackPrompt,
+        )
+      : fallbackPrompt;
     const unsanitizedImagePrompt = usesCharacterReference && !/attached reference image/i.test(generatedPrompt)
       ? shortenCompletePrompt(
           `Use the attached reference image for the character, ${generatedPrompt}`,
