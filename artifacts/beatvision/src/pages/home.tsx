@@ -153,6 +153,81 @@ export default function Home() {
           </div>
         </section>
 
+        {/* Narrative Video showcase — storyboard approval to production */}
+        <section className="relative overflow-hidden border-t border-border/30 py-16 md:py-20">
+          <div className="absolute left-1/2 top-1/2 h-[520px] w-[900px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/10 blur-[140px] pointer-events-none" />
+          <div className="container relative z-10 mx-auto max-w-6xl px-4 md:px-6">
+            <div className="mx-auto mb-10 max-w-2xl text-center">
+              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-xs font-semibold text-accent">
+                <Wand2 className="h-3.5 w-3.5" />
+                Narrative Video Generation
+              </div>
+              <h2 className="mb-4 text-3xl font-extrabold tracking-tight md:text-4xl">
+                Your story, <span className="text-gradient-electric">scene by scene.</span>
+              </h2>
+              <p className="text-lg leading-relaxed text-muted-foreground">
+                AIBeatSync turns a simple premise into a connected visual story. Review the image foundations,
+                approve the plan, and watch each scene become a finished music video.
+              </p>
+            </div>
+
+            <div className="grid items-start gap-6 lg:grid-cols-[1.18fr_1fr]">
+              <div className="group overflow-hidden rounded-2xl border border-primary/25 bg-card/70 shadow-2xl shadow-primary/10">
+                <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Review the visual blueprint</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">Approve every source image before animation begins</p>
+                  </div>
+                  <span className="rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary">
+                    Gen Preview
+                  </span>
+                </div>
+                <div className="bg-[#07070a] p-2 sm:p-3">
+                  <img
+                    src="/narrative-gen-preview.png"
+                    alt="Narrative Video Gen Preview showing four connected story scenes ready for animation"
+                    loading="lazy"
+                    className="h-auto w-full rounded-xl border border-white/10 transition-transform duration-500 group-hover:scale-[1.01]"
+                  />
+                </div>
+              </div>
+
+              <div className="group overflow-hidden rounded-2xl border border-accent/25 bg-card/70 shadow-2xl shadow-accent/10">
+                <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Let the renderer bring it to life</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">Each approved scene becomes a timed video segment</p>
+                  </div>
+                  <span className="rounded-full border border-accent/25 bg-accent/10 px-2.5 py-1 text-[11px] font-medium text-accent">
+                    In production
+                  </span>
+                </div>
+                <div className="bg-[#07070a] p-2 sm:p-3">
+                  <img
+                    src="/narrative-gen-processing.png"
+                    alt="Narrative Video processing screen showing a four-scene story being rendered"
+                    loading="lazy"
+                    className="h-auto w-full rounded-xl border border-white/10 transition-transform duration-500 group-hover:scale-[1.01]"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8 flex flex-col items-center justify-between gap-4 rounded-2xl border border-border/60 bg-card/50 px-5 py-4 text-center sm:flex-row sm:text-left">
+              <div>
+                <p className="font-semibold text-foreground">Make a music video with a beginning, middle, and end.</p>
+                <p className="mt-1 text-sm text-muted-foreground">Start with one story prompt. Keep control at the approval gate.</p>
+              </div>
+              <Link href="/generate">
+                <Button className="shrink-0 border-0 bg-gradient-electric text-white shadow-glow hover:opacity-90">
+                  Try Narrative Video
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </section>
+
         {/* The big picture — end-to-end differentiation */}
         <section className="py-16 border-t border-border/30">
           <div className="container px-4 md:px-6 mx-auto max-w-5xl text-center">
