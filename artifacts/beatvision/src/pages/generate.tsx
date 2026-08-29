@@ -2959,11 +2959,13 @@ export default function Generate() {
                         </p>
                         <p>
                           <span className="font-medium text-primary-foreground">Sample:</span>{" "}
-                          A determined young astronomer with curly black hair, a green field jacket, and worn
-                          hiking boots leaves her desert observatory to investigate a mysterious signal. She crosses
-                          the dunes, follows the signal through a night storm, and discovers an abandoned research
-                          station glowing beneath the stars. At sunrise, she returns to the observatory with proof
-                          that she was not alone in the universe.
+                          Lena is a determined young astronomer with curly black hair, a green field jacket, and
+                          worn hiking boots. First, she leaves her desert observatory to investigate a mysterious
+                          signal and crosses the dunes beneath a red sunset. Later, she follows the signal through a
+                          night storm and discovers an abandoned research station glowing beneath the stars. In the
+                          final scene, Lena returns to the observatory at sunrise with proof that she was not alone
+                          in the universe. Keep Lena’s identity, appearance, wardrobe, and role consistent across
+                          every scene.
                         </p>
                       </>
                     ) : (
