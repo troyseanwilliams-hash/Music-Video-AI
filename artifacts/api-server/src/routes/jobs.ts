@@ -248,16 +248,21 @@ router.post("/jobs/preview-shots", async (req, res) => {
         })
       : null;
     const previewDuration = audioObjectPath ? requestedDuration : silentFilmDurationSeconds ?? requestedDuration;
+    const normalizedPreviewMode = generationMode === "narrative" ? "narrative" : "montage";
     const plan = planShots({
       prompt: prompt as string | null,
       style: style as string | null,
       character: character as string | null,
-      hasCharacterReference: Boolean(hasReferenceImage),
+      hasCharacterReference: normalizedPreviewMode === "narrative"
+        ? false
+        : Boolean(hasReferenceImage),
       requestedDuration: previewDuration as string | null,
-      generationMode: generationMode === "narrative" ? "narrative" : "montage",
+      generationMode: normalizedPreviewMode,
       analysis: verifiedAnalysis as never,
     });
-    const scriptIssue = numberedVideoScriptIssue(String(prompt ?? ""), plan.numClips);
+    const scriptIssue = normalizedPreviewMode === "montage"
+      ? numberedVideoScriptIssue(String(prompt ?? ""), plan.numClips)
+      : null;
     if (scriptIssue) {
       res.status(422).json({
         error: scriptIssue,
@@ -372,6 +377,8 @@ router.post("/jobs", async (req, res) => {
     parseResult.data;
   const normalizedGenerationMode =
     generationMode === "narrative" ? "narrative" : "montage";
+  const effectiveReferenceImagePath =
+    normalizedGenerationMode === "narrative" ? null : (referenceImagePath ?? null);
   // Every ordinary AI video starts from its planned stills. Keep the submitted
   // value in the request contract for old clients, but image packs remain a
   // separate job type and never come through this route.
@@ -549,12 +556,14 @@ router.post("/jobs", async (req, res) => {
     prompt,
     style,
     character,
-    hasCharacterReference: Boolean(referenceImagePath),
+    hasCharacterReference: Boolean(effectiveReferenceImagePath),
     requestedDuration: resolvedRequestedDuration,
     generationMode: normalizedGenerationMode,
     analysis: verifiedAudioAnalysis as never,
   });
-  const scriptIssue = numberedVideoScriptIssue(prompt, plannedStoryboard.numClips);
+  const scriptIssue = normalizedGenerationMode === "montage"
+    ? numberedVideoScriptIssue(prompt, plannedStoryboard.numClips)
+    : null;
   if (scriptIssue) {
     res.status(422).json({
       error: scriptIssue,
@@ -689,7 +698,7 @@ router.post("/jobs", async (req, res) => {
       aspectRatio: aspectRatio ?? null,
       resolution: resolution ?? null,
       character: character ?? null,
-      referenceImagePath: referenceImagePath ?? null,
+      referenceImagePath: effectiveReferenceImagePath,
       requestedDuration: resolvedRequestedDuration ?? "full",
       clipStartTime: resolvedRequestedDuration === "full" ? null : (clipStartTime ?? null),
       audioAnalysis: verifiedAudioAnalysis,

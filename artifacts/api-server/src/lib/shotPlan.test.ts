@@ -48,7 +48,7 @@ describe("planShots montage planning", () => {
     expect(plan.shots[1]!.prompt).not.toContain("golden sky");
   });
 
-  it("maps numbered scripts to clean chronological Narrative Story scenes", () => {
+  it("treats old numbered input as one chronological Narrative Story source", () => {
     const prompt = [
       "1. A pilot discovers the open sky.",
       "2. The pilot crosses a stormy ocean.",
@@ -62,9 +62,9 @@ describe("planShots montage planning", () => {
     });
 
     expect(plan.shots.map((shot) => shot.description)).toEqual([
-      "Opening image — A pilot discovers the open sky.",
-      "Turning point — The pilot crosses a stormy ocean.",
-      "Final image — The pilot returns home to inspire others.",
+      "Opening image — A pilot discovers the open sky",
+      "Turning point — The pilot crosses a stormy ocean",
+      "Final image — The pilot returns home to inspire others",
     ]);
     expect(plan.shots[0]!.prompt).not.toContain("1.");
     expect(plan.shots[0]!.prompt).not.toContain("crosses a stormy ocean");
@@ -307,23 +307,26 @@ describe("planImagePackScenes", () => {
 });
 
 describe("planShots narrative planning", () => {
-  it("locks a recurring woman's gender across every character-focused scene", () => {
+  it("uses one text character bible across every character-focused scene", () => {
     const plan = planShots({
       prompt: "A woman detective enters a hotel. She questions the clerk. The empty hallway sits in darkness.",
       generationMode: "narrative",
       requestedDuration: "30",
     });
 
-    const characterShots = plan.shots.filter((shot) => shot.usesCharacterReference);
+    const characterShots = plan.shots.filter((shot) =>
+      shot.prompt.includes("recurring character bible")
+    );
     expect(characterShots).toHaveLength(2);
     expect(characterShots.every((shot) =>
-      shot.prompt.includes("same recurring female subject")
+      shot.prompt.includes("same female principal character identity")
     )).toBe(true);
+    expect(plan.shots.every((shot) => shot.usesCharacterReference === false)).toBe(true);
     expect(plan.shots.find((shot) => shot.description.includes("empty hallway"))?.prompt)
-      .not.toContain("character remains female");
+      .not.toContain("recurring character bible");
   });
 
-  it("uses the uploaded reference as the authority for character gender", () => {
+  it("ignores uploaded reference-image conditioning in Narrative Story", () => {
     const plan = planShots({
       prompt: "A detective enters a hotel. The detective questions the clerk.",
       hasCharacterReference: true,
@@ -331,13 +334,12 @@ describe("planShots narrative planning", () => {
       requestedDuration: "20",
     });
 
-    expect(plan.shots.filter((shot) => shot.usesCharacterReference).every((shot) =>
-      shot.prompt.includes("attached reference image")
-      && shot.prompt.includes("preserve its gender presentation")
-    )).toBe(true);
+    expect(plan.shots.every((shot) => shot.usesCharacterReference === false)).toBe(true);
+    expect(plan.shots.every((shot) => !shot.prompt.includes("attached reference image"))).toBe(true);
+    expect(plan.shots.every((shot) => shot.prompt.includes("recurring character bible"))).toBe(true);
   });
 
-  it("keeps generated image prompts concise and refers to an attached character image", () => {
+  it("keeps generated image prompts concise and text-led without an attached character image", () => {
     const plan = planShots({
       prompt: "A pilot prepares a plane. Then the pilot flies through a storm. Finally the pilot lands at sunrise.",
       character: "person",
@@ -347,13 +349,11 @@ describe("planShots narrative planning", () => {
     });
 
     expect(plan.shots.every((shot) => shot.prompt.length <= 600)).toBe(true);
-    expect(plan.shots.filter((shot) => shot.usesCharacterReference).every((shot) =>
-      shot.prompt.includes("attached reference image")
-      && !shot.prompt.includes("featuring person")
-    )).toBe(true);
+    expect(plan.shots.every((shot) => shot.usesCharacterReference === false)).toBe(true);
+    expect(plan.shots.every((shot) => !shot.prompt.includes("attached reference image"))).toBe(true);
   });
 
-  it("replaces a named subject with the attached character reference", () => {
+  it("replaces a named subject with a text description even when a reference was submitted", () => {
     const plan = planShots({
       prompt: "Amelia Earhart prepares her aircraft. Amelia Earhart takes flight over the ocean. The empty runway waits at dusk.",
       hasCharacterReference: true,
@@ -361,10 +361,10 @@ describe("planShots narrative planning", () => {
       requestedDuration: "30",
     });
 
-    expect(plan.shots[0]).toMatchObject({ usesCharacterReference: true });
-    expect(plan.shots[0]!.prompt).toContain("attached reference image");
-    expect(plan.shots[0]!.prompt).toContain("single canonical identity");
-    expect(plan.shots[0]!.prompt).toContain("do not invent, substitute, or redesign the character");
+    expect(plan.shots[0]).toMatchObject({ usesCharacterReference: false });
+    expect(plan.shots[0]!.prompt).not.toContain("attached reference image");
+    expect(plan.shots[0]!.prompt).toContain("recurring character bible");
+    expect(plan.shots[0]!.prompt).toContain("never invent, substitute, or redesign the principal character");
     expect(plan.shots[0]!.prompt).not.toMatch(/Amelia Earhart/i);
     expect(plan.shots[0]!.description).not.toMatch(/Amelia Earhart/i);
     expect(plan.shots[2]).toMatchObject({ usesCharacterReference: false });
@@ -384,19 +384,20 @@ describe("planShots narrative planning", () => {
     expect(plan.shots[0]!.description).toMatch(/woman aviator/i);
   });
 
-  it("only marks character-focused story scenes for the character reference", () => {
+  it("applies text continuity only to character-focused story scenes", () => {
     const plan = planShots({
       prompt: "A woman steps off a train. Then an empty train station waits in the rain. Finally sunrise fills the city skyline.",
       generationMode: "narrative",
       requestedDuration: "30",
     });
 
-    expect(plan.shots.find((shot) => shot.description.includes("woman steps off a train")))
-      .toMatchObject({ usesCharacterReference: true });
-    expect(plan.shots.find((shot) => shot.description.includes("empty train station")))
-      .toMatchObject({ usesCharacterReference: false });
-    expect(plan.shots.find((shot) => shot.description.includes("sunrise fills the city skyline")))
-      .toMatchObject({ usesCharacterReference: false });
+    expect(plan.shots.find((shot) => shot.description.includes("woman steps off a train"))?.prompt)
+      .toContain("recurring character bible");
+    expect(plan.shots.find((shot) => shot.description.includes("empty train station"))?.prompt)
+      .not.toContain("recurring character bible");
+    expect(plan.shots.find((shot) => shot.description.includes("sunrise fills the city skyline"))?.prompt)
+      .not.toContain("recurring character bible");
+    expect(plan.shots.every((shot) => shot.usesCharacterReference === false)).toBe(true);
   });
 
   it("does not apply a character reference to generic narrative beats", () => {
@@ -460,7 +461,7 @@ describe("planShots narrative planning", () => {
     expect(plan.shots[0]!.prompt).toContain("to perform a playful routine nearby");
     expect(plan.shots[1]!.prompt).toMatch(/^The recurring principal subject slows down and looks sad/);
     expect(plan.shots[2]!.prompt).toContain("stays at a respectful distance");
-    expect(plan.shots.every((shot) => shot.prompt.length < 400)).toBe(true);
+    expect(plan.shots.every((shot) => shot.prompt.length <= 600)).toBe(true);
     expect(plan.shots.every((shot) =>
       !/scene direction|story scene \d|music section|no montage|no flashback/i.test(shot.prompt)
     )).toBe(true);

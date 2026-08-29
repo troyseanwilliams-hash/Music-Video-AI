@@ -364,6 +364,7 @@ export default function Generate() {
   const numberedImageSceneCount = numberedImageSceneAnalysis.count;
   const effectiveImagePackCount = numberedImageSceneCount ?? imagePackCount;
   const numberedVideoSceneAnalysis = !imagePackMode
+    && generationMode === CreateJobRequestGenerationMode.montage
     ? analyzeNumberedScenes(prompt, 60)
     : { count: null, invalid: false };
   const namedSubjectWarning = detectNamedSubject(prompt);
@@ -898,7 +899,10 @@ export default function Generate() {
           style: selectedStyle,
           generationMode,
           character,
-          hasReferenceImage: Boolean(refImageObjectPath),
+          hasReferenceImage:
+            generationMode === CreateJobRequestGenerationMode.narrative
+              ? false
+              : Boolean(refImageObjectPath),
           requestedDuration: effectiveRequestedDuration,
           silentFilmDurationSeconds:
             sourceType === CreateJobRequestAudioSourceType.none ? silentFilmDurationSeconds : null,
@@ -1137,7 +1141,10 @@ export default function Generate() {
           aspectRatio,
           resolution,
           character: character !== "none" ? character : null,
-          referenceImagePath: refImageObjectPath ?? null,
+          referenceImagePath:
+            generationMode === CreateJobRequestGenerationMode.narrative
+              ? null
+              : (refImageObjectPath ?? null),
           requestedDuration: effectiveRequestedDuration,
           silentFilmDurationSeconds:
             sourceType === CreateJobRequestAudioSourceType.none ? silentFilmDurationSeconds : null,
@@ -1437,7 +1444,11 @@ export default function Generate() {
       return;
     }
 
-    if (namedSubjectWarning && !refImageObjectPath) {
+    if (
+      generationMode !== CreateJobRequestGenerationMode.narrative
+      && namedSubjectWarning
+      && !refImageObjectPath
+    ) {
       setReferenceChoiceOpen(true);
       return;
     }
@@ -1778,7 +1789,7 @@ export default function Generate() {
                     <div>
                       <p className="text-sm font-semibold">Narrative Story</p>
                       <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                        A chronological beginning-to-ending story with a distinct scene for every timeline segment.
+                        Submit one script. The engine builds a cohesive beginning-to-ending story for the full selected length.
                       </p>
                     </div>
                   </div>
@@ -1846,7 +1857,9 @@ export default function Generate() {
                   ))}
                   <div className="px-2 pt-1 pb-1.5">
                     <p className="text-[10px] text-muted-foreground/60 leading-tight">
-                      Who's on screen. Add a reference image below to lock the same character across every clip.
+                      {generationMode === CreateJobRequestGenerationMode.narrative
+                        ? "Who leads the story. Narrative Story keeps the character description consistent from your script."
+                        : "Who's on screen. Add a reference image below to lock the same character across every clip."}
                     </p>
                   </div>
                 </DropdownMenuContent>
@@ -2581,6 +2594,7 @@ export default function Generate() {
           </div>
 
           {/* ── Character Lock (optional reference image) ── */}
+          {(imagePackMode || generationMode !== CreateJobRequestGenerationMode.narrative) && (
           <div className="rounded-xl border border-border/60 bg-background/30 overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3">
               <div className="flex items-center gap-2 min-w-0">
@@ -2769,11 +2783,31 @@ export default function Generate() {
                </div>
              )}
           </div>
+          )}
+
+          {!imagePackMode && generationMode === CreateJobRequestGenerationMode.narrative && (
+            <div className="rounded-xl border border-primary/25 bg-primary/[0.05] px-4 py-3">
+              <div className="flex items-start gap-3">
+                <FileText className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Character continuity is automatic</p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    Describe the main character once in your script. Narrative Story carries the same identity,
+                    appearance, wardrobe, and story details through each character scene without a reference image.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* ── Prompt ── */}
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <Label htmlFor="prompt">Creative Prompt</Label>
+              <Label htmlFor="prompt">
+                {generationMode === CreateJobRequestGenerationMode.narrative && !imagePackMode
+                  ? "Story Script"
+                  : "Creative Prompt"}
+              </Label>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
@@ -2786,23 +2820,42 @@ export default function Generate() {
                 </TooltipTrigger>
                 <TooltipContent side="top" align="start" className="max-w-[360px] p-3 text-left text-xs leading-relaxed">
                   <div className="space-y-2">
-                    <p className="font-semibold text-primary-foreground">How to use Creative Prompt</p>
-                    <p>
-                      For ordinary prompts, describe the subject, setting, action, lighting, and mood. For a
-                      deliberate story or full-track montage, use one numbered scene per line.
+                    <p className="font-semibold text-primary-foreground">
+                      {generationMode === CreateJobRequestGenerationMode.narrative
+                        ? "How to write your Story Script"
+                        : "How to use Creative Prompt"}
                     </p>
-                    <p>
-                      Example: <strong>1. Dawn over a windswept prairie.</strong> Each numbered line becomes one
-                      source image and one matching animation.
-                    </p>
-                    <p>
-                      Use consecutive numbers with no gaps. After audio analysis, the number of lines must match the
-                      planned video segments or the app will stop before charging.
-                    </p>
-                    <p>
-                      Keep each line to one focused visual moment—no dialogue, multi-panel layouts, or several
-                      locations in one scene.
-                    </p>
+                    {generationMode === CreateJobRequestGenerationMode.narrative ? (
+                      <>
+                        <p>
+                          Write or paste one complete story, premise, or treatment. Describe the main character,
+                          what happens, and how the story should end.
+                        </p>
+                        <p>
+                          No numbering or scene formatting is required. The engine turns your script into a
+                          chronological scene plan that fills the selected video length.
+                        </p>
+                        <p>
+                          Describe the recurring character once with the identity, clothing, and important details
+                          you want preserved throughout the story.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p>
+                          Describe the subject, setting, action, lighting, and mood. For an exact full-track
+                          montage, you may use one numbered scene per line.
+                        </p>
+                        <p>
+                          Example: <strong>1. Dawn over a windswept prairie.</strong> Each numbered line becomes one
+                          source image and one matching animation.
+                        </p>
+                        <p>
+                          Keep each line to one focused visual moment—no dialogue, multi-panel layouts, or several
+                          locations in one scene.
+                        </p>
+                      </>
+                    )}
                   </div>
                 </TooltipContent>
               </Tooltip>
@@ -2810,7 +2863,11 @@ export default function Generate() {
             <Textarea
               ref={promptRef}
               id="prompt"
-              placeholder={"Describe the visual direction, or paste a script with one numbered scene per line:\n1. Opening visual...\n2. Next visual..."}
+              placeholder={
+                generationMode === CreateJobRequestGenerationMode.narrative && !imagePackMode
+                  ? "Paste one complete story or premise. Describe the main character, the journey, key conflict, and ending. No numbered scenes required."
+                  : "Describe the visual direction, or paste a script with one numbered scene per line:\n1. Opening visual...\n2. Next visual..."
+              }
               className={`min-h-[140px] resize-y bg-background/50 ${fieldErrors.prompt || prompt.length > MAX_CREATIVE_PROMPT_LENGTH ? "border-destructive" : "border-input"}`}
               value={prompt}
               maxLength={MAX_CREATIVE_PROMPT_LENGTH}
@@ -2829,7 +2886,16 @@ export default function Generate() {
               >
                 <FileText className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                 <div className="min-w-0">
-                  {requiredPromptCount === null ? (
+                  {generationMode === CreateJobRequestGenerationMode.narrative ? (
+                    <>
+                      <p className="text-sm font-semibold text-primary">One script builds the complete story</p>
+                      <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                        {requiredPromptCount === null
+                          ? "Analyze the song first so the engine can fit the story to its exact length."
+                          : `The engine will turn this single script into ${requiredPromptCount} chronological ${requiredPromptCount === 1 ? "scene" : "scenes"} for the selected length.`}
+                      </p>
+                    </>
+                  ) : requiredPromptCount === null ? (
                     <>
                       <p className="text-sm font-semibold text-primary">Scene prompts needed</p>
                       <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
@@ -2869,7 +2935,11 @@ export default function Generate() {
                     variant={shotPlan ? "outline" : "default"}
                     size="sm"
                     onClick={() => {
-                      if (namedSubjectWarning && !refImageObjectPath) {
+                      if (
+                        generationMode !== CreateJobRequestGenerationMode.narrative
+                        && namedSubjectWarning
+                        && !refImageObjectPath
+                      ) {
                         setReferenceChoiceOpen(true);
                         return;
                       }
@@ -2916,7 +2986,7 @@ export default function Generate() {
                         </span>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                               <Button
+                        <Button
                           type="button"
                           variant="ghost"
                           size="sm"
@@ -2926,8 +2996,9 @@ export default function Generate() {
                           }}
                         >
                           <Copy className="mr-1.5 h-3.5 w-3.5" />
-                          Copy script
+                          {generationMode === CreateJobRequestGenerationMode.narrative ? "Copy scene plan" : "Copy script"}
                         </Button>
+                        {generationMode !== CreateJobRequestGenerationMode.narrative && (
                         <Button
                           type="button"
                           variant="outline"
@@ -2949,6 +3020,7 @@ export default function Generate() {
                           <Copy className="mr-1.5 h-3.5 w-3.5" />
                           Copy to Creative Prompt
                         </Button>
+                        )}
                         <Button
                           type="button"
                           variant="outline"
@@ -3597,7 +3669,12 @@ export default function Generate() {
                 </div>}
                 {!imagePackMode && (
                   <>
-                     <div
+                      {generationMode === CreateJobRequestGenerationMode.narrative ? (
+                        <div className="flex justify-between font-medium text-primary">
+                          <span>Story input</span>
+                          <span>1 script</span>
+                        </div>
+                      ) : <div
                        className="flex justify-between font-medium text-primary"
                        data-testid="confirmation-prompt-requirement"
                      >
@@ -3606,8 +3683,9 @@ export default function Generate() {
                          {requiredPromptCount ?? "Waiting for analysis"}{" "}
                          {requiredPromptCount === 1 ? "prompt" : "numbered prompts"}
                        </span>
-                     </div>
-                     <div className="flex justify-between text-xs">
+                      </div>}
+                      {generationMode !== CreateJobRequestGenerationMode.narrative && (
+                      <div className="flex justify-between text-xs">
                        <span className="text-muted-foreground">Script detected</span>
                        <span>
                          {numberedVideoSceneAnalysis.count === null
@@ -3615,6 +3693,7 @@ export default function Generate() {
                            : `${numberedVideoSceneAnalysis.count} of ${requiredPromptCount ?? "—"}`}
                        </span>
                      </div>
+                      )}
                       <div className="flex justify-between text-xs">
                         <span className="text-muted-foreground">{generatedPromptLabel} reviewed</span>
                         <span className={allShotPromptsReviewed ? "text-primary font-medium" : "text-amber-500"}>

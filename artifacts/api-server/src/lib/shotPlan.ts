@@ -401,6 +401,18 @@ function promptConcepts(prompt: string): string[] {
   return parts;
 }
 
+function narrativeScriptConcepts(prompt: string): string[] {
+  const normalizedScript = prompt
+    .split(/\r?\n/)
+    .map((line) => {
+      const numbered = line.match(NUMBERED_SCENE_LINE);
+      return numbered?.[2]?.trim() || line.trim();
+    })
+    .filter(Boolean)
+    .join(" ");
+  return promptConcepts(normalizedScript);
+}
+
 export interface NumberedImagePackScript {
   seriesDirection: string;
   scenes: string[];
@@ -568,34 +580,61 @@ function buildNarrativePrompt(
   concept: string,
   beat: string,
   sceneIndex: number,
-  usesCharacterReference: boolean,
+  sceneCount: number,
+  isCharacterScene: boolean,
+  characterBible: string | null,
 ): string {
   const style = input.style ?? "cinematic";
   const styleDesc = STYLE_PROMPTS[style] ?? STYLE_PROMPTS.cinematic!;
-  const characterDesc = usesCharacterReference
-    ? input.hasCharacterReference
-      ? ATTACHED_CHARACTER_REFERENCE_DIRECTIVE
-      : (() => {
-          const gender = detectCharacterGender(`${input.character ?? ""} ${input.prompt ?? ""}`);
-          return gender
-            ? `same recurring ${gender} subject, identity, and wardrobe`
-            : sceneIndex > 0
-              ? "same recurring subject, wardrobe, and gender presentation"
-              : null;
-        })()
-    : null;
+  const characterDesc = isCharacterScene ? characterBible : null;
   const resolvedConcept = sceneIndex > 0
     ? concept.replace(/^(?:it|he|she|they)\b/i, "The recurring principal subject")
     : concept;
+  const progression = sceneIndex === 0
+    ? `opening moment 1 of ${sceneCount}; clearly establish the story, world, and principal character`
+    : sceneIndex === sceneCount - 1
+      ? `final moment ${sceneCount} of ${sceneCount}; resolve the story with a clear visual ending`
+      : `chronological moment ${sceneIndex + 1} of ${sceneCount}; advance the ${beat} naturally from the previous scene`;
 
   return scenePromptWithStyleFootnote([
     resolvedConcept,
     characterDesc,
+    progression,
     `${beat} composition`,
     `${mood ?? "cinematic"} mood`,
     sceneCameraDirection(sceneIndex),
-    "one cinematic still",
+    "one cinematic still; do not repeat an earlier composition",
   ], styleDesc);
+}
+
+function narrativeCharacterBible(
+  input: ShotPlanInput,
+  concepts: string[],
+  namedSubject: string | null,
+): string | null {
+  const source = concepts.find((concept) =>
+    containsNamedSubject(concept, namedSubject) || sceneConceptIncludesCharacter(concept)
+  );
+  const selectedCharacter = input.character && input.character !== "none"
+    ? input.character
+    : null;
+  if (!source && !selectedCharacter) return null;
+
+  const identitySeed = source
+    ? replaceNamedSubjectWithDescription(source, namedSubject)
+    : `a ${selectedCharacter} principal character`;
+  const gender = detectCharacterGender(
+    `${selectedCharacter ?? ""} ${input.prompt ?? ""} ${identitySeed}`,
+  );
+  return shortenCompletePrompt(
+    [
+      `recurring character bible: keep the same ${gender ? `${gender} ` : ""}principal character identity in every character scene`,
+      "never invent, substitute, or redesign the principal character",
+      `identity anchor: ${identitySeed}`,
+      "preserve facial features, age, hair, wardrobe continuity, body type, and distinguishing details",
+    ].join("; "),
+    260,
+  );
 }
 
 export function planShots(input: ShotPlanInput): ShotPlan {
@@ -609,18 +648,23 @@ export function planShots(input: ShotPlanInput): ShotPlan {
   );
   const hasReal = !!(input.analysis?.sections && input.analysis.sections.length > 0);
   const sections = hasReal ? input.analysis!.sections! : fallbackSections(target || durationSec || 60);
-  const numberedScript = parseNumberedImagePackScript(input.prompt || "");
+  const numberedScript = generationMode === "montage"
+    ? parseNumberedImagePackScript(input.prompt || "")
+    : null;
   const concepts = numberedScript?.scenes.length === numClips
     ? numberedScript.scenes
     : splitPromptIntoConcepts(input.prompt || "music video", numClips);
-  const orderedStoryConcepts = numberedScript?.scenes.length === numClips
-    ? numberedScript.scenes
-    : promptConcepts(input.prompt || "music video");
+  const orderedStoryConcepts = generationMode === "narrative"
+    ? narrativeScriptConcepts(input.prompt || "music video")
+    : numberedScript?.scenes.length === numClips
+      ? numberedScript.scenes
+      : promptConcepts(input.prompt || "music video");
   const bpm = input.analysis?.bpm ?? null;
   const mood = input.analysis?.mood ?? null;
   const namedSubject = detectNamedSubject(input.prompt || "");
 
   if (generationMode === "narrative") {
+    const characterBible = narrativeCharacterBible(input, orderedStoryConcepts, namedSubject);
     const shots = Array.from({ length: numClips }, (_, index) => {
       const startTime = index * clipDurationSec;
       const duration = Math.min(clipDurationSec, target - startTime);
@@ -631,26 +675,29 @@ export function planShots(input: ShotPlanInput): ShotPlan {
         Math.floor((index * orderedStoryConcepts.length) / numClips),
       );
       const sourceConcept = orderedStoryConcepts[conceptIndex]!;
-      const usesCharacterReference =
+      const isCharacterScene =
         containsNamedSubject(sourceConcept, namedSubject)
         || sceneConceptIncludesCharacter(sourceConcept);
-      const concept = input.hasCharacterReference
-        ? replaceNamedSubjectWithReference(sourceConcept, namedSubject)
-        : replaceNamedSubjectWithDescription(sourceConcept, namedSubject);
+      const concept = replaceNamedSubjectWithDescription(sourceConcept, namedSubject);
       return {
         index,
         label: beat,
         description: sceneDescription(beat, concept),
         startTime,
         energy: Math.round(section.energy * 100) / 100,
-        usesCharacterReference,
+        // New Narrative Story plans use text-only character continuity. Keeping
+        // this false prevents both uploaded references and generated scene
+        // anchors from becoming image-provider inputs.
+        usesCharacterReference: false,
         prompt: buildNarrativePrompt(
           input,
           mood,
           concept,
           beat,
           index,
-          usesCharacterReference,
+          numClips,
+          isCharacterScene,
+          characterBible,
         ),
       };
     });
@@ -793,7 +840,7 @@ export function planImagePackScenes(input: {
     character: null,
     hasCharacterReference: input.hasCharacterReference,
     requestedDuration: String(durationSeconds),
-    generationMode: "narrative",
+    generationMode: "montage",
     analysis: {
       durationSeconds,
       sections: [{
