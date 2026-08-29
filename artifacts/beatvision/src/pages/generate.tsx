@@ -113,6 +113,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 // first lines, plain [mm:ss] line tags after, and a comment for plain text.
 import { SAMPLE_LYRICS } from "@/lib/sampleLyrics";
 import { MAX_LYRICS_LENGTH } from "@/lib/lyricLimits";
+import { AMELIA_EARHART_MONTAGE_EXAMPLE } from "@/lib/montageExamples";
 
 type ErrorDialogState = {
   open: boolean;
@@ -1737,6 +1738,29 @@ export default function Generate() {
               </CollapsibleTrigger>
             </div>
             <CollapsibleContent>
+              <div className="mt-4 flex flex-col gap-3 rounded-xl border border-primary/20 bg-primary/[0.04] p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">Need a story example?</p>
+                  <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                    Try a 21-image historical mystery montage with built-in character and aircraft continuity.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 border-primary/30 text-primary hover:bg-primary/10"
+                  onClick={() => {
+                    setPrompt(AMELIA_EARHART_MONTAGE_EXAMPLE);
+                    setImagePackCount(21);
+                    setSelectedStyle(VideoStyle.documentary);
+                    setImagePackAspectRatio("16:9");
+                    setFieldErrors((current) => ({ ...current, prompt: undefined }));
+                  }}
+                >
+                  Try Amelia Earhart example
+                </Button>
+              </div>
               <div className="mt-4 grid gap-4 border-t border-primary/15 pt-4 sm:grid-cols-[minmax(0,1fr)_150px_220px] sm:items-end">
                 <div>
                   <Label htmlFor="image-pack-count">Images to generate</Label>
