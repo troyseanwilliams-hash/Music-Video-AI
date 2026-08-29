@@ -980,6 +980,33 @@ export default function Generate() {
     void buildScenePrompts();
   }, [buildScenePrompts, confirmOpen, imagePackMode, shotPlan, shotPlanLoading]);
 
+  useEffect(() => {
+    if (
+      imagePackMode
+      || generationMode !== CreateJobRequestGenerationMode.narrative
+      || !prompt.trim()
+      || requiredPromptCount === null
+      || shotPlan
+      || shotPlanLoading
+    ) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void buildScenePrompts();
+    }, 500);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    buildScenePrompts,
+    generationMode,
+    imagePackMode,
+    prompt,
+    requiredPromptCount,
+    shotPlan,
+    shotPlanLoading,
+  ]);
+
   const balance = statsData?.creditsRemaining ?? null;
   const canAfford = canAffordCredits(activeCost, balance, isAdmin);
 
@@ -2920,14 +2947,15 @@ export default function Generate() {
               </div>
             )}
             {!imagePackMode && (
+              (generationMode !== CreateJobRequestGenerationMode.narrative || !!shotPlan) && (
               <div className="space-y-3 rounded-xl border border-primary/20 bg-primary/[0.035] p-3.5">
+                {generationMode !== CreateJobRequestGenerationMode.narrative && (
+                <>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                      <p className="text-sm font-semibold text-foreground">Build your {generatedPromptLabelPlural}</p>
                     <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                       {generationMode === CreateJobRequestGenerationMode.narrative
-                         ? "Turn this story direction into chronological narrative prompts for each scene. Planning is free."
-                         : "Turn this creative direction into the exact engine-ready prompts used for each source image. Planning is free."}
+                       Turn this creative direction into the exact engine-ready prompts used for each source image. Planning is free.
                     </p>
                   </div>
                   <Button
@@ -2936,8 +2964,7 @@ export default function Generate() {
                     size="sm"
                     onClick={() => {
                       if (
-                        generationMode !== CreateJobRequestGenerationMode.narrative
-                        && namedSubjectWarning
+                         namedSubjectWarning
                         && !refImageObjectPath
                       ) {
                         setReferenceChoiceOpen(true);
@@ -2972,6 +2999,8 @@ export default function Generate() {
                   <p className="text-xs text-amber-600 dark:text-amber-300">
                     Audio analysis must finish before the exact prompt count can be built.
                   </p>
+                )}
+                </>
                 )}
 
                 {shotPlan && (
@@ -3106,6 +3135,7 @@ export default function Generate() {
                   </div>
                 )}
               </div>
+              )
             )}
             {!imagePackMode && numberedVideoSceneAnalysis.count !== null && (
               <p className={`text-xs ${
