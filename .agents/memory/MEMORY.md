@@ -42,3 +42,4 @@
 - [Customer-safe generation errors](customer-safe-generation-errors.md) — classify failures at the API boundary; expose actionable guidance without provider diagnostics.
 - [Generated-media prompt safety](generated-media-prompt-safety.md) — safety-adjust prompts during generation, approval, and final image/video submission; keep rewrites idempotent across processors.
 - [Narrative text-only continuity](narrative-text-only-continuity.md) — new Narrative Story plans use one script and a text character bible; reference-image continuity remains for Montage and image packs.
+- [Storyboard fingerprint invalidation](storyboard-fingerprint-invalidation.md) — any setting used to build reviewed prompts must invalidate that plan client-side before submission.

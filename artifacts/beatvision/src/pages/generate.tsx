@@ -388,11 +388,21 @@ export default function Generate() {
     queryKey: ["reference-image-gallery"],
     enabled: isAuthenticated && galleryPickerOpen,
     queryFn: async () => {
-      const response = await fetch("/api/image-assets?limit=60", {
-        credentials: "include",
-      });
-      if (!response.ok) throw new Error("Could not load your image gallery.");
-      return response.json() as Promise<ReferenceGalleryResponse>;
+      const assets: ReferenceGalleryAsset[] = [];
+      const limit = 60;
+      let page = 1;
+      let total = 0;
+      do {
+        const response = await fetch(`/api/image-assets?page=${page}&limit=${limit}`, {
+          credentials: "include",
+        });
+        if (!response.ok) throw new Error("Could not load your image gallery.");
+        const batch = await response.json() as ReferenceGalleryResponse;
+        assets.push(...batch.assets);
+        total = batch.total;
+        page += 1;
+      } while (assets.length < total);
+      return { assets, total };
     },
   });
 
@@ -993,6 +1003,7 @@ export default function Generate() {
     effectiveRequestedDuration,
     silentFilmDurationSeconds,
     selectedAudioObjectPath,
+    refImageObjectPath,
     analysisForPath,
     (analyzeAudio.data as { analysisReceipt?: string } | undefined)?.analysisReceipt,
   ]);
