@@ -382,6 +382,8 @@ export default function Generate() {
   const [isUploadingRefImage, setIsUploadingRefImage] = useState(false);
   const [refImageError, setRefImageError] = useState<string | null>(null);
   const [galleryPickerOpen, setGalleryPickerOpen] = useState(false);
+  const [sceneSourcePickerIndex, setSceneSourcePickerIndex] = useState<number | null>(null);
+  const [selectedSceneSources, setSelectedSceneSources] = useState<Record<number, ReferenceGalleryAsset>>({});
   const referenceGalleryQuery = useQuery({
     queryKey: ["reference-image-gallery"],
     enabled: isAuthenticated && galleryPickerOpen,
@@ -413,7 +415,14 @@ export default function Generate() {
     const p = params.get("prompt");
     const sceneScript = consumeSceneScriptHandoff();
     const referenceImagePath = params.get("referenceImagePath");
-    if (sceneScript) setPrompt(sceneScript);
+    if (sceneScript) {
+      setPrompt(sceneScript.script);
+      setGenerationMode(
+        sceneScript.mode === "narrative"
+          ? CreateJobRequestGenerationMode.narrative
+          : CreateJobRequestGenerationMode.montage,
+      );
+    }
     else if (p) setPrompt(p);
     if (referenceImagePath?.startsWith("/objects/")) {
       setRefImageObjectPath(referenceImagePath);
@@ -456,6 +465,12 @@ export default function Generate() {
   };
 
   const handleGalleryReferenceSelect = (asset: ReferenceGalleryAsset) => {
+    if (sceneSourcePickerIndex !== null) {
+      setSelectedSceneSources((current) => ({ ...current, [sceneSourcePickerIndex]: asset }));
+      setSceneSourcePickerIndex(null);
+      setGalleryPickerOpen(false);
+      return;
+    }
     if (refImagePreviewUrl?.startsWith("blob:")) {
       URL.revokeObjectURL(refImagePreviewUrl);
     }
@@ -819,11 +834,18 @@ export default function Generate() {
       ? String(silentFilmDurationSeconds) as CreateJobRequestRequestedDuration
       : requestedDuration;
   const lyricAddon = lyricsText.trim() ? LYRIC_OVERLAY_COST : 0;
-  const generatedImageCost = estimateGeneratedImageCost(
+  const fullGeneratedImageCost = estimateGeneratedImageCost(
     effectiveRequestedDuration,
     songDurationSec,
     generationMode as GenerationMode,
     narrativeVisualSource === CreateJobRequestNarrativeVisualSource.generated_images ? "generated_images" : "video",
+  );
+  const reusedSceneSourceCount = generationMode === CreateJobRequestGenerationMode.montage
+    ? Object.keys(selectedSceneSources).length
+    : 0;
+  const generatedImageCost = Math.max(
+    0,
+    fullGeneratedImageCost - reusedSceneSourceCount * GENERATED_IMAGE_CREDITS_PER_VISUAL,
   );
   const videoAnimationCost =
     estimateCreditCost(effectiveRequestedDuration, aiProvider, resolution, songDurationSec, generationMode as GenerationMode);
@@ -1202,6 +1224,13 @@ export default function Generate() {
             index: shot.index,
             prompt: shot.prompt.trim(),
           })),
+          selectedSceneSources:
+            generationMode === CreateJobRequestGenerationMode.montage
+              ? Object.entries(selectedSceneSources).map(([index, asset]) => ({
+                  index: Number(index),
+                  imageAssetId: asset.id,
+                }))
+              : [],
           scriptApproved,
           // Copyright/ownership attestation (gated by the checkbox above) —
           // not applicable to a silent "no audio" render, so it's implicitly
@@ -2742,14 +2771,23 @@ export default function Generate() {
                <div className="mx-4 mb-4 rounded-xl border border-primary/25 bg-background/60 p-3">
                  <div className="mb-3 flex items-center justify-between gap-3">
                    <div>
-                     <p className="text-sm font-medium">Choose from your image gallery</p>
+                      <p className="text-sm font-medium">
+                        {sceneSourcePickerIndex === null
+                          ? "Choose from your image gallery"
+                          : `Choose the exact source for scene ${sceneSourcePickerIndex + 1}`}
+                      </p>
                      <p className="mt-0.5 text-xs text-muted-foreground">
-                       Select a generated image to reuse as the visual reference.
+                        {sceneSourcePickerIndex === null
+                          ? "Select a generated image to reuse as the visual reference."
+                          : "This saved image will be animated directly and will not be regenerated."}
                      </p>
                    </div>
                    <button
                      type="button"
-                     onClick={() => setGalleryPickerOpen(false)}
+                      onClick={() => {
+                        setGalleryPickerOpen(false);
+                        setSceneSourcePickerIndex(null);
+                      }}
                      className="rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
                      aria-label="Close image gallery picker"
                    >
@@ -2791,8 +2829,15 @@ export default function Generate() {
                          key={asset.id}
                          type="button"
                          onClick={() => handleGalleryReferenceSelect(asset)}
+                          disabled={
+                            sceneSourcePickerIndex !== null
+                            && Object.entries(selectedSceneSources).some(
+                              ([index, selected]) =>
+                                Number(index) !== sceneSourcePickerIndex && selected.id === asset.id,
+                            )
+                          }
                          className="group relative aspect-square overflow-hidden rounded-lg border border-border/60 bg-muted/30 transition hover:border-primary hover:ring-2 hover:ring-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                         aria-label={`Use gallery image ${asset.assetIndex + 1} as reference`}
+                          aria-label={`Use gallery image ${asset.assetIndex + 1}${sceneSourcePickerIndex === null ? " as reference" : ` for scene ${sceneSourcePickerIndex + 1}`}`}
                        >
                          <img
                            src={`/api/storage${asset.objectPath}`}
@@ -3128,6 +3173,62 @@ export default function Generate() {
                                aria-label={`${generatedPromptLabel} ${shot.index + 1}`}
                               data-testid={`input-scene-image-prompt-${shot.index}`}
                             />
+                            {generationMode === CreateJobRequestGenerationMode.montage && (
+                              <div className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-secondary/20 p-2">
+                                <div className="flex min-w-0 items-center gap-2">
+                                  {selectedSceneSources[shot.index] ? (
+                                    <img
+                                      src={`/api/storage${selectedSceneSources[shot.index]!.objectPath}`}
+                                      alt=""
+                                      className="h-10 w-10 shrink-0 rounded-md object-cover"
+                                    />
+                                  ) : (
+                                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted">
+                                      <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                                    </span>
+                                  )}
+                                  <div className="min-w-0">
+                                    <p className="truncate text-xs font-medium">
+                                      {selectedSceneSources[shot.index] ? "Using your saved image" : "Generate a new source image"}
+                                    </p>
+                                    <p className="text-[11px] text-muted-foreground">
+                                      {selectedSceneSources[shot.index]
+                                        ? "No image-generation credits"
+                                        : `${GENERATED_IMAGE_CREDITS_PER_VISUAL} image credits`}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex shrink-0 gap-1.5">
+                                  {selectedSceneSources[shot.index] && (
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 px-2 text-xs"
+                                      onClick={() => setSelectedSceneSources((current) => {
+                                        const next = { ...current };
+                                        delete next[shot.index];
+                                        return next;
+                                      })}
+                                    >
+                                      Remove
+                                    </Button>
+                                  )}
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 px-2 text-xs"
+                                    onClick={() => {
+                                      setSceneSourcePickerIndex(shot.index);
+                                      setGalleryPickerOpen(true);
+                                    }}
+                                  >
+                                    Choose image
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         );
                       })}

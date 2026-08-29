@@ -23,6 +23,7 @@ type VideoResult = { prompt: string; negativePrompt: string; source: string };
 type LyricsResult = { lyrics: string; source: string };
 type SceneBuilderScene = { number: number; title: string; imagePrompt: string };
 type SceneBuilderResult = {
+  mode: "montage" | "narrative";
   scenes: SceneBuilderScene[];
   script: string;
   sceneCount: number;
@@ -167,6 +168,7 @@ export default function PromptStudio() {
 
   // Scene Builder tab
   const [story, setStory] = useState("");
+  const [sceneMode, setSceneMode] = useState<"montage" | "narrative">("montage");
   const [sceneCount, setSceneCount] = useState(6);
   const [autoSceneCount, setAutoSceneCount] = useState(true);
   const [hasReferenceImage, setHasReferenceImage] = useState(false);
@@ -208,8 +210,9 @@ export default function PromptStudio() {
     try {
       setSceneRes(await postJSON<SceneBuilderResult>("/api/prompt/scene-builder", {
         story,
+        mode: sceneMode,
         sceneCount: autoSceneCount ? undefined : sceneCount,
-        hasReferenceImage,
+        hasReferenceImage: sceneMode === "montage" ? hasReferenceImage : false,
       }));
     } catch (err) { fail(err); } finally { setSceneBusy(false); }
   }
@@ -262,11 +265,15 @@ export default function PromptStudio() {
     } catch (err) { fail(err); } finally { setLyricsBusy(false); }
   }
 
-  const sceneScript = sceneRes ? buildNumberedImageScript(sceneRes.scenes) : "";
+  const sceneScript = sceneRes
+    ? sceneRes.mode === "narrative" ? sceneRes.script : buildNumberedImageScript(sceneRes.scenes)
+    : "";
   const sceneScriptValid =
     sceneRes !== null
-    && sceneRes.scenes.length >= 2
-    && sceneRes.scenes.every((scene) => scene.imagePrompt.trim().length > 0)
+    && (sceneRes.mode === "narrative"
+      ? sceneRes.script.trim().length >= 2
+      : sceneRes.scenes.length >= 2
+        && sceneRes.scenes.every((scene) => scene.imagePrompt.trim().length > 0))
     && sceneScript.length <= MAX_CREATIVE_PROMPT_LENGTH;
 
   if (isLoading) {
@@ -378,10 +385,37 @@ export default function PromptStudio() {
 
         {/* Scene Builder */}
         <TabsContent value="scenes" className="space-y-4 pt-4">
+          <div className="grid grid-cols-2 gap-2 rounded-xl border border-border/60 bg-secondary/20 p-1.5">
+            {([
+              ["narrative", "Narrative Story", "One cohesive story; Generate derives the scenes."],
+              ["montage", "Visual Montage", "An editable ordered source-image plan."],
+            ] as const).map(([mode, label, description]) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => {
+                  setSceneMode(mode);
+                  setSceneRes(null);
+                }}
+                className={`rounded-lg px-3 py-2.5 text-left transition-colors ${
+                  sceneMode === mode
+                    ? "bg-background text-foreground shadow-sm ring-1 ring-primary/30"
+                    : "text-muted-foreground hover:bg-background/60"
+                }`}
+              >
+                <span className="block text-sm font-semibold">{label}</span>
+                <span className="mt-0.5 block text-[11px] leading-relaxed">{description}</span>
+              </button>
+            ))}
+          </div>
           <div>
-            <label htmlFor="scene-builder-story" className="text-sm font-medium">Paste a generic story</label>
+            <label htmlFor="scene-builder-story" className="text-sm font-medium">
+              {sceneMode === "narrative" ? "Describe your story or premise" : "Describe the montage"}
+            </label>
             <p className="mt-1 text-xs text-muted-foreground">
-              We’ll split it into concise, chronological image prompts that fit the Creative Prompt field.
+              {sceneMode === "narrative"
+                ? "We’ll shape it into one cohesive story. Generate will derive pacing and chronological scenes after you choose the music and duration."
+                : "We’ll split it into concise, ordered image prompts that you can edit before Generate."}
             </p>
           </div>
           <Textarea
@@ -398,6 +432,7 @@ export default function PromptStudio() {
             </span>
           </div>
 
+          {sceneMode === "montage" && (
           <div className="grid gap-3 rounded-xl border border-border/60 bg-secondary/20 p-4 sm:grid-cols-2">
             <div className="space-y-2">
               <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
@@ -444,6 +479,7 @@ export default function PromptStudio() {
               </label>
             </div>
           </div>
+          )}
 
           <Button
             onClick={buildScenes}
@@ -452,17 +488,21 @@ export default function PromptStudio() {
           >
             {sceneBusy
               ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Building scenes…</>
-              : <><Wand2 className="mr-2 h-4 w-4" /> Build scene script</>}
+               : <><Wand2 className="mr-2 h-4 w-4" /> Build {sceneMode === "narrative" ? "story" : "scene plan"}</>}
           </Button>
 
           {sceneRes && (
             <div className="space-y-4 rounded-xl border border-border/60 bg-secondary/20 p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h3 className="text-sm font-semibold">{sceneRes.scenes.length} editable image prompts</h3>
+                  <h3 className="text-sm font-semibold">
+                    {sceneRes.mode === "narrative" ? "Editable narrative story" : `${sceneRes.scenes.length} editable image prompts`}
+                  </h3>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    One still image, moment, and setting per scene.
-                    {sceneRes.hasReferenceImage ? " Character scenes use the attached reference image." : ""}
+                    {sceneRes.mode === "narrative"
+                      ? "Keep this as natural prose. Generate will build and ask you to approve the exact scene plan."
+                      : <>One still image, moment, and setting per scene.
+                        {sceneRes.hasReferenceImage ? " Character scenes use the attached reference image." : ""}</>}
                   </p>
                 </div>
                 <span className={`text-xs tabular-nums ${sceneScript.length > MAX_CREATIVE_PROMPT_LENGTH ? "font-medium text-destructive" : "text-muted-foreground"}`}>
@@ -470,6 +510,15 @@ export default function PromptStudio() {
                 </span>
               </div>
 
+              {sceneRes.mode === "narrative" ? (
+                <Textarea
+                  value={sceneRes.script}
+                  maxLength={MAX_CREATIVE_PROMPT_LENGTH}
+                  onChange={(event) => setSceneRes((current) => current ? { ...current, script: event.target.value } : current)}
+                  aria-label="Narrative story"
+                  className="min-h-[180px] resize-y"
+                />
+              ) : (
               <div className="space-y-3">
                 {sceneRes.scenes.map((scene, index) => (
                   <div key={`${scene.number}-${index}`} className="rounded-lg border border-border bg-background/70 p-3">
@@ -528,9 +577,10 @@ export default function PromptStudio() {
                   </div>
                 ))}
               </div>
+              )}
 
               <div className="flex flex-wrap items-center gap-2">
-                <Button
+                {sceneRes.mode === "montage" && <Button
                   type="button"
                   variant="outline"
                   size="sm"
@@ -541,21 +591,21 @@ export default function PromptStudio() {
                   ])}
                 >
                   <Plus className="mr-1.5 h-3.5 w-3.5" /> Add scene
-                </Button>
+                </Button>}
                 <CopyButton text={sceneScript} label="Copy script" />
                 <Button
                   type="button"
                   size="sm"
                   disabled={!sceneScriptValid}
                   onClick={() => {
-                    if (!saveSceneScriptHandoff(sceneScript)) {
+                    if (!saveSceneScriptHandoff({ mode: sceneRes.mode, script: sceneScript })) {
                       fail(new Error("The scene script does not fit the Creative Prompt field."));
                       return;
                     }
                     setLocation("/generate");
                   }}
                 >
-                  Copy to Image Prompt <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                  Use in Generate <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                 </Button>
               </div>
               {!sceneScriptValid && (

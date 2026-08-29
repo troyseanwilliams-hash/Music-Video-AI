@@ -9,6 +9,7 @@ type ImageFirstBillingMeta = {
   reservedSubscriptionCredits?: number;
   reservedTopupCredits?: number;
   imageCreditCost?: number;
+  reusedSourceImageCount?: number;
   videoCreditCost?: number;
   refunded?: boolean;
   bundledLipSyncChildId?: string;
@@ -54,9 +55,13 @@ export function calculateImageFirstSettlement(
   const reserved = Math.max(0, meta.reservedCredits ?? 0);
   const sceneCount = Math.max(0, meta.storyboard?.shots?.length ?? 0);
   const completedImages = Math.min(sceneCount, Math.max(0, Math.floor(completedImageCount)));
+  const completedGeneratedImages = Math.max(
+    0,
+    completedImages - Math.max(0, Math.floor(meta.reusedSourceImageCount ?? 0)),
+  );
   const imageCharge = Math.min(
     Math.max(0, meta.imageCreditCost ?? reserved),
-    completedImages * GENERATED_IMAGE_CREDITS_PER_VISUAL,
+    completedGeneratedImages * GENERATED_IMAGE_CREDITS_PER_VISUAL,
   );
   const spentIndexes = new Set([
     ...validSceneIndexes(meta.partialClips, sceneCount),

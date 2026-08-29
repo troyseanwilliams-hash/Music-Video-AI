@@ -7,6 +7,7 @@ import {
   creditsTable,
   usersTable,
   videosTable,
+  imageAssetsTable,
 } from "@workspace/db";
 import type { VideoClipMeta } from "@workspace/db";
 import { eq, and, desc, count, isNull, inArray, sql } from "drizzle-orm";
@@ -372,6 +373,7 @@ router.post("/jobs", async (req, res) => {
     fullTrackLipSyncImagePath,
     approvedScenePrompts,
     approvedScenePlanFingerprint,
+    selectedSceneSources,
     scriptApproved,
   } =
     parseResult.data;
@@ -593,10 +595,73 @@ router.post("/jobs", async (req, res) => {
     });
     return;
   }
+  const requestedSceneSources = selectedSceneSources ?? [];
+  if (normalizedGenerationMode !== "montage" && requestedSceneSources.length > 0) {
+    res.status(422).json({
+      error: "Saved source images can only be assigned to Visual Montage scenes.",
+      code: "SELECTED_SCENE_SOURCES_MODE_INVALID",
+    });
+    return;
+  }
+  const requestedSourceIndexes = requestedSceneSources.map((source) => source.index);
+  const requestedSourceIds = requestedSceneSources.map((source) => source.imageAssetId);
+  if (
+    new Set(requestedSourceIndexes).size !== requestedSourceIndexes.length
+    || new Set(requestedSourceIds).size !== requestedSourceIds.length
+    || requestedSourceIndexes.some((index) => index < 0 || index >= storyboard.shots.length)
+  ) {
+    res.status(422).json({
+      error: "Each saved image must be assigned to one valid Montage scene.",
+      code: "SELECTED_SCENE_SOURCES_INVALID",
+    });
+    return;
+  }
+  const selectedAssets = requestedSourceIds.length > 0
+    ? await db
+        .select({
+          id: imageAssetsTable.id,
+          objectPath: imageAssetsTable.objectPath,
+          prompt: imageAssetsTable.prompt,
+          style: imageAssetsTable.style,
+        })
+        .from(imageAssetsTable)
+        .where(and(
+          eq(imageAssetsTable.userId, req.user.id),
+          isNull(imageAssetsTable.deletedAt),
+          inArray(imageAssetsTable.id, requestedSourceIds),
+        ))
+    : [];
+  const selectedAssetById = new Map(selectedAssets.map((asset) => [asset.id, asset]));
+  const selectedSourceRows = requestedSceneSources.map((source) => ({
+    index: source.index,
+    sourceImageAssetId: source.imageAssetId,
+    asset: selectedAssetById.get(source.imageAssetId),
+  }));
+  if (
+    selectedSourceRows.some((source) => !source.asset)
+    || new Set(selectedSourceRows.map((source) => source.asset?.objectPath)).size !== selectedSourceRows.length
+  ) {
+    res.status(422).json({
+      error: "One or more selected images are unavailable, duplicated, or do not belong to this account.",
+      code: "SELECTED_SCENE_SOURCE_UNAVAILABLE",
+    });
+    return;
+  }
+  const reusedSourceImageCount = selectedSourceRows.length;
   // Karaoke lyric burn is a paid add-on: generating with lyrics costs the same
   // LYRIC_OVERLAY_COST as burning lyrics onto a finished video, so there's no
   // free path to the same output. Mirror in creditPricing.ts (generate page).
   const lyricAddon = lyricsText?.trim() ? LYRIC_OVERLAY_COST : 0;
+  const fullImageCreditCost = calculateGeneratedImageCost(
+    resolvedRequestedDuration,
+    songDurationSec,
+    normalizedGenerationMode,
+    normalizedNarrativeVisualSource,
+  );
+  const imageCreditCost = Math.max(
+    0,
+    fullImageCreditCost - reusedSourceImageCount * 7,
+  );
   const baseCreditCost =
     calculateCreditCost(
       resolvedRequestedDuration,
@@ -605,12 +670,7 @@ router.post("/jobs", async (req, res) => {
       engine,
       normalizedGenerationMode,
     )
-    + calculateGeneratedImageCost(
-      resolvedRequestedDuration,
-      songDurationSec,
-      normalizedGenerationMode,
-      normalizedNarrativeVisualSource,
-    )
+    + imageCreditCost
     + lyricAddon;
   const bundledLipSyncCost = bundledLipSyncEnabled
     ? calculateLipsyncCost(bundledLipSyncSeconds)
@@ -721,11 +781,13 @@ router.post("/jobs", async (req, res) => {
         narrativeVisualSource: normalizedNarrativeVisualSource,
         imageFirstVersion: 1,
         strictUniqueSourcesVersion: 1,
-        imageCreditCost: calculateGeneratedImageCost(
-          resolvedRequestedDuration,
-          songDurationSec,
-          normalizedGenerationMode,
-          normalizedNarrativeVisualSource,
+        imageCreditCost,
+        reusedSourceImageCount,
+        selectedSceneSources: Object.fromEntries(
+          selectedSourceRows.map((source) => [
+            String(source.index),
+            { sourceImageAssetId: source.sourceImageAssetId },
+          ]),
         ),
         videoCreditCost: calculateCreditCost(
           resolvedRequestedDuration,
@@ -752,6 +814,29 @@ router.post("/jobs", async (req, res) => {
       progressPercent: 0,
       })
       .returning();
+
+    if (selectedSourceRows.length > 0) {
+      const storage = new ObjectStorageService();
+      const copiedRows = [];
+      for (const source of selectedSourceRows) {
+        const asset = source.asset!;
+        const objectPath = await storage.copyObjectEntityToNarrativeImage(
+          asset.objectPath,
+          jobId,
+          source.index,
+        );
+        copiedRows.push({
+          id: randomUUID(),
+          userId: req.user.id,
+          jobId,
+          assetIndex: source.index,
+          objectPath,
+          prompt: storyboard.shots[source.index]!.prompt,
+          style: asset.style,
+        });
+      }
+      await tx.insert(imageAssetsTable).values(copiedRows);
+    }
 
     if (bundledLipSyncChildId) {
       await tx.insert(jobsTable).values({

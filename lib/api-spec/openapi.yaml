@@ -2094,6 +2094,21 @@ components:
                 type: string
                 minLength: 1
                 maxLength: 5000
+        selectedSceneSources:
+          type: array
+          maxItems: 60
+          description: Optional Visual Montage scene assignments that reuse generated images owned by the current user as exact animation sources.
+          items:
+            type: object
+            required: [index, imageAssetId]
+            properties:
+              index:
+                type: integer
+                minimum: 0
+                maximum: 59
+              imageAssetId:
+                type: string
+                format: uuid
         scriptApproved:
           type: boolean
           description: Explicit user confirmation that the submitted script and scene prompts were reviewed and approved before generation.

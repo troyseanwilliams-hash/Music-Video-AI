@@ -589,6 +589,11 @@ export const createJobBodyApprovedScenePromptsItemPromptMax = 5000;
 
 export const createJobBodyApprovedScenePromptsMax = 60;
 
+export const createJobBodySelectedSceneSourcesItemIndexMin = 0;
+export const createJobBodySelectedSceneSourcesItemIndexMax = 59;
+
+export const createJobBodySelectedSceneSourcesMax = 60;
+
 export const CreateJobBody = zod.object({
   prompt: zod
     .string()
@@ -790,6 +795,21 @@ export const CreateJobBody = zod.object({
     .optional()
     .describe(
       "Exact ordered scene prompts reviewed by the user. The server validates them against the current authoritative scene plan before reserving credits.",
+    ),
+  selectedSceneSources: zod
+    .array(
+      zod.object({
+        index: zod
+          .number()
+          .min(createJobBodySelectedSceneSourcesItemIndexMin)
+          .max(createJobBodySelectedSceneSourcesItemIndexMax),
+        imageAssetId: zod.string().uuid(),
+      }),
+    )
+    .max(createJobBodySelectedSceneSourcesMax)
+    .optional()
+    .describe(
+      "Optional Visual Montage scene assignments that reuse generated images owned by the current user as exact animation sources.",
     ),
   scriptApproved: zod
     .boolean()

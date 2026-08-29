@@ -14,6 +14,7 @@ import type { CreateJobRequestGenerationMode } from "./createJobRequestGeneratio
 import type { CreateJobRequestNarrativeVisualSource } from "./createJobRequestNarrativeVisualSource";
 import type { CreateJobRequestRequestedDuration } from "./createJobRequestRequestedDuration";
 import type { CreateJobRequestResolution } from "./createJobRequestResolution";
+import type { CreateJobRequestSelectedSceneSourcesItem } from "./createJobRequestSelectedSceneSourcesItem";
 import type { VideoStyle } from "./videoStyle";
 
 export interface CreateJobRequest {
@@ -114,6 +115,11 @@ export interface CreateJobRequest {
    * @maxItems 60
    */
   approvedScenePrompts?: CreateJobRequestApprovedScenePromptsItem[];
+  /**
+   * Optional Visual Montage scene assignments that reuse generated images owned by the current user as exact animation sources.
+   * @maxItems 60
+   */
+  selectedSceneSources?: CreateJobRequestSelectedSceneSourcesItem[];
   /** Explicit user confirmation that the submitted script and scene prompts were reviewed and approved before generation. */
   scriptApproved: boolean;
 }

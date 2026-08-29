@@ -764,6 +764,15 @@ export type CreateJobRequestApprovedScenePromptsItem = {
   prompt: string;
 };
 
+export type CreateJobRequestSelectedSceneSourcesItem = {
+  /**
+   * @minimum 0
+   * @maximum 59
+   */
+  index: number;
+  imageAssetId: string;
+};
+
 export interface CreateJobRequest {
   /**
    * Creative direction or a consecutively numbered scene script with one scene per line
@@ -862,6 +871,11 @@ export interface CreateJobRequest {
    * @maxItems 60
    */
   approvedScenePrompts?: CreateJobRequestApprovedScenePromptsItem[];
+  /**
+   * Optional Visual Montage scene assignments that reuse generated images owned by the current user as exact animation sources.
+   * @maxItems 60
+   */
+  selectedSceneSources?: CreateJobRequestSelectedSceneSourcesItem[];
   /** Explicit user confirmation that the submitted script and scene prompts were reviewed and approved before generation. */
   scriptApproved: boolean;
 }

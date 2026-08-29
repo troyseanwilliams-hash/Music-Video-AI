@@ -141,6 +141,7 @@ const SceneBuilderBody = z.object({
   story: z.string().trim().min(2).max(MAX_SCENE_SCRIPT_LENGTH),
   sceneCount: z.number().int().min(2).max(MAX_SCENE_BUILDER_SCENES).optional(),
   hasReferenceImage: z.boolean().optional(),
+  mode: z.enum(["montage", "narrative"]).optional(),
 });
 router.post("/prompt/scene-builder", async (req: Request, res: Response) => {
   if (!guard(req, res)) return;

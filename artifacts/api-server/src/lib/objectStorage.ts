@@ -291,6 +291,20 @@ export class ObjectStorageService {
     return `/objects/narrative-images/${jobId}/${index}.jpg`;
   }
 
+  async copyObjectEntityToNarrativeImage(
+    sourceObjectPath: string,
+    jobId: string,
+    index: number,
+  ): Promise<string> {
+    const source = await this.getObjectEntityFile(sourceObjectPath);
+    const privateObjectDir = this.getPrivateObjectDir();
+    const objectEntityPath = `${privateObjectDir}/narrative-images/${jobId}/${index}.jpg`;
+    const { bucketName, objectName } = parseObjectPath(objectEntityPath);
+    const destination = objectStorageClient.bucket(bucketName).file(objectName);
+    await source.copy(destination);
+    return `/objects/narrative-images/${jobId}/${index}.jpg`;
+  }
+
   // Persist a reusable still from an images-only job. These objects are later
   // added directly to a Remix Lab timeline as photo segments.
   async uploadImagePackBuffer(buffer: Buffer, jobId: string, index: number): Promise<string> {

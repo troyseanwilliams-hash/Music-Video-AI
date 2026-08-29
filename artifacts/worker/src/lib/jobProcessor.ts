@@ -280,6 +280,7 @@ type AiJobMeta = {
   bundledLipSyncReservedSubscriptionCredits?: number;
   bundledLipSyncReservedTopupCredits?: number;
   bundledLipSyncActivated?: boolean;
+  selectedSceneSources?: Record<string, { sourceImageAssetId?: string }>;
 };
 
 function aiMetaOf(job: JobRow): AiJobMeta {
@@ -308,6 +309,7 @@ async function persistInitialImageReview(
   jobId: string,
   shots: PersistedStoryboardShot[],
   paths: Record<string, string>,
+  selectedSceneSources: Record<string, { sourceImageAssetId?: string }> = {},
 ): Promise<void> {
   const scenes = Object.fromEntries(shots.map((shot) => [
     String(shot.index),
@@ -315,7 +317,7 @@ async function persistInitialImageReview(
       index: shot.index,
       canonicalPath: paths[shot.index],
       revision: 1,
-      source: "original_generation",
+      source: selectedSceneSources[String(shot.index)] ? "generated_gallery" : "original_generation",
       prompt: shot.prompt,
     },
   ]));
@@ -522,7 +524,7 @@ async function prepareNarrativeImagesStage(job: JobRow): Promise<Record<string, 
   if (shots.some((shot) => !paths[shot.index])) throw new Error(`${IMAGE_API_FAILURE}: Required planned visuals are unavailable`);
   const latestMeta = await readAiMeta(job.id);
   if (!latestMeta.imageReview) {
-    await persistInitialImageReview(job.id, shots, paths);
+    await persistInitialImageReview(job.id, shots, paths, aiMetaOf(job).selectedSceneSources);
   } else if (latestMeta.imageReview.phase === "approved") {
     await notifyJobUpdate(job.id);
   }

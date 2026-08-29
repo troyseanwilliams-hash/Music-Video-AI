@@ -60,4 +60,21 @@ describe("image-first reservation settlement", () => {
     expect(amounts.subscriptionRefund).toBe(0);
     expect(amounts.topupRefund).toBe(286);
   });
+
+  it("never charges reused gallery images as newly generated work", () => {
+    const amounts = calculateImageFirstSettlement({
+      imageFirstVersion: 1,
+      reservedCredits: 107,
+      reservedSubscriptionCredits: 107,
+      reservedTopupCredits: 0,
+      imageCreditCost: 7,
+      videoCreditCost: 100,
+      reusedSourceImageCount: 2,
+      storyboard,
+    }, 2);
+
+    expect(amounts.completedImages).toBe(2);
+    expect(amounts.chargedCredits).toBe(0);
+    expect(amounts.refundedCredits).toBe(107);
+  });
 });

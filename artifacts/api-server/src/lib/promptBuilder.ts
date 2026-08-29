@@ -210,12 +210,20 @@ export interface SceneBuilderScene {
 }
 
 export interface SceneBuilderResult {
+  mode: "montage" | "narrative";
   scenes: SceneBuilderScene[];
   script: string;
   sceneCount: number;
   hasReferenceImage: boolean;
   source: string;
 }
+
+const NARRATIVE_STORY_SYSTEM = `You are a visual story editor. Turn a plain-language premise into one cohesive story script for an AI music video.
+Write one natural-language narrative, not numbered scenes, bullets, camera directions, or a shot list.
+Preserve a clear beginning, progression, climax, and ending. Keep recurring characters and the world consistent.
+Use provider-neutral, family-safe language. Keep the result under 1,800 characters.
+Return ONLY valid JSON in exactly this shape:
+{"script":"..."}`;
 
 const SCENE_BUILDER_SYSTEM = `You are a visual story editor. Split a generic story into a chronological list of distinct scenes for an AI image generator.
 Return ONLY valid JSON in exactly this shape:
@@ -346,6 +354,7 @@ function normalizeSceneBuilderScenes(
 function buildFallbackScenePlan(story: string, sceneCount: number, hasReferenceImage: boolean): SceneBuilderResult {
   const scenes = normalizeSceneBuilderScenes([], story, sceneCount, hasReferenceImage);
   return {
+    mode: "montage",
     scenes,
     script: sceneScript(scenes),
     sceneCount,
@@ -354,12 +363,38 @@ function buildFallbackScenePlan(story: string, sceneCount: number, hasReferenceI
   };
 }
 
+async function buildNarrativeStory(story: string): Promise<SceneBuilderResult> {
+  const out = await callLLM(
+    NARRATIVE_STORY_SYSTEM,
+    `Premise:\n${story}`,
+    700,
+    0.65,
+  );
+  const parsed = out ? extractJson<{ script?: unknown }>(out.text) : null;
+  const fallback = compactSceneText(story, 1_800, "A cohesive visual story unfolds from beginning to end.");
+  const script = shortenCompletePrompt(
+    sanitizeGeneratedMediaPrompt(String(parsed?.script ?? fallback)).prompt,
+    1_800,
+    fallback,
+  );
+  return {
+    mode: "narrative",
+    scenes: [],
+    script,
+    sceneCount: 0,
+    hasReferenceImage: false,
+    source: out?.source ?? "template",
+  };
+}
+
 export async function buildScenePlan(input: {
   story: string;
   sceneCount?: number;
   hasReferenceImage?: boolean;
+  mode?: "montage" | "narrative";
 }): Promise<SceneBuilderResult> {
   const story = input.story.trim();
+  if (input.mode === "narrative") return buildNarrativeStory(story);
   const sceneCount = Math.max(
     2,
     Math.min(MAX_SCENE_BUILDER_SCENES, Math.round(input.sceneCount ?? recommendedSceneCount(story))),
@@ -382,6 +417,7 @@ export async function buildScenePlan(input: {
     return buildFallbackScenePlan(story, sceneCount, hasReferenceImage);
   }
   return {
+    mode: "montage",
     scenes,
     script,
     sceneCount,

@@ -7,6 +7,22 @@ import {
 } from "./promptBuilder.js";
 
 describe("scene builder", () => {
+  it("returns one natural-language script for Narrative Story mode", async () => {
+    const result = await buildScenePlan({
+      story: "A shy inventor learns to trust her community while restoring a forgotten lighthouse.",
+      mode: "narrative",
+      sceneCount: 12,
+      hasReferenceImage: true,
+    });
+
+    expect(result.mode).toBe("narrative");
+    expect(result.scenes).toEqual([]);
+    expect(result.sceneCount).toBe(0);
+    expect(result.hasReferenceImage).toBe(false);
+    expect(result.script.trim().length).toBeGreaterThan(1);
+    expect(result.script).not.toMatch(/^\s*1[.):]/m);
+  });
+
   it("splits a generic story into concise numbered image prompts within the Creative Prompt limit", async () => {
     const result = await buildScenePlan({
       story: "A young inventor leaves her village. She crosses a desert during a storm. She discovers a hidden city and returns with clean energy.",
@@ -14,6 +30,7 @@ describe("scene builder", () => {
     });
 
     expect(result.scenes).toHaveLength(6);
+    expect(result.mode).toBe("montage");
     expect(result.script).toMatch(/^1\. /);
     expect(result.script).toContain("\n6. ");
     expect(result.script.length).toBeLessThanOrEqual(MAX_SCENE_SCRIPT_LENGTH);

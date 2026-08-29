@@ -18,7 +18,11 @@ describe("scene script handoff", () => {
   it("moves a valid script into Generate exactly once", () => {
     const storage = memoryStorage();
     expect(saveSceneScriptHandoff("1. First image\n2. Second image", storage)).toBe(true);
-    expect(consumeSceneScriptHandoff(storage)).toBe("1. First image\n2. Second image");
+    expect(consumeSceneScriptHandoff(storage)).toEqual({
+      version: 2,
+      mode: "montage",
+      script: "1. First image\n2. Second image",
+    });
     expect(consumeSceneScriptHandoff(storage)).toBeNull();
   });
 

@@ -32,6 +32,7 @@ export * from "./createJobRequestGenerationMode";
 export * from "./createJobRequestNarrativeVisualSource";
 export * from "./createJobRequestRequestedDuration";
 export * from "./createJobRequestResolution";
+export * from "./createJobRequestSelectedSceneSourcesItem";
 export * from "./createPortalRequest";
 export * from "./createPortalResponse";
 export * from "./creditGrant";
