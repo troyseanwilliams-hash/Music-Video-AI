@@ -8,3 +8,9 @@ Rule: any job run flagged `manifest.finalizeWithPartial=true` must never incur p
 **Why:** per-retry billing once charged a user 2,100 credits for a doomed retry against an empty provider wallet; a later FFmpeg-only failure also recharged a completed set of scenes even though no provider call was repeated. A "finalize" path that could be re-charged would repeat those incidents.
 
 **How to apply:** the flag is one-shot — cleanupPartialClips drops it on terminal transitions so later requeues run normally. When salvaged clips < planned, re-spread the requested runtime across salvaged clips (recompute targetDuration) or the stitcher's `-shortest` mux ends the video early. Keep both jobProcessor copies (api-server + worker) in lockstep.
+
+For strict unique-scene jobs, finalize-only recovery may proceed only when every expected zero-based clip index is saved. Validate the required indexes, not just the number of saved entries; complete strict sets should stitch, while incomplete sets must stop without provider spend.
+
+**Why:** a three-scene job with saved clips 0, 1, and 2 was incorrectly rejected solely because the finalize-only flag was present, even though nothing was missing.
+
+**How to apply:** keep the completeness check identical in both processors and test complete sets, missing indexes, and misleading out-of-range entries.

@@ -25,6 +25,7 @@ import {
   selectGeneratedCharacterAnchorPath,
 } from "./characterAnchor.js";
 import { settleImageFirstReservation } from "./imageFirstSettlement.js";
+import { hasCompleteSavedClipSet } from "./finalizeSavedClips.js";
 
 const execAsync = promisify(exec);
 const MAX_RETRIES = 3;
@@ -1879,11 +1880,6 @@ async function generateClips(
       ];
   const skippedTerminalScenes = new Set<number>();
   const reuseCount = Object.keys(persisted).length;
-  // Admin "finalize with saved clips": reuse stored clips and reclaim any
-  // completed pending requests (both free), but NEVER pay for new generation.
-  if (strictUniqueSources && clipMeta.finalizeWithPartial === true) {
-    throw new Error(`${PROVIDER_API_FAILURE}: Strict jobs cannot finalize with missing clips`);
-  }
   const finalizeOnly = clipMeta.finalizeWithPartial === true;
 
   logger.info(
@@ -1895,6 +1891,16 @@ async function generateClips(
       .map(Number)
       .filter((index) => Number.isInteger(index) && index >= 0 && index < sections.length),
   );
+  // Admin "finalize with saved clips" may only stitch a complete strict
+  // storyboard. Incomplete strict jobs must still stop without buying
+  // replacement clips, while complete saved sets are allowed to assemble.
+  if (
+    strictUniqueSources &&
+    finalizeOnly &&
+    !hasCompleteSavedClipSet(persisted, sections.length)
+  ) {
+    throw new Error(`${PROVIDER_API_FAILURE}: Strict jobs cannot finalize with missing clips`);
+  }
   let reportedProgress = Math.max(
     job.progressPercent ?? 0,
     30 + Math.floor((completedClipIndexes.size / sections.length) * 40),
