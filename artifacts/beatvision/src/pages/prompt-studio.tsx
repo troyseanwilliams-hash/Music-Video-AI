@@ -151,9 +151,10 @@ function PresetMenu({ items, onPick, label = "Need inspiration?" }: { items: str
 }
 
 export default function PromptStudio() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const isAdmin = user?.isAdmin ?? false;
 
   // Audio tab
   const [audioDesc, setAudioDesc] = useState("");
@@ -168,7 +169,7 @@ export default function PromptStudio() {
 
   // Scene Builder tab
   const [story, setStory] = useState("");
-  const [sceneMode, setSceneMode] = useState<"montage" | "narrative">("montage");
+  const [sceneMode, setSceneMode] = useState<"montage" | "narrative">("narrative");
   const [sceneCount, setSceneCount] = useState(6);
   const [autoSceneCount, setAutoSceneCount] = useState(true);
   const [hasReferenceImage, setHasReferenceImage] = useState(false);
@@ -210,9 +211,9 @@ export default function PromptStudio() {
     try {
       setSceneRes(await postJSON<SceneBuilderResult>("/api/prompt/scene-builder", {
         story,
-        mode: sceneMode,
+        mode: isAdmin ? sceneMode : "narrative",
         sceneCount: autoSceneCount ? undefined : sceneCount,
-        hasReferenceImage: sceneMode === "montage" ? hasReferenceImage : false,
+        hasReferenceImage: isAdmin && sceneMode === "montage" ? hasReferenceImage : false,
       }));
     } catch (err) { fail(err); } finally { setSceneBusy(false); }
   }
@@ -389,7 +390,7 @@ export default function PromptStudio() {
             {([
               ["narrative", "Narrative Story", "One cohesive story; Generate derives the scenes."],
               ["montage", "Visual Montage", "An editable ordered source-image plan."],
-            ] as const).map(([mode, label, description]) => (
+            ] as const).filter(([mode]) => mode === "narrative" || isAdmin).map(([mode, label, description]) => (
               <button
                 key={mode}
                 type="button"

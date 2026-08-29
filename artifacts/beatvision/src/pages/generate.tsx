@@ -274,7 +274,7 @@ export default function Generate() {
   const [imagePackCount, setImagePackCount] = useState(4);
   const [imagePackAspectRatio, setImagePackAspectRatio] = useState<"9:16" | "16:9">("9:16");
   const [imagePackSubmitting, setImagePackSubmitting] = useState(false);
-  const [generationMode, setGenerationMode] = useState<CreateJobRequestGenerationMode>(CreateJobRequestGenerationMode.montage);
+  const [generationMode, setGenerationMode] = useState<CreateJobRequestGenerationMode>(CreateJobRequestGenerationMode.narrative);
   const narrativeVisualSource = CreateJobRequestNarrativeVisualSource.generated_images;
   const [lyricsEnabled, setLyricsEnabled] = useState(false);
   const [lyricsText, setLyricsText] = useState("");
@@ -385,6 +385,17 @@ export default function Generate() {
   const [galleryPickerOpen, setGalleryPickerOpen] = useState(false);
   const [sceneSourcePickerIndex, setSceneSourcePickerIndex] = useState<number | null>(null);
   const [selectedSceneSources, setSelectedSceneSources] = useState<Record<number, ReferenceGalleryAsset>>({});
+
+  useEffect(() => {
+    if (
+      !isAuthLoading
+      && !user?.isAdmin
+      && generationMode === CreateJobRequestGenerationMode.montage
+    ) {
+      setGenerationMode(CreateJobRequestGenerationMode.narrative);
+      setSelectedSceneSources({});
+    }
+  }, [generationMode, isAuthLoading, user?.isAdmin]);
   const referenceGalleryQuery = useQuery({
     queryKey: ["reference-image-gallery"],
     enabled: isAuthenticated && galleryPickerOpen,
@@ -1824,8 +1835,8 @@ export default function Generate() {
 
           <div className={`space-y-2 ${imagePackMode ? "hidden" : ""}`}>
             <Label>Video structure</Label>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <button
+            <div className={`grid gap-3 ${isAdmin ? "sm:grid-cols-2" : "grid-cols-1"}`}>
+              {isAdmin && <button
                 type="button"
                 onClick={() => setGenerationMode(CreateJobRequestGenerationMode.montage)}
                 aria-pressed={generationMode === CreateJobRequestGenerationMode.montage}
@@ -1857,7 +1868,7 @@ export default function Generate() {
                     </span>
                   )}
                 </div>
-              </button>
+              </button>}
               <button
                 type="button"
                 onClick={() => setGenerationMode(CreateJobRequestGenerationMode.narrative)}
@@ -2945,6 +2956,14 @@ export default function Generate() {
                         <p>
                           Describe the recurring character once with the identity, clothing, and important details
                           you want preserved throughout the story.
+                        </p>
+                        <p>
+                          <span className="font-medium text-primary-foreground">Sample:</span>{" "}
+                          A determined young astronomer with curly black hair, a green field jacket, and worn
+                          hiking boots leaves her desert observatory to investigate a mysterious signal. She crosses
+                          the dunes, follows the signal through a night storm, and discovers an abandoned research
+                          station glowing beneath the stars. At sunrise, she returns to the observatory with proof
+                          that she was not alone in the universe.
                         </p>
                       </>
                     ) : (

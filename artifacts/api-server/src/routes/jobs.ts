@@ -44,6 +44,14 @@ import { refundQueuedImageReviewReplacements } from "./image-review.js";
 
 const router = Router();
 
+function isAdminEmail(email: string | null | undefined): boolean {
+  return !!(
+    process.env.ADMIN_EMAIL
+    && email
+    && email.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase()
+  );
+}
+
 // Shape of the billing/salvage state we stash in an AI job's manifest jsonb.
 type AiJobMeta = {
   reservedCredits?: number;
@@ -250,6 +258,13 @@ router.post("/jobs/preview-shots", async (req, res) => {
       : null;
     const previewDuration = audioObjectPath ? requestedDuration : silentFilmDurationSeconds ?? requestedDuration;
     const normalizedPreviewMode = generationMode === "narrative" ? "narrative" : "montage";
+    if (normalizedPreviewMode === "montage" && !isAdminEmail(req.user.email)) {
+      res.status(403).json({
+        error: "Visual Montage is temporarily available to administrators only.",
+        code: "VISUAL_MONTAGE_ADMIN_ONLY",
+      });
+      return;
+    }
     const plan = planShots({
       prompt: prompt as string | null,
       style: style as string | null,
@@ -510,7 +525,15 @@ router.post("/jobs", async (req, res) => {
     .where(eq(usersTable.id, req.user.id))
     .limit(1);
 
-  const isAdmin = !!(process.env.ADMIN_EMAIL && userRecord?.email?.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase());
+  const isAdmin = isAdminEmail(userRecord?.email);
+
+  if (normalizedGenerationMode === "montage" && !isAdmin) {
+    res.status(403).json({
+      error: "Visual Montage is temporarily available to administrators only.",
+      code: "VISUAL_MONTAGE_ADMIN_ONLY",
+    });
+    return;
+  }
 
   // Record the consent timestamp (first acceptance) for our compliance records.
   if (!userRecord?.copyrightAcceptedAt) {

@@ -18,6 +18,14 @@ import { LYRICS_BUILD_COST } from "../lib/creditCost.js";
 
 const router: IRouter = Router();
 
+function isAdminEmail(email: string | null | undefined): boolean {
+  return !!(
+    process.env.ADMIN_EMAIL
+    && email
+    && email.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase()
+  );
+}
+
 // Credit helpers — atomic row-locked debit with exact sub/top-up split, and a
 // refund that restores exactly the buckets that were debited (same pattern as
 // routes/lyrics.ts and routes/teasers.ts).
@@ -148,6 +156,13 @@ router.post("/prompt/scene-builder", async (req: Request, res: Response) => {
   const parsed = SceneBuilderBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid story." });
+    return;
+  }
+  if (parsed.data.mode !== "narrative" && !isAdminEmail(req.user?.email)) {
+    res.status(403).json({
+      error: "Visual Montage is temporarily available to administrators only.",
+      code: "VISUAL_MONTAGE_ADMIN_ONLY",
+    });
     return;
   }
   try {
