@@ -928,6 +928,16 @@ export default function Generate() {
     : "image";
   const generatedPromptLabel = `${generatedPromptKind} prompt`;
   const generatedPromptLabelPlural = `${generatedPromptKind} prompts`;
+  const updateShotPrompt = (shotIndex: number, nextPrompt: string) => {
+    setShotPlan((current) => current ? {
+      ...current,
+      shots: current.shots.map((shot) =>
+        shot.index === shotIndex ? { ...shot, prompt: nextPrompt } : shot,
+      ),
+    } : current);
+    setReviewedShotIndexes((current) => current.filter((index) => index !== shotIndex));
+    setScriptApproved(false);
+  };
 
   const buildScenePrompts = useCallback(async (promptOverride?: string) => {
     const sourcePrompt = promptOverride ?? prompt;
@@ -3181,7 +3191,7 @@ export default function Generate() {
                     )}
 
                     <div className="max-h-[520px] space-y-3 overflow-y-auto pr-1 custom-scrollbar">
-                      {shotPlan.shots.map((shot, shotIndex) => {
+                       {shotPlan.shots.map((shot) => {
                         const reviewed = reviewedShotIndexes.includes(shot.index);
                         return (
                           <div
@@ -3218,18 +3228,7 @@ export default function Generate() {
                             <Textarea
                               value={shot.prompt}
                               maxLength={5000}
-                              onChange={(event) => {
-                                const nextPrompt = event.target.value;
-                                setShotPlan((current) => current ? {
-                                  ...current,
-                                  shots: current.shots.map((item, index) =>
-                                    index === shotIndex ? { ...item, prompt: nextPrompt } : item,
-                                  ),
-                                } : current);
-                                setReviewedShotIndexes((current) =>
-                                  current.filter((index) => index !== shot.index),
-                                );
-                              }}
+                              onChange={(event) => updateShotPrompt(shot.index, event.target.value)}
                               className="min-h-28 resize-y bg-background text-xs leading-relaxed"
                                aria-label={`${generatedPromptLabel} ${shot.index + 1}`}
                               data-testid={`input-scene-image-prompt-${shot.index}`}
@@ -3986,10 +3985,9 @@ export default function Generate() {
                 )}
                 {shotPlan && shotPlan.shots.length > 0 && (
                   <>
-                    <p className="mb-2 text-xs leading-relaxed text-muted-foreground">
-                      {shotPlan.timelineSceneCount} {generationMode === CreateJobRequestGenerationMode.narrative ? "chronological scenes" : "music-timed cuts"}
-                      {" · one distinct source image for every timeline segment"}
-                    </p>
+                     <p className="mb-2 text-xs leading-relaxed text-muted-foreground">
+                       Edit each {generatedPromptLabel} below before approving. These exact prompts will be sent for generation.
+                     </p>
                     <div className="max-h-64 overflow-y-auto space-y-3 pr-1">
                       {shotPlan.shots.map((s) => (
                         <div key={s.index} className="rounded-md border border-border/60 bg-background/70 p-2.5 text-xs">
@@ -4000,9 +3998,14 @@ export default function Generate() {
                             <span>{s.description ?? s.label}</span>
                             <span className="text-muted-foreground font-normal">· {Math.round(s.energy * 100)}% energy</span>
                           </div>
-                          <p className="mt-1.5 leading-relaxed text-muted-foreground">
-                            {s.prompt}
-                          </p>
+                           <Textarea
+                             value={s.prompt}
+                             maxLength={5000}
+                             onChange={(event) => updateShotPrompt(s.index, event.target.value)}
+                             className="mt-1.5 min-h-20 resize-y bg-background text-xs leading-relaxed"
+                             aria-label={`Approval ${generatedPromptLabel} ${s.index + 1}`}
+                             data-testid={`input-approval-scene-image-prompt-${s.index}`}
+                           />
                         </div>
                       ))}
                     </div>
