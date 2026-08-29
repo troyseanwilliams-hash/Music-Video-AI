@@ -771,84 +771,59 @@ export function planImagePackScenes(input: {
   const imageCount = Math.max(1, Math.min(30, Math.round(input.imageCount)));
   const numberedScript = parseNumberedImagePackScript(input.prompt);
   const namedSubject = detectNamedSubject(input.prompt);
-  if (numberedScript && numberedScript.scenes.length === imageCount) {
-    const usesReference = numberedScript.scenes.map((concept) =>
-      containsNamedSubject(concept, namedSubject)
-      || sceneConceptIncludesCharacter(concept)
-    );
-    const firstCharacterSceneIndex = usesReference.findIndex(Boolean);
-    const style = input.style ?? "cinematic";
-    const styleDesc = STYLE_PROMPTS[style] ?? STYLE_PROMPTS.cinematic!;
+  const sourceConcepts = numberedScript?.scenes.length === imageCount
+    ? numberedScript.scenes
+    : splitPromptIntoConcepts(input.prompt || "cinematic image pack", imageCount);
+  const seriesDirection = numberedScript?.seriesDirection
+    ? numberedScript.seriesDirection
+    : "keep one cohesive visual world, period, palette, lighting language, and camera language across the entire image pack";
+  const style = input.style ?? "cinematic";
+  const styleDesc = STYLE_PROMPTS[style] ?? STYLE_PROMPTS.cinematic!;
+  const usesReference = sourceConcepts.map((concept) =>
+    containsNamedSubject(concept, namedSubject)
+    || sceneConceptIncludesCharacter(concept)
+  );
+  const characterBible = input.hasCharacterReference
+    ? null
+    : narrativeCharacterBible(
+        { prompt: `${seriesDirection} ${input.prompt}`, character: null, hasCharacterReference: false },
+        [seriesDirection, ...sourceConcepts],
+        namedSubject,
+      );
+  const resolvedSeriesDirection = input.hasCharacterReference
+    ? replaceNamedSubjectWithReference(seriesDirection, namedSubject)
+    : replaceNamedSubjectWithDescription(seriesDirection, namedSubject);
 
-    return numberedScript.scenes.map((sourceConcept, index) => {
-      const usesCharacterReference = usesReference[index]!;
-      const concept = usesCharacterReference
-        ? input.hasCharacterReference
-          ? replaceNamedSubjectWithReference(sourceConcept, namedSubject)
-          : replaceNamedSubjectWithDescription(sourceConcept, namedSubject)
-        : replaceNamedSubjectWithDescription(sourceConcept, namedSubject);
-      const characterContinuity = usesCharacterReference
-        ? input.hasCharacterReference
-          ? ATTACHED_CHARACTER_REFERENCE_DIRECTIVE
-          : index === firstCharacterSceneIndex
-            ? "establish the recurring principal character clearly; this image becomes the identity and wardrobe reference for later character scenes"
-            : "match the established principal character reference exactly: same identity, face, age, hair, wardrobe, and physical details"
-        : "focus only on this scene's environment, objects, or atmosphere; do not add the recurring character unless explicitly requested";
-      const sexContinuity = usesCharacterReference
-        ? characterGenderContinuity({
-            prompt: `${numberedScript.seriesDirection} ${input.prompt}`,
-            character: null,
-            hasCharacterReference: input.hasCharacterReference,
-          }, concept)
-        : null;
-      const seriesDirection = numberedScript.seriesDirection
-        ? `series-wide visual direction: ${
-            input.hasCharacterReference
-              ? replaceNamedSubjectWithReference(numberedScript.seriesDirection, namedSubject)
-              : replaceNamedSubjectWithDescription(numberedScript.seriesDirection, namedSubject)
-          }`
-        : "keep one cohesive visual world, period, palette, lighting language, and camera language across the entire image pack";
+  return sourceConcepts.map((sourceConcept, index) => {
+    const usesCharacterReference = usesReference[index]!;
+    const concept = replaceNamedSubjectWithDescription(sourceConcept, namedSubject);
+    const characterContinuity = usesCharacterReference
+      ? input.hasCharacterReference
+        ? ATTACHED_CHARACTER_REFERENCE_DIRECTIVE
+        : characterBible
+      : null;
+    const resolvedConcept = index > 0
+      ? concept.replace(/^(?:it|he|she|they)\b/i, "The recurring principal subject")
+      : concept;
 
-      return {
-        index,
-        label: `scene ${index + 1}`,
-        description: `Scene ${index + 1} — ${concept}`,
-        startTime: index * 10,
-        energy: 0.6,
-        usesCharacterReference,
-        prompt: conciseImagePrompt([
-          styleDesc,
-          seriesDirection,
-          `strict numbered script scene ${index + 1} of ${imageCount}`,
-          `show exactly this scene and no other script beat: ${concept}`,
-          characterContinuity,
-          sexContinuity,
-          index === imageCount - 1
-            ? "compose this as the final chronological image"
-            : "preserve chronological continuity for the next image without depicting the next event",
-          "one still composition, one moment, one setting, and one camera view",
-          "no collage, split screen, panels, storyboard, text, captions, or multiple moments",
-        ]),
-      };
-    });
-  }
-
-  const durationSeconds = imageCount * 10;
-  return planShots({
-    prompt: input.prompt,
-    style: input.style,
-    character: null,
-    hasCharacterReference: input.hasCharacterReference,
-    requestedDuration: String(durationSeconds),
-    generationMode: "montage",
-    analysis: {
-      durationSeconds,
-      sections: [{
-        startTime: 0,
-        endTime: durationSeconds,
-        label: "image pack",
-        energy: 0.6,
-      }],
-    },
-  }).shots.slice(0, imageCount);
+    return {
+      index,
+      label: `scene ${index + 1}`,
+      description: `Scene ${index + 1} — ${concept}`,
+      startTime: index * 10,
+      energy: 0.6,
+      usesCharacterReference,
+      prompt: scenePromptWithStyleFootnote([
+        `scene ${index + 1} of ${imageCount}: ${resolvedConcept}`,
+        characterContinuity,
+        `visual continuity: ${resolvedSeriesDirection}`,
+        index === 0
+          ? "establish the story world and principal character"
+          : index === imageCount - 1
+            ? "final chronological image with a clear visual ending"
+            : "advance naturally from the previous image without depicting the next event",
+        "one focused still, one moment, one setting, one camera view",
+      ], styleDesc),
+    };
+  });
 }

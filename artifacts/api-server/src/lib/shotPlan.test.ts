@@ -243,7 +243,7 @@ describe("planImagePackScenes", () => {
       .toMatchObject({ usesCharacterReference: false });
   });
 
-  it("maps each numbered script line to exactly one ordered scene", () => {
+  it("maps each numbered script line to one concise, character-consistent scene prompt", () => {
     const prompt = [
       "Consistent mid-40s man in a dark suit. Moody 1970s grain, rain, and fog.",
       "1 (0-18s): Man walks toward the rainy airport terminal.",
@@ -271,14 +271,33 @@ describe("planImagePackScenes", () => {
       "Scene 2 — He pays cash at the ticket counter.",
       "Scene 3 — Empty cabin with a black tie on the seat.",
     ]);
-    expect(scenes[0]!.prompt).toContain("show exactly this scene and no other script beat");
+    expect(scenes[0]!.prompt).toContain("scene 1 of 3");
     expect(scenes[0]!.prompt).not.toContain("He pays cash");
     expect(scenes[1]!.prompt).not.toContain("Empty cabin");
     expect(scenes[0]).toMatchObject({ usesCharacterReference: true });
     expect(scenes[1]).toMatchObject({ usesCharacterReference: true });
     expect(scenes[2]).toMatchObject({ usesCharacterReference: false });
-    expect(scenes[0]!.prompt).toContain("becomes the identity and wardrobe reference");
-    expect(scenes[1]!.prompt).toContain("match the established principal character reference exactly");
+    expect(scenes[0]!.prompt).toContain("recurring character bible");
+    expect(scenes[1]!.prompt).toContain("recurring character bible");
+    expect(scenes[0]!.prompt).toContain("same male principal character identity");
+    expect(scenes[0]!.prompt).toContain("visual continuity");
+  });
+
+  it("uses one shared text character bible for unnumbered image-pack prompts", () => {
+    const scenes = planImagePackScenes({
+      prompt: "A woman photographer explores an abandoned hotel, discovers a hidden room, and returns at sunrise.",
+      style: "cinematic",
+      imageCount: 3,
+      hasCharacterReference: false,
+    });
+
+    expect(scenes).toHaveLength(3);
+    const characterScenes = scenes.filter((scene) => scene.prompt.includes("recurring character bible"));
+    expect(characterScenes).toHaveLength(3);
+    expect(characterScenes.every((scene) =>
+      scene.prompt.includes("same female principal character identity")
+    )).toBe(true);
+    expect(scenes.every((scene) => scene.prompt.length <= 600)).toBe(true);
   });
 
   it("rejects gaps in a numbered scene list instead of silently reordering it", () => {

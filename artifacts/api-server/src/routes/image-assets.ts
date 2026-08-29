@@ -126,7 +126,6 @@ export function buildImagePackPlan(input: {
     if (numberedScript.scenes.length !== input.imageCount) {
       throw new Error(`Your script contains ${numberedScript.scenes.length} numbered scenes. Set Images to generate to ${numberedScript.scenes.length} so every line produces exactly one image.`);
     }
-    return numberedScript.scenes.map((prompt, index) => ({ index, prompt }));
   }
   return planImagePackScenes(input).map((scene) => ({
     index: scene.index,

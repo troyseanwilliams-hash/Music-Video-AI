@@ -83,10 +83,12 @@ describe("image-pack pre-charge storyboard approval", () => {
       hasCharacterReference: false,
     });
 
-    expect(scenes).toEqual([
-      { index: 0, prompt: "Detective enters the station." },
-      { index: 1, prompt: "Detective finds the ticket." },
-    ]);
+    expect(scenes).toHaveLength(2);
+    expect(scenes.map((scene) => scene.index)).toEqual([0, 1]);
+    expect(scenes[0]!.prompt).toContain("scene 1 of 2");
+    expect(scenes[0]!.prompt).toContain("Detective enters the station");
+    expect(scenes[1]!.prompt).toContain("scene 2 of 2");
+    expect(scenes[1]!.prompt).toContain("Detective finds the ticket");
     // buildImagePackPlan is the no-I/O planning unit used by POST /image-packs/plan.
     // Credit reservation remains exclusively in the create route transaction.
   });
