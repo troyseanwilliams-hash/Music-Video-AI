@@ -274,7 +274,11 @@ export default function Generate() {
   const [imagePackCount, setImagePackCount] = useState(4);
   const [imagePackAspectRatio, setImagePackAspectRatio] = useState<"9:16" | "16:9">("9:16");
   const [imagePackSubmitting, setImagePackSubmitting] = useState(false);
-  const [generationMode, setGenerationMode] = useState<CreateJobRequestGenerationMode>(CreateJobRequestGenerationMode.narrative);
+  // Generate is now a single cohesive story-video flow. Keep the enum in
+  // submitted manifests for compatibility with existing jobs and processors.
+  const [generationMode] = useState<CreateJobRequestGenerationMode>(
+    CreateJobRequestGenerationMode.narrative,
+  );
   const narrativeVisualSource = CreateJobRequestNarrativeVisualSource.generated_images;
   const [lyricsEnabled, setLyricsEnabled] = useState(false);
   const [lyricsText, setLyricsText] = useState("");
@@ -386,16 +390,6 @@ export default function Generate() {
   const [sceneSourcePickerIndex, setSceneSourcePickerIndex] = useState<number | null>(null);
   const [selectedSceneSources, setSelectedSceneSources] = useState<Record<number, ReferenceGalleryAsset>>({});
 
-  useEffect(() => {
-    if (
-      !isAuthLoading
-      && !user?.isAdmin
-      && generationMode === CreateJobRequestGenerationMode.montage
-    ) {
-      setGenerationMode(CreateJobRequestGenerationMode.narrative);
-      setSelectedSceneSources({});
-    }
-  }, [generationMode, isAuthLoading, user?.isAdmin]);
   const referenceGalleryQuery = useQuery({
     queryKey: ["reference-image-gallery"],
     enabled: isAuthenticated && galleryPickerOpen,
@@ -439,11 +433,6 @@ export default function Generate() {
     const referenceImagePath = params.get("referenceImagePath");
     if (sceneScript) {
       setPrompt(sceneScript.script);
-      setGenerationMode(
-        sceneScript.mode === "narrative"
-          ? CreateJobRequestGenerationMode.narrative
-          : CreateJobRequestGenerationMode.montage,
-      );
     }
     else if (p) setPrompt(p);
     if (referenceImagePath?.startsWith("/objects/")) {
@@ -1844,75 +1833,6 @@ export default function Generate() {
         <div className="grid gap-5 sm:gap-8 p-4 sm:p-8 rounded-2xl bg-card border border-card-border shadow-lg">
 
           <div className={`space-y-2 ${imagePackMode ? "hidden" : ""}`}>
-            <Label>Video structure</Label>
-            <div className={`grid gap-3 ${isAdmin ? "sm:grid-cols-2" : "grid-cols-1"}`}>
-              {isAdmin && <button
-                type="button"
-                onClick={() => setGenerationMode(CreateJobRequestGenerationMode.montage)}
-                aria-pressed={generationMode === CreateJobRequestGenerationMode.montage}
-                className={`text-left rounded-xl border p-3.5 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
-                  generationMode === CreateJobRequestGenerationMode.montage
-                    ? "border-primary/50 bg-primary/[0.08] shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.08)]"
-                    : "border-border/60 bg-muted/20 hover:border-primary/30"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
-                      generationMode === CreateJobRequestGenerationMode.montage
-                        ? "bg-primary/15 text-primary"
-                        : "bg-secondary text-muted-foreground"
-                    }`}>
-                      <Clapperboard className="h-4 w-4" />
-                    </span>
-                    <div>
-                      <p className="text-sm font-semibold">Visual Montage</p>
-                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                        Creates a distinct, music-timed visual for every timeline segment while preserving a shared style and world.
-                      </p>
-                    </div>
-                  </div>
-                  {generationMode === CreateJobRequestGenerationMode.montage && (
-                    <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
-                      Selected
-                    </span>
-                  )}
-                </div>
-              </button>}
-              <button
-                type="button"
-                onClick={() => setGenerationMode(CreateJobRequestGenerationMode.narrative)}
-                aria-pressed={generationMode === CreateJobRequestGenerationMode.narrative}
-                className={`text-left rounded-xl border p-3.5 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
-                  generationMode === CreateJobRequestGenerationMode.narrative
-                    ? "border-primary/50 bg-primary/[0.08] shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.08)]"
-                    : "border-border/60 bg-muted/20 hover:border-primary/30"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
-                      generationMode === CreateJobRequestGenerationMode.narrative
-                        ? "bg-primary/15 text-primary"
-                        : "bg-secondary text-muted-foreground"
-                    }`}>
-                      <FileText className="h-4 w-4" />
-                    </span>
-                    <div>
-                      <p className="text-sm font-semibold">Generate Video</p>
-                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                        Submit one script. The engine builds a cohesive beginning-to-ending story for the full selected length.
-                      </p>
-                    </div>
-                  </div>
-                  {generationMode === CreateJobRequestGenerationMode.narrative && (
-                    <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
-                      Selected
-                    </span>
-                  )}
-                </div>
-              </button>
-            </div>
             <div className="mt-3 rounded-xl border border-primary/20 bg-primary/[0.035] p-3.5">
               <div className="flex items-start gap-3">
                 <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
