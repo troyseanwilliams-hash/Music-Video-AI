@@ -7,6 +7,10 @@ import { GENERATED_IMAGE_CREDITS_PER_VISUAL } from "../lib/creditCost.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { toCustomerJobView } from "../lib/customerJobView.js";
 import { imageReviewReplacementCredits } from "../lib/imageReviewBilling.js";
+import {
+  assertStrictUniqueMedia,
+  perceptualFingerprint,
+} from "../lib/mediaUniqueness.js";
 
 const router = Router();
 const storage = new ObjectStorageService();
@@ -43,6 +47,7 @@ type ImageReview = {
 
 type JobManifest = {
   imageFirstVersion?: number;
+  strictUniqueSourcesVersion?: number;
   imageReview?: ImageReview;
   storyboard?: { shots?: unknown[] };
   pendingImageRequests?: Record<string, unknown>;
@@ -342,6 +347,70 @@ router.post("/jobs/:id/image-review/approve", async (req, res): Promise<void> =>
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
+  // Inspect the exact stored images before changing job state. This deliberately
+  // runs outside the approval transaction because downloads and fingerprints
+  // can take several seconds; the transaction below fences the review revision.
+  const [preflightJob] = await db.select().from(jobsTable)
+    .where(and(eq(jobsTable.id, req.params.id), eq(jobsTable.userId, req.user.id)))
+    .limit(1);
+  const preflightManifest = preflightJob?.manifest as JobManifest | null | undefined;
+  const preflightReview = reviewOf(preflightManifest);
+  if (!preflightJob || !preflightReview || preflightReview.phase !== "awaiting_approval") {
+    res.status(409).json({ error: "This job is not waiting for image approval." });
+    return;
+  }
+  const preflightRevision = preflightReview.revision;
+  if (preflightManifest?.strictUniqueSourcesVersion === 1) {
+    const expected = Array.isArray(preflightManifest.storyboard?.shots)
+      ? preflightManifest.storyboard.shots.length
+      : 0;
+    const indexes = Object.keys(preflightReview.scenes).map(Number).sort((a, b) => a - b);
+    const assets = await db.select({
+      assetIndex: imageAssetsTable.assetIndex,
+      objectPath: imageAssetsTable.objectPath,
+    }).from(imageAssetsTable).where(eq(imageAssetsTable.jobId, req.params.id));
+    const byIndex = new Map(assets.map((asset) => [asset.assetIndex, asset.objectPath]));
+    if (
+      !expected
+      || indexes.length !== expected
+      || indexes.some((index, position) => index !== position)
+      || indexes.some((index) => {
+        const scene = preflightReview.scenes[String(index)];
+        return !scene?.canonicalPath
+          || (scene.status !== undefined && scene.status !== "ready")
+          || byIndex.get(index) !== scene.canonicalPath;
+      })
+    ) {
+      res.status(422).json({ error: "Every storyboard scene must have one finished image before approval." });
+      return;
+    }
+    try {
+      const fingerprints = [];
+      for (const index of indexes) {
+        const file = await storage.getObjectEntityFile(byIndex.get(index)!);
+        const [buffer] = await file.download();
+        fingerprints.push(await perceptualFingerprint(buffer, "image"));
+      }
+      assertStrictUniqueMedia(true, fingerprints, "scene image");
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      const positions = /positions (\d+) and (\d+)/i.exec(detail);
+      if (positions) {
+        res.status(422).json({
+          error: `Scenes ${positions[1]} and ${positions[2]} appear to use the same image. Replace one of them before approving the images.`,
+          code: "DUPLICATE_SCENE_IMAGES",
+          duplicateScenes: [Number(positions[1]), Number(positions[2])],
+        });
+        return;
+      }
+      req.log.warn({ err: error, jobId: req.params.id }, "Approved image uniqueness preflight failed");
+      res.status(422).json({
+        error: "The finished images could not be verified. Try approving them again.",
+        code: "IMAGE_APPROVAL_INSPECTION_FAILED",
+      });
+      return;
+    }
+  }
   const result = await db.transaction(async (tx) => {
     const [job] = await tx.select().from(jobsTable)
       .where(and(eq(jobsTable.id, req.params.id), eq(jobsTable.userId, req.user.id)))
@@ -350,6 +419,9 @@ router.post("/jobs/:id/image-review/approve", async (req, res): Promise<void> =>
     const review = reviewOf(manifest);
     if (!job || !review || review.phase !== "awaiting_approval") {
       return { error: "This job is not waiting for image approval.", status: 409 as const };
+    }
+    if (review.revision !== preflightRevision) {
+      return { error: "A scene image changed during approval. Review the latest images and approve again.", status: 409 as const };
     }
     if (Object.keys(review.pendingReplacements ?? {}).length) {
       return { error: "Wait for all replacement images to finish.", status: 409 as const };
