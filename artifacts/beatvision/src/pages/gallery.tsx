@@ -9,12 +9,12 @@ import {
   getGetDashboardStatsQueryKey,
   useUpdateImageAssetVisibility,
 } from "@workspace/api-client-react";
-import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import LipSyncPanel from "@/components/LipSyncPanel";
 import { LIPSYNC_MIN_SECONDS } from "@/lib/creditPricing";
 import {
-  Loader2, Trash2, Play, Film, Download, Scissors, Globe, Pencil, X, Music,
+  Loader2, Trash2, Play, Film, Download, Scissors, Globe, Pencil, X, Music, Music2, Video,
   UserRound, Smile, Image as ImageIcon, Check,
 } from "lucide-react";
 import {
@@ -50,6 +50,19 @@ interface ImageAssetsPage {
   limit: number;
 }
 
+interface GallerySoundtrack {
+  id: string;
+  title: string | null;
+  prompt: string | null;
+  objectPath: string;
+  ext: string;
+  durationSeconds: number | null;
+  loopedToSeconds: number | null;
+  isPublic: boolean;
+  createdAt: string;
+  url: string;
+}
+
 function VideoThumbnail({ src, alt }: { src: string; alt: string }) {
   const [error, setError] = useState(false);
   if (error) {
@@ -82,7 +95,7 @@ export default function Gallery() {
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [galleryView, setGalleryView] = useState<"videos" | "images">("videos");
+  const [galleryView, setGalleryView] = useState<"videos" | "images" | "music">("videos");
   const [loadingAction, setLoadingAction] = useState<Record<string, "watch" | "download" | undefined>>({});
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -98,6 +111,8 @@ export default function Gallery() {
   const [deletingImageId, setDeletingImageId] = useState<string | null>(null);
   const [downloadingImageId, setDownloadingImageId] = useState<string | null>(null);
   const [imageActionError, setImageActionError] = useState<string | null>(null);
+  const [trackSearch, setTrackSearch] = useState("");
+  const [trackSort, setTrackSort] = useState<"new" | "old" | "name">("new");
 
   const imageAssetsQuery = useInfiniteQuery({
     queryKey: ["generated-image-gallery"],
@@ -116,6 +131,18 @@ export default function Gallery() {
         ? lastPage.page + 1
         : undefined,
   });
+  const soundtracksQuery = useQuery<GallerySoundtrack[]>({
+    queryKey: ["soundtracks"],
+    queryFn: async () => {
+      const response = await fetch("/api/music/soundtracks", {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Failed to load soundtracks");
+      const payload = await response.json() as { soundtracks?: GallerySoundtrack[] };
+      return Array.isArray(payload.soundtracks) ? payload.soundtracks : [];
+    },
+    enabled: isAuthenticated && galleryView === "music",
+  });
   const generatedImages = (() => {
     const assets = imageAssetsQuery.data?.pages.flatMap((page) => page.assets) ?? [];
     return orderGalleryImages(assets);
@@ -124,6 +151,23 @@ export default function Gallery() {
     const asset = generatedImages.find((candidate) => candidate.id === id);
     return asset ? [asset] : [];
   });
+  const visibleSoundtracks = (soundtracksQuery.data ?? [])
+    .filter((track) => {
+      const query = trackSearch.trim().toLowerCase();
+      if (!query) return true;
+      return (
+        (track.title || "").toLowerCase().includes(query) ||
+        (track.prompt || "").toLowerCase().includes(query)
+      );
+    })
+    .sort((a, b) => {
+      if (trackSort === "name") {
+        return (a.title || "AI Soundtrack").localeCompare(b.title || "AI Soundtrack");
+      }
+      const aTime = new Date(a.createdAt).getTime();
+      const bTime = new Date(b.createdAt).getTime();
+      return trackSort === "old" ? aTime - bTime : bTime - aTime;
+    });
 
   function toggleImageSelection(id: string) {
     setSelectedImageIds((selected) =>
@@ -284,6 +328,18 @@ export default function Gallery() {
     }
   }
 
+  function useTrackInGenerate(track: GallerySoundtrack) {
+    const title = encodeURIComponent(track.title || "AI Soundtrack");
+    setLocation(
+      `/generate?audioObjectPath=${encodeURIComponent(track.objectPath)}&title=${title}`,
+    );
+  }
+
+  function useTrackInRemix(track: GallerySoundtrack) {
+    const title = encodeURIComponent(track.title || "AI Soundtrack");
+    setLocation(`/editor?audio=${encodeURIComponent(track.url)}&title=${title}`);
+  }
+
   const { data, isLoading } = useListVideos(
     { limit: 20 },
     { query: { queryKey: getListVideosQueryKey({ limit: 20 }), enabled: isAuthenticated } }
@@ -349,7 +405,9 @@ export default function Gallery() {
           <p className="text-sm sm:text-base text-muted-foreground mt-1">
             {galleryView === "videos"
               ? "All your generated AI music videos."
-              : "Every saved image you have generated, ready for Remix Lab."}
+              : galleryView === "images"
+                ? "Every saved image you have generated, ready for Remix Lab."
+                : "Your saved AI soundtracks, ready to play or use in a project."}
           </p>
         </div>
 
@@ -386,6 +444,19 @@ export default function Gallery() {
           }`}
         >
           <ImageIcon className="h-4 w-4" /> Images
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={galleryView === "music"}
+          onClick={() => setGalleryView("music")}
+          className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+            galleryView === "music"
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Music2 className="h-4 w-4" /> Music
         </button>
       </div>
 
@@ -885,6 +956,161 @@ export default function Gallery() {
                 Generate Images
               </Button>
             </Link>
+          </div>
+        )
+      )}
+
+      {galleryView === "music" && (
+        soundtracksQuery.isLoading ? (
+          <div className="flex items-center justify-center py-32">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : soundtracksQuery.isError ? (
+          <div className="text-center py-16 sm:py-32 border border-dashed border-border rounded-2xl bg-card/30">
+            <Music2 className="h-12 w-12 sm:h-16 sm:w-16 text-muted-foreground mx-auto mb-4 sm:mb-6 opacity-20" />
+            <h3 className="text-xl font-medium mb-2">Couldn't load your music</h3>
+            <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+              Your saved tracks are temporarily unavailable. Try again in a moment.
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => soundtracksQuery.refetch()}
+              disabled={soundtracksQuery.isRefetching}
+            >
+              {soundtracksQuery.isRefetching && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Try again
+            </Button>
+          </div>
+        ) : soundtracksQuery.data?.length === 0 ? (
+          <div className="text-center py-16 sm:py-32 border border-dashed border-border rounded-2xl bg-card/30">
+            <Music2 className="h-12 w-12 sm:h-16 sm:w-16 text-muted-foreground mx-auto mb-4 sm:mb-6 opacity-20" />
+            <h3 className="text-xl font-medium mb-2">No music tracks yet</h3>
+            <p className="text-muted-foreground mb-8 max-w-md mx-auto">
+              Generate a soundtrack and it will appear here automatically, ready to play or add to a project.
+            </p>
+            <Link href="/soundtracks">
+              <Button size="lg" className="bg-gradient-electric text-white shadow-glow">
+                Create a soundtrack
+              </Button>
+            </Link>
+          </div>
+        ) : visibleSoundtracks.length === 0 ? (
+          <div className="space-y-5">
+            <div className="flex flex-col gap-3 rounded-xl border border-border bg-card/40 p-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-muted-foreground">
+                No tracks match “{trackSearch}”.
+              </p>
+              <Button variant="ghost" size="sm" onClick={() => setTrackSearch("")}>
+                Clear search
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            <div className="flex flex-col gap-3 rounded-xl border border-primary/20 bg-primary/[0.04] p-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-muted-foreground">
+                {visibleSoundtracks.length}{" "}
+                {visibleSoundtracks.length === 1 ? "saved track" : "saved tracks"}
+              </p>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <input
+                  value={trackSearch}
+                  onChange={(event) => setTrackSearch(event.target.value)}
+                  placeholder="Search music…"
+                  aria-label="Search saved music"
+                  className="h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm focus:border-primary focus:outline-none sm:w-48"
+                />
+                <select
+                  value={trackSort}
+                  onChange={(event) => setTrackSort(event.target.value as "new" | "old" | "name")}
+                  aria-label="Sort saved music"
+                  className="h-9 rounded-md border border-input bg-background px-2 text-sm focus:border-primary focus:outline-none"
+                >
+                  <option value="new">Newest</option>
+                  <option value="old">Oldest</option>
+                  <option value="name">Name (A–Z)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              {visibleSoundtracks.map((track, index) => {
+                const title = track.title || "AI Soundtrack";
+                const fileName = `${title.replace(/[^\w-]+/g, "_")}.${track.ext || "mp3"}`;
+                const duration = track.loopedToSeconds || track.durationSeconds;
+                return (
+                  <motion.article
+                    key={track.id}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: Math.min(index, 12) * 0.04 }}
+                    className="overflow-hidden rounded-2xl border border-card-border bg-card shadow-sm transition-colors hover:border-primary/40"
+                  >
+                    <div className="h-1 w-full bg-gradient-electric" />
+                    <div className="space-y-4 p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                          <Music2 className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h3 className="truncate font-semibold" title={title}>{title}</h3>
+                          {track.prompt && (
+                            <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                              {track.prompt}
+                            </p>
+                          )}
+                        </div>
+                        {track.isPublic && (
+                          <span className="shrink-0 rounded-full border border-primary/30 px-2 py-0.5 text-[10px] text-primary">
+                            Public
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                        {duration ? (
+                          <span className="rounded-full border border-border px-2 py-0.5">
+                            {Math.floor(duration / 60)}:{String(duration % 60).padStart(2, "0")}
+                            {track.loopedToSeconds ? " (looped)" : ""}
+                          </span>
+                        ) : null}
+                        <span className="rounded-full border border-border px-2 py-0.5">
+                          {new Date(track.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+
+                      <audio
+                        controls
+                        preload="none"
+                        src={track.url}
+                        aria-label={`Play ${title}`}
+                        className="h-9 w-full"
+                      />
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => useTrackInRemix(track)}
+                          className="bg-gradient-electric text-white shadow-glow"
+                        >
+                          <Scissors className="mr-1.5 h-3.5 w-3.5" /> Remix
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => useTrackInGenerate(track)}>
+                          <Video className="mr-1.5 h-3.5 w-3.5" /> Generate
+                        </Button>
+                        <Button asChild size="sm" variant="outline">
+                          <a href={track.url} download={fileName}>
+                            <Download className="mr-1.5 h-3.5 w-3.5" /> Download
+                          </a>
+                        </Button>
+                      </div>
+                    </div>
+                  </motion.article>
+                );
+              })}
+            </div>
           </div>
         )
       )}
