@@ -403,6 +403,47 @@ router.post("/billing/checkout", async (req, res) => {
             return;
           }
         } catch (err) {
+          const code =
+            typeof err === "object" && err !== null && "code" in err
+              ? String((err as { code?: unknown }).code ?? "")
+              : "";
+          const [formerSuite] =
+            code === "resource_missing"
+              ? await db
+                  .select({ id: suiteLinksTable.id })
+                  .from(suiteLinksTable)
+                  .where(
+                    and(
+                      eq(suiteLinksTable.aibeatUserId, user.id),
+                      eq(
+                        suiteLinksTable.stripeSubscriptionId,
+                        user.stripeSubscriptionId,
+                      ),
+                      inArray(suiteLinksTable.subscriptionStatus, [
+                        "none",
+                        "cancelled",
+                      ]),
+                    ),
+                  )
+                  .limit(1)
+              : [null];
+          if (formerSuite) {
+            await db
+              .update(usersTable)
+              .set({
+                stripeSubscriptionId: null,
+                subscriptionStatus: "none",
+              })
+              .where(
+                and(
+                  eq(usersTable.id, user.id),
+                  eq(
+                    usersTable.stripeSubscriptionId,
+                    user.stripeSubscriptionId,
+                  ),
+                ),
+              );
+          } else {
           req.log.warn(
             { err },
             "Could not verify existing subscription for standalone checkout",
@@ -413,6 +454,7 @@ router.post("/billing/checkout", async (req, res) => {
             code: "BILLING_STATUS_UNAVAILABLE",
           });
           return;
+          }
         }
       }
 

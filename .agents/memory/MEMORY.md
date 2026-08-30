@@ -46,3 +46,4 @@
 - [Lyrics-driven vocal duration](lyrics-driven-vocal-duration.md) — vocal songs have no manual length picker; lyrics and arrangement determine runtime while instrumental duration controls remain explicit.
 - [Lyrics enhancement preservation](lyrics-enhancement-preservation.md) — Enhance is a light editing pass; reject structural rewrites and never replace a draft with fallback lyrics.
 - [Pixazo vocal music contract](pixazo-vocal-music-contract.md) — use the current documented Music 3 text-to-music contract; the legacy Music 2.6 path failed internally after retries.
+- [Suite Stripe authority](suite-stripe-authority.md) — Suite billing may use a separate Stripe account; keep customer IDs account-scoped and verify Suite webhooks independently.

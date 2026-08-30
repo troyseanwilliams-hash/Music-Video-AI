@@ -36,6 +36,7 @@ vi.mock("../lib/stripeClient.js", () => ({
 }));
 
 import router from "./billing.js";
+import { usersTable } from "@workspace/db";
 
 type FakeResponse = {
   statusCode: number;
@@ -104,7 +105,7 @@ describe("POST /billing/checkout isolation", () => {
           return builder;
         },
         async limit() {
-          return table?.stripeCustomerId ? [user] : [];
+          return table === usersTable ? [user] : [];
         },
       };
       return builder;
@@ -119,7 +120,7 @@ describe("POST /billing/checkout isolation", () => {
           return builder;
         },
         async returning() {
-          if (!table?.stripeCustomerId) return [];
+          if (table !== usersTable) return [];
           if (reservationWon) return [];
           reservationWon = true;
           return [{ id: user.id }];

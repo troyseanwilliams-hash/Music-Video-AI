@@ -541,7 +541,10 @@ router.post("/suite/checkout", async (req, res): Promise<void> => {
     return;
   }
 
-  if (user.stripeSubscriptionId) {
+  if (
+    user.stripeSubscriptionId &&
+    user.stripeSubscriptionId !== finalizedLink.stripeSubscriptionId
+  ) {
     try {
       const stripe = await getUncachableStripeClient();
       const existingSub = await stripe.subscriptions.retrieve(user.stripeSubscriptionId);
