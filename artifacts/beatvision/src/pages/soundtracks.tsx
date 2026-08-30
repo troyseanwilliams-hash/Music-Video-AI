@@ -13,6 +13,17 @@ import { TutorialTip } from "@/components/TutorialTip";
 import { LYRICS_BUILD_COST, canAffordCredits } from "@/lib/creditPricing";
 import TopUpRequiredDialog from "@/components/TopUpRequiredDialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   Loader2, Music2, Download, Video, Trash2, Share2, Link2, Lock, Wand2, Sparkles, Pencil, Check, X, Scissors,
 } from "lucide-react";
 
@@ -788,7 +799,41 @@ export default function Soundtracks() {
                   ) : (
                     <Button size="sm" variant="outline" className="h-8" onClick={() => togglePublic.mutate({ id: s.id, isPublic: true })}><Share2 className="h-3.5 w-3.5 mr-1.5" /> Share</Button>
                   )}
-                  <Button size="sm" variant="ghost" className="h-8 text-destructive hover:text-destructive ml-auto" onClick={() => del.mutate(s.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive ml-auto"
+                        aria-label={`Delete ${s.title || "soundtrack"}`}
+                        title="Delete soundtrack"
+                        disabled={del.isPending}
+                      >
+                        {del.isPending && del.variables === s.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                        )}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete this soundtrack?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          “{s.title || "AI Soundtrack"}” will be removed from your library. This action cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => del.mutate(s.id)}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                          Delete
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
               </CardContent>
             </Card>
