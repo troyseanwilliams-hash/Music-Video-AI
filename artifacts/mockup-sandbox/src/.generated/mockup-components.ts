@@ -4,5 +4,6 @@ export const modules: ModuleMap = {
   "./components/mockups/admin-mobile/JobApprovals.tsx": () => import("../components/mockups/admin-mobile/JobApprovals.tsx"),
   "./components/mockups/generate-mobile/Compact.tsx": () => import("../components/mockups/generate-mobile/Compact.tsx"),
   "./components/mockups/generate-mobile/Current.tsx": () => import("../components/mockups/generate-mobile/Current.tsx"),
+  "./components/mockups/email-campaigns/GenerateEmailPreview.tsx": () => import("../components/mockups/email-campaigns/GenerateEmailPreview.tsx"),
   "./components/mockups/positioning-comparison/Comparison.tsx": () => import("../components/mockups/positioning-comparison/Comparison.tsx")
 };
