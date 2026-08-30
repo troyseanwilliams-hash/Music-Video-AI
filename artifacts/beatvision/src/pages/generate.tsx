@@ -1899,7 +1899,7 @@ export default function Generate() {
                       <FileText className="h-4 w-4" />
                     </span>
                     <div>
-                      <p className="text-sm font-semibold">Narrative Story</p>
+                      <p className="text-sm font-semibold">Generate Video</p>
                       <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
                         Submit one script. The engine builds a cohesive beginning-to-ending story for the full selected length.
                       </p>

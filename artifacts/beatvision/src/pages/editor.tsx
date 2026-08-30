@@ -1633,7 +1633,7 @@ export default function Editor() {
       <div className="mb-6">
         <div className="inline-flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-xs font-semibold text-accent mb-3">
           <Sparkles className="h-3.5 w-3.5" />
-          Remix Lab
+          Montage
         </div>
         <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">
           Your cut, <span className="text-gradient-electric">your rules</span>
