@@ -942,10 +942,7 @@ export default function Generate() {
           style: selectedStyle,
           generationMode,
           character,
-          hasReferenceImage:
-            generationMode === CreateJobRequestGenerationMode.narrative
-              ? false
-              : Boolean(refImageObjectPath),
+          hasReferenceImage: Boolean(refImageObjectPath),
           requestedDuration: effectiveRequestedDuration,
           silentFilmDurationSeconds:
             sourceType === CreateJobRequestAudioSourceType.none ? silentFilmDurationSeconds : null,
@@ -1212,10 +1209,7 @@ export default function Generate() {
           aspectRatio,
           resolution,
           character: character !== "none" ? character : null,
-          referenceImagePath:
-            generationMode === CreateJobRequestGenerationMode.narrative
-              ? null
-              : (refImageObjectPath ?? null),
+          referenceImagePath: refImageObjectPath ?? null,
           requestedDuration: effectiveRequestedDuration,
           silentFilmDurationSeconds:
             sourceType === CreateJobRequestAudioSourceType.none ? silentFilmDurationSeconds : null,
@@ -2626,18 +2620,17 @@ export default function Generate() {
           </div>
 
           {/* ── Character Lock (optional reference image) ── */}
-          {(imagePackMode || generationMode !== CreateJobRequestGenerationMode.narrative) && (
           <div className="rounded-xl border border-border/60 bg-background/30 overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3">
               <div className="flex items-center gap-2 min-w-0">
                 <ImageIcon className="h-4 w-4 text-primary shrink-0" />
                 <span className="text-sm font-medium">
-                  {imagePackMode ? "Reference Image" : "Character Lock"}
+                  {imagePackMode ? "Reference Image" : "Character Reference"}
                 </span>
                 <span className="text-xs text-muted-foreground hidden sm:inline">
                   {imagePackMode
                     ? "— optional · consistent subject across the image pack"
-                    : "— optional · same character in every shot"}
+                    : "— optional · consistent character across the story"}
                 </span>
               </div>
               {refImageObjectPath && (
@@ -2694,7 +2687,7 @@ export default function Generate() {
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {imagePackMode
                       ? "Every image in this pack will use this visual reference"
-                      : "This character anchors every shot in the video"}
+                       : "Used in story scenes that feature this character"}
                   </p>
                   <button
                     onClick={() => refImageInputRef.current?.click()}
@@ -2734,7 +2727,7 @@ export default function Generate() {
                 <p className="text-xs text-muted-foreground mt-1.5">
                   {imagePackMode
                      ? "Upload a subject or style reference, or reuse one from your gallery. Every image in the pack will use it for stronger visual consistency."
-                     : "Upload a face or character, or reuse one from your gallery. It anchors every generated shot so the same character appears consistently across the whole video."}
+                      : "Upload a face or character, or reuse one from your gallery. Generate will use it in relevant character scenes while leaving establishing shots and other story visuals independent."}
                 </p>
                 {refImageError && (
                   <p className="text-xs text-destructive mt-1.5 flex items-center gap-1">
@@ -2831,22 +2824,6 @@ export default function Generate() {
                </div>
              )}
           </div>
-          )}
-
-          {!imagePackMode && generationMode === CreateJobRequestGenerationMode.narrative && (
-            <div className="rounded-xl border border-primary/25 bg-primary/[0.05] px-4 py-3">
-              <div className="flex items-start gap-3">
-                <FileText className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                <div>
-                  <p className="text-sm font-semibold text-foreground">Character continuity is automatic</p>
-                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                    Describe the main character once in your script. Narrative Story carries the same identity,
-                    appearance, wardrobe, and story details through each character scene without a reference image.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* ── Prompt ── */}
           <div className="space-y-2">

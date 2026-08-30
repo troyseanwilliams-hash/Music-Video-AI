@@ -271,9 +271,7 @@ router.post("/jobs/preview-shots", async (req, res) => {
       prompt: prompt as string | null,
       style: style as string | null,
       character: character as string | null,
-      hasCharacterReference: normalizedPreviewMode === "narrative"
-        ? false
-        : Boolean(hasReferenceImage),
+      hasCharacterReference: Boolean(hasReferenceImage),
       requestedDuration: previewDuration as string | null,
       generationMode: normalizedPreviewMode,
       analysis: verifiedAnalysis as never,
@@ -396,8 +394,7 @@ router.post("/jobs", async (req, res) => {
     parseResult.data;
   const normalizedGenerationMode =
     generationMode === "narrative" ? "narrative" : "montage";
-  const effectiveReferenceImagePath =
-    normalizedGenerationMode === "narrative" ? null : (referenceImagePath ?? null);
+  const effectiveReferenceImagePath = referenceImagePath ?? null;
   // Every ordinary AI video starts from its planned stills. Keep the submitted
   // value in the request contract for old clients, but image packs remain a
   // separate job type and never come through this route.
