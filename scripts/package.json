@@ -6,6 +6,7 @@
   "scripts": {
     "hello": "tsx ./src/hello.ts",
     "seed-stripe": "tsx ./src/seed-products.ts",
+    "seed-suite-stripe": "SUITE_ONLY=1 tsx ./src/seed-products.ts",
     "test-stripe-replay": "tsx ./src/test-stripe-replay.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

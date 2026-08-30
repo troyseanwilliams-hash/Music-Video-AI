@@ -25,6 +25,7 @@ import {
 import { randomBytes, createHash } from "crypto";
 import { randomUUID } from "crypto";
 import { getUncachableStripeClient } from "../lib/stripeClient.js";
+import { getSuiteStripeClient } from "../lib/suiteStripeClient.js";
 import { suitePagePath, suiteReturnBase } from "../lib/suiteReturnUrls.js";
 import { logger } from "../lib/logger.js";
 import type Stripe from "stripe";
@@ -577,7 +578,7 @@ router.post("/suite/checkout", async (req, res): Promise<void> => {
   let reservedLinkId: string | null = null;
 
   try {
-    const stripe = await getUncachableStripeClient();
+    const stripe = await getSuiteStripeClient();
 
     // Resolve lookup key
     const found = await stripe.prices.list({
@@ -668,17 +669,40 @@ router.post("/suite/checkout", async (req, res): Promise<void> => {
     reservedLinkId = reservedLink.id;
 
     // Ensure customer exists after winning the reservation.
-    const existingCustomerId = user.stripeCustomerId;
-    let customerId = existingCustomerId ?? "";
+    const account = await stripe.accounts.retrieve(null);
+    let customerId =
+      finalizedLink.stripeAccountId === account.id
+        ? (finalizedLink.stripeCustomerId ?? "")
+        : "";
+    if (customerId) {
+      try {
+        const existingCustomer = await stripe.customers.retrieve(customerId);
+        if (existingCustomer.deleted) customerId = "";
+      } catch (err) {
+        const code =
+          typeof err === "object" && err !== null && "code" in err
+            ? String((err as { code?: unknown }).code ?? "")
+            : "";
+        if (code !== "resource_missing") throw err;
+        customerId = "";
+      }
+    }
     if (!customerId) {
       const customer = await stripe.customers.create({
         email: user.email ?? undefined,
-        metadata: { userId: user.id },
+        metadata: {
+          userId: user.id,
+          linkId: finalizedLink.id,
+          billingProduct: "aisyncsuite",
+        },
       });
       await db
-        .update(usersTable)
-        .set({ stripeCustomerId: customer.id })
-        .where(eq(usersTable.id, user.id));
+        .update(suiteLinksTable)
+        .set({
+          stripeCustomerId: customer.id,
+          stripeAccountId: account.id,
+        })
+        .where(eq(suiteLinksTable.id, finalizedLink.id));
       customerId = customer.id;
     }
 
@@ -791,13 +815,19 @@ router.post("/suite/portal", async (req, res): Promise<void> => {
     return;
   }
 
-  if (!user.stripeCustomerId) {
-    res.status(400).json({ error: "No Stripe customer found for this account" });
+  const links = await db
+    .select()
+    .from(suiteLinksTable)
+    .where(eq(suiteLinksTable.aibeatUserId, user.id))
+    .limit(20);
+  const activeLink = links.find((candidate) => Boolean(candidate.aipodUserId));
+  if (!activeLink?.stripeCustomerId) {
+    res.status(400).json({ error: "No Suite billing customer found for this account" });
     return;
   }
 
   try {
-    const stripe = await getUncachableStripeClient();
+    const stripe = await getSuiteStripeClient();
     const aibeatReturn = process.env["REPLIT_DOMAINS"]
       ? `https://${process.env["REPLIT_DOMAINS"].split(",")[0]}/suite`
       : `${req.protocol}://${req.get("host")}/suite`;
@@ -811,7 +841,7 @@ router.post("/suite/portal", async (req, res): Promise<void> => {
           )}${suitePagePath(origin)}`;
 
     const session = await stripe.billingPortal.sessions.create({
-      customer: user.stripeCustomerId,
+      customer: activeLink.stripeCustomerId,
       return_url: returnUrl,
     });
 

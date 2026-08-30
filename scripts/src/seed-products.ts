@@ -439,6 +439,23 @@ async function seedFirstPurchasePromo(stripe: Stripe): Promise<void> {
 // Used to seed the production account when prod credentials come from secrets
 // (see api-server/src/lib/stripeClient.ts) rather than the Replit connector.
 async function getSeedClient(): Promise<Stripe> {
+  if (process.env["SUITE_ONLY"] === "1") {
+    const isProduction =
+      process.env["STRIPE_ENV"] === "production" ||
+      process.env["REPLIT_DEPLOYMENT"] === "1";
+    const key = isProduction
+      ? process.env["SUITE_STRIPE_SECRET_KEY"]
+      : process.env["SUITE_STRIPE_SANDBOX_SECRET_KEY"];
+    if (!key) {
+      throw new Error(
+        `${isProduction ? "SUITE_STRIPE_SECRET_KEY" : "SUITE_STRIPE_SANDBOX_SECRET_KEY"} is required to seed the dedicated Suite catalog.`,
+      );
+    }
+    console.log(
+      `Seeding dedicated AISync Suite Stripe catalog (${key.startsWith("sk_live") ? "LIVE" : "TEST"} account)\n`,
+    );
+    return new Stripe(key, { apiVersion: "2025-02-24.acacia" });
+  }
   if (process.env["SEED_USE_SECRET"] === "1") {
     const key = process.env["STRIPE_SECRET_KEY"];
     if (!key) {
@@ -456,26 +473,46 @@ async function getSeedClient(): Promise<Stripe> {
 
 async function main(): Promise<void> {
   const stripe = await getSeedClient();
-  console.log("Seeding products & prices into Stripe…\n");
+  const suiteOnly = process.env["SUITE_ONLY"] === "1";
+  const products = suiteOnly
+    ? PRODUCTS.filter((product) => product.metadata["kind"] === "suite")
+    : PRODUCTS;
+  console.log(
+    suiteOnly
+      ? "Seeding AISync Suite products & prices into Stripe…\n"
+      : "Seeding products & prices into Stripe…\n",
+  );
 
-  console.log("Archiving old topup products…");
-  await archiveOldTopups(stripe);
-  console.log();
+  if (!suiteOnly) {
+    console.log("Archiving old topup products…");
+    await archiveOldTopups(stripe);
+    console.log();
+  }
 
-  for (const productSpec of PRODUCTS) {
+  for (const productSpec of products) {
     const product = await findOrCreateProduct(stripe, productSpec);
     for (const priceSpec of productSpec.prices) {
       await findOrCreatePrice(stripe, product.id, priceSpec);
     }
   }
 
-  console.log("\nSeeding first-purchase promo code…");
-  await seedFirstPurchasePromo(stripe);
+  if (!suiteOnly) {
+    console.log("\nSeeding first-purchase promo code…");
+    await seedFirstPurchasePromo(stripe);
+  }
 
   console.log("\n✓ All products and prices are in place.");
   console.log(
     "Webhooks managed by stripe-replit-sync will populate the local stripe schema automatically.",
   );
+
+  if (suiteOnly) {
+    console.log("\n── AISync Suite catalog ──");
+    console.log("  Creator  $29/mo or $290/yr");
+    console.log("  Pro      $75/mo or $750/yr");
+    console.log("  Studio  $105/mo or $1,050/yr");
+    return;
+  }
 
   console.log("\n── Credit Pack summary ──");
   console.log("  Face value: $0.02/credit  ($20 per 1000 credits = 2× Runway cost)");

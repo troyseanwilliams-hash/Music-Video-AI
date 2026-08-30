@@ -37,6 +37,26 @@ app.use(cors({ credentials: true, origin: true }));
 
 // Stripe webhook MUST be registered BEFORE express.json() so it gets the raw Buffer.
 app.post(
+  "/api/stripe/suite-webhook",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    const signature = req.headers["stripe-signature"];
+    if (!signature) {
+      res.status(400).json({ error: "Missing stripe-signature" });
+      return;
+    }
+    const sig = Array.isArray(signature) ? signature[0] : signature;
+    try {
+      await WebhookHandlers.processSuiteWebhook(req.body, sig);
+      res.status(200).json({ received: true });
+    } catch (err) {
+      logger.error({ err }, "Suite Stripe webhook processing error");
+      res.status(400).json({ error: "Webhook processing error" });
+    }
+  },
+);
+
+app.post(
   "/api/stripe/webhook",
   express.raw({ type: "application/json" }),
   async (req, res) => {

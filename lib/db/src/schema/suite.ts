@@ -56,6 +56,12 @@ export const suiteLinksTable = pgTable(
       .default("none"),
     // Stripe subscription ID for the Suite sub associated with this link
     stripeSubscriptionId: text("stripe_subscription_id"),
+    // Suite billing uses its own Stripe customer. Never reuse the standalone
+    // AIBeatSync customer ID because Stripe object IDs are account-scoped.
+    stripeCustomerId: text("stripe_customer_id"),
+    // Stripe account that owns stripeCustomerId. Used to detect account
+    // switches and repair stale customer IDs safely.
+    stripeAccountId: text("stripe_account_id"),
     // Which product originated the checkout (aibeatsync | aipodsync)
     checkoutOrigin: text("checkout_origin"),
     // Short reservation used to prevent concurrent Checkout Sessions. Stripe

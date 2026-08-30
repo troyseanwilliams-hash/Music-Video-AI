@@ -11,6 +11,10 @@ import {
 import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { getStripeSync, getUncachableStripeClient } from "./stripeClient.js";
+import {
+  getSuiteStripeClient,
+  getSuiteWebhookSecret,
+} from "./suiteStripeClient.js";
 import { logger } from "./logger.js";
 import { notifyPayment } from "./notifications.js";
 import {
@@ -30,12 +34,26 @@ function parseCreditsFromMetadata(
 }
 
 async function findUserByCustomerId(customerId: string) {
-  const [user] = await db
+  const [directUser] = await db
     .select()
     .from(usersTable)
     .where(eq(usersTable.stripeCustomerId, customerId))
     .limit(1);
-  return user ?? null;
+  if (directUser) return directUser;
+
+  const [suiteLink] = await db
+    .select({ aibeatUserId: suiteLinksTable.aibeatUserId })
+    .from(suiteLinksTable)
+    .where(eq(suiteLinksTable.stripeCustomerId, customerId))
+    .limit(1);
+  if (!suiteLink) return null;
+
+  const [suiteUser] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.id, suiteLink.aibeatUserId))
+    .limit(1);
+  return suiteUser ?? null;
 }
 
 async function ensureCreditsRow(userId: string): Promise<void> {
@@ -304,6 +322,7 @@ export function resolveSubscriptionId(invoice: Stripe.Invoice): string | null {
 export async function handleInvoicePaid(
   event: Stripe.Event,
   invoice: Stripe.Invoice,
+  stripeOverride?: Stripe,
 ): Promise<void> {
   const customerId =
     typeof invoice.customer === "string"
@@ -328,7 +347,7 @@ export async function handleInvoicePaid(
     price_details?: { price?: string | null } | null;
   } | null;
 
-  const stripe = await getUncachableStripeClient();
+  const stripe = stripeOverride ?? (await getUncachableStripeClient());
   const priceCache = new Map<string, Stripe.Price>();
   const resolvePrice = async (
     line: Stripe.InvoiceLineItem,
@@ -722,6 +741,7 @@ export async function handleInvoicePaid(
 async function handleCheckoutCompleted(
   event: Stripe.Event,
   session: Stripe.Checkout.Session,
+  stripeOverride?: Stripe,
 ): Promise<void> {
   if (session.mode !== "payment") return;
 
@@ -740,7 +760,7 @@ async function handleCheckoutCompleted(
     return;
   }
 
-  const stripe = await getUncachableStripeClient();
+  const stripe = stripeOverride ?? (await getUncachableStripeClient());
   if (!session.id) return;
   const fullSession = await stripe.checkout.sessions.retrieve(session.id, {
     expand: ["line_items.data.price"],
@@ -781,6 +801,7 @@ async function handleCheckoutCompleted(
 export async function handleSubscriptionUpdated(
   stripeEventId: string,
   subscription: Stripe.Subscription,
+  stripeOverride?: Stripe,
 ): Promise<void> {
   const customerId =
     typeof subscription.customer === "string"
@@ -791,7 +812,7 @@ export async function handleSubscriptionUpdated(
   const user = await findUserByCustomerId(customerId);
   if (!user) return;
 
-  const stripe = await getUncachableStripeClient();
+  const stripe = stripeOverride ?? (await getUncachableStripeClient());
   try {
     // Webhook payloads are historical snapshots. Always base entitlement
     // decisions on the provider's current subscription state.
@@ -840,7 +861,11 @@ export async function handleSubscriptionUpdated(
     const periodEnd = typeof itemEnd === "number" ? itemEnd : legacyEnd;
     const currentPeriodEnd = typeof periodEnd === "number" ? new Date(periodEnd * 1000) : null;
     let observedCurrentSubscriptionIsNonterminal = false;
+    // A dedicated Suite Stripe account cannot retrieve a standalone product
+    // subscription ID. Direct checkout is already excluded before Suite
+    // checkout, so Suite lifecycle events only fence against Suite link state.
     if (
+      !stripeOverride &&
       user.stripeSubscriptionId &&
       user.stripeSubscriptionId !== subscription.id
     ) {
@@ -1357,6 +1382,7 @@ async function notifyReplayFailures(
 
 async function handleInvoicePaymentFailed(
   invoice: Stripe.Invoice,
+  stripeOverride?: Stripe,
 ): Promise<void> {
   // Only care about Suite subscriptions here; generic failures are handled by
   // handleSubscriptionUpdated (which fires on status → past_due).
@@ -1364,7 +1390,7 @@ async function handleInvoicePaymentFailed(
   if (!subscriptionId) return;
 
   try {
-    const stripe = await getUncachableStripeClient();
+    const stripe = stripeOverride ?? (await getUncachableStripeClient());
     const sub = await stripe.subscriptions.retrieve(subscriptionId);
     const linkId: string | null = sub.metadata?.["linkId"] ?? null;
     const resolvedLookupKey = sub.items.data[0]?.price?.lookup_key ?? null;
@@ -1406,6 +1432,7 @@ async function handleInvoicePaymentFailed(
 async function handleChargeRefunded(
   event: Stripe.Event,
   charge: Stripe.Charge,
+  stripeOverride?: Stripe,
 ): Promise<void> {
   // Only act on a full refund (amount_refunded == amount)
   if (charge.amount_refunded !== charge.amount) return;
@@ -1419,7 +1446,7 @@ async function handleChargeRefunded(
   if (!invoiceId) return;
 
   try {
-    const stripe = await getUncachableStripeClient();
+    const stripe = stripeOverride ?? (await getUncachableStripeClient());
     const invoice = await stripe.invoices.retrieve(invoiceId);
     const subscriptionId = resolveSubscriptionId(invoice);
     if (!subscriptionId) return;
@@ -1542,6 +1569,67 @@ async function handleChargeRefunded(
 }
 
 export class WebhookHandlers {
+  static async processSuiteWebhook(
+    payload: Buffer,
+    signature: string,
+  ): Promise<void> {
+    if (!Buffer.isBuffer(payload)) {
+      throw new Error("Suite Stripe webhook payload must be a Buffer");
+    }
+    const webhookSecret = getSuiteWebhookSecret();
+    if (!webhookSecret) {
+      throw new Error("Dedicated Suite Stripe webhook secret is not configured");
+    }
+
+    const stripe = await getSuiteStripeClient();
+    const event = stripe.webhooks.constructEvent(
+      payload,
+      signature,
+      webhookSecret,
+    );
+
+    switch (event.type) {
+      case "invoice.paid":
+        await handleInvoicePaid(
+          event,
+          event.data.object as Stripe.Invoice,
+          stripe,
+        );
+        break;
+      case "invoice.payment_failed":
+        await handleInvoicePaymentFailed(
+          event.data.object as Stripe.Invoice,
+          stripe,
+        );
+        break;
+      case "charge.refunded":
+        await handleChargeRefunded(
+          event,
+          event.data.object as Stripe.Charge,
+          stripe,
+        );
+        break;
+      case "checkout.session.completed":
+        await handleCheckoutCompleted(
+          event,
+          event.data.object as Stripe.Checkout.Session,
+          stripe,
+        );
+        break;
+      case "customer.subscription.created":
+      case "customer.subscription.updated":
+      case "customer.subscription.deleted":
+        await handleSubscriptionUpdated(
+          event.id,
+          event.data.object as Stripe.Subscription,
+          stripe,
+        );
+        break;
+      default:
+        break;
+    }
+  }
+
   static async processWebhook(
     payload: Buffer,
     signature: string,
