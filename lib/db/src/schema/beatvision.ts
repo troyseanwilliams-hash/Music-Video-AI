@@ -465,4 +465,72 @@ export const analyticsEventsTable = pgTable("analytics_events", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const emailCampaignStatusEnum = pgEnum("email_campaign_status", [
+  "queued",
+  "sending",
+  "completed",
+]);
+
+export const emailCampaignRecipientStatusEnum = pgEnum("email_campaign_recipient_status", [
+  "pending",
+  "sending",
+  "sent",
+  "skipped",
+]);
+
+export const emailCampaignsTable = pgTable("email_campaigns", {
+  id: text("id").primaryKey(),
+  subject: text("subject").notNull(),
+  status: emailCampaignStatusEnum("status").notNull().default("queued"),
+  batchSize: integer("batch_size").notNull().default(100),
+  nextRunAt: timestamp("next_run_at", { withTimezone: true }).notNull(),
+  lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  lastError: text("last_error"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+export const emailCampaignRecipientsTable = pgTable(
+  "email_campaign_recipients",
+  {
+    id: text("id").primaryKey(),
+    campaignId: text("campaign_id")
+      .notNull()
+      .references(() => emailCampaignsTable.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    position: integer("position").notNull(),
+    status: emailCampaignRecipientStatusEnum("status").notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    idempotencyKey: text("idempotency_key").notNull(),
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    providerResponse: text("provider_response"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (table) => ({
+    campaignPositionUnique: uniqueIndex("email_campaign_recipients_campaign_position_unique").on(
+      table.campaignId,
+      table.position,
+    ),
+    campaignUserUnique: uniqueIndex("email_campaign_recipients_campaign_user_unique").on(
+      table.campaignId,
+      table.userId,
+    ),
+    campaignStatusPositionIndex: uniqueIndex("email_campaign_recipients_campaign_status_position_idx").on(
+      table.campaignId,
+      table.status,
+      table.position,
+    ),
+  }),
+);
+
+export type EmailCampaign = typeof emailCampaignsTable.$inferSelect;
+export type EmailCampaignRecipient = typeof emailCampaignRecipientsTable.$inferSelect;
+
 export type AnalyticsEvent = typeof analyticsEventsTable.$inferSelect;
