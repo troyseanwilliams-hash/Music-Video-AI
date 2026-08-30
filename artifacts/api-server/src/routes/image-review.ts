@@ -33,7 +33,7 @@ type ReviewReplacement = {
   credits: number;
   subscriptionCredits: number;
   topupCredits: number;
-  status: "queued" | "processing";
+  status: "queued" | "processing" | "uncertain";
   createdAt: string;
 };
 

@@ -13,6 +13,10 @@ import {
   retryProviderAfterTerminalFailure,
   terminalSceneRecovery,
 } from "../lib/terminalSceneRecovery.js";
+import {
+  hasDuplicateImageFailure,
+  prepareDuplicateImageRetry,
+} from "../lib/duplicateImageRetry.js";
 
 // Billing/salvage state AI jobs stash in the manifest jsonb.
 type AiJobMeta = {
@@ -21,10 +25,37 @@ type AiJobMeta = {
   generationMode?: "montage" | "narrative";
   narrativeVisualSource?: "video" | "generated_images";
   imageFirstVersion?: number;
+  imageFirstRefundedCredits?: number;
   reservedCredits?: number;
   reservedSubscriptionCredits?: number;
   reservedTopupCredits?: number;
   refunded?: boolean;
+  bundledLipSyncEnabled?: boolean;
+  imageReview?: {
+    phase: "awaiting_approval" | "approved";
+    revision: number;
+    approvedRevision?: number;
+    scenes: Record<string, {
+      index: number;
+      canonicalPath?: string;
+      revision: number;
+      source: "original_generation" | "regenerated" | "generated_gallery" | "local_upload";
+      prompt: string;
+      status?: "ready" | "failed" | "pending" | "uncertain";
+      errorMessage?: string;
+      acceptedRequestId?: string;
+    }>;
+    pendingReplacements?: Record<string, {
+      id: string;
+      index: number;
+      prompt: string;
+      credits: number;
+      subscriptionCredits: number;
+      topupCredits: number;
+      status: "queued" | "processing" | "uncertain";
+      createdAt: string;
+    }>;
+  };
   partialClips?: Record<string, string>;
   attachedClipSources?: Record<string, string>;
   attachedClipContentHashes?: Record<string, string>;
@@ -260,6 +291,42 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
     if (job.status !== "failed") return { kind: "not_failed" as const, status: job.status };
 
     const meta = metaOf(job.manifest);
+    if (hasDuplicateImageFailure(job.errorMessage)) {
+      const prepared = prepareDuplicateImageRetry(meta, job.errorMessage);
+      if (!prepared) {
+        return { kind: "unsafe_recovery_state" as const };
+      }
+      const [updated] = await tx
+        .update(jobsTable)
+        .set({
+          status: "queued",
+          errorMessage: null,
+          retryCount: 0,
+          claimedAt: null,
+          manifest: sql`jsonb_set(
+            jsonb_set(
+              COALESCE(${jobsTable.manifest}, '{}'::jsonb),
+              '{imageReview}',
+              ${JSON.stringify(prepared.nextReview)}::jsonb
+            ),
+            '{resumeReservationRequired}',
+            to_jsonb(${prepared.resumeCredits}::int)
+          )`,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(jobsTable.id, id), eq(jobsTable.status, "failed")))
+        .returning();
+      if (!updated) return { kind: "not_failed" as const, status: job.status };
+      return {
+        kind: "ok" as const,
+        job: updated,
+        freshSceneIndex: null,
+        automaticReplacementSceneIndex: prepared.replacementIndex,
+        savedClips: Object.keys(meta.partialClips ?? {}).length,
+        plannedScenes: meta.storyboard?.numClips ?? null,
+        retryProvider: job.aiProvider,
+      };
+    }
     const recovery = terminalSceneRecovery(meta, job.errorMessage);
     if (recovery.unsafe) {
       return { kind: "unsafe_recovery_state" as const };
@@ -363,6 +430,7 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
       savedClips: Object.keys(meta.partialClips ?? {}).length,
       plannedScenes: meta.storyboard?.numClips ?? null,
       retryProvider,
+      automaticReplacementSceneIndex: null,
     };
   });
 
@@ -394,7 +462,9 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
       retryProvider: outcome.retryProvider,
     },
     outcome.freshSceneIndex === null
-      ? "Admin explicitly retried failed job"
+      ? outcome.automaticReplacementSceneIndex === null
+        ? "Admin explicitly retried failed job"
+        : "Admin queued an automatic replacement for a duplicate scene image"
       : "Admin queued a fresh request for a terminally rejected scene",
   );
   res.json({
@@ -404,6 +474,10 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
       savedClips: outcome.savedClips,
       plannedScenes: outcome.plannedScenes,
       retryProvider: outcome.retryProvider,
+      automaticReplacementScene:
+        outcome.automaticReplacementSceneIndex === null
+          ? null
+          : outcome.automaticReplacementSceneIndex + 1,
     },
   });
 });

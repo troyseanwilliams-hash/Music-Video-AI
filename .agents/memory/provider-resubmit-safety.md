@@ -69,6 +69,12 @@ Paid image submissions also require a durable pre-POST intent, not only an accep
 
 **How to apply:** Write an ownership-fenced image intent before POST, atomically replace it with pending or uncertain state, and block conversion/retry while an intent is unresolved.
 
+Free automatic image replacements require the same durable submission fencing as paid images.
+
+**Why:** “Free to the customer” does not make a provider request safe to duplicate. A worker restart, ambiguous response, or broken completed-media URL can otherwise issue another provider request or trap the job in a live polling loop.
+
+**How to apply:** Persist intent and the accepted poll handle, resume that handle after recovery, schedule bounded polling retries instead of holding a claim forever, classify explicit submission/media failures as retryable, and keep truly ambiguous outcomes fenced. Mirror this in every processor copy.
+
 Timestamp claim fences must use values that round-trip through JavaScript without precision loss.
 
 **Why:** PostgreSQL `NOW()` retains microseconds while JavaScript `Date` retains milliseconds; direct equality can reject the rightful worker.

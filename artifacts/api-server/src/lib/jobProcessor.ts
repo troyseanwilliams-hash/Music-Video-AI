@@ -195,7 +195,7 @@ type ImageReviewState = {
     credits: number;
     subscriptionCredits: number;
     topupCredits: number;
-    status: "queued" | "processing";
+    status: "queued" | "processing" | "uncertain";
     createdAt: string;
   }>;
 };
@@ -617,6 +617,7 @@ async function processImageReviewReplacements(job: JobRow): Promise<void> {
     const pending = Object.values(review?.pendingReplacements ?? {});
     if (!review || review.phase !== "awaiting_approval" || pending.length === 0) break;
     const replacement = pending[0]!;
+    if (replacement.status === "uncertain") break;
     const shot = shotByIndex.get(replacement.index);
     if (!shot) throw new Error(`${IMAGE_API_FAILURE}: Replacement scene is not in the storyboard`);
     await assertJobOwned(job);
@@ -630,6 +631,22 @@ async function processImageReviewReplacements(job: JobRow): Promise<void> {
       WHERE id = ${job.id}
     `);
     try {
+    const submissionMeta = await readAiMeta(job.id);
+    const existingRequest = submissionMeta.pendingImageRequests?.[replacement.index];
+    const hasUncertainSubmission =
+      !!submissionMeta.uncertainImageSubmissions?.[replacement.index]
+      || (
+        !!submissionMeta.imageSubmissionIntents?.[replacement.index]
+        && !existingRequest?.pollUrl
+      );
+    if (hasUncertainSubmission) {
+      await markImageReviewReplacementUncertain(
+        job.id,
+        replacement.id,
+        replacement.index,
+      );
+      break;
+    }
     const referencePath = resolveCharacterReferencePath({
       usesCharacterReference: shot.usesCharacterReference === true,
       userReferenceImagePath: job.referenceImagePath,
@@ -638,10 +655,20 @@ async function processImageReviewReplacements(job: JobRow): Promise<void> {
     const referenceImageUrl = referencePath
       ? await storageService.getObjectEntitySignedUrl(referencePath, 900)
       : undefined;
+    if (!existingRequest) {
+      const intentPersisted = await persistImageSubmissionIntent(job, replacement.index);
+      if (!intentPersisted) {
+        throw new Error(`${OWNERSHIP_LOST} (image replacement submission intent fence)`);
+      }
+    }
     const providerUrl = await generateNarrativeImage({
       prompt: replacement.prompt,
       aspectRatio: job.aspectRatio,
       referenceImageUrl,
+      existingPollUrl: existingRequest?.pollUrl,
+      onSubmit: (info) => persistPendingImageRequest(job.id, replacement.index, info),
+      onUncertainSubmission: (info) =>
+        persistUncertainImageSubmission(job.id, replacement.index, info),
     });
     await assertJobOwned(job);
     const buffer = await downloadGeneratedImage(providerUrl);
@@ -694,10 +721,78 @@ async function processImageReviewReplacements(job: JobRow): Promise<void> {
         updatedAt: new Date(),
       }).where(eq(jobsTable.id, job.id));
     });
+    await clearImageSubmissionState(job.id, replacement.index);
     await notifyJobUpdate(job.id);
     anchor = anchor ?? objectPath;
     } catch (error) {
       if (error instanceof Error && error.message.includes(OWNERSHIP_LOST)) throw error;
+      const recoveryMeta = await readAiMeta(job.id);
+      const acceptedRequest = recoveryMeta.pendingImageRequests?.[replacement.index];
+      const detail = error instanceof Error ? error.message : String(error);
+      const definiteSubmissionRejection =
+        /ai image service 4\d\d:/i.test(detail);
+      const uncertainRequest =
+        recoveryMeta.uncertainImageSubmissions?.[replacement.index]
+        || (
+          recoveryMeta.imageSubmissionIntents?.[replacement.index]
+          && !acceptedRequest?.pollUrl
+        );
+      if (uncertainRequest && !definiteSubmissionRejection) {
+        await markImageReviewReplacementUncertain(
+          job.id,
+          replacement.id,
+          replacement.index,
+        );
+        logger.warn(
+          { err: error, jobId: job.id, scene: replacement.index },
+          "Image replacement submission is uncertain; blocked duplicate submission",
+        );
+        break;
+      }
+      const terminalAcceptedFailure =
+        definiteSubmissionRejection
+        || /saved source-image request was rejected|ai image generation failed|could not download generated image: http 4\d\d|generated source image was invalid/i.test(detail);
+      if (acceptedRequest?.pollUrl && !terminalAcceptedFailure) {
+        const nextRetry = (job.retryCount ?? 0) + 1;
+        if (nextRetry >= MAX_RETRIES) {
+          await markImageReviewReplacementUncertain(
+            job.id,
+            replacement.id,
+            replacement.index,
+          );
+          logger.warn(
+            { err: error, jobId: job.id, scene: replacement.index },
+            "Image replacement recovery budget exhausted; request remains fenced",
+          );
+          break;
+        }
+        const retryAfter = Date.now() + Math.pow(2, nextRetry) * 60_000;
+        const requeued = await db.execute<{ id: string }>(sql`
+          UPDATE jobs SET
+            status = 'queued',
+            claimed_at = NULL,
+            retry_count = ${nextRetry},
+            error_message = 'Safely resuming the accepted replacement image request.',
+            manifest = COALESCE(manifest, '{}'::jsonb) || jsonb_build_object(
+              'retryAfter', ${retryAfter}::bigint
+            ),
+            updated_at = NOW()
+          WHERE id = ${job.id}
+            AND claimed_at = ${job.claimedAt}
+          RETURNING id
+        `);
+        if (requeued.rows.length === 0) {
+          await assertJobOwned(job);
+          throw new Error(`${OWNERSHIP_LOST} (image replacement recovery requeue)`);
+        }
+        logger.warn(
+          { err: error, jobId: job.id, scene: replacement.index, nextRetry, retryAfter },
+          "Image replacement poll interrupted; scheduled saved-request recovery",
+        );
+        await notifyJobUpdate(job.id);
+        return;
+      }
+      await clearImageSubmissionState(job.id, replacement.index);
       await refundFailedImageReviewReplacement(job.id, replacement.id);
       logger.warn({ err: error, jobId: job.id, scene: replacement.index }, "Image replacement failed; refunded replacement charge");
     }
@@ -710,6 +805,43 @@ async function processImageReviewReplacements(job: JobRow): Promise<void> {
       await updateJobStatus(job.id, { status: "pending_approval", claimedAt: null });
     }
   }
+}
+
+async function markImageReviewReplacementUncertain(
+  jobId: string,
+  replacementId: string,
+  sceneIndex: number,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [job] = await tx.select().from(jobsTable)
+      .where(eq(jobsTable.id, jobId)).limit(1).for("update");
+    const meta = (job?.manifest ?? {}) as AiJobMeta;
+    const review = meta.imageReview;
+    const replacement = review?.pendingReplacements?.[replacementId];
+    const scene = review?.scenes[String(sceneIndex)];
+    if (!job || !review || !replacement || !scene) return;
+    const nextReview = {
+      ...review,
+      scenes: {
+        ...review.scenes,
+        [String(sceneIndex)]: {
+          ...scene,
+          status: "uncertain" as const,
+          errorMessage: "The replacement request is still being verified. Another request will not be submitted.",
+        },
+      },
+      pendingReplacements: {
+        ...review.pendingReplacements,
+        [replacementId]: { ...replacement, status: "uncertain" as const },
+      },
+    };
+    await tx.update(jobsTable).set({
+      status: "pending_approval",
+      claimedAt: null,
+      manifest: sql`jsonb_set(COALESCE(${jobsTable.manifest}, '{}'::jsonb), '{imageReview}', ${JSON.stringify(nextReview)}::jsonb)`,
+      updatedAt: new Date(),
+    }).where(eq(jobsTable.id, jobId));
+  });
 }
 
 async function refundFailedImageReviewReplacement(jobId: string, replacementId: string): Promise<void> {
@@ -727,7 +859,21 @@ async function refundFailedImageReviewReplacement(jobId: string, replacementId: 
       updatedAt: new Date(),
     }).where(eq(creditsTable.userId, job!.userId));
     const { [replacementId]: _failed, ...remaining } = review!.pendingReplacements ?? {};
-    const nextReview = { ...review, pendingReplacements: remaining };
+    const failedScene = review!.scenes[String(replacement.index)];
+    const nextReview = {
+      ...review,
+      scenes: failedScene
+        ? {
+            ...review!.scenes,
+            [String(replacement.index)]: {
+              ...failedScene,
+              status: "failed" as const,
+              errorMessage: "The replacement image could not be generated. Try again or choose another image.",
+            },
+          }
+        : review!.scenes,
+      pendingReplacements: remaining,
+    };
     await tx.update(jobsTable).set({
       manifest: sql`jsonb_set(COALESCE(${jobsTable.manifest}, '{}'::jsonb), '{imageReview}', ${JSON.stringify(nextReview)}::jsonb)`,
       updatedAt: new Date(),

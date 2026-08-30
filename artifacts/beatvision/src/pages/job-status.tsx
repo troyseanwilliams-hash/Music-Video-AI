@@ -597,7 +597,7 @@ export default function JobStatus() {
           .filter((scene) => scene.status === "failed")
           .map((scene) => scene.index),
       );
-      setReviewMessage("Your retained images are ready for review. Replace the flagged duplicate, then approve the storyboard to resume video creation.");
+      setReviewMessage("The duplicate scene is being regenerated automatically. Review the replacement when it finishes, then approve the storyboard to resume video creation.");
     } catch (error) {
       setRetainedImageRetryError(
         error instanceof Error ? error.message : "This job could not be reopened.",
