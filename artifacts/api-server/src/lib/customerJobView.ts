@@ -3,6 +3,7 @@ const PRIVATE_MANIFEST_KEYS = new Set([
   "pendingRequests",
   "rejectedRequests",
   "pendingImageRequests",
+  "imageGenerationFailures",
   "submissionIntents",
   "imageSubmissionIntents",
   "uncertainSubmissions",

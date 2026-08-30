@@ -1870,7 +1870,7 @@ components:
 
     ImageReviewScene:
       type: object
-      required: [index, canonicalPath, revision, source, prompt]
+      required: [index, revision, source, prompt, status]
       properties:
         index: { type: integer, minimum: 0 }
         canonicalPath: { type: string }
@@ -1879,6 +1879,10 @@ components:
           type: string
           enum: [original_generation, regenerated, generated_gallery, local_upload]
         prompt: { type: string }
+        status:
+          type: string
+          enum: [ready, failed, pending, uncertain]
+        errorMessage: { type: string }
         acceptedRequestId: { type: string }
 
     ImageReview:

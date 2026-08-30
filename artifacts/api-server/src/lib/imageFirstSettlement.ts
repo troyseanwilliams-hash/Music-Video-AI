@@ -15,10 +15,13 @@ type ImageFirstBillingMeta = {
   bundledLipSyncChildId?: string;
   bundledLipSyncActivated?: boolean;
   storyboard?: { shots?: Array<{ index?: number }> };
+  narrativeImages?: Record<string, unknown>;
   partialClips?: Record<string, unknown>;
   pendingRequests?: Record<string, unknown>;
   rejectedRequests?: Record<string, unknown>;
   uncertainSubmissions?: Record<string, unknown>;
+  pendingImageRequests?: Record<string, unknown>;
+  uncertainImageSubmissions?: Record<string, unknown>;
 };
 
 export type ImageFirstSettlementAmounts = {
@@ -55,13 +58,20 @@ export function calculateImageFirstSettlement(
   const reserved = Math.max(0, meta.reservedCredits ?? 0);
   const sceneCount = Math.max(0, meta.storyboard?.shots?.length ?? 0);
   const completedImages = Math.min(sceneCount, Math.max(0, Math.floor(completedImageCount)));
-  const completedGeneratedImages = Math.max(
-    0,
-    completedImages - Math.max(0, Math.floor(meta.reusedSourceImageCount ?? 0)),
-  );
+  const completedGeneratedImages = meta.narrativeImages !== undefined
+    ? validSceneIndexes(meta.narrativeImages, sceneCount).length
+    : Math.max(
+        0,
+        completedImages - Math.max(0, Math.floor(meta.reusedSourceImageCount ?? 0)),
+      );
+  const acceptedImageRequests = new Set([
+    ...validSceneIndexes(meta.pendingImageRequests, sceneCount),
+    ...validSceneIndexes(meta.uncertainImageSubmissions, sceneCount),
+  ]);
+  const chargedGeneratedImageCount = Math.max(completedGeneratedImages, acceptedImageRequests.size);
   const imageCharge = Math.min(
     Math.max(0, meta.imageCreditCost ?? reserved),
-    completedGeneratedImages * GENERATED_IMAGE_CREDITS_PER_VISUAL,
+    chargedGeneratedImageCount * GENERATED_IMAGE_CREDITS_PER_VISUAL,
   );
   const spentIndexes = new Set([
     ...validSceneIndexes(meta.partialClips, sceneCount),

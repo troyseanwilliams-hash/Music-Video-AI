@@ -3,7 +3,11 @@ import { useRoute, useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { SAMPLE_LYRICS } from "@/lib/sampleLyrics";
 import { MAX_LYRICS_LENGTH } from "@/lib/lyricLimits";
-import { LYRIC_ALIGN_COST, LYRIC_OVERLAY_COST } from "@/lib/creditPricing";
+import {
+  GENERATED_IMAGE_CREDITS_PER_VISUAL,
+  LYRIC_ALIGN_COST,
+  LYRIC_OVERLAY_COST,
+} from "@/lib/creditPricing";
 import {
   getGenerationTimeEstimate,
   getRemainingEstimate,
@@ -489,10 +493,12 @@ export default function JobStatus() {
       revision?: number;
       scenes?: Record<string, {
         index: number;
-        canonicalPath: string;
+        canonicalPath?: string;
         revision: number;
         source: string;
         prompt: string;
+        status?: "ready" | "failed" | "pending" | "uncertain";
+        errorMessage?: string;
       }>;
       pendingReplacements?: Record<string, { index: number; prompt: string; credits: number }>;
     };
@@ -502,6 +508,17 @@ export default function JobStatus() {
   const pendingReviewIndexes = new Set(
     Object.values(imageReview?.pendingReplacements ?? {}).map((pending) => pending.index),
   );
+  const missingReviewScenes = reviewScenes.filter(
+    (scene) => !scene.canonicalPath || (scene.status !== undefined && scene.status !== "ready"),
+  );
+  const blockedReviewIndexes = new Set(
+    reviewScenes
+      .filter((scene) => scene.status === "pending" || scene.status === "uncertain")
+      .map((scene) => scene.index),
+  );
+  const replaceableSelectedReviewCount = selectedReviewScenes
+    .filter((index) => !blockedReviewIndexes.has(index))
+    .length;
   const reviewGallery = galleryImagesData?.assets ?? [];
   const imageSourceLabel: Record<string, string> = {
     original_generation: "Original generation",
@@ -534,10 +551,16 @@ export default function JobStatus() {
     }
   };
   const requestReplacements = () => {
-    const scenes = selectedReviewScenes.map((index) => ({
+    const scenes = selectedReviewScenes
+      .filter((index) => !blockedReviewIndexes.has(index))
+      .map((index) => ({
       index,
       prompt: replacementPrompts[index] || imageReview?.scenes?.[String(index)]?.prompt || "",
-    }));
+      }));
+    if (scenes.length === 0) {
+      setReviewMessage("Choose a failed scene or a scene with a completed image to regenerate.");
+      return;
+    }
     void submitReviewRequest("replacements", { scenes });
   };
   const chooseReviewSource = (index: number, source: "gallery" | "upload", value: string) => {
@@ -1016,20 +1039,34 @@ export default function JobStatus() {
                 </div>
                 <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className="font-semibold">Your source images are ready</p>
+                    <p className="font-semibold">
+                      {missingReviewScenes.length > 0
+                        ? `${missingReviewScenes.length} scene${missingReviewScenes.length === 1 ? "" : "s"} need an image`
+                        : "Your source images are ready"}
+                    </p>
                     <p className="text-xs text-muted-foreground">
-                      Nothing is animating yet. Select any image you want to regenerate; the current image stays in place unless its replacement succeeds.
+                      {missingReviewScenes.length > 0
+                        ? "Completed images are saved. Generate a paid replacement or choose another image for each missing scene before creating the video."
+                        : "Nothing is animating yet. You can keep an image, choose a free source, or generate a paid replacement."}
+                    </p>
+                    <p className="mt-2 text-xs font-medium text-foreground/80">
+                      A regeneration creates a new AI image and costs {GENERATED_IMAGE_CREDITS_PER_VISUAL} credits per selected scene,
+                      in addition to the original generation charge. Gallery images and uploads are free.
                     </p>
                   </div>
                   <Button
-                    disabled={reviewBusy || selectedReviewScenes.length === 0}
+                    disabled={
+                      reviewBusy
+                      || selectedReviewScenes.length === 0
+                      || replaceableSelectedReviewCount === 0
+                    }
                     onClick={requestReplacements}
                     size="sm"
                   >
                     <Sparkles className="mr-2 h-4 w-4" />
                     Regenerate selected images
                     <span className="ml-2 text-xs opacity-80">
-                      +{selectedReviewScenes.length * 7} credits
+                      +{replaceableSelectedReviewCount * GENERATED_IMAGE_CREDITS_PER_VISUAL} credits
                     </span>
                   </Button>
                 </div>
@@ -1037,7 +1074,11 @@ export default function JobStatus() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setSelectedReviewScenes(reviewScenes.map((scene) => scene.index))}
+                    onClick={() => setSelectedReviewScenes(
+                      reviewScenes
+                        .filter((scene) => scene.status !== "pending" && scene.status !== "uncertain")
+                        .map((scene) => scene.index),
+                    )}
                   >
                     Select all
                   </Button>
@@ -1046,7 +1087,12 @@ export default function JobStatus() {
                   </Button>
                   <Button
                     className="sm:ml-auto"
-                    disabled={reviewBusy || reviewScenes.length !== visualImageCount || pendingReviewIndexes.size > 0}
+                    disabled={
+                      reviewBusy
+                      || reviewScenes.length !== visualImageCount
+                      || missingReviewScenes.length > 0
+                      || pendingReviewIndexes.size > 0
+                    }
                     onClick={() => void submitReviewRequest("approve", {})}
                     size="sm"
                   >
@@ -1086,11 +1132,23 @@ export default function JobStatus() {
                           </Badge>
                         </div>
                         <div className="mb-3 aspect-video overflow-hidden rounded-md bg-muted">
-                          {asset ? (
+                            {asset && scene.status !== "failed" && scene.status !== "pending" && scene.status !== "uncertain" ? (
                             <img src={`/api/storage${asset.objectPath}`} alt={`Scene ${scene.index + 1}`} className="h-full w-full object-cover" />
                           ) : (
-                            <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Waiting for image
+                            <div className="flex h-full flex-col items-center justify-center px-4 text-center text-xs text-muted-foreground">
+                              {scene.status === "pending" || scene.status === "uncertain" ? (
+                                <Loader2 className="mb-2 h-5 w-5 animate-spin text-primary" />
+                              ) : (
+                                <TriangleAlert className="mb-2 h-5 w-5 text-amber-500" />
+                              )}
+                              <span>
+                                {scene.errorMessage
+                                  ?? (scene.status === "pending"
+                                    ? "Image request is still being recovered."
+                                    : scene.status === "uncertain"
+                                      ? "Image request needs attention before retrying."
+                                      : "Image generation failed. Choose a replacement below.")}
+                              </span>
                             </div>
                           )}
                         </div>
@@ -1110,13 +1168,13 @@ export default function JobStatus() {
                           </p>
                         )}
                         <div className="flex flex-wrap gap-2">
-                          <Button
+                            <Button
                             variant="ghost"
                             size="sm"
-                            disabled={reviewBusy || pending}
+                              disabled={reviewBusy || pending || !asset}
                             onClick={() => setSelectedReviewScenes((current) => current.filter((index) => index !== scene.index))}
                           >
-                            <Check className="mr-1.5 h-3.5 w-3.5" /> Keep this image
+                              <Check className="mr-1.5 h-3.5 w-3.5" /> {asset ? "Keep this image" : "No image to keep"}
                           </Button>
                           <select
                             className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs"

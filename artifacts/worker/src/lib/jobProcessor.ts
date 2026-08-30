@@ -203,10 +203,12 @@ type ImageSubmissionIntent = {
 
 type ImageReviewScene = {
   index: number;
-  canonicalPath: string;
+  canonicalPath?: string;
   revision: number;
   source: "original_generation" | "regenerated" | "generated_gallery" | "local_upload";
   prompt: string;
+  status?: "ready" | "failed" | "pending" | "uncertain";
+  errorMessage?: string;
   acceptedRequestId?: string;
 };
 
@@ -234,6 +236,12 @@ type UncertainImageSubmission = {
   occurredAt: string;
 };
 
+type ImageGenerationFailure = {
+  status: "failed" | "pending" | "uncertain";
+  message: string;
+  occurredAt: string;
+};
+
 type AiJobMeta = {
   strictUniqueSourcesVersion?: number;
   generationMode?: "montage" | "narrative";
@@ -242,6 +250,7 @@ type AiJobMeta = {
   pendingImageRequests?: Record<string, PendingImageRequest>;
   imageSubmissionIntents?: Record<string, ImageSubmissionIntent>;
   uncertainImageSubmissions?: Record<string, UncertainImageSubmission>;
+  imageGenerationFailures?: Record<string, ImageGenerationFailure>;
   imageFirstVersion?: number;
   imageReview?: ImageReviewState;
   reservedCredits?: number;
@@ -310,15 +319,20 @@ async function persistInitialImageReview(
   shots: PersistedStoryboardShot[],
   paths: Record<string, string>,
   selectedSceneSources: Record<string, { sourceImageAssetId?: string }> = {},
+  failures: Record<string, ImageGenerationFailure> = {},
 ): Promise<void> {
   const scenes = Object.fromEntries(shots.map((shot) => [
     String(shot.index),
     {
       index: shot.index,
-      canonicalPath: paths[shot.index],
+      ...(paths[shot.index] ? { canonicalPath: paths[shot.index] } : {}),
       revision: 1,
       source: selectedSceneSources[String(shot.index)] ? "generated_gallery" : "original_generation",
       prompt: shot.prompt,
+      status: paths[shot.index] ? "ready" : (failures[String(shot.index)]?.status ?? "failed"),
+      ...(failures[String(shot.index)]?.message
+        ? { errorMessage: failures[String(shot.index)]!.message }
+        : {}),
     },
   ]));
   await db.execute(sql`
@@ -433,6 +447,49 @@ async function clearImageSubmissionState(jobId: string, index: number): Promise<
   `);
 }
 
+async function persistImageGenerationFailure(
+  jobId: string,
+  index: number,
+  failure: Omit<ImageGenerationFailure, "occurredAt">,
+): Promise<void> {
+  await db.execute(sql`
+    UPDATE jobs
+    SET manifest = jsonb_set(
+      COALESCE(manifest, '{}'::jsonb),
+      '{imageGenerationFailures}',
+      COALESCE(manifest->'imageGenerationFailures', '{}'::jsonb)
+        || ${JSON.stringify({ [index]: { ...failure, occurredAt: new Date().toISOString() } })}::jsonb
+    ), updated_at = NOW()
+    WHERE id = ${jobId}
+  `);
+}
+
+async function clearImageGenerationFailure(jobId: string, index: number): Promise<void> {
+  await db.execute(sql`
+    UPDATE jobs
+    SET manifest = jsonb_set(
+      COALESCE(manifest, '{}'::jsonb),
+      '{imageGenerationFailures}',
+      COALESCE(manifest->'imageGenerationFailures', '{}'::jsonb) - ${String(index)}
+    ), updated_at = NOW()
+    WHERE id = ${jobId}
+  `);
+}
+
+function imageFailureMessage(error: unknown, status: ImageGenerationFailure["status"]): string {
+  if (status === "uncertain") {
+    return "This image request needs attention before it can be safely retried. Choose another image or upload one.";
+  }
+  if (status === "pending") {
+    return "This image request is still being recovered. Choose another image or upload one.";
+  }
+  const detail = error instanceof Error ? error.message : String(error);
+  if (/content checker|content policy|safety check|request was rejected/i.test(detail)) {
+    return "This scene was blocked by an automated safety check. Edit the wording or choose another image.";
+  }
+  return "This scene could not be created. Generate a replacement or choose another image.";
+}
+
 async function prepareNarrativeImagesStage(job: JobRow): Promise<Record<string, string>> {
   if (!usesGeneratedNarrativeImages(job)) return {};
   const shots = storyboardShotsOf(job);
@@ -444,6 +501,7 @@ async function prepareNarrativeImagesStage(job: JobRow): Promise<Record<string, 
   const pending = liveMeta.pendingImageRequests ?? {};
   const uncertain = liveMeta.uncertainImageSubmissions ?? {};
   const intents = liveMeta.imageSubmissionIntents ?? {};
+  const failures = { ...(liveMeta.imageGenerationFailures ?? {}) };
   for (const asset of stored) paths[asset.assetIndex] = asset.objectPath;
   let generatedCharacterAnchorPath = selectGeneratedCharacterAnchorPath(
     stored,
@@ -467,52 +525,75 @@ async function prepareNarrativeImagesStage(job: JobRow): Promise<Record<string, 
     const shot = shots[position]!;
     if (!paths[shot.index]) {
       const existingRequest = pending[shot.index];
-      if ((uncertain[shot.index] || intents[shot.index]) && !existingRequest?.pollUrl) {
-        throw new Error(`${IMAGE_API_FAILURE}: A source-image request has an uncertain submission state`);
+      try {
+        if ((uncertain[shot.index] || intents[shot.index]) && !existingRequest?.pollUrl) {
+          const failure = {
+            status: "uncertain" as const,
+            message: imageFailureMessage(null, "uncertain"),
+            occurredAt: new Date().toISOString(),
+          };
+          await persistImageGenerationFailure(job.id, shot.index, failure);
+          failures[String(shot.index)] = failure;
+          continue;
+        }
+        await assertJobOwned(job);
+        const referenceImagePath = resolveCharacterReferencePath({
+          usesCharacterReference: shot.usesCharacterReference === true,
+          userReferenceImagePath: job.referenceImagePath,
+          generatedCharacterAnchorPath,
+        });
+        const referenceImageUrl = referenceImagePath
+          ? await storageService.getObjectEntitySignedUrl(referenceImagePath, 900)
+          : undefined;
+        if (!existingRequest) {
+          const intentPersisted = await persistImageSubmissionIntent(job, shot.index);
+          if (!intentPersisted) throw new Error(`${OWNERSHIP_LOST} (image submission intent fence)`);
+        }
+        const providerUrl = await generateNarrativeImage({
+          prompt: shot.prompt,
+          aspectRatio: job.aspectRatio,
+          referenceImageUrl,
+          existingPollUrl: existingRequest?.pollUrl,
+          onSubmit: (info) => persistPendingImageRequest(job.id, shot.index, info),
+          onUncertainSubmission: (info) => persistUncertainImageSubmission(job.id, shot.index, info),
+        });
+        await assertJobOwned(job);
+        const buffer = await downloadGeneratedImage(providerUrl);
+        await assertJobOwned(job);
+        const objectPath = await storageService.uploadNarrativeImageBuffer(buffer, job.id, shot.index);
+        await db.insert(imageAssetsTable).values({
+          id: randomUUID(), userId: job.userId, jobId: job.id, assetIndex: shot.index,
+          objectPath, prompt: shot.prompt, style: job.style,
+        }).onConflictDoNothing();
+        const [asset] = await db.select({ objectPath: imageAssetsTable.objectPath }).from(imageAssetsTable)
+          .where(and(eq(imageAssetsTable.jobId, job.id), eq(imageAssetsTable.assetIndex, shot.index))).limit(1);
+        paths[shot.index] = asset?.objectPath ?? objectPath;
+        await persistNarrativeImages(job.id, { [shot.index]: paths[shot.index]! });
+        await clearImageSubmissionState(job.id, shot.index);
+        await clearImageGenerationFailure(job.id, shot.index);
+        delete failures[String(shot.index)];
+        if (
+          !job.referenceImagePath
+          && !generatedCharacterAnchorPath
+          && shot.usesCharacterReference === true
+        ) {
+          generatedCharacterAnchorPath = paths[shot.index];
+        }
+      } catch (error) {
+        if (error instanceof Error && error.message.includes(OWNERSHIP_LOST)) throw error;
+        const status: ImageGenerationFailure["status"] =
+          uncertain[shot.index] || intents[shot.index] ? "uncertain"
+            : pending[shot.index] ? "pending"
+              : "failed";
+        const failure = {
+          status,
+          message: imageFailureMessage(error, status),
+          occurredAt: new Date().toISOString(),
+        };
+        await persistImageGenerationFailure(job.id, shot.index, failure);
+        failures[String(shot.index)] = failure;
+        logger.warn({ err: error, jobId: job.id, scene: shot.index, status }, "Source image failed; continuing batch");
       }
-      await assertJobOwned(job);
-      const referenceImagePath = resolveCharacterReferencePath({
-        usesCharacterReference: shot.usesCharacterReference === true,
-        userReferenceImagePath: job.referenceImagePath,
-        generatedCharacterAnchorPath,
-      });
-      const referenceImageUrl = referenceImagePath
-        ? await storageService.getObjectEntitySignedUrl(referenceImagePath, 900)
-        : undefined;
-      if (!existingRequest) {
-        const intentPersisted = await persistImageSubmissionIntent(job, shot.index);
-        if (!intentPersisted) throw new Error(`${OWNERSHIP_LOST} (image submission intent fence)`);
-      }
-      const providerUrl = await generateNarrativeImage({
-        prompt: shot.prompt,
-        aspectRatio: job.aspectRatio,
-        referenceImageUrl,
-        existingPollUrl: existingRequest?.pollUrl,
-        onSubmit: (info) => persistPendingImageRequest(job.id, shot.index, info),
-        onUncertainSubmission: (info) => persistUncertainImageSubmission(job.id, shot.index, info),
-      });
-      await assertJobOwned(job);
-      const buffer = await downloadGeneratedImage(providerUrl);
-      await assertJobOwned(job);
-      const objectPath = await storageService.uploadNarrativeImageBuffer(buffer, job.id, shot.index);
-      await db.insert(imageAssetsTable).values({
-        id: randomUUID(), userId: job.userId, jobId: job.id, assetIndex: shot.index,
-        objectPath, prompt: shot.prompt, style: job.style,
-      }).onConflictDoNothing();
-      const [asset] = await db.select({ objectPath: imageAssetsTable.objectPath }).from(imageAssetsTable)
-        .where(and(eq(imageAssetsTable.jobId, job.id), eq(imageAssetsTable.assetIndex, shot.index))).limit(1);
-      paths[shot.index] = asset?.objectPath ?? objectPath;
-      await persistNarrativeImages(job.id, { [shot.index]: paths[shot.index]! });
-      await clearImageSubmissionState(job.id, shot.index);
-      if (
-        !job.referenceImagePath
-        && !generatedCharacterAnchorPath
-        && shot.usesCharacterReference === true
-      ) {
-        generatedCharacterAnchorPath = paths[shot.index];
-      }
-    } else if (pending[shot.index] || uncertain[shot.index]) {
-      await clearImageSubmissionState(job.id, shot.index);
     }
     reportedProgress = Math.max(
       reportedProgress,
@@ -521,10 +602,10 @@ async function prepareNarrativeImagesStage(job: JobRow): Promise<Record<string, 
     await updateJobStatus(job.id, { progressPercent: reportedProgress });
   }
   await persistNarrativeImages(job.id, paths);
-  if (shots.some((shot) => !paths[shot.index])) throw new Error(`${IMAGE_API_FAILURE}: Required planned visuals are unavailable`);
   const latestMeta = await readAiMeta(job.id);
   if (!latestMeta.imageReview) {
-    await persistInitialImageReview(job.id, shots, paths, aiMetaOf(job).selectedSceneSources);
+    const latestFailures = latestMeta.imageGenerationFailures ?? failures;
+    await persistInitialImageReview(job.id, shots, paths, aiMetaOf(job).selectedSceneSources, latestFailures);
   } else if (latestMeta.imageReview.phase === "approved") {
     await notifyJobUpdate(job.id);
   }
@@ -600,15 +681,25 @@ async function processImageReviewReplacements(job: JobRow): Promise<void> {
       const currentScene = currentReview?.scenes[String(replacement.index)];
       if (!locked || !currentReview || !current || !currentScene) return;
       const revision = currentReview.revision + 1;
-      await tx.update(imageAssetsTable).set({
+      await tx.insert(imageAssetsTable).values({
+        id: randomUUID(),
+        userId: job.userId,
+        jobId: job.id,
+        assetIndex: replacement.index,
         objectPath,
         prompt: replacement.prompt,
-      }).where(and(eq(imageAssetsTable.jobId, job.id), eq(imageAssetsTable.assetIndex, replacement.index)));
+        style: job.style,
+      }).onConflictDoUpdate({
+        target: [imageAssetsTable.jobId, imageAssetsTable.assetIndex],
+        set: { objectPath, prompt: replacement.prompt },
+      });
+      const { errorMessage: _errorMessage, ...sceneWithoutError } = currentScene;
       const nextScene = {
-        ...currentScene,
+        ...sceneWithoutError,
         canonicalPath: objectPath,
         revision,
         source: "regenerated" as const,
+        status: "ready" as const,
         acceptedRequestId: replacement.id,
       };
       const { [replacement.id]: _accepted, ...remaining } = currentReview.pendingReplacements ?? {};

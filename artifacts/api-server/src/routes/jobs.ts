@@ -67,10 +67,12 @@ type AiJobMeta = {
     approvedRevision?: number;
     scenes: Record<string, {
       index: number;
-      canonicalPath: string;
+      canonicalPath?: string;
       revision: number;
       source: "original_generation" | "regenerated" | "generated_gallery" | "local_upload";
       prompt: string;
+      status?: "ready" | "failed" | "pending" | "uncertain";
+      errorMessage?: string;
       acceptedRequestId?: string;
     }>;
     pendingReplacements?: Record<string, {

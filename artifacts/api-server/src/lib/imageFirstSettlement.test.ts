@@ -77,4 +77,36 @@ describe("image-first reservation settlement", () => {
     expect(amounts.chargedCredits).toBe(0);
     expect(amounts.refundedCredits).toBe(107);
   });
+
+  it("keeps an accepted but unresolved source-image request charged", () => {
+    const amounts = calculateImageFirstSettlement({
+      imageFirstVersion: 1,
+      reservedCredits: 100,
+      reservedSubscriptionCredits: 100,
+      reservedTopupCredits: 0,
+      imageCreditCost: 14,
+      videoCreditCost: 86,
+      pendingImageRequests: { "1": { pollUrl: "saved" } },
+      storyboard,
+    }, 1);
+
+    expect(amounts.chargedCredits).toBe(7);
+    expect(amounts.refundedCredits).toBe(93);
+  });
+
+  it("does not charge a free replacement as a newly generated image", () => {
+    const amounts = calculateImageFirstSettlement({
+      imageFirstVersion: 1,
+      reservedCredits: 100,
+      reservedSubscriptionCredits: 100,
+      reservedTopupCredits: 0,
+      imageCreditCost: 14,
+      videoCreditCost: 86,
+      narrativeImages: {},
+      storyboard,
+    }, 1);
+
+    expect(amounts.chargedCredits).toBe(0);
+    expect(amounts.refundedCredits).toBe(100);
+  });
 });

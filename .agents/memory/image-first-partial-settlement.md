@@ -7,4 +7,4 @@ Failed, canceled, stale, and deleted image-first jobs must settle the original r
 
 **Why:** Full refunds after partial provider success give away retained paid images and accepted video work, while separate refund paths can race and return credits twice or to the wrong bucket.
 
-**How to apply:** Lock the job row, count canonical durable image assets and deduplicated accepted scene indexes, compute retained charges from the original image/video prices, restore the untouched reservation remainder to its original buckets, and atomically mark the reservation settled.
+**How to apply:** Lock the job row, count canonical durable image assets and deduplicated accepted scene indexes, compute retained charges from the original image/video prices, restore the untouched reservation remainder to its original buckets, and atomically mark the reservation settled. Use the durable initial-generation map when review substitutions can replace an asset, so free gallery/uploads are not mistaken for newly generated work.

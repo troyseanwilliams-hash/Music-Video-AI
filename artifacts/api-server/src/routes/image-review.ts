@@ -12,10 +12,12 @@ const storage = new ObjectStorageService();
 
 type ReviewScene = {
   index: number;
-  canonicalPath: string;
+  canonicalPath?: string;
   revision: number;
   source: "original_generation" | "regenerated" | "generated_gallery" | "local_upload";
   prompt: string;
+  status?: "ready" | "failed" | "pending" | "uncertain";
+  errorMessage?: string;
   acceptedRequestId?: string;
 };
 
@@ -42,6 +44,9 @@ type JobManifest = {
   imageFirstVersion?: number;
   imageReview?: ImageReview;
   storyboard?: { shots?: unknown[] };
+  pendingImageRequests?: Record<string, unknown>;
+  imageSubmissionIntents?: Record<string, unknown>;
+  uncertainImageSubmissions?: Record<string, unknown>;
 };
 
 function reviewOf(manifest: unknown): ImageReview | null {
@@ -144,6 +149,20 @@ router.post("/jobs/:id/image-review/replacements", async (req, res): Promise<voi
       }
       if (Object.values(review.pendingReplacements ?? {}).some((pending) => pending.index === scene.index)) {
         return { error: `Scene ${scene.index + 1} already has a replacement in progress.`, status: 409 as const };
+      }
+      if (
+        job.manifest
+        && typeof job.manifest === "object"
+        && (
+          (job.manifest as JobManifest).pendingImageRequests?.[String(scene.index)]
+          || (job.manifest as JobManifest).imageSubmissionIntents?.[String(scene.index)]
+          || (job.manifest as JobManifest).uncertainImageSubmissions?.[String(scene.index)]
+        )
+      ) {
+        return {
+          error: `Scene ${scene.index + 1} has an earlier image request that is still being recovered. Choose another image or upload one instead.`,
+          status: 409 as const,
+        };
       }
     }
     const [credits] = await tx.select().from(creditsTable)
@@ -266,19 +285,31 @@ router.post("/jobs/:id/image-review/source", async (req, res): Promise<void> => 
         return "pending";
       }
       const revision = review.revision + 1;
+      const { errorMessage: _errorMessage, ...sceneWithoutError } = scene;
       const nextScene: ReviewScene = {
-        ...scene,
+        ...sceneWithoutError,
         canonicalPath: ownedPath,
         revision,
         source: parsed.data.source === "gallery" ? "generated_gallery" : "local_upload",
+        status: "ready",
       };
       const nextReview = {
         ...review,
         revision,
         scenes: { ...review.scenes, [String(parsed.data.index)]: nextScene },
       };
-      await tx.update(imageAssetsTable).set({ objectPath: ownedPath })
-        .where(and(eq(imageAssetsTable.jobId, req.params.id), eq(imageAssetsTable.assetIndex, parsed.data.index)));
+      await tx.insert(imageAssetsTable).values({
+        id: randomUUID(),
+        userId: req.user.id,
+        jobId: req.params.id,
+        assetIndex: parsed.data.index,
+        objectPath: ownedPath,
+        prompt: scene.prompt,
+        style: job.style,
+      }).onConflictDoUpdate({
+        target: [imageAssetsTable.jobId, imageAssetsTable.assetIndex],
+        set: { objectPath: ownedPath, prompt: scene.prompt },
+      });
       await tx.update(jobsTable).set({
         manifest: sql`jsonb_set(COALESCE(${jobsTable.manifest}, '{}'::jsonb), '{imageReview}', ${JSON.stringify(nextReview)}::jsonb)`,
         updatedAt: new Date(),
@@ -326,7 +357,12 @@ router.post("/jobs/:id/image-review/approve", async (req, res): Promise<void> =>
     const assets = await tx.select({ assetIndex: imageAssetsTable.assetIndex, objectPath: imageAssetsTable.objectPath })
       .from(imageAssetsTable).where(eq(imageAssetsTable.jobId, req.params.id));
     const byIndex = new Map(assets.map((asset) => [asset.assetIndex, asset.objectPath]));
-    if (indexes.some((index) => byIndex.get(index) !== review.scenes[String(index)]?.canonicalPath)) {
+    if (indexes.some((index) => {
+      const scene = review.scenes[String(index)];
+      return !scene?.canonicalPath
+        || (scene.status !== undefined && scene.status !== "ready")
+        || byIndex.get(index) !== scene.canonicalPath;
+    })) {
       return { error: "Every approved scene image must be durably stored before approval.", status: 422 as const };
     }
     const nextReview = { ...review, phase: "approved" as const, approvedRevision: review.revision };
