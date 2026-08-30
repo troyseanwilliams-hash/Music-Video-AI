@@ -12,6 +12,7 @@ import {
   generateSong,
   getActiveMusicProvider,
   inferVocalDurationSeconds,
+  isUsableElevenLabsMusicCredential,
   loopAudioToLength,
   MAX_SONG_SECONDS,
   type MusicProvider,
@@ -360,7 +361,8 @@ router.get("/music/soundtracks-status", async (req: Request, res: Response) => {
     // whether the Eleven Music model is configured.
     vocalCost: SONG_VOCAL_CREDITS,
     vocalCreditsPerMinute: VOCAL_SONG_CREDITS_PER_MINUTE,
-    vocalsEnabled: !!process.env.ELEVENLABS_API_KEY,
+    vocalsEnabled:
+      isUsableElevenLabsMusicCredential() || !!process.env.PIXAZO_API_KEY,
   });
 });
 

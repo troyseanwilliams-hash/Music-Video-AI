@@ -72,20 +72,28 @@ function aceStepConfigured(): boolean {
   return !!(getEnv("MUSIC_ACESTEP_VERSION") || getEnv("MUSIC_ACESTEP_MODEL"));
 }
 
+export function isUsableElevenLabsMusicCredential(
+  key = getEnv("ELEVENLABS_API_KEY"),
+): boolean {
+  return Boolean(key?.startsWith("sk_") && key.length >= 20);
+}
+
 export function getActiveMusicProvider(
   hint?: MusicProvider | null,
   withVocals = false,
 ): MusicProvider {
   const hasPixazo = !!getEnv("PIXAZO_API_KEY");
-  const hasElevenLabs = !!getEnv("ELEVENLABS_API_KEY");
+  const hasUsableElevenLabs = isUsableElevenLabsMusicCredential();
   const hasReplicate = !!getEnv("REPLICATE_API_TOKEN");
   // Explicit Replicate hints win when Replicate is configured.
   if (hasReplicate && hint === "acestep" && aceStepConfigured()) return "acestep";
   if (hasReplicate && hint === "musicgen") return "musicgen";
-  if (hasElevenLabs && hint === "elevenlabs") return "elevenlabs";
+  // Keep explicit direct-provider requests pinned so an administrator receives
+  // the real configuration error instead of silently exercising a fallback.
+  if (hint === "elevenlabs") return "elevenlabs";
   // Vocal songs use Eleven Music. Keep instrumental routing unchanged so the
   // existing lower-cost instrumental provider remains available.
-  if (withVocals && hasElevenLabs) return "elevenlabs";
+  if (withVocals && hasUsableElevenLabs) return "elevenlabs";
   // Prefer Pixazo — one key shared with the video provider, no Replicate needed.
   if (hasPixazo) return "pixazo";
   if (hasReplicate) return "musicgen"; // free/cheap instrumental
@@ -187,7 +195,10 @@ export function buildElevenMusicRequest(req: SongRequest): {
 
 async function generateWithElevenMusic(req: SongRequest): Promise<SongResult> {
   const key = getEnv("ELEVENLABS_API_KEY");
-  if (!key) throw new Error("Eleven Music is not configured yet.");
+  if (!key) throw new ElevenMusicCredentialError("missing_secret");
+  if (!isUsableElevenLabsMusicCredential(key)) {
+    throw new ElevenMusicCredentialError("key_id_or_malformed");
+  }
 
   const { prompt, musicLengthMs, modelId } = buildElevenMusicRequest(req);
   let response: Response;
@@ -229,14 +240,15 @@ async function generateWithElevenMusic(req: SongRequest): Promise<SongResult> {
     } catch {
       // Keep provider diagnostics out of the customer-facing error.
     }
+    if (isElevenMusicCredentialFailure(response.status, providerStatus)) {
+      throw new ElevenMusicCredentialError(
+        providerStatus || `http_${response.status}`,
+      );
+    }
     throw new Error(
-      providerStatus === "api_key_id_used_as_api_key"
-        ? "The configured Eleven Music credential is a key ID, not the full API key. Replace ELEVENLABS_API_KEY with the full key shown when the key was created or rotated. No credits were charged."
-        : response.status === 401 || response.status === 403 || providerStatus === "missing_permissions"
-          ? "Eleven Music rejected the configured API key. Update ELEVENLABS_API_KEY with a valid paid-account API key that has Music access, then try again. No credits were charged."
-        : response.status === 422
-          ? "The music engine rejected this song description or lyric format. Try shorter, original lyrics with section tags on their own lines."
-          : `The music engine returned an error (${response.status}). No credits were charged; please try again.`,
+      response.status === 422
+        ? "The music engine rejected this song description or lyric format. Try shorter, original lyrics with section tags on their own lines."
+        : `The music engine returned an error (${response.status}). No credits were charged; please try again.`,
     );
   }
 
@@ -248,6 +260,28 @@ async function generateWithElevenMusic(req: SongRequest): Promise<SongResult> {
     provider: "elevenlabs",
     hasVocals: req.withVocals === true,
   };
+}
+
+class ElevenMusicCredentialError extends Error {
+  public readonly diagnosticReason: string;
+
+  constructor(diagnosticReason: string) {
+    super("AI vocal generation is temporarily unavailable. No credits were charged; please try again shortly.");
+    this.name = "ElevenMusicCredentialError";
+    this.diagnosticReason = diagnosticReason;
+  }
+}
+
+export function isElevenMusicCredentialFailure(
+  httpStatus: number,
+  providerStatus = "",
+): boolean {
+  return (
+    httpStatus === 401 ||
+    httpStatus === 403 ||
+    providerStatus === "missing_permissions" ||
+    providerStatus === "api_key_id_used_as_api_key"
+  );
 }
 
 // ── Simulation (no key) ──────────────────────────────────────────────────────
@@ -348,7 +382,8 @@ async function generateWithPixazoMusic(req: SongRequest): Promise<string> {
     body: JSON.stringify(body),
   });
   if (!submit.ok) {
-    throw new Error(`Pixazo music error (${submit.status}): ${(await submit.text()).slice(0, 300)}`);
+    await submit.text().catch(() => "");
+    throw new Error(`The music engine could not start this song (${submit.status}). No credits were charged; please try again.`);
   }
   const data = (await submit.json()) as { request_id?: string; polling_url?: string };
   const requestId = data.request_id;
@@ -361,9 +396,21 @@ async function generateWithPixazoMusic(req: SongRequest): Promise<string> {
     if (!poll.ok) continue;
     const d = (await poll.json()) as { status?: string; error?: string | null; output?: { media_url?: string[] } };
     if (d.status === "COMPLETED" && d.output?.media_url?.[0]) return d.output.media_url[0];
-    if (d.status === "FAILED" || d.status === "ERROR") throw new Error(`Pixazo music ${d.status}: ${d.error ?? "unknown error"}`);
+    if (d.status === "FAILED" || d.status === "ERROR") {
+      throw new Error("The music engine could not finish this song. No credits were charged; please try again.");
+    }
   }
-  throw new Error("Pixazo music generation timed out");
+  throw new Error("The music engine took too long to finish this song. No credits were charged; please try again.");
+}
+
+async function generateWithPixazoMusicResult(req: SongRequest): Promise<SongResult> {
+  const url = await generateWithPixazoMusic(req);
+  const { buffer, ext } = await downloadAudio(url);
+  const hasVocals = !!(
+    req.withVocals &&
+    ((req.lyrics && req.lyrics.trim() && req.lyrics.trim() !== "[inst]") || req.lyricsOptimizer)
+  );
+  return { audioBuffer: buffer, ext, provider: "pixazo", hasVocals };
 }
 
 // Loop a short clip to fill a target length (free — pure ffmpeg, no AI cost).
@@ -454,17 +501,23 @@ export async function generateSong(req: SongRequest): Promise<SongResult> {
   }
 
   if (provider === "pixazo") {
-    const url = await generateWithPixazoMusic(req);
-    const { buffer, ext } = await downloadAudio(url);
-    const hasVocals = !!(
-      req.withVocals &&
-      ((req.lyrics && req.lyrics.trim() && req.lyrics.trim() !== "[inst]") || req.lyricsOptimizer)
-    );
-    return { audioBuffer: buffer, ext, provider: "pixazo", hasVocals };
+    return generateWithPixazoMusicResult(req);
   }
 
   if (provider === "elevenlabs") {
-    return generateWithElevenMusic(req);
+    try {
+      return await generateWithElevenMusic(req);
+    } catch (err) {
+      const explicitlyPinned = req.provider === "elevenlabs";
+      if (
+        !explicitlyPinned &&
+        err instanceof ElevenMusicCredentialError &&
+        !!getEnv("PIXAZO_API_KEY")
+      ) {
+        return generateWithPixazoMusicResult(req);
+      }
+      throw err;
+    }
   }
 
   if (provider === "acestep") {

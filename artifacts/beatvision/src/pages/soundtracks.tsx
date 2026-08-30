@@ -112,7 +112,7 @@ function inferVocalDurationSeconds(lyrics?: string): number {
   const arrangementSeconds = Math.max(20, Math.min(45, sectionCount * 5));
   return Math.max(60, Math.min(300, Math.round((sungSeconds + arrangementSeconds) / 5) * 5));
 }
-function vocalSongCredits(seconds: number, creditsPerMinute = 15): number {
+function vocalSongCredits(seconds: number, creditsPerMinute = 18): number {
   const boundedSeconds = Math.min(Math.max(Math.round(seconds || 180), 60), 300);
   return Math.ceil((boundedSeconds / 60) * creditsPerMinute);
 }
@@ -240,7 +240,7 @@ export default function Soundtracks() {
   const estimatedVocalDuration = inferVocalDurationSeconds(lyrics);
   const estimatedVocalCredits = vocalSongCredits(
     estimatedVocalDuration,
-    status?.vocalCreditsPerMinute ?? Math.ceil((status?.vocalCost ?? 45) / 3),
+    status?.vocalCreditsPerMinute ?? Math.ceil((status?.vocalCost ?? 54) / 3),
   );
 
   const { data: tracks, isLoading, error, refetch, isRefetching } = useQuery({

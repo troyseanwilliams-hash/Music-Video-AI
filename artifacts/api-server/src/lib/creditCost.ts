@@ -213,13 +213,17 @@ const SONG_MIN_SECONDS = 5;
 const SONG_MAX_SECONDS = 120;
 // Music generation is priced at a 1.5× markup on the real provider cost.
 const MUSIC_GEN_MARKUP = 1.5;
+// Protect the music margin at the least expensive current customer rate:
+// Studio annual = $790 / 60,000 credits ≈ $0.01317 per credit.
+const MUSIC_CUSTOMER_USD_PER_CREDIT_FLOOR = 790 / 60_000;
 // Eleven Music is billed by generated minute. Vocal songs are never part of
 // the free instrumental allowance and are charged from their inferred length.
 export const ELEVEN_MUSIC_USD_PER_MINUTE = 0.15;
 export const VOCAL_SONG_MIN_SECONDS = 60;
 export const VOCAL_SONG_MAX_SECONDS = 300;
 export const VOCAL_SONG_CREDITS_PER_MINUTE = Math.ceil(
-  (ELEVEN_MUSIC_USD_PER_MINUTE * MUSIC_GEN_MARKUP) / USD_PER_CREDIT,
+  (ELEVEN_MUSIC_USD_PER_MINUTE * MUSIC_GEN_MARKUP) /
+    MUSIC_CUSTOMER_USD_PER_CREDIT_FLOOR,
 );
 export function calculateVocalSongCost(durationSeconds: number | null | undefined): number {
   const seconds = Math.min(

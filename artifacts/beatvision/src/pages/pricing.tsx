@@ -513,7 +513,7 @@ export default function Pricing() {
                     <span>
                       <strong>Unlimited AI Soundtracks</strong>{" "}
                       <span className="text-muted-foreground">
-                        — instrumental songs use 5–10 credits by length; songs with lyrics use 15 credits
+                        — instrumental songs use 5–10 credits by length; songs with lyrics use 18 credits per generated minute
                       </span>
                     </span>
                   </li>

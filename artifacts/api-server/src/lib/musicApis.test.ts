@@ -2,7 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildElevenMusicRequest,
   buildPixazoMusicRequest,
+  generateSong,
+  getActiveMusicProvider,
   inferVocalDurationSeconds,
+  isElevenMusicCredentialFailure,
+  isUsableElevenLabsMusicCredential,
 } from "./musicApis.js";
 import { preserveDraftIfRewritten } from "./lyricsGen.js";
 
@@ -24,6 +28,118 @@ describe("inferVocalDurationSeconds", () => {
     expect(inferVocalDurationSeconds("one short line")).toBe(60);
     expect(inferVocalDurationSeconds("word ".repeat(1_000))).toBe(300);
   });
+});
+
+describe("vocal provider credential routing", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("recognizes full ElevenLabs keys but rejects key IDs", () => {
+    expect(isUsableElevenLabsMusicCredential("sk_abcdefghijklmnopqrstuvwxyz")).toBe(true);
+    expect(isUsableElevenLabsMusicCredential("1234567890abcdef")).toBe(false);
+  });
+
+  it("uses the fallback for vocal songs when the direct secret is a key ID", () => {
+    vi.stubEnv("ELEVENLABS_API_KEY", "1234567890abcdef");
+    vi.stubEnv("PIXAZO_API_KEY", "configured-fallback");
+    expect(getActiveMusicProvider(null, true)).toBe("pixazo");
+  });
+
+  it("selects Eleven Music for vocal songs with a full key", () => {
+    vi.stubEnv("ELEVENLABS_API_KEY", "sk_abcdefghijklmnopqrstuvwxyz");
+    vi.stubEnv("PIXAZO_API_KEY", "configured-fallback");
+    expect(getActiveMusicProvider(null, true)).toBe("elevenlabs");
+  });
+
+  it("keeps an explicit Eleven Music request pinned for clear diagnostics", () => {
+    vi.stubEnv("ELEVENLABS_API_KEY", "1234567890abcdef");
+    vi.stubEnv("PIXAZO_API_KEY", "configured-fallback");
+    expect(getActiveMusicProvider("elevenlabs", true)).toBe("elevenlabs");
+  });
+
+  it("keeps an explicit Eleven Music request pinned when its secret is missing", () => {
+    vi.stubEnv("ELEVENLABS_API_KEY", "");
+    vi.stubEnv("PIXAZO_API_KEY", "configured-fallback");
+    expect(getActiveMusicProvider("elevenlabs", true)).toBe("elevenlabs");
+  });
+
+  it("only classifies definitive pre-generation credential failures for fallback", () => {
+    expect(isElevenMusicCredentialFailure(401)).toBe(true);
+    expect(isElevenMusicCredentialFailure(403)).toBe(true);
+    expect(isElevenMusicCredentialFailure(400, "api_key_id_used_as_api_key")).toBe(true);
+    expect(isElevenMusicCredentialFailure(400, "missing_permissions")).toBe(true);
+    expect(isElevenMusicCredentialFailure(422)).toBe(false);
+    expect(isElevenMusicCredentialFailure(500)).toBe(false);
+  });
+
+  it("returns a provider-neutral error for an explicitly pinned key ID", async () => {
+    vi.stubEnv("ELEVENLABS_API_KEY", "1234567890abcdef");
+
+    const generation = generateSong({
+      prompt: "Original soul song",
+      lyrics: "[Verse]\nAn original line",
+      withVocals: true,
+      provider: "elevenlabs",
+    });
+
+    await expect(generation).rejects.toThrow(
+      "AI vocal generation is temporarily unavailable. No credits were charged",
+    );
+    await expect(generation).rejects.not.toThrow(/Eleven|API_KEY|key ID|paid/i);
+  });
+
+  it("returns a provider-neutral error for an explicitly pinned missing secret", async () => {
+    vi.stubEnv("ELEVENLABS_API_KEY", "");
+
+    const generation = generateSong({
+      prompt: "Original soul song",
+      lyrics: "[Verse]\nAn original line",
+      withVocals: true,
+      provider: "elevenlabs",
+    });
+
+    await expect(generation).rejects.toThrow(
+      "AI vocal generation is temporarily unavailable. No credits were charged",
+    );
+    await expect(generation).rejects.not.toThrow(
+      /Eleven|API_KEY|secret|configured|paid/i,
+    );
+  });
+
+  it.each([401, 403])(
+    "returns a provider-neutral error for a pinned HTTP %s credential rejection",
+    async (status) => {
+      vi.stubEnv("ELEVENLABS_API_KEY", "sk_abcdefghijklmnopqrstuvwxyz");
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              detail: {
+                status: "missing_permissions",
+                message: "restricted credential",
+              },
+            }),
+            { status, headers: { "Content-Type": "application/json" } },
+          ),
+        ),
+      );
+
+      const generation = generateSong({
+        prompt: "Original soul song",
+        lyrics: "[Verse]\nAn original line",
+        withVocals: true,
+        provider: "elevenlabs",
+      });
+
+      await expect(generation).rejects.toThrow(
+        "AI vocal generation is temporarily unavailable. No credits were charged",
+      );
+      await expect(generation).rejects.not.toThrow(/Eleven|API_KEY|permission|paid/i);
+    },
+  );
 });
 
 describe("buildPixazoMusicRequest", () => {

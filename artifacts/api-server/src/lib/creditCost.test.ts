@@ -14,15 +14,15 @@ import {
 
 describe("vocal soundtrack pricing", () => {
   it("charges Eleven Music by inferred song length", () => {
-    expect(calculateVocalSongCost(60)).toBe(15);
-    expect(calculateVocalSongCost(120)).toBe(30);
-    expect(calculateVocalSongCost(180)).toBe(45);
-    expect(calculateSongCost(300, true)).toBe(75);
+    expect(calculateVocalSongCost(60)).toBe(18);
+    expect(calculateVocalSongCost(120)).toBe(36);
+    expect(calculateVocalSongCost(180)).toBe(54);
+    expect(calculateSongCost(300, true)).toBe(90);
   });
 
   it("clamps vocal pricing to the supported 1–5 minute range", () => {
-    expect(calculateVocalSongCost(10)).toBe(15);
-    expect(calculateVocalSongCost(999)).toBe(75);
+    expect(calculateVocalSongCost(10)).toBe(18);
+    expect(calculateVocalSongCost(999)).toBe(90);
   });
 });
 
