@@ -47,3 +47,4 @@
 - [Lyrics enhancement preservation](lyrics-enhancement-preservation.md) — Enhance is a light editing pass; reject structural rewrites and never replace a draft with fallback lyrics.
 - [Pixazo vocal music contract](pixazo-vocal-music-contract.md) — use the current documented Music 3 text-to-music contract; the legacy Music 2.6 path failed internally after retries.
 - [Suite Stripe authority](suite-stripe-authority.md) — Suite billing may use a separate Stripe account; keep customer IDs account-scoped and verify Suite webhooks independently.
+- [Existing artifact imports](existing-artifact-imports.md) — preserve artifact registration when replacing app files; deleting the artifact directory also removes its managed workflow.
