@@ -49,3 +49,10 @@ uri = "file://attached_assets/amelia-earhart-20-scene-narrative-story-script.txt
 type = "text"
 title = "Amelia Earhart — 20-Scene Narrative Story Script"
 description = "A paste-ready chronological story script for Narrative Story mode, validated for the 194.69-second full-track source."
+
+[[outputs]]
+id = "q2VqxMvxjx77d_WDxgSeN"
+uri = "file://exports/aisync-suite.zip"
+type = "unspecified"
+title = "AISync Suite app ZIP"
+description = "Downloadable AISync Suite artifact containing the restored homepage, login, registration, navigation, styling, UI components, and artifact configuration. Generated dependencies and build output are excluded."
