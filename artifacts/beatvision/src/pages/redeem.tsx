@@ -102,7 +102,7 @@ export default function Redeem() {
           )}
           <div className="flex flex-col sm:flex-row gap-2 justify-center">
             <Link href="/soundtracks"><Button className="w-full sm:w-auto bg-gradient-electric text-white border-0"><Sparkles className="h-4 w-4 mr-2" /> Explore new features</Button></Link>
-            <Link href="/editor"><Button variant="outline" className="w-full sm:w-auto">Open Remix Lab</Button></Link>
+            <Link href="/editor"><Button variant="outline" className="w-full sm:w-auto">Open Montage Studio</Button></Link>
           </div>
         </div>
       ) : (

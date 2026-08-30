@@ -1567,7 +1567,7 @@ export default function Generate() {
           </h1>
           <p className="text-sm sm:text-base text-muted-foreground max-w-xl">
             {imagePackMode
-              ? "Describe the visual direction and create reusable still images for your next story, slideshow, or Remix Lab timeline."
+              ? "Describe the visual direction and create reusable still images for your next story, slideshow, or Montage Studio timeline."
               : "Drop in a track — our AI reads its beat, energy, and mood, then generates a cinematic, beat-synced music video."}
           </p>
         </div>
@@ -1576,14 +1576,14 @@ export default function Generate() {
           {imagePackMode ? (
             <>
               Describe the visual direction, choose how many images you need, and optionally add a reference image for consistent character scenes.
-              Your saved images are ready to arrange in Remix Lab, where you can set each image&apos;s hold time to follow a spoken narrative or podcast.
+              Your saved images are ready to arrange in Montage Studio, where you can set each image&apos;s hold time to follow a spoken narrative or podcast.
               Need help writing prompts from a script? <Link href="/tutorial/script-to-video" className="underline text-primary hover:text-primary/80">Read the Script-to-Video Tutorial</Link>.
               We charge credits only when image generation succeeds.
             </>
           ) : (
             <>
               Add audio (upload, Suno link, or one of your Soundtracks), describe the look, pick your engine — <strong>Runway</strong> (premium)
-              or <strong>Kling</strong> (value) — and a length. For a spoken narrative or podcast, create a still image pack, then use Remix Lab
+              or <strong>Kling</strong> (value) — and a length. For a spoken narrative or podcast, create a still image pack, then use Montage Studio
               to place those images against your full audio and set each image&apos;s hold time to follow your timeline.
               <Link href="/tutorial/script-to-video" className="ml-1 underline text-primary hover:text-primary/80">Learn how</Link>. We charge credits only when it succeeds.
             </>
@@ -2664,7 +2664,7 @@ export default function Generate() {
                   <p className="text-sm font-medium">Silent video — add music later</p>
                   <p className="text-sm text-muted-foreground">
                     Renders your visuals with no soundtrack. Once it's ready, open it in the Editor
-                    (Remix Lab) to add a track — your own upload, a Suno link, or a Soundtrack.
+                    (Montage Studio) to add a track — your own upload, a Suno link, or a Soundtrack.
                   </p>
                   <p className="text-sm text-muted-foreground pt-1">
                     Need exact words on screen — a title card or a CTA? Don't type them into the prompt
@@ -3820,7 +3820,7 @@ export default function Generate() {
             <div className="text-left space-y-3 mt-1">
               <p className="text-sm text-muted-foreground leading-relaxed">
                 {imagePackMode
-                  ? `Review the image pack below. The saved ${imagePackAspectRatio === "9:16" ? "portrait" : "landscape"} images will be ready to add directly to Remix Lab.`
+                  ? `Review the image pack below. The saved ${imagePackAspectRatio === "9:16" ? "portrait" : "landscape"} images will be ready to add directly to Montage Studio.`
                   : "Your Gen Preview creates every source image first, then pauses before animation. Review all images, regenerate individual scenes, or use another image before you approve the final video."}
               </p>
               <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm space-y-1.5">

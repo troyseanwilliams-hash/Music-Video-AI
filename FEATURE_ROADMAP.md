@@ -16,7 +16,7 @@ picking the next unchecked item — no prior context needed.
 - Keep credit costs in sync: server `artifacts/api-server/src/lib/creditCost.ts` ↔ frontend `artifacts/beatvision/src/lib/creditPricing.ts`.
 
 ## Progress
-- [x] 1. Beat-snapped cutting in Remix Lab  *(v1: auto-detect BPM from added music + "Sync photos to beat")*
+- [x] 1. Beat-snapped cutting in Montage Studio  *(v1: auto-detect BPM from added music + "Sync photos to beat")*
 - [x] 2. Lyric-video mode (auto-timed lyrics)  *(v1: even line-timed drawtext burn in videoStitcher, both copies)*
 - [x] 3. Faster first "aha" — demo song + templates  *(templates live; demo song needs `public/demo-song.mp3`)*
 - [x] 4. Platform export presets  *(generate page: TikTok/YouTube/Canvas/Square set aspect+duration)*
@@ -29,8 +29,8 @@ picking the next unchecked item — no prior context needed.
 
 ---
 
-## 1. Beat-snapped cutting in Remix Lab  *(highest impact — the core differentiator)*
-**Goal:** Auto-cut a Remix Lab timeline of photos/clips to the song's beat; snap manual cut points to the nearest beat.
+## 1. Beat-snapped cutting in Montage Studio  *(highest impact — the core differentiator)*
+**Goal:** Auto-cut a Montage Studio timeline of photos/clips to the song's beat; snap manual cut points to the nearest beat.
 **Scope in:** "Auto-edit to the beat" button; beat grid overlay on the timeline; snap-on-drag. **Out:** transitions redesign, multi-track.
 **Data:** Beat timestamps. Reuse `audioAnalysis` (BPM already computed). If beat times aren't stored, derive a grid from `bpm` + first-downbeat offset; ideally extend analysis to emit `beats: number[]`.
 **Files:** `artifacts/api-server/src/lib/audioAnalysis.ts` (+ worker copy) → return beat times; `openapi.yaml` `AudioAnalysis` (+ regen); `artifacts/beatvision/src/pages/editor.tsx` (timeline + auto-cut logic); editor uses the analysis already fetched for the chosen track.
@@ -39,7 +39,7 @@ picking the next unchecked item — no prior context needed.
 **Est.:** M–L.
 
 ## 2. Lyric-video mode (auto-timed lyrics)
-**Goal:** Karaoke-style lyrics that appear in time with the music, as a generate option and/or Remix Lab overlay.
+**Goal:** Karaoke-style lyrics that appear in time with the music, as a generate option and/or Montage Studio overlay.
 **Scope in:** paste lyrics → auto-distribute across the track (by section/beat), styled captions burned into the export. **Out:** word-level forced alignment (phase 2), multi-language.
 **Data:** Timed lyric lines. v1: split `lyricsText` into lines and distribute evenly across `durationSeconds` (or across detected sections/beats from unit 1). v2: LRC import + optional forced-alignment service.
 **Files:** stitcher (`editorStitcher.ts` both copies) or the AI render path — add a drawtext/subtitle burn step; `generate.tsx` + `editor.tsx` UI (enable "Lyric mode", style picker); `openapi.yaml` if a `lyricsTimed`/mode flag is added.
@@ -58,7 +58,7 @@ picking the next unchecked item — no prior context needed.
 
 ## 4. Platform export presets
 **Goal:** One-click sizing for TikTok/Reels/Shorts (9:16), YouTube (16:9), Spotify Canvas (9:16, 5s).
-**Scope in:** preset selector that sets aspect ratio + duration together in generate and Remix Lab. **Out:** direct-to-platform publishing.
+**Scope in:** preset selector that sets aspect ratio + duration together in generate and Montage Studio. **Out:** direct-to-platform publishing.
 **Files:** `generate.tsx` (preset row above aspect/duration), `editor.tsx` (aspect/resolution presets), reuse existing aspect/resolution enums.
 **Steps:** (a) `PLATFORM_PRESETS` map → {aspect, duration/resolution}. (b) Preset chips set both fields; keep manual controls. (c) Canvas preset ties to the existing 5s path.
 **Acceptance:** Selecting "TikTok" sets 9:16; "Canvas" sets 9:16 + 5s; manual overrides still work.

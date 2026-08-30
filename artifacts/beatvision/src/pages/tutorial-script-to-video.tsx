@@ -122,9 +122,9 @@ export default function TutorialScriptToVideo() {
     <div className="flex flex-col min-h-[calc(100vh-4rem)]">
       <Helmet>
         <title>How to Turn a Script into a Video | AIBeatSync</title>
-        <meta name="description" content="Learn how to break down your script into numbered scene lists, generate consistent image sequences, and assemble them in Remix Lab to create intentional vertical videos." />
+        <meta name="description" content="Learn how to break down your script into numbered scene lists, generate consistent image sequences, and assemble them in Montage Studio to create intentional vertical videos." />
         <meta property="og:title" content="How to Turn a Script into a Video | AIBeatSync" />
-        <meta property="og:description" content="Learn how to break down your script into numbered scene lists, generate consistent image sequences, and assemble them in Remix Lab to create intentional vertical videos." />
+        <meta property="og:description" content="Learn how to break down your script into numbered scene lists, generate consistent image sequences, and assemble them in Montage Studio to create intentional vertical videos." />
       </Helmet>
 
       <main className="flex-1 pb-20">
@@ -140,7 +140,7 @@ export default function TutorialScriptToVideo() {
               Turn Your Script Into a <span className="text-gradient-electric">Visual Story</span>
             </h1>
             <p className="text-lg md:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto">
-              Learn how to break down any story, script, or podcast into a sequence of generated images, and assemble them into a compelling video in Remix Lab.
+              Learn how to break down any story, script, or podcast into a sequence of generated images, and assemble them into a compelling video in Montage Studio.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link href="/generate">
@@ -152,7 +152,7 @@ export default function TutorialScriptToVideo() {
               <Link href="/editor">
                 <Button size="lg" variant="outline" className="w-full sm:w-auto h-12 px-8 border-accent/40 bg-secondary/50 hover:bg-accent/10 hover:text-accent hover:border-accent/60 backdrop-blur-sm transition-all" data-testid="tutorial-cta-remix">
                   <Scissors className="mr-2 h-5 w-5" />
-                  Open Remix Lab
+                  Open Montage Studio
                 </Button>
               </Link>
             </div>
@@ -337,7 +337,7 @@ export default function TutorialScriptToVideo() {
           <section>
             <div className="flex items-center gap-4 mb-6">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent font-bold text-lg">4</div>
-              <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Assembling in Remix Lab</h2>
+              <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Assembling in Montage Studio</h2>
             </div>
             <p className="text-lg text-muted-foreground mb-6">
               Once you have your images, it's time to build the video.
@@ -352,7 +352,7 @@ export default function TutorialScriptToVideo() {
                     <Zap className="h-5 w-5 text-accent" />
                     <h3 className="font-bold">1. Upload Audio</h3>
                   </div>
-                  <p className="text-sm text-muted-foreground">Open Remix Lab and drag in your voiceover, podcast clip, or music track. The timeline will adjust to fit.</p>
+                  <p className="text-sm text-muted-foreground">Open Montage Studio and drag in your voiceover, podcast clip, or music track. The timeline will adjust to fit.</p>
                 </div>
                 <div>
                   <div className="flex items-center gap-3 mb-3">
@@ -373,7 +373,7 @@ export default function TutorialScriptToVideo() {
               <div className="mt-10 pt-10 border-t border-border/50">
                 <Link href="/editor">
                   <Button size="lg" className="bg-gradient-electric text-white shadow-glow hover:opacity-90 border-0" data-testid="tutorial-bottom-cta-remix">
-                    Try Remix Lab Now <ArrowRight className="ml-2 h-4 w-4" />
+                    Try Montage Studio Now <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                 </Link>
               </div>

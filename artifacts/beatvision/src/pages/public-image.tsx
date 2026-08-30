@@ -198,7 +198,7 @@ export default function PublicImageDetail() {
           <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 shadow-glow">
             <h2 className="text-lg font-bold mb-2">Inspired by this image?</h2>
             <p className="text-sm text-muted-foreground mb-6">
-              Generate your own image sequence, then arrange it into a finished video in Remix Lab.
+              Generate your own image sequence, then arrange it into a finished video in Montage Studio.
             </p>
             
             <div className="flex flex-col gap-3">
@@ -208,7 +208,7 @@ export default function PublicImageDetail() {
                 data-testid={`remix-btn-${asset.id}`}
               >
                 <Scissors className="mr-2 h-4 w-4" />
-                Use this image in Remix Lab
+                Use this image in Montage Studio
               </Button>
               
               <Link href="/generate">

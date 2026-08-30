@@ -106,14 +106,14 @@ export default function Home() {
               <p className="text-lg md:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto">
                 Most tools stop at a single clip. AIBeatSync takes you the whole way — make an original song or audio track,
                 turn it into beat-synced AI visuals, then create social cuts. Bring a song or
-                <span className="text-foreground font-semibold"> generate a full vocal song or instrumental</span>, then let AI direct it or take control in <span className="text-foreground font-semibold">Remix Lab</span>.
+                <span className="text-foreground font-semibold"> generate a full vocal song or instrumental</span>, then let AI direct it or take control in <span className="text-foreground font-semibold">Montage Studio</span>.
               </p>
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <Link href="/editor">
                   <Button size="lg" className="w-full sm:w-auto text-lg h-14 px-8 bg-gradient-electric text-white shadow-glow hover:opacity-90 border-0 transition-all group">
                     <Scissors className="mr-2 h-5 w-5 group-hover:scale-110 transition-transform" />
-                    Open Remix Lab — free
+                    Open Montage Studio — free
                   </Button>
                 </Link>
                 <Link href="/generate">
@@ -245,7 +245,7 @@ export default function Home() {
               {[
                 { icon: Music, title: "1 · Bring or make music", body: "Upload a song, paste a Suno link, or create an original vocal song or instrumental from a prompt—use it in your video or as music on its own." },
                 { icon: Sparkles, title: "2 · Generate video or images", body: "The engine reads your track's beat for auto-synced video, or use Images mode to generate consistent sequences for a script or podcast." },
-                { icon: Scissors, title: "3 · Make it yours", body: "Fine-tune on the Remix Lab timeline — or build a slideshow from your own photos. Trim, sync music, add transitions, preview live. A simple CapCut alternative for weddings, work, socials, and just for fun." },
+                { icon: Scissors, title: "3 · Make it yours", body: "Fine-tune on the Montage Studio timeline — or build a slideshow from your own photos. Trim, sync music, add transitions, preview live. A simple CapCut alternative for weddings, work, socials, and just for fun." },
                 { icon: Share2, title: "4 · Export everywhere", body: "One-click Release Kit gives you TikTok, Reels, Shorts, and Spotify Canvas cuts, ready to post." },
               ].map((s) => (
                 <div key={s.title} className="rounded-2xl border border-card-border bg-card p-6">
@@ -320,7 +320,7 @@ export default function Home() {
                 <div className="h-12 w-12 rounded-xl bg-accent/15 flex items-center justify-center mb-5 transition-transform group-hover:scale-110">
                   <Scissors className="h-6 w-6 text-accent" />
                 </div>
-                <h3 className="text-xl font-bold mb-2">Remix Lab</h3>
+                <h3 className="text-xl font-bold mb-2">Montage Studio</h3>
                 <p className="text-muted-foreground mb-4 flex-1">
                   A free, AI-powered alternative to CapCut — for weddings, work, creators, or just for fun. Drop
                   clips and photos onto a timeline, sync a music track, add smooth transitions, preview live, and
@@ -338,7 +338,7 @@ export default function Home() {
                 </div>
                 <Link href="/editor">
                   <Button className="bg-gradient-electric text-white border-0 shadow-glow hover:opacity-90">
-                    Open Remix Lab
+                    Open Montage Studio
                   </Button>
                 </Link>
               </div>
@@ -348,7 +348,7 @@ export default function Home() {
                 </div>
                 <h3 className="text-xl font-bold mb-2">AI Video & Images</h3>
                 <p className="text-muted-foreground mb-6 flex-1">
-                  Upload a song for auto-beat-synced visuals, or generate numbered image sequences to tell a story or match a podcast. Then bring them into Remix Lab.
+                  Upload a song for auto-beat-synced visuals, or generate numbered image sequences to tell a story or match a podcast. Then bring them into Montage Studio.
                 </p>
                 <div className="flex gap-2">
                   <Link href="/generate" className="flex-1">

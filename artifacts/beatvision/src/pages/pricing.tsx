@@ -274,14 +274,14 @@ export default function Pricing() {
         </h1>
         <p className="text-base leading-7 text-muted-foreground max-w-xl mx-auto sm:text-lg">
           Pick the credits that fit your output. Every plan includes access to music, AI image generation, narrative
-          videos, Remix Lab, and a free 7-day trial. Plan credits refresh with your billing cycle; top-ups never expire.
+          videos, Montage Studio, and a free 7-day trial. Plan credits refresh with your billing cycle; top-ups never expire.
         </p>
         <div className="mx-auto mt-5 flex max-w-md items-start gap-2 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-3 text-left text-sm font-medium sm:inline-flex sm:max-w-none sm:items-center sm:rounded-full sm:py-2">
           <Sparkles className="h-4 w-4 text-primary" />
           <span>
             Every new account gets a{" "}
             <strong className="text-foreground">free 7-day trial</strong> with{" "}
-            <strong className="text-foreground">unlimited Remix Lab exports</strong>
+            <strong className="text-foreground">unlimited Montage Studio exports</strong>
             {" "}— no credit card required
           </span>
         </div>
@@ -529,7 +529,7 @@ export default function Pricing() {
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                     <span>
-                      <strong>Unlimited</strong> Remix Lab exports — arrange clips, photos &amp; music with
+                      <strong>Unlimited</strong> Montage Studio exports — arrange clips, photos &amp; music with
                       transitions (free plan: 10 exports/month, then 15 credits each)
                     </span>
                   </li>

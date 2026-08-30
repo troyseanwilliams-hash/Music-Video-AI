@@ -378,7 +378,7 @@ export default function Dashboard() {
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium">
-                            {j.prompt || (j.jobType === "editor_render" ? "Remix Lab export" : "AI video")}
+                            {j.prompt || (j.jobType === "editor_render" ? "Montage Studio export" : "AI video")}
                           </p>
                           <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                             <Loader2 className="h-3 w-3 animate-spin text-primary" /> {label}{pct !== null ? ` · ${pct}%` : ""}
@@ -434,7 +434,7 @@ export default function Dashboard() {
                       lyricsText?: string | null;
                       manifest?: { chargeCredits?: boolean; chargeAmount?: number } | null;
                     };
-                    // Remix Lab (editor_render) is pure ffmpeg — show the ACTUAL
+                    // Montage Studio (editor_render) is pure ffmpeg — show the ACTUAL
                     // charge (0 when free on trial/subscription or within the monthly
                     // free allotment, else the flat overage), never the AI estimate.
                     const cost = j.jobType === "editor_render"

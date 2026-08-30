@@ -594,7 +594,7 @@ export default function Editor() {
   }, [isAuthenticated, fullAccess, trialActive, user?.subscriptionStatus, user?.isAdmin]);
 
   // Logged-out visitors get a teaser (below) instead of a redirect, so they can
-  // see what Remix Lab does and sign up.
+  // see what Montage Studio does and sign up.
 
   // Handoff from Gallery / job page: pre-load a finished video as the first
   // clip, OR (see HYBRID_REMIX_KIND) a "Guided Hybrid Lip Sync Remix"
@@ -610,7 +610,7 @@ export default function Editor() {
         if (!isValidImageRemixHandoff(init)) {
           toast({
             title: "Couldn't add the selected images",
-            description: "That image selection was incomplete or out of date, so Remix Lab opened empty instead.",
+            description: "That image selection was incomplete or out of date, so Montage Studio opened empty instead.",
             variant: "destructive",
           });
           return;
@@ -640,13 +640,13 @@ export default function Editor() {
       if (init?.kind === HYBRID_REMIX_KIND) {
         // Fail closed on any malformed/stale/corrupted payload rather than
         // crash the editor or silently build a nonsense timeline -- falls
-        // through to the normal empty Remix Lab state, with a toast so the
+        // through to the normal empty Montage Studio state, with a toast so the
         // user knows what happened instead of just wondering where their
         // video went.
         if (!isValidHybridHandoff(init)) {
           toast({
             title: "Couldn't prepare the hybrid video",
-            description: "That handoff looked incomplete or out of date, so Remix Lab opened empty instead. You can still build the timeline manually.",
+            description: "That handoff looked incomplete or out of date, so Montage Studio opened empty instead. You can still build the timeline manually.",
             variant: "destructive",
           });
           return;
@@ -722,7 +722,7 @@ export default function Editor() {
     } catch {
       toast({
         title: "Couldn't prepare the hybrid video",
-        description: "Something went wrong reading the handoff, so Remix Lab opened empty instead. You can still build the timeline manually.",
+        description: "Something went wrong reading the handoff, so Montage Studio opened empty instead. You can still build the timeline manually.",
         variant: "destructive",
       });
     }
@@ -755,7 +755,7 @@ export default function Editor() {
   function applyProject(project: { id: string; name: string; createdAt: string; updatedAt: string; lastVideoId?: string; manifest?: unknown }) {
     const manifest = project.manifest as Partial<ProjectManifest> | undefined;
     if (!manifest || manifest.version !== 1 || !Array.isArray(manifest.segments)) {
-      throw new Error("This project is missing a compatible Remix Lab manifest.");
+      throw new Error("This project is missing a compatible Montage Studio manifest.");
     }
     const restored = manifest.segments.map((segment) => {
       if (!segment || (segment.kind !== "video" && segment.kind !== "photo") || typeof segment.objectPath !== "string" || !segment.objectPath) {
@@ -887,7 +887,7 @@ export default function Editor() {
     } catch (error) { toast({ title: "Couldn't rename project", description: String((error as Error).message), variant: "destructive" }); }
   }
 
-  // Remix Lab is pure ffmpeg (no AI cost), so the real charge is the flat
+  // Montage Studio is pure ffmpeg (no AI cost), so the real charge is the flat
   // freemium overage (studio.ts): free on trial/subscription and within the
   // monthly free allotment, otherwise a small flat fee per export — never
   // size-scaled. Trial exception: karaoke lyric burns beyond the trial
@@ -1539,7 +1539,7 @@ export default function Editor() {
       // never the generic "Editor export".
       const finalName =
         videoName.trim() ||
-        `Remix Lab · ${new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+        `Montage Studio · ${new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
       const body = {
         name: finalName,
         segments: ready.map((s) => ({
@@ -1677,7 +1677,7 @@ export default function Editor() {
 
       {trialActive && (
         <Card className="border-primary/30 bg-primary/5 mb-6 p-4 text-sm">
-          Free trial — {trialDaysLeft} day{trialDaysLeft === 1 ? "" : "s"} left. The full Remix Lab is unlocked: 1080p,
+          Free trial — {trialDaysLeft} day{trialDaysLeft === 1 ? "" : "s"} left. The full Montage Studio is unlocked: 1080p,
           no watermark, smooth transitions.{" "}
           {segments.length > 0 &&
             (estimatedCost > 0 ? (
@@ -1781,7 +1781,7 @@ export default function Editor() {
       )}
 
       <div className="mb-4">
-        <TutorialTip id="remixlab" title="Remix Lab basics">
+        <TutorialTip id="remixlab" title="Montage Studio basics">
           Add your clips and photos, add music (upload, Suno, or one of your Soundtracks), then arrange them on the
           timeline. To turn a narrated podcast or story into a still-image video, add the full audio, arrange your images in story order,
           and set each image&apos;s hold time to match the narration. Detect the beat to auto-sync photo cuts, set a transition, and export —

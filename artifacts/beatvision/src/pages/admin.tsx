@@ -216,7 +216,7 @@ function UserRow({ user, onChanged }: { user: AdminUser; onChanged: () => void }
           <span title="AI-generated videos" className="text-foreground font-medium">{user.generatedVideos}</span>
           <span className="text-muted-foreground text-xs"> gen</span>
           <span className="mx-1.5 text-muted-foreground/40">·</span>
-          <span title="Remix Lab videos" className="text-accent font-medium">{user.remixVideos}</span>
+          <span title="Montage Studio videos" className="text-accent font-medium">{user.remixVideos}</span>
           <span className="text-muted-foreground text-xs"> remix</span>
         </td>
         <td className="px-4 py-3 text-right text-muted-foreground hidden lg:table-cell">

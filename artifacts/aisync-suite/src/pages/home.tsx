@@ -275,7 +275,7 @@ export default function Home({ pricingPage = false }: HomeProps) {
                 "Original scenes & Narrative Story mode",
                 "Reusable generated image packs (reference-image consistency)",
                 "Personal Gallery with full-resolution downloads",
-                "Remix Lab: ordered photos/clips, narration timing, music sync, transitions, live preview",
+                "Montage Studio: ordered photos/clips, narration timing, music sync, transitions, live preview",
                 "1080p no-watermark exports, social cuts & Spotify Canvas"
               ].map((feature, i) => (
                 <li key={i} className="flex items-start gap-3 text-sm">

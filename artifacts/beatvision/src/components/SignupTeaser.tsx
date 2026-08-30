@@ -25,10 +25,10 @@ const CONTENT: Record<"generate" | "remix", Content> = {
     ],
   },
   remix: {
-    badge: "Remix Lab",
+    badge: "Montage Studio",
     title: (
       <>
-        Build your own cut in the <span className="text-gradient-electric">Remix Lab</span>
+        Build your own cut in the <span className="text-gradient-electric">Montage Studio</span>
       </>
     ),
     sub: "Drop clips and photos on a timeline, sync music, add transitions, and export a clean 1080p video — no watermark. Free to start, with a 7-day trial of unlimited exports.",

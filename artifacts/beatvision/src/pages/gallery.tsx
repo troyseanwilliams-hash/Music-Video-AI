@@ -406,7 +406,7 @@ export default function Gallery() {
             {galleryView === "videos"
               ? "All your generated AI music videos."
               : galleryView === "images"
-                ? "Every saved image you have generated, ready for Remix Lab."
+                ? "Every saved image you have generated, ready for Montage Studio."
                 : "Your saved AI soundtracks, ready to play or use in a project."}
           </p>
         </div>
@@ -629,8 +629,8 @@ export default function Gallery() {
                     variant={video.hasAudio === false ? "default" : "outline"}
                     size="icon"
                     className="h-8 w-8 shrink-0"
-                    title={video.hasAudio === false ? "Add Music" : "Open in Remix Lab"}
-                    aria-label={video.hasAudio === false ? "Add Music" : "Open in Remix Lab"}
+                    title={video.hasAudio === false ? "Add Music" : "Open in Montage Studio"}
+                    aria-label={video.hasAudio === false ? "Add Music" : "Open in Montage Studio"}
                     onClick={() => {
                       sessionStorage.setItem(
                         "editor:init",
@@ -762,7 +762,7 @@ export default function Gallery() {
                   onClick={addSelectedImagesToRemix}
                 >
                   <Scissors className="mr-2 h-4 w-4" />
-                  Add to Remix Lab
+                  Add to Montage Studio
                 </Button>
               </div>
             </div>
@@ -908,7 +908,7 @@ export default function Gallery() {
                             <AlertDialogHeader>
                               <AlertDialogTitle>Delete this generated image?</AlertDialogTitle>
                               <AlertDialogDescription>
-                                This removes the image from your gallery and Remix Lab. This cannot be undone.
+                                This removes the image from your gallery and Montage Studio. This cannot be undone.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>

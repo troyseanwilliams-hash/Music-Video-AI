@@ -77,20 +77,20 @@ export const DAILY_CONTENT: DailyItem[] = [
 
   // ---- Product tips (AIBeatSync features) ----
   { type: "tip", text: "You can pin the AI Generator to any 5 or 10-second window of your track — not just the beginning — to capture your favorite drop or hook." },
-  { type: "tip", text: "In Remix Lab you can drop your own photos in alongside video clips and sync everything to the beat — no watermark on export." },
-  { type: "tip", text: "Every new account gets a free 7-day trial with unlimited Remix Lab exports — no credit card required." },
+  { type: "tip", text: "In Montage Studio you can drop your own photos in alongside video clips and sync everything to the beat — no watermark on export." },
+  { type: "tip", text: "Every new account gets a free 7-day trial with unlimited Montage Studio exports — no credit card required." },
   { type: "tip", text: "You can paste a Suno share link straight into the generator — no need to download and re-upload your track." },
   { type: "tip", text: "Prompt can generate lyrics for 3 credits — handy for finishing a song idea fast." },
-  { type: "tip", text: "Remix Lab supports smooth transitions between every clip on your timeline — crossfade, Circle Open, and more." },
+  { type: "tip", text: "Montage Studio supports smooth transitions between every clip on your timeline — crossfade, Circle Open, and more." },
   { type: "tip", text: "You can generate 5-second Spotify Canvas clips, perfectly sized and beat-synced, ready to upload straight to Spotify for Artists." },
   { type: "tip", text: "Refer a friend and you'll both earn free credits — grab your referral link from your dashboard." },
   { type: "tip", text: "Upload a reference image — album art, a mood board, anything — and the AI keeps your video's look on-brand from the first frame." },
   { type: "tip", text: "Choose from 8 distinct cinematic visual styles when generating with AI, from documentary grit to ethereal fantasy." },
-  { type: "tip", text: "Remix Lab exports are always 1080p and watermark-free, even on a free account." },
+  { type: "tip", text: "Montage Studio exports are always 1080p and watermark-free, even on a free account." },
   { type: "tip", text: "Soundtracks has 14 genre presets — from Lofi chill to Afrobeats — to jumpstart your next instrumental." },
-  { type: "tip", text: "You can preview your Remix Lab timeline live before exporting, so there are no surprises in the final render." },
+  { type: "tip", text: "You can preview your Montage Studio timeline live before exporting, so there are no surprises in the final render." },
   { type: "tip", text: "Low on credits? The $5 starter pack gets you 250 credits — the cheapest way to try the AI Generator." },
-  { type: "tip", text: "Remix Lab uploads have automatic retry protection, so a dropped connection won't leave you stuck on a spinner." },
+  { type: "tip", text: "Montage Studio uploads have automatic retry protection, so a dropped connection won't leave you stuck on a spinner." },
 ];
 
 function hashDateToIndex(dateStr: string, mod: number): number {
