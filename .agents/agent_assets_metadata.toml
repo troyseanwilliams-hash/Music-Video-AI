@@ -56,3 +56,10 @@ uri = "file://exports/aisync-suite.zip"
 type = "unspecified"
 title = "Download AISync Suite ZIP"
 description = "Click this card to download the AISync Suite app archive."
+
+[[outputs]]
+id = "eV9kF5LH5tWEKbCpe5IEd"
+uri = "file://exports/aisync-suite.tar.gz"
+type = "unspecified"
+title = "Download AISync Suite for Mac"
+description = "Mac-friendly tar.gz archive. Double-click it in Finder to extract, then import the aisync-suite folder into your repository."
