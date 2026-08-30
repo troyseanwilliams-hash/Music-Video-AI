@@ -240,7 +240,7 @@ export default function Soundtracks() {
   const estimatedVocalDuration = inferVocalDurationSeconds(lyrics);
   const estimatedVocalCredits = vocalSongCredits(
     estimatedVocalDuration,
-    status?.vocalCreditsPerMinute ?? 15,
+    status?.vocalCreditsPerMinute ?? Math.ceil((status?.vocalCost ?? 45) / 3),
   );
 
   const { data: tracks, isLoading, error, refetch, isRefetching } = useQuery({

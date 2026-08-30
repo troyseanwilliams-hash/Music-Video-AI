@@ -356,9 +356,10 @@ router.get("/music/soundtracks-status", async (req: Request, res: Response) => {
     freeResetAt: active ? credits?.freeSoundtracksResetAt ?? null : null,
     creditsRemaining: credits?.creditsRemaining ?? 0,
     subscriptionActive: active,
-    // Vocal (with-lyrics) song generation: flat credit cost + whether the
-    // Eleven Music model is configured.
+    // Vocal (with-lyrics) song generation: duration-based credit rate +
+    // whether the Eleven Music model is configured.
     vocalCost: SONG_VOCAL_CREDITS,
+    vocalCreditsPerMinute: VOCAL_SONG_CREDITS_PER_MINUTE,
     vocalsEnabled: !!process.env.ELEVENLABS_API_KEY,
   });
 });

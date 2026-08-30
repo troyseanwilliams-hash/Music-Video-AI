@@ -7,4 +7,4 @@ Use Eleven Music v2 for lyric-based vocal soundtrack generation. The API accepts
 
 **Why:** The previous vocal provider repeatedly timed out upstream. Eleven Music provides the required vocal/instrumental capability with a direct API, documented v2 model, and commercial-use terms; its request must still be bounded so the app does not wait indefinitely.
 
-**How to apply:** Keep vocal routing separate from the existing instrumental route, use `music_v2`, original lyrics only, MP3 output, and a customer-safe timeout. Never blindly retry an accepted music request because a provider timeout may still have produced a charge.
+**How to apply:** Keep vocal routing separate from the existing instrumental route, use `music_v2`, original lyrics only, MP3 output, and a customer-safe timeout. ElevenLabs keys must include Music API generation access; restricted keys can return HTTP 401 with `missing_permissions`. Never blindly retry an accepted music request because a provider timeout may still have produced a charge.
