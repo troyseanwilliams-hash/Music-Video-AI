@@ -54,5 +54,5 @@ description = "A paste-ready chronological story script for Narrative Story mode
 id = "q2VqxMvxjx77d_WDxgSeN"
 uri = "file://exports/aisync-suite.zip"
 type = "unspecified"
-title = "AISync Suite app ZIP"
-description = "Downloadable AISync Suite artifact containing the restored homepage, login, registration, navigation, styling, UI components, and artifact configuration. Generated dependencies and build output are excluded."
+title = "Download AISync Suite ZIP"
+description = "Click this card to download the AISync Suite app archive."
