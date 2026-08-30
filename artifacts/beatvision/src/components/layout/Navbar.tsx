@@ -41,13 +41,13 @@ export function Navbar() {
     { href: "/generate", label: "Generate", icon: Wand2 },
     { href: "/editor", label: "Montage", icon: Video },
     { href: "/prompt-studio", label: "Prompt", icon: Sparkles },
-    { href: "/soundtracks", label: "Make Music", icon: Music2 },
+    { href: "/soundtracks", label: "Music", icon: Music2 },
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/gallery", label: "Gallery", icon: Film },
   ];
   const publicLinks = [
     { href: "/explore", label: "Explore", icon: Compass },
-    { href: "/soundtracks", label: "Make Music", icon: Music2 },
+    { href: "/soundtracks", label: "Music", icon: Music2 },
     { href: "/tutorial/script-to-video", label: "Tutorial", icon: Film },
     { href: "/pricing", label: "Pricing", icon: CreditCard },
   ];
