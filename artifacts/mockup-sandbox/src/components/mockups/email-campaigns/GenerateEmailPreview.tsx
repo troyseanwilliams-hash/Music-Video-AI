@@ -113,7 +113,7 @@ export function GenerateEmailPreview() {
       <div className="mail-shell">
         <div className="subject-line">
           <span><strong>Subject:</strong> Build the story before you render.</span>
-          <span>Preview email</span>
+          <span>Send-ready draft · Full mailing list</span>
         </div>
 
         <article className="email-card">
