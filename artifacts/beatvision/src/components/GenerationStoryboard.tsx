@@ -77,24 +77,27 @@ export default function GenerationStoryboard({
 
   if (shots.length === 0) return null;
 
-  const activeShot =
-    shots.find((shot) => !completedSet.has(shot.index)) ??
-    shots[shots.length - 1]!;
-  const activeDescription = activeShot.description?.trim() || activeShot.label;
   const completed = Math.min(completedSet.size, storyboard.numClips);
-  const isNarrative = storyboard.generationMode === "narrative";
-  const energyPercent = Math.round(Math.max(0, Math.min(1, activeShot.energy)) * 100);
-  const targetDuration = timestamp(storyboard.targetOutputDuration);
-  const activeReferenceImage = referenceImages?.[activeShot.index];
   const completedReferenceCount = referenceImages ? Object.keys(referenceImages).length : 0;
   const isBuildingReferences =
     status === "generating"
     && completedReferenceCount > 0
     && completedReferenceCount < shots.length;
+  const clipProgressShot =
+    shots.find((shot) => !completedSet.has(shot.index)) ??
+    shots[shots.length - 1]!;
   const progressFocusIndex =
     isBuildingReferences && latestReferenceIndex !== null
       ? latestReferenceIndex
-      : activeShot.index;
+      : clipProgressShot.index;
+  const activeShot =
+    shots.find((shot) => shot.index === progressFocusIndex) ??
+    clipProgressShot;
+  const activeDescription = activeShot.description?.trim() || activeShot.label;
+  const isNarrative = storyboard.generationMode === "narrative";
+  const energyPercent = Math.round(Math.max(0, Math.min(1, activeShot.energy)) * 100);
+  const targetDuration = timestamp(storyboard.targetOutputDuration);
+  const activeReferenceImage = referenceImages?.[activeShot.index];
   const stage =
     status === "analyzing"
       ? {

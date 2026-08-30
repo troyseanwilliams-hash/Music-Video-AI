@@ -697,6 +697,7 @@ async function processImageReviewReplacements(job: JobRow): Promise<void> {
       const nextScene = {
         ...sceneWithoutError,
         canonicalPath: objectPath,
+        prompt: replacement.prompt,
         revision,
         source: "regenerated" as const,
         status: "ready" as const,

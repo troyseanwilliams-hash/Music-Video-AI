@@ -1113,6 +1113,7 @@ export default function JobStatus() {
                 <div className="grid gap-4 md:grid-cols-2">
                   {reviewScenes.map((scene) => {
                     const asset = imagePackAssetByIndex.get(scene.index);
+                     const finishedImagePrompt = asset?.prompt?.trim() || scene.prompt;
                     const storyboardShot = Array.isArray(storyboard?.shots)
                       ? storyboard.shots[scene.index] as { label?: string } | undefined
                       : undefined;
@@ -1157,10 +1158,10 @@ export default function JobStatus() {
                             </div>
                           )}
                         </div>
-                        <p className="mb-2 line-clamp-3 text-xs text-muted-foreground">{scene.prompt}</p>
+                        <p className="mb-2 line-clamp-3 text-xs text-muted-foreground">{finishedImagePrompt}</p>
                         <textarea
                           className="mb-2 min-h-20 w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs"
-                          value={replacementPrompts[scene.index] ?? scene.prompt}
+                          value={replacementPrompts[scene.index] ?? finishedImagePrompt}
                           onChange={(event) => setReplacementPrompts((current) => ({
                             ...current,
                             [scene.index]: event.target.value,
@@ -1169,7 +1170,7 @@ export default function JobStatus() {
                         />
                         {selected && (
                           <p className="mb-2 rounded bg-muted/50 px-2 py-1.5 text-[11px] text-muted-foreground">
-                            Will submit exactly: {replacementPrompts[scene.index] ?? scene.prompt}
+                            Will submit exactly: {replacementPrompts[scene.index] ?? finishedImagePrompt}
                           </p>
                         )}
                         <div className="flex flex-wrap gap-2">
