@@ -37,6 +37,7 @@ interface Soundtrack {
   loopedToSeconds: number | null;
   provider: string | null;
   isPublic: boolean;
+  isCreatorAnonymous: boolean;
   shareToken: string | null;
   createdAt: string;
   url: string;
@@ -335,21 +336,49 @@ export default function Soundtracks() {
   });
 
   const togglePublic = useMutation({
-    mutationFn: async ({ id, isPublic }: { id: string; isPublic: boolean }) => {
+    mutationFn: async ({
+      id,
+      isPublic,
+      isCreatorAnonymous,
+      copyLink,
+    }: {
+      id: string;
+      isPublic: boolean;
+      isCreatorAnonymous?: boolean;
+      copyLink?: boolean;
+    }) => {
       const res = await fetch(`/api/music/soundtracks/${id}/public`, {
         method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isPublic }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          isPublic,
+          ...(isCreatorAnonymous === undefined ? {} : { isCreatorAnonymous }),
+        }),
       });
       if (!res.ok) throw new Error("Update failed");
-      return res.json() as Promise<{ isPublic: boolean; shareToken: string; sharePath: string }>;
+      return res.json() as Promise<{
+        isPublic: boolean;
+        isCreatorAnonymous: boolean;
+        shareToken: string;
+        sharePath: string;
+      }>;
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["soundtracks"] });
-      if (data.isPublic) {
+      if (data.isPublic && variables.copyLink) {
         const link = `${window.location.origin}${data.sharePath}`;
         navigator.clipboard?.writeText(link).catch(() => {});
-        toast({ title: "Public — link copied", description: link });
-      } else toast({ title: "Set to private" });
+        toast({
+          title: data.isCreatorAnonymous ? "Posted anonymously — link copied" : "Posted to Explore — link copied",
+          description: link,
+        });
+      } else if (data.isPublic) {
+        toast({
+          title: data.isCreatorAnonymous ? "Now posted anonymously" : "Creator name is now visible",
+        });
+      } else {
+        toast({ title: "Set to private" });
+      }
     },
     onError: () => toast({ title: "Couldn't update sharing", variant: "destructive" }),
   });
@@ -802,7 +831,12 @@ export default function Soundtracks() {
                     )}
                     {s.prompt && <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{s.prompt}</p>}
                   </div>
-                  {s.isPublic && <Badge variant="outline" className="text-[10px] shrink-0">Public</Badge>}
+                  {s.isPublic && (
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <Badge variant="outline" className="text-[10px]">Public</Badge>
+                      {s.isCreatorAnonymous && <Badge variant="outline" className="text-[10px]">Anonymous</Badge>}
+                    </div>
+                  )}
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
                   {fmtLen(s) && <span className="rounded-full border border-border px-2 py-0.5">{fmtLen(s)}</span>}
@@ -823,9 +857,42 @@ export default function Soundtracks() {
                     <>
                       <Button size="sm" variant="outline" className="h-8" onClick={() => copyLink(s)}><Link2 className="h-3.5 w-3.5 mr-1.5" /> Copy link</Button>
                       <Button size="sm" variant="ghost" className="h-8" onClick={() => togglePublic.mutate({ id: s.id, isPublic: false })}><Lock className="h-3.5 w-3.5 mr-1.5" /> Make private</Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8"
+                        title={s.isCreatorAnonymous ? "Show your profile name on Explore" : "Hide your profile name on Explore"}
+                        onClick={() =>
+                          togglePublic.mutate({
+                            id: s.id,
+                            isPublic: true,
+                            isCreatorAnonymous: !s.isCreatorAnonymous,
+                          })
+                        }
+                      >
+                        {s.isCreatorAnonymous ? "Anonymous" : "Post anonymously"}
+                      </Button>
                     </>
                   ) : (
-                    <Button size="sm" variant="outline" className="h-8" onClick={() => togglePublic.mutate({ id: s.id, isPublic: true })}><Share2 className="h-3.5 w-3.5 mr-1.5" /> Share</Button>
+                    <>
+                      <Button size="sm" variant="outline" className="h-8" onClick={() => togglePublic.mutate({ id: s.id, isPublic: true, copyLink: true })}><Share2 className="h-3.5 w-3.5 mr-1.5" /> Post to Explore</Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8"
+                        title="Post this soundtrack anonymously on Explore"
+                        onClick={() =>
+                          togglePublic.mutate({
+                            id: s.id,
+                            isPublic: true,
+                            isCreatorAnonymous: true,
+                            copyLink: true,
+                          })
+                        }
+                      >
+                        Post anonymously
+                      </Button>
+                    </>
                   )}
                   <AlertDialog>
                     <AlertDialogTrigger asChild>

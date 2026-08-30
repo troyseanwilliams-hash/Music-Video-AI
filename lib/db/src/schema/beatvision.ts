@@ -229,6 +229,9 @@ export const soundtracksTable = pgTable("soundtracks", {
   provider: text("provider"),
   // Public gallery / share-by-link, mirroring videosTable.
   isPublic: boolean("is_public").notNull().default(false),
+  // Per-post privacy control. Public feeds must not expose the owner's profile
+  // name while this is enabled.
+  isCreatorAnonymous: boolean("is_creator_anonymous").notNull().default(false),
   likeCount: integer("like_count").notNull().default(0),
   shareToken: text("share_token").unique(),
   // Soft delete: hidden from the user's library but retained for the admin.

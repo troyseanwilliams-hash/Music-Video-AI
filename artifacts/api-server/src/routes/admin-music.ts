@@ -404,6 +404,7 @@ router.get("/music/soundtracks", async (req: Request, res: Response) => {
       loopedToSeconds: s.loopedToSeconds,
       provider: s.provider,
       isPublic: s.isPublic,
+      isCreatorAnonymous: s.isCreatorAnonymous,
       shareToken: s.shareToken,
       createdAt: s.createdAt,
       url: await storageService.getObjectEntitySignedUrl(s.objectPath, 3600),
@@ -466,6 +467,7 @@ router.get("/music/public", async (req: Request, res: Response) => {
       shareToken: soundtracksTable.shareToken,
       createdAt: soundtracksTable.createdAt,
       likeCount: soundtracksTable.likeCount,
+      isCreatorAnonymous: soundtracksTable.isCreatorAnonymous,
       creatorName: usersTable.firstName,
     })
     .from(soundtracksTable)
@@ -491,7 +493,7 @@ router.get("/music/public", async (req: Request, res: Response) => {
       title: s.title,
       prompt: s.prompt,
       shareToken: s.shareToken,
-      creatorName: s.creatorName,
+      creatorName: s.isCreatorAnonymous ? "Anonymous" : s.creatorName,
       createdAt: s.createdAt,
       likeCount: s.likeCount,
       liked: likedSet.has(s.id),
@@ -550,13 +552,17 @@ router.delete("/music/soundtracks/:id/like", async (req: Request, res: Response)
   res.json({ liked: false, likeCount });
 });
 
-// Toggle a Soundtrack public (mints a share token on first publish) or private.
+// Update a Soundtrack's Explore visibility and per-post creator attribution.
 router.post("/music/soundtracks/:id/public", async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
   const makePublic = req.body?.isPublic !== false; // default to publishing
+  const isCreatorAnonymous =
+    typeof req.body?.isCreatorAnonymous === "boolean"
+      ? req.body.isCreatorAnonymous
+      : undefined;
   const [row] = await db
     .select()
     .from(soundtracksTable)
@@ -569,9 +575,19 @@ router.post("/music/soundtracks/:id/public", async (req: Request, res: Response)
   const shareToken = row.shareToken ?? randomUUID().replace(/-/g, "");
   await db
     .update(soundtracksTable)
-    .set({ isPublic: makePublic, shareToken })
+    .set({
+      isPublic: makePublic,
+      shareToken,
+      ...(isCreatorAnonymous === undefined ? {} : { isCreatorAnonymous }),
+    })
     .where(eq(soundtracksTable.id, row.id));
-  res.json({ isPublic: makePublic, shareToken, sharePath: `/s/${shareToken}` });
+  res.json({
+    isPublic: makePublic,
+    isCreatorAnonymous:
+      isCreatorAnonymous ?? row.isCreatorAnonymous,
+    shareToken,
+    sharePath: `/s/${shareToken}`,
+  });
 });
 
 // Public resolve by share token (no auth) — powers share links / public gallery.
