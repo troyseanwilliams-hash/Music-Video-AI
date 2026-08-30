@@ -515,11 +515,11 @@ router.post("/jobs/:id/image-review/approve", async (req, res): Promise<void> =>
           ${JSON.stringify(nextReview)}::jsonb
         ) || jsonb_build_object(
           'refunded', false,
-          'reservedCredits', ${resumeCredits},
-          'reservedSubscriptionCredits', ${resumeSubscriptionDebit},
-          'reservedTopupCredits', ${resumeTopupDebit},
+          'reservedCredits', ${resumeCredits}::integer,
+          'reservedSubscriptionCredits', ${resumeSubscriptionDebit}::integer,
+          'reservedTopupCredits', ${resumeTopupDebit}::integer,
           'imageCreditCost', 0,
-          'videoCreditCost', ${resumeCredits},
+          'videoCreditCost', ${resumeCredits}::integer,
           'imageFirstRefundedCredits', 0,
           'resumeReservationRequired', 0
         )`
