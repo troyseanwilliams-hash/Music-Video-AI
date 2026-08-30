@@ -44,6 +44,7 @@ import {
   hasDuplicateImageFailure,
   prepareDuplicateImageRetry,
 } from "../lib/duplicateImageRetry.js";
+import { canResumeDuplicateClipJob } from "../lib/duplicateClipRetry.js";
 import { refundQueuedImageReviewReplacements } from "./image-review.js";
 
 const router = Router();
@@ -68,6 +69,15 @@ type AiJobMeta = {
   videoCreditCost?: number;
   resumeReservationRequired?: number;
   partialClips?: Record<string, string>;
+  strictUniqueSourcesVersion?: number;
+  pendingRequests?: Record<string, unknown>;
+  rejectedRequests?: Record<string, unknown>;
+  submissionIntents?: Record<string, unknown>;
+  uncertainSubmissions?: Record<string, unknown>;
+  targetedSceneRecovery?: unknown;
+  finalizeWithPartial?: boolean;
+  retryAfter?: number;
+  storyboard?: { numClips?: number };
   bundledLipSyncChildId?: string;
   bundledLipSyncEnabled?: boolean;
   bundledLipSyncActivated?: boolean;
@@ -1302,6 +1312,65 @@ router.post("/jobs/:id/retry", async (req, res) => {
       ...toCustomerJobView(resumeResult.job),
       resumeCreditsRequired: resumeResult.resumeCredits,
       automaticReplacementScene: resumeResult.replacementIndex + 1,
+    });
+    return;
+  }
+  const canResumeLegacyDuplicateJob =
+    job.status === "failed"
+    && job.jobType === "ai"
+    && canResumeDuplicateClipJob(retryMeta, job.errorMessage);
+  if (canResumeLegacyDuplicateJob) {
+    const resumed = await db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select()
+        .from(jobsTable)
+        .where(and(eq(jobsTable.id, jobId), eq(jobsTable.userId, req.user.id)))
+        .limit(1)
+        .for("update");
+      const lockedMeta =
+        locked?.manifest && typeof locked.manifest === "object"
+          ? (locked.manifest as AiJobMeta)
+          : {};
+      if (
+        !locked
+        || locked.status !== "failed"
+        || !canResumeDuplicateClipJob(lockedMeta, locked.errorMessage)
+      ) {
+        return null;
+      }
+      return (await tx
+        .update(jobsTable)
+        .set({
+          status: "queued",
+          progressPercent: Math.max(locked.progressPercent ?? 0, 70),
+          errorMessage: null,
+          retryCount: 0,
+          claimedAt: null,
+          manifest: sql`jsonb_set(
+            jsonb_set(
+              COALESCE(${jobsTable.manifest}, '{}'::jsonb),
+              '{refunded}',
+              'false'::jsonb
+            ),
+            '{finalizeWithPartial}',
+            'true'::jsonb
+          )`,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(jobsTable.id, jobId), eq(jobsTable.status, "failed")))
+        .returning())[0] ?? null;
+    });
+    if (!resumed) {
+      res.status(409).json({
+        error: "This job was already resubmitted or is no longer in a failed state.",
+        code: "JOB_ALREADY_RESUBMITTED",
+      });
+      return;
+    }
+    res.json({
+      ...toCustomerJobView(resumed),
+      reusedSavedClips: true,
+      duplicateClipsAllowed: true,
     });
     return;
   }

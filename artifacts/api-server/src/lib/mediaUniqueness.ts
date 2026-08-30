@@ -238,11 +238,21 @@ export function assertStrictUniqueMedia(
   mediaLabel: string,
 ): void {
   if (!strict) return;
+  const pair = findDuplicateMediaPair(fingerprints);
+  if (pair) {
+    throw new Error(`Strict job contains duplicate ${mediaLabel} content at positions ${pair.left + 1} and ${pair.right + 1}`);
+  }
+}
+
+export function findDuplicateMediaPair(
+  fingerprints: MediaFingerprint[],
+): { left: number; right: number } | null {
   for (let right = 1; right < fingerprints.length; right++) {
     for (let left = 0; left < right; left++) {
       if (fingerprintsMatch(fingerprints[left]!, fingerprints[right]!)) {
-        throw new Error(`Strict job contains duplicate ${mediaLabel} content at positions ${left + 1} and ${right + 1}`);
+        return { left, right };
       }
     }
   }
+  return null;
 }

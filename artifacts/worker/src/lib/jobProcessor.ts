@@ -3568,17 +3568,6 @@ async function processJob(job: JobRow): Promise<void> {
     const { clips, shortfallNotice } = await generateClips(job, analysis, plan, preparedImages, (pct) =>
       updateJobStatus(job.id, { progressPercent: pct }),
     );
-    if (isStrictUniqueSourcesJob(job)) {
-      const clipFingerprints = [];
-      for (const clip of clips) {
-        clipFingerprints.push(await perceptualFingerprint(clip.buffer, "video"));
-      }
-      try {
-        assertStrictUniqueMedia(true, clipFingerprints, "generated clip");
-      } catch (error) {
-        throw new Error(`${PROVIDER_API_FAILURE}: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
 
     await updateJobStatus(job.id, { status: "stitching", progressPercent: 75 });
 

@@ -17,6 +17,7 @@ import {
   hasDuplicateImageFailure,
   prepareDuplicateImageRetry,
 } from "../lib/duplicateImageRetry.js";
+import { canResumeDuplicateClipJob } from "../lib/duplicateClipRetry.js";
 
 // Billing/salvage state AI jobs stash in the manifest jsonb.
 type AiJobMeta = {
@@ -325,6 +326,40 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
         savedClips: Object.keys(meta.partialClips ?? {}).length,
         plannedScenes: meta.storyboard?.numClips ?? null,
         retryProvider: job.aiProvider,
+      };
+    }
+    if (canResumeDuplicateClipJob(meta, job.errorMessage)) {
+      const [updated] = await tx
+        .update(jobsTable)
+        .set({
+          status: "queued",
+          errorMessage: null,
+          retryCount: 0,
+          claimedAt: null,
+          manifest: sql`jsonb_set(
+            jsonb_set(
+              COALESCE(${jobsTable.manifest}, '{}'::jsonb),
+              '{refunded}',
+              'false'::jsonb
+            ),
+            '{finalizeWithPartial}',
+            'true'::jsonb
+          )`,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(jobsTable.id, id), eq(jobsTable.status, "failed")))
+        .returning();
+      if (!updated) return { kind: "not_failed" as const, status: job.status };
+      return {
+        kind: "ok" as const,
+        job: updated,
+        freshSceneIndex: null,
+        savedClips: Object.keys(meta.partialClips ?? {}).length,
+        plannedScenes: meta.storyboard?.numClips ?? null,
+        retryProvider: job.aiProvider,
+        automaticReplacementSceneIndex: null,
+        reusedSavedClips: true,
+        duplicateClipsAllowed: true,
       };
     }
     const recovery = terminalSceneRecovery(meta, job.errorMessage);
