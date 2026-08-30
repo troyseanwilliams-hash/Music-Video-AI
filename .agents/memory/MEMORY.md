@@ -50,3 +50,4 @@
 - [Generate is narrative-only](generate-narrative-only.md) — keep Visual Montage out of Generate; retain legacy montage internals for old jobs and separate Montage Studio workflows.
 - [Free first vocal song](free-first-vocal-song.md) — every account gets one lifetime free vocal song; claim before provider work, restore failures, and never touch paid or instrumental balances.
 - [Post-approval clip duplicates](duplicate-clip-recovery.md) — image uniqueness is enforced before approval; generated clips may repeat afterward and must still stitch.
+- [Resend campaign limits](resend-campaign-limits.md) — batch sends use a top-level array, 100-message chunks, and fixed idempotency keys; quota exhaustion can leave a partial campaign.
