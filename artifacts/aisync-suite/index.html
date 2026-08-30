@@ -3,21 +3,31 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
-    <title>AISyncSuite Company Site</title>
-    <meta name="description" content="AISyncSuite Company Site — built on Replit. Update this description to reflect the app." />
-    <meta name="robots" content="index, follow" />
-    <meta property="og:title" content="AISyncSuite Company Site" />
-    <meta property="og:description" content="AISyncSuite Company Site — built on Replit. Update this description to reflect the app." />
+    <title>AISync Suite — AIBeatSync + AIPodSync</title>
+    <meta name="description" content="One creator subscription with dedicated credits for AIBeatSync music videos and AIPodSync podcast content." />
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large" />
+    <meta property="og:title" content="AISync Suite — AIBeatSync + AIPodSync" />
+    <meta property="og:description" content="One creator subscription with dedicated credits for AIBeatSync music videos and AIPodSync podcast content." />
     <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://aisyncsuite.com/" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="AISyncSuite Company Site" />
-    <meta name="twitter:description" content="AISyncSuite Company Site — built on Replit. Update this description to reflect the app." />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="twitter:title" content="AISync Suite — AIBeatSync + AIPodSync" />
+    <meta name="twitter:description" content="One creator subscription with dedicated credits for AIBeatSync music videos and AIPodSync podcast content." />
+    <link rel="canonical" href="https://aisyncsuite.com/" />
+    <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   </head>
   <body>
+    <script>
+      try {
+        document.documentElement.classList.toggle(
+          "dark",
+          localStorage.getItem("aisyncsuite-theme") === "dark",
+        );
+      } catch {}
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
