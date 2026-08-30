@@ -1,4 +1,4 @@
-AI Beat Sync — favicon set
+AIBeatSync — favicon set
 ==========================
 Drop these into: artifacts/beatvision/public/
 

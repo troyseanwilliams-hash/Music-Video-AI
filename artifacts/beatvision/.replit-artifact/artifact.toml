@@ -1,6 +1,6 @@
 kind = "web"
 previewPath = "/"
-title = "AiBeatSync.com"
+title = "AIBeatSync.com"
 version = "1.0.0"
 id = "artifacts/beatvision"
 router = "path"

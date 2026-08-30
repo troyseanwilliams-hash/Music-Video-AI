@@ -483,7 +483,7 @@ export default function JobStatus() {
                             This is taking longer than usual. Generation occasionally stalls — if it
                             hasn't moved in a while,{" "}
                             <a
-                              href="mailto:support@aibeatSync.com"
+                              href="mailto:support@aibeatsync.com"
                               className="underline underline-offset-2 hover:text-yellow-300 transition-colors"
                             >
                               contact support

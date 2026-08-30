@@ -186,7 +186,7 @@ export default function Home() {
                 Real AI-generated examples
               </div>
               <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-3">
-                See what AI Beat Sync creates
+                See what AIBeatSync creates
               </h2>
               <p className="text-muted-foreground text-lg max-w-xl mx-auto">
                 Every video below was generated from a real audio track — click any to play.

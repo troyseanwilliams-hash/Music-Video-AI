@@ -58,7 +58,7 @@ export function notifyJobPendingApproval(job: JobInfo): void {
   const adminPhone = process.env.ADMIN_PHONE;
   if (sms && fromNumber && adminPhone) {
     const body =
-      `AiBeatSync: New job needs approval\n` +
+      `AIBeatSync: New job needs approval\n` +
       `ID: ${job.id.slice(0, 8)}\n` +
       `User: ${job.userEmail ?? "unknown"}\n` +
       `Style: ${job.style ?? "—"} · ${durationLabel}\n` +
@@ -107,7 +107,7 @@ export function notifyNewSupportTicket(ticket: SupportTicketInfo): void {
   const adminPhone = process.env.ADMIN_PHONE;
   if (sms && fromNumber && adminPhone) {
     const body =
-      `AiBeatSync: New support ticket\n` +
+      `AIBeatSync: New support ticket\n` +
       `From: ${ticket.userEmail ?? "unknown"}\n` +
       `[${ticket.category}] ${ticket.subject}\n` +
       `https://aibeatsync.com/admin`;
@@ -147,7 +147,7 @@ export function notifyNewUser(user: { id: string; email?: string | null; name?: 
   const adminPhone = process.env.ADMIN_PHONE;
   if (sms && fromNumber && adminPhone) {
     sms.messages
-      .create({ body: `AiBeatSync: New signup — ${user.email ?? user.id.slice(0, 8)}`, from: fromNumber, to: adminPhone })
+      .create({ body: `AIBeatSync: New signup — ${user.email ?? user.id.slice(0, 8)}`, from: fromNumber, to: adminPhone })
       .then(() => logger.info({ userId: user.id }, "New-user SMS sent"))
       .catch((err: unknown) => logger.error({ err, userId: user.id }, "Failed to send new-user SMS"));
   }
@@ -256,7 +256,7 @@ export function notifyPayment(p: {
   const adminPhone = process.env.ADMIN_PHONE;
   if (sms && fromNumber && adminPhone) {
     sms.messages
-      .create({ body: `AiBeatSync: ${amount} ${kindLabel} from ${p.email ?? "customer"}`, from: fromNumber, to: adminPhone })
+      .create({ body: `AIBeatSync: ${amount} ${kindLabel} from ${p.email ?? "customer"}`, from: fromNumber, to: adminPhone })
       .then(() => logger.info({ email: p.email }, "Payment SMS sent"))
       .catch((err: unknown) => logger.error({ err }, "Failed to send payment SMS"));
   }

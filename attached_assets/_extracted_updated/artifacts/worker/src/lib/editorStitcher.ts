@@ -248,7 +248,7 @@ export async function stitchEditorTimeline(
     // 4. Free-tier watermark (drawtext, bottom-right).
     if (input.watermark) {
       const wm = join(dir, "wm.mp4");
-      const text = "AI Beat Sync";
+      const text = "AIBeatSync";
       const draw =
         `drawtext=text='${text}':fontcolor=white@0.85:fontsize=${Math.round(H / 22)}:` +
         `box=1:boxcolor=black@0.35:boxborderw=8:x=w-text_w-24:y=h-text_h-24`;

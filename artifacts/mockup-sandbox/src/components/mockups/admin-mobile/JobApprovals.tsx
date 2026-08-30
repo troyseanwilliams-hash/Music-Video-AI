@@ -203,7 +203,7 @@ export function JobApprovals() {
       <div className="flex items-center justify-between px-5 pt-3 pb-4">
         <div>
           <h1 className="text-xl font-bold">Job Approvals</h1>
-          <p className="text-xs text-white/50 mt-0.5">AiBeatSync Admin</p>
+          <p className="text-xs text-white/50 mt-0.5">AIBeatSync Admin</p>
         </div>
         <button className="w-9 h-9 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20">
           <RefreshCw className="h-4 w-4 text-white/70" />
