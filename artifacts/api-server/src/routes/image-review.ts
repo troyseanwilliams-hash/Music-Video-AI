@@ -6,6 +6,7 @@ import { creditsTable, db, imageAssetsTable, jobsTable } from "@workspace/db";
 import { GENERATED_IMAGE_CREDITS_PER_VISUAL } from "../lib/creditCost.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { toCustomerJobView } from "../lib/customerJobView.js";
+import { imageReviewReplacementCredits } from "../lib/imageReviewBilling.js";
 
 const router = Router();
 const storage = new ObjectStorageService();
@@ -167,7 +168,10 @@ router.post("/jobs/:id/image-review/replacements", async (req, res): Promise<voi
     }
     const [credits] = await tx.select().from(creditsTable)
       .where(eq(creditsTable.userId, req.user.id)).limit(1).for("update");
-    const total = parsed.data.scenes.length * GENERATED_IMAGE_CREDITS_PER_VISUAL;
+    const replacementCosts = parsed.data.scenes.map((scene) =>
+      imageReviewReplacementCredits(review!.scenes[String(scene.index)]!),
+    );
+    const total = replacementCosts.reduce((sum, credits) => sum + credits, 0);
     if (!credits || credits.creditsRemaining < total) {
       return {
         error: `Replacement generation needs ${total} credits, but only ${credits?.creditsRemaining ?? 0} are available.`,
@@ -176,17 +180,18 @@ router.post("/jobs/:id/image-review/replacements", async (req, res): Promise<voi
     }
     let subscriptionRemaining = credits.subscriptionCredits;
     const pending: Record<string, ReviewReplacement> = {};
-    for (const scene of parsed.data.scenes) {
+    for (const [sceneIndex, scene] of parsed.data.scenes.entries()) {
       const id = randomUUID();
-      const subscriptionCredits = Math.min(GENERATED_IMAGE_CREDITS_PER_VISUAL, subscriptionRemaining);
+      const sceneCredits = replacementCosts[sceneIndex]!;
+      const subscriptionCredits = Math.min(sceneCredits, subscriptionRemaining);
       subscriptionRemaining -= subscriptionCredits;
       pending[id] = {
         id,
         index: scene.index,
         prompt: scene.prompt,
-        credits: GENERATED_IMAGE_CREDITS_PER_VISUAL,
+        credits: sceneCredits,
         subscriptionCredits,
-        topupCredits: GENERATED_IMAGE_CREDITS_PER_VISUAL - subscriptionCredits,
+        topupCredits: sceneCredits - subscriptionCredits,
         status: "queued",
         createdAt: new Date().toISOString(),
       };

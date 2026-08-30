@@ -519,6 +519,23 @@ export default function JobStatus() {
   const replaceableSelectedReviewCount = selectedReviewScenes
     .filter((index) => !blockedReviewIndexes.has(index))
     .length;
+  const selectedReplacementCost = selectedReviewScenes
+    .filter((index) => !blockedReviewIndexes.has(index))
+    .reduce(
+      (total, index) =>
+        total + (
+          imageReview?.scenes?.[String(index)]?.status === "failed"
+            ? 0
+            : GENERATED_IMAGE_CREDITS_PER_VISUAL
+        ),
+      0,
+    );
+  const selectedFailedRecoveryCount = selectedReviewScenes
+    .filter((index) =>
+      !blockedReviewIndexes.has(index)
+      && imageReview?.scenes?.[String(index)]?.status === "failed",
+    )
+    .length;
   const reviewGallery = galleryImagesData?.assets ?? [];
   const imageSourceLabel: Record<string, string> = {
     original_generation: "Original generation",
@@ -1050,8 +1067,9 @@ export default function JobStatus() {
                         : "Nothing is animating yet. You can keep an image, choose a free source, or generate a paid replacement."}
                     </p>
                     <p className="mt-2 text-xs font-medium text-foreground/80">
-                      A regeneration creates a new AI image and costs {GENERATED_IMAGE_CREDITS_PER_VISUAL} credits per selected scene,
-                      in addition to the original generation charge. Gallery images and uploads are free.
+                      Failed initial images can be recovered at no extra cost because their original image charge was already reserved.
+                      Regenerating a usable image creates a new AI image and costs {GENERATED_IMAGE_CREDITS_PER_VISUAL} credits.
+                      Gallery images and uploads are free.
                     </p>
                   </div>
                   <Button
@@ -1066,7 +1084,9 @@ export default function JobStatus() {
                     <Sparkles className="mr-2 h-4 w-4" />
                     Regenerate selected images
                     <span className="ml-2 text-xs opacity-80">
-                      +{replaceableSelectedReviewCount * GENERATED_IMAGE_CREDITS_PER_VISUAL} credits
+                      {selectedReplacementCost === 0
+                        ? "Free recovery"
+                        : `+${selectedReplacementCost} credits`}
                     </span>
                   </Button>
                 </div>
@@ -1202,7 +1222,13 @@ export default function JobStatus() {
                             />
                           </label>
                         </div>
-                        {pending && <p className="mt-2 text-xs text-primary">Generating replacement…</p>}
+                        {pending ? (
+                          <p className="mt-2 text-xs text-primary">Generating replacement…</p>
+                        ) : scene.status === "failed" ? (
+                          <p className="mt-2 text-xs font-medium text-primary">
+                            Free recovery — the original image charge was already reserved.
+                          </p>
+                        ) : null}
                       </div>
                     );
                   })}

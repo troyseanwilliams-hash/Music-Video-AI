@@ -1925,7 +1925,10 @@ components:
       required: [ok, credits, count]
       properties:
         ok: { type: boolean, const: true }
-        credits: { type: integer, minimum: 1 }
+         credits:
+           type: integer
+           minimum: 0
+           description: Total credits reserved; failed original scenes are recovered at no additional cost.
         count: { type: integer, minimum: 1 }
 
     ImageReviewSourceRequest:
