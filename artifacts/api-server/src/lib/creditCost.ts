@@ -204,10 +204,8 @@ export function freeSoundtracksFor(tier?: string | null): number {
   return 0;
 }
 
-// Cost to generate a Soundtrack. The provider cost is FIXED per file (Stable
-// Audio 3 Small ≈ $0.0217, any length), so the charge is a small band: it
-// scales a little by length but is capped at 10 credits for a full 2-min track
-// to keep it cheap and predictable. Range: 5 credits (short) → 10 credits (2 min).
+// Instrumental Soundtracks use the fixed-file Stable Audio cost and remain a
+// small duration band: 5 credits (short) → 10 credits (2 min).
 const SONG_USD_PER_SECOND = 0.002;
 const SONG_MIN_CREDITS = 5;
 const SONG_MAX_CREDITS = 10;
@@ -215,16 +213,28 @@ const SONG_MIN_SECONDS = 5;
 const SONG_MAX_SECONDS = 120;
 // Music generation is priced at a 1.5× markup on the real provider cost.
 const MUSIC_GEN_MARKUP = 1.5;
-// Full VOCAL songs run on MiniMax Music, a flat ~$0.15/generation model (≈7×
-// the instrumental Stable Audio cost). Charged as a flat credit price (never
-// part of the free monthly allowance). Derived: ceil($0.15 × 1.5 / $/credit) = 15.
-const VOCAL_SONG_USD = 0.15;
-export const SONG_VOCAL_CREDITS = Math.ceil((VOCAL_SONG_USD * MUSIC_GEN_MARKUP) / USD_PER_CREDIT);
+// Eleven Music is billed by generated minute. Vocal songs are never part of
+// the free instrumental allowance and are charged from their inferred length.
+export const ELEVEN_MUSIC_USD_PER_MINUTE = 0.15;
+export const VOCAL_SONG_MIN_SECONDS = 60;
+export const VOCAL_SONG_MAX_SECONDS = 300;
+export const VOCAL_SONG_CREDITS_PER_MINUTE = Math.ceil(
+  (ELEVEN_MUSIC_USD_PER_MINUTE * MUSIC_GEN_MARKUP) / USD_PER_CREDIT,
+);
+export function calculateVocalSongCost(durationSeconds: number | null | undefined): number {
+  const seconds = Math.min(
+    Math.max(Math.round(durationSeconds || 180), VOCAL_SONG_MIN_SECONDS),
+    VOCAL_SONG_MAX_SECONDS,
+  );
+  return Math.ceil((seconds / 60) * VOCAL_SONG_CREDITS_PER_MINUTE);
+}
+// Default estimate when the model is writing the lyrics: 3 minutes.
+export const SONG_VOCAL_CREDITS = calculateVocalSongCost(180);
 export function calculateSongCost(
   durationSeconds: number | null | undefined,
   withVocals = false,
 ): number {
-  if (withVocals) return SONG_VOCAL_CREDITS;
+  if (withVocals) return calculateVocalSongCost(durationSeconds);
   const secs = Math.min(Math.max(durationSeconds || 30, SONG_MIN_SECONDS), SONG_MAX_SECONDS);
   const scaled = Math.ceil((secs * SONG_USD_PER_SECOND * MUSIC_GEN_MARKUP) / USD_PER_CREDIT);
   return Math.min(SONG_MAX_CREDITS, Math.max(SONG_MIN_CREDITS, scaled));
