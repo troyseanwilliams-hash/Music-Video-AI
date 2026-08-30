@@ -216,10 +216,24 @@ async function generateWithElevenMusic(req: SongRequest): Promise<SongResult> {
   }
 
   if (!response.ok) {
-    await response.text();
+    const providerError = await response.text();
+    let providerStatus = "";
+    try {
+      const parsed = JSON.parse(providerError) as {
+        detail?: { status?: string; message?: string } | string;
+      };
+      const detail = parsed.detail;
+      if (typeof detail === "object" && detail) {
+        providerStatus = detail.status || "";
+      }
+    } catch {
+      // Keep provider diagnostics out of the customer-facing error.
+    }
     throw new Error(
-      response.status === 401 || response.status === 403
-        ? "Eleven Music rejected the configured API key. Update ELEVENLABS_API_KEY with a valid paid-account API key, then try again. No credits were charged."
+      providerStatus === "api_key_id_used_as_api_key"
+        ? "The configured Eleven Music credential is a key ID, not the full API key. Replace ELEVENLABS_API_KEY with the full key shown when the key was created or rotated. No credits were charged."
+        : response.status === 401 || response.status === 403 || providerStatus === "missing_permissions"
+          ? "Eleven Music rejected the configured API key. Update ELEVENLABS_API_KEY with a valid paid-account API key that has Music access, then try again. No credits were charged."
         : response.status === 422
           ? "The music engine rejected this song description or lyric format. Try shorter, original lyrics with section tags on their own lines."
           : `The music engine returned an error (${response.status}). No credits were charged; please try again.`,
