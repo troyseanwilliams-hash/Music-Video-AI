@@ -1,4 +1,6 @@
 export function GenerateEmailPreview() {
+  const youtubeUrl = "https://www.youtube.com/watch?v=VIDEO_ID";
+
   return (
     <div className="email-preview">
       <style>{`
@@ -128,7 +130,7 @@ export function GenerateEmailPreview() {
             </p>
             <div className="cta-row">
               <a className="button" href="#generate">Generate a Video&nbsp; →</a>
-              <a className="text-link" href="#watch">Watch the example&nbsp; ↗</a>
+              <a className="text-link" href={youtubeUrl}>Watch on YouTube&nbsp; ↗</a>
             </div>
             <p className="hero-note">Your visual direction stays in your hands from the first scene to the final frame.</p>
 
@@ -137,7 +139,7 @@ export function GenerateEmailPreview() {
                 <div className="play">▶</div>
                 <div className="video-title">From one idea to a complete visual story</div>
               </div>
-              <div className="video-meta"><span>AIBeatSync · Generate Video</span><span>Watch preview ↗</span></div>
+              <div className="video-meta"><span>AIBeatSync · Generate Video</span><a className="text-link" href={youtubeUrl}>Watch on YouTube&nbsp; ↗</a></div>
             </div>
           </section>
 
@@ -181,7 +183,7 @@ export function GenerateEmailPreview() {
           <section className="final-cta" id="generate">
             <h2>Your music deserves a visual story.</h2>
             <p>Shape every scene, keep your characters consistent, and make the final call before your video renders.</p>
-            <a className="button" href="#generate">Try Generate Video&nbsp; →</a>
+            <a className="button" href={youtubeUrl}>Watch the finished video&nbsp; ↗</a>
           </section>
 
           <footer className="footer">
