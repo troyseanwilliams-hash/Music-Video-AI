@@ -218,9 +218,11 @@ async function generateWithElevenMusic(req: SongRequest): Promise<SongResult> {
   if (!response.ok) {
     await response.text();
     throw new Error(
-      response.status === 422
-        ? "The music engine rejected this song description or lyric format. Try shorter, original lyrics with section tags on their own lines."
-        : `The music engine returned an error (${response.status}). No credits were charged; please try again.`,
+      response.status === 401 || response.status === 403
+        ? "Eleven Music rejected the configured API key. Update ELEVENLABS_API_KEY with a valid paid-account API key, then try again. No credits were charged."
+        : response.status === 422
+          ? "The music engine rejected this song description or lyric format. Try shorter, original lyrics with section tags on their own lines."
+          : `The music engine returned an error (${response.status}). No credits were charged; please try again.`,
     );
   }
 

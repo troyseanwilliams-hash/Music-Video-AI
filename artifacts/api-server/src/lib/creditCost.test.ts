@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   calculateCreditCost,
+  calculateSongCost,
+  calculateVocalSongCost,
   calculateGeneratedImageCost,
   calculateLipsyncCost,
   calculateLipsyncCostFromSourceVideo,
@@ -9,6 +11,20 @@ import {
   LIPSYNC_MIN_SECONDS,
   LIPSYNC_MAX_SECONDS,
 } from "./creditCost.js";
+
+describe("vocal soundtrack pricing", () => {
+  it("charges Eleven Music by inferred song length", () => {
+    expect(calculateVocalSongCost(60)).toBe(15);
+    expect(calculateVocalSongCost(120)).toBe(30);
+    expect(calculateVocalSongCost(180)).toBe(45);
+    expect(calculateSongCost(300, true)).toBe(75);
+  });
+
+  it("clamps vocal pricing to the supported 1–5 minute range", () => {
+    expect(calculateVocalSongCost(10)).toBe(15);
+    expect(calculateVocalSongCost(999)).toBe(75);
+  });
+});
 
 describe("unique-scene provider work and pricing", () => {
   it("charges every mode for one unique provider clip per ten-second scene", () => {

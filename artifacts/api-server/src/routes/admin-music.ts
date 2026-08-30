@@ -17,7 +17,13 @@ import {
   type MusicProvider,
 } from "../lib/musicApis.js";
 import { generateLyrics, lyricsProviderAvailable } from "../lib/lyricsGen.js";
-import { calculateSongCost, freeSoundtracksFor, NEW_USER_FREE_SOUNDTRACKS, SONG_VOCAL_CREDITS } from "../lib/creditCost.js";
+import {
+  calculateSongCost,
+  freeSoundtracksFor,
+  NEW_USER_FREE_SOUNDTRACKS,
+  SONG_VOCAL_CREDITS,
+  VOCAL_SONG_CREDITS_PER_MINUTE,
+} from "../lib/creditCost.js";
 import { notifyFeatureRequest } from "../lib/notifications.js";
 import { getUncachableStripeClient } from "../lib/stripeClient.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
@@ -72,6 +78,7 @@ router.get("/admin/music/status", (req: Request, res: Response) => {
     instrumentalMusicModel:
       process.env.PIXAZO_MUSIC_MODEL || "stable-audio-3-small-music-text-to-audio",
     vocalMusicModel: process.env.ELEVENLABS_MUSIC_MODEL || "music_v2",
+    vocalCreditsPerMinute: VOCAL_SONG_CREDITS_PER_MINUTE,
   });
 });
 

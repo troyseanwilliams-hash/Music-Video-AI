@@ -52,6 +52,7 @@ interface StatusResp {
   creditsRemaining: number;
   subscriptionActive: boolean;
   vocalCost?: number;
+  vocalCreditsPerMinute?: number;
   vocalsEnabled?: boolean;
 }
 
@@ -63,7 +64,7 @@ const LENGTH_OPTIONS = [
   { key: "long", label: "~1.5 min", seconds: 90 },
   { key: "full", label: "Max (2 min)", seconds: 120 },
 ];
-// Vocal styles fold into the song prompt (MiniMax reads voice from the prompt).
+// Vocal styles fold into the song prompt (the music model reads voice from the prompt).
 const VOCAL_STYLES = [
   { key: "auto", label: "Auto", desc: "" },
   { key: "female", label: "Female", desc: "female lead vocal" },
@@ -98,6 +99,26 @@ const PRESETS = [
 
 function songCredits(seconds: number): number {
   return Math.min(10, Math.max(5, Math.ceil((Math.min(Math.max(seconds, 5), 120) * 0.002 * 2) / 0.015)));
+}
+function inferVocalDurationSeconds(lyrics?: string): number {
+  const sectionCount = lyrics?.match(/^\s*\[[^\]]+\]\s*$/gm)?.length ?? 0;
+  const words = (lyrics ?? "")
+    .replace(/^\s*\[[^\]]+\]\s*$/gm, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+  if (words === 0) return 180;
+  const sungSeconds = (words / 75) * 60;
+  const arrangementSeconds = Math.max(20, Math.min(45, sectionCount * 5));
+  return Math.max(60, Math.min(300, Math.round((sungSeconds + arrangementSeconds) / 5) * 5));
+}
+function vocalSongCredits(seconds: number, creditsPerMinute = 15): number {
+  const boundedSeconds = Math.min(Math.max(Math.round(seconds || 180), 60), 300);
+  return Math.ceil((boundedSeconds / 60) * creditsPerMinute);
+}
+function formatVocalDuration(seconds: number): string {
+  if (seconds % 60 === 0) return `${seconds / 60} min`;
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
 function genPhase(p: number): string {
   if (p >= 99) return "Finishing up…";
@@ -216,6 +237,11 @@ export default function Soundtracks() {
     },
     enabled: isAuthenticated,
   });
+  const estimatedVocalDuration = inferVocalDurationSeconds(lyrics);
+  const estimatedVocalCredits = vocalSongCredits(
+    estimatedVocalDuration,
+    status?.vocalCreditsPerMinute ?? 15,
+  );
 
   const { data: tracks, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ["soundtracks"],
@@ -493,7 +519,9 @@ export default function Soundtracks() {
                     <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-sm">2</div>
                     <div className="flex items-center gap-3">
                       <h2 className="text-xl font-semibold">Vocals & Lyrics</h2>
-                      <Badge variant="secondary" className="font-medium text-xs">{status?.vocalCost ?? 15} credits</Badge>
+                       <Badge variant="secondary" className="font-medium text-xs">
+                         {estimatedVocalCredits} credits est.
+                       </Badge>
                     </div>
                   </div>
                   <div className="pl-10 space-y-8">
@@ -630,7 +658,7 @@ export default function Soundtracks() {
           <div className="bg-muted/30 border-t border-border p-6 md:px-8 flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="text-sm text-muted-foreground w-full md:w-auto text-center md:text-left">
               {withVocals
-                ? `Generating this vocal song costs ${status?.vocalCost ?? 15} credits.`
+                ? `Estimated ${formatVocalDuration(estimatedVocalDuration)} vocal song: ${estimatedVocalCredits} credits.`
                 : status?.admin || (status?.freeRemaining ?? 0) > 0
                   ? "You are using a free soundtrack generation."
                   : `Generating this soundtrack will use ≈ ${songCredits(duration)} credits.`}
@@ -658,7 +686,7 @@ export default function Soundtracks() {
                 disabled={prompt.trim().length < 3 || lyricsBusy}
                 onClick={() => {
                   const generationIsFree = !withVocals && (status?.admin || (status?.freeRemaining ?? 0) > 0);
-                  const requiredCredits = withVocals ? (status?.vocalCost ?? 15) : generationIsFree ? 0 : songCredits(duration);
+                  const requiredCredits = withVocals ? estimatedVocalCredits : generationIsFree ? 0 : songCredits(duration);
                   if (!canAffordCredits(requiredCredits, status?.creditsRemaining)) {
                     setTopUpCost(requiredCredits);
                     setTopUpOpen(true);
