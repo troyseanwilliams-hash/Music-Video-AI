@@ -71,7 +71,7 @@ router.get("/admin/music/status", (req: Request, res: Response) => {
     lyricsProvider: lyricsProviderAvailable(),
     instrumentalMusicModel:
       process.env.PIXAZO_MUSIC_MODEL || "stable-audio-3-small-music-text-to-audio",
-    vocalMusicModel: process.env.PIXAZO_SONG_MODEL || "minimax-music-3-0",
+    vocalMusicModel: process.env.ELEVENLABS_MUSIC_MODEL || "music_v2",
   });
 });
 
@@ -109,8 +109,8 @@ const GenerateBody = z.object({
   durationSeconds: z.number().int().min(5).max(300).optional(),
   // Loop the generated clip (via ffmpeg, free) to this length to match a video.
   loopToSeconds: z.number().int().min(1).max(MAX_SONG_SECONDS).optional(),
-  provider: z.enum(["simulation", "acestep", "musicgen", "pixazo"]).optional(),
-  // Generate a full VOCAL song (MiniMax) instead of an instrumental. Priced
+  provider: z.enum(["simulation", "acestep", "musicgen", "pixazo", "elevenlabs"]).optional(),
+  // Generate a full VOCAL song (Eleven Music) instead of an instrumental. Priced
   // higher and never covered by the free allowance.
   withVocals: z.boolean().optional(),
   // Let the model write the lyrics from the prompt (no lyrics box needed).
@@ -142,7 +142,7 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
 
   // Freemium metering. Admins are unlimited. Subscribers get a monthly free
   // "Soundtracks" allowance by tier (a bonus that upsells higher plans); beyond
-  // it, each track costs credits. Free tracks use the $0 Pixazo model.
+  // it, each track costs credits.
   let isFree = admin; // no credit charge for this generation (admins never charged)
   let freeRemaining: number | null = null;
 
@@ -155,7 +155,7 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
     const active = (user?.subscriptionStatus ?? "none") === "active";
 
     if (wantsVocals) {
-      // Vocal songs run on the pricier MiniMax model — always credit-charged,
+      // Vocal songs run on the pricier vocal model — always credit-charged,
       // never part of the free monthly Soundtracks allowance.
       if ((credits?.creditsRemaining ?? 0) < cost) {
         res.status(402).json({
@@ -350,9 +350,9 @@ router.get("/music/soundtracks-status", async (req: Request, res: Response) => {
     creditsRemaining: credits?.creditsRemaining ?? 0,
     subscriptionActive: active,
     // Vocal (with-lyrics) song generation: flat credit cost + whether the
-    // vocal model (MiniMax via Pixazo) is configured.
+    // Eleven Music model is configured.
     vocalCost: SONG_VOCAL_CREDITS,
-    vocalsEnabled: !!process.env.PIXAZO_API_KEY,
+    vocalsEnabled: !!process.env.ELEVENLABS_API_KEY,
   });
 });
 

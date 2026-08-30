@@ -45,6 +45,6 @@
 - [Storyboard fingerprint invalidation](storyboard-fingerprint-invalidation.md) — any setting used to build reviewed prompts must invalidate that plan client-side before submission.
 - [Lyrics-driven vocal duration](lyrics-driven-vocal-duration.md) — vocal songs have no manual length picker; lyrics and arrangement determine runtime while instrumental duration controls remain explicit.
 - [Lyrics enhancement preservation](lyrics-enhancement-preservation.md) — Enhance is a light editing pass; reject structural rewrites and never replace a draft with fallback lyrics.
-- [Pixazo vocal music contract](pixazo-vocal-music-contract.md) — use the current documented Music 3 text-to-music contract; the legacy Music 2.6 path failed internally after retries.
+- [Vocal music provider contract](pixazo-vocal-music-contract.md) — use Eleven Music v2 for vocal songs; retain the older gateway contract only as an intentional fallback.
 - [Suite Stripe authority](suite-stripe-authority.md) — Suite billing may use a separate Stripe account; keep customer IDs account-scoped and verify Suite webhooks independently.
 - [Existing artifact imports](existing-artifact-imports.md) — preserve artifact registration when replacing app files; deleting the artifact directory also removes its managed workflow.

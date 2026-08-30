@@ -1,10 +1,10 @@
 ---
-name: Pixazo vocal music contract
-description: Durable provider-version guidance for lyric-based vocal soundtrack generation.
+name: Vocal music provider contract
+description: Durable provider guidance for lyric-based vocal soundtrack generation.
 ---
 
-Use Pixazo's current documented MiniMax Music 3 `text-to-music` contract for vocal soundtrack generation. Do not default back to the legacy Music 2.6 `generate` contract.
+Use Eleven Music v2 for lyric-based vocal soundtrack generation. The API accepts one prompt, so combine the style brief and original lyrics within the documented prompt limit, request a bounded product-supported duration, and store the returned MP3. Keep the older gateway Music 3 contract only as an intentional fallback when Eleven Music is unavailable.
 
-**Why:** Music 2.6 accepted requests but then failed internally after repeated provider attempts, while Music 3 completed the same lyric-based vocal request and returned valid MP3 audio.
+**Why:** The previous vocal provider repeatedly timed out upstream. Eleven Music provides the required vocal/instrumental capability with a direct API, documented v2 model, and commercial-use terms; its request must still be bounded so the app does not wait indefinitely.
 
-**How to apply:** When changing soundtrack routing or payloads, preserve the current Music 3 fields for prompt, lyrics or lyric optimization, MP3 format, sample rate, and bitrate. Keep older models available only through an intentional override.
+**How to apply:** Keep vocal routing separate from the existing instrumental route, use `music_v2`, original lyrics only, MP3 output, and a customer-safe timeout. Never blindly retry an accepted music request because a provider timeout may still have produced a charge.

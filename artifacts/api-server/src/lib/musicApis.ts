@@ -2,6 +2,7 @@
 //
 // Providers (selected by env, safe simulation fallback when no key):
 //   - simulation : silent/placeholder tone, no key needed (dev + demo)
+//   - elevenlabs : Eleven Music — full songs WITH vocals/lyrics
 //   - acestep    : ACE-Step via Replicate — full songs WITH vocals/lyrics
 //                  (Apache-2.0 model, commercial use OK)
 //   - musicgen   : Meta MusicGen via Replicate — instrumental only
@@ -10,17 +11,17 @@
 // once their public API ships. Nothing calls this outside the admin routes,
 // so it stays isolated from the product until you're ready to expose it.
 
-export type MusicProvider = "simulation" | "acestep" | "musicgen" | "pixazo";
+export type MusicProvider = "simulation" | "acestep" | "musicgen" | "pixazo" | "elevenlabs";
 
 export interface SongRequest {
   prompt: string; // style/genre description
-  lyrics?: string; // used by vocal models (acestep / MiniMax); ignored by instrumental models
+  lyrics?: string; // used by vocal models (Eleven Music / ACE-Step / MiniMax)
   durationSeconds?: number; // instrumental target; vocal songs infer this from lyrics
   provider?: MusicProvider; // explicit override
-  // Generate a full song WITH vocals (routes to MiniMax Music on Pixazo) instead
+  // Generate a full song WITH vocals (routes to Eleven Music when configured) instead
   // of an instrumental. Requires lyrics OR lyricsOptimizer.
   withVocals?: boolean;
-  // Let the vocal model write the lyrics from the prompt (MiniMax lyrics_optimizer).
+  // Let the vocal model write the lyrics from the prompt.
   lyricsOptimizer?: boolean;
 }
 
@@ -71,12 +72,20 @@ function aceStepConfigured(): boolean {
   return !!(getEnv("MUSIC_ACESTEP_VERSION") || getEnv("MUSIC_ACESTEP_MODEL"));
 }
 
-export function getActiveMusicProvider(hint?: MusicProvider | null): MusicProvider {
+export function getActiveMusicProvider(
+  hint?: MusicProvider | null,
+  withVocals = false,
+): MusicProvider {
   const hasPixazo = !!getEnv("PIXAZO_API_KEY");
+  const hasElevenLabs = !!getEnv("ELEVENLABS_API_KEY");
   const hasReplicate = !!getEnv("REPLICATE_API_TOKEN");
   // Explicit Replicate hints win when Replicate is configured.
   if (hasReplicate && hint === "acestep" && aceStepConfigured()) return "acestep";
   if (hasReplicate && hint === "musicgen") return "musicgen";
+  if (hasElevenLabs && hint === "elevenlabs") return "elevenlabs";
+  // Vocal songs use Eleven Music. Keep instrumental routing unchanged so the
+  // existing lower-cost instrumental provider remains available.
+  if (withVocals && hasElevenLabs) return "elevenlabs";
   // Prefer Pixazo — one key shared with the video provider, no Replicate needed.
   if (hasPixazo) return "pixazo";
   if (hasReplicate) return "musicgen"; // free/cheap instrumental
@@ -146,6 +155,83 @@ async function downloadAudio(url: string): Promise<{ buffer: Buffer; ext: string
   const buffer = Buffer.from(await res.arrayBuffer());
   const ext = url.toLowerCase().includes(".wav") ? "wav" : "mp3";
   return { buffer, ext };
+}
+
+const ELEVEN_MUSIC_MAX_PROMPT_CHARS = 4100;
+const ELEVEN_MUSIC_TIMEOUT_MS = 4 * 60 * 1000;
+
+export function buildElevenMusicRequest(req: SongRequest): {
+  prompt: string;
+  musicLengthMs: number;
+  modelId: string;
+} {
+  const promptParts = [
+    req.prompt.trim(),
+    req.withVocals
+      ? req.lyrics?.trim()
+        ? `Create a complete vocal song using these exact original lyrics. Preserve the section order and words while composing a natural, singable melody:\n\n${req.lyrics.trim()}`
+        : "Create a complete vocal song with original lyrics that fit the style and subject above."
+      : "Create an instrumental track with no vocals.",
+  ];
+  const prompt = promptParts.join("\n\n").trim();
+  if (prompt.length > ELEVEN_MUSIC_MAX_PROMPT_CHARS) {
+    throw new Error("The sound description and lyrics are too long for the music engine. Shorten them and try again.");
+  }
+
+  return {
+    prompt,
+    musicLengthMs: Math.min(Math.max(Math.round((req.durationSeconds ?? 180) * 1000), 3000), 600000),
+    modelId: getEnv("ELEVENLABS_MUSIC_MODEL") || "music_v2",
+  };
+}
+
+async function generateWithElevenMusic(req: SongRequest): Promise<SongResult> {
+  const key = getEnv("ELEVENLABS_API_KEY");
+  if (!key) throw new Error("Eleven Music is not configured yet.");
+
+  const { prompt, musicLengthMs, modelId } = buildElevenMusicRequest(req);
+  let response: Response;
+  try {
+    response = await fetch(
+      "https://api.elevenlabs.io/v1/music?output_format=mp3_48000_192",
+      {
+        method: "POST",
+        headers: {
+          "xi-api-key": key,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt,
+          music_length_ms: musicLengthMs,
+          model_id: modelId,
+        }),
+        signal: AbortSignal.timeout(ELEVEN_MUSIC_TIMEOUT_MS),
+      },
+    );
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      throw new Error("The music engine took too long to respond. No credits were charged; please try again.");
+    }
+    throw new Error("The music engine could not be reached. No credits were charged; please try again.");
+  }
+
+  if (!response.ok) {
+    await response.text();
+    throw new Error(
+      response.status === 422
+        ? "The music engine rejected this song description or lyric format. Try shorter, original lyrics with section tags on their own lines."
+        : `The music engine returned an error (${response.status}). No credits were charged; please try again.`,
+    );
+  }
+
+  const audioBuffer = Buffer.from(await response.arrayBuffer());
+  if (!audioBuffer.length) throw new Error("The music engine returned no audio. No credits were charged; please try again.");
+  return {
+    audioBuffer,
+    ext: "mp3",
+    provider: "elevenlabs",
+    hasVocals: req.withVocals === true,
+  };
 }
 
 // ── Simulation (no key) ──────────────────────────────────────────────────────
@@ -343,7 +429,7 @@ export async function trimAudioToLength(
 export const MAX_SONG_SECONDS = 120;
 
 export async function generateSong(req: SongRequest): Promise<SongResult> {
-  const provider = getActiveMusicProvider(req.provider ?? null);
+  const provider = getActiveMusicProvider(req.provider ?? null, req.withVocals === true);
   const maxDuration = req.withVocals ? MAX_VOCAL_SONG_SECONDS : MAX_SONG_SECONDS;
   const dur = Math.min(Math.max(req.durationSeconds || 30, 5), maxDuration);
 
@@ -359,6 +445,10 @@ export async function generateSong(req: SongRequest): Promise<SongResult> {
       ((req.lyrics && req.lyrics.trim() && req.lyrics.trim() !== "[inst]") || req.lyricsOptimizer)
     );
     return { audioBuffer: buffer, ext, provider: "pixazo", hasVocals };
+  }
+
+  if (provider === "elevenlabs") {
+    return generateWithElevenMusic(req);
   }
 
   if (provider === "acestep") {

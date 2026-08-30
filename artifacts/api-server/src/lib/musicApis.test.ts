@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildPixazoMusicRequest, inferVocalDurationSeconds } from "./musicApis.js";
+import {
+  buildElevenMusicRequest,
+  buildPixazoMusicRequest,
+  inferVocalDurationSeconds,
+} from "./musicApis.js";
 import { preserveDraftIfRewritten } from "./lyricsGen.js";
 
 describe("inferVocalDurationSeconds", () => {
@@ -78,6 +82,51 @@ describe("buildPixazoMusicRequest", () => {
         is_instrumental: false,
       },
     });
+  });
+});
+
+describe("buildElevenMusicRequest", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("uses the Music v2 contract and embeds original lyrics in the prompt", () => {
+    vi.stubEnv("ELEVENLABS_MUSIC_MODEL", "music_v2");
+
+    expect(
+      buildElevenMusicRequest({
+        prompt: "Warm cinematic soul with piano and brushed drums",
+        lyrics: "[Verse]\nMeet me by the window",
+        durationSeconds: 95,
+        withVocals: true,
+      }),
+    ).toEqual({
+      prompt:
+        "Warm cinematic soul with piano and brushed drums\n\n" +
+        "Create a complete vocal song using these exact original lyrics. Preserve the section order and words while composing a natural, singable melody:\n\n" +
+        "[Verse]\nMeet me by the window",
+      musicLengthMs: 95000,
+      modelId: "music_v2",
+    });
+  });
+
+  it("asks Eleven Music to write original lyrics when the optimizer is enabled", () => {
+    expect(
+      buildElevenMusicRequest({
+        prompt: "An uplifting indie-pop road song",
+        withVocals: true,
+        lyricsOptimizer: true,
+      }).prompt,
+    ).toContain("original lyrics that fit the style and subject above");
+  });
+
+  it("rejects prompts that exceed Eleven Music's documented limit", () => {
+    expect(() =>
+      buildElevenMusicRequest({
+        prompt: "x".repeat(4100),
+        withVocals: true,
+      }),
+    ).toThrow("too long");
   });
 });
 
