@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { inferVocalDurationSeconds } from "./musicApis.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { buildPixazoMusicRequest, inferVocalDurationSeconds } from "./musicApis.js";
 import { preserveDraftIfRewritten } from "./lyricsGen.js";
 
 describe("inferVocalDurationSeconds", () => {
@@ -19,6 +19,65 @@ describe("inferVocalDurationSeconds", () => {
   it("keeps inferred vocal songs within supported bounds", () => {
     expect(inferVocalDurationSeconds("one short line")).toBe(60);
     expect(inferVocalDurationSeconds("word ".repeat(1_000))).toBe(300);
+  });
+});
+
+describe("buildPixazoMusicRequest", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("uses the current MiniMax Music 3.0 contract for vocal songs", () => {
+    expect(
+      buildPixazoMusicRequest({
+        prompt: "Soulful R&B with warm piano",
+        lyrics: "[verse]\nMeet me by the window",
+        withVocals: true,
+      }),
+    ).toEqual({
+      model: "minimax-music-3-0",
+      op: "text-to-music",
+      body: {
+        prompt: "Soulful R&B with warm piano",
+        lyrics: "[verse]\nMeet me by the window",
+        format: "mp3",
+        sample_rate: 44100,
+        bitrate: 256000,
+      },
+    });
+  });
+
+  it("preserves provider-written lyrics on the Music 3.0 contract", () => {
+    expect(
+      buildPixazoMusicRequest({
+        prompt: "Write and sing an uplifting soul song",
+        withVocals: true,
+        lyricsOptimizer: true,
+      }).body,
+    ).toMatchObject({
+      lyrics_optimizer: true,
+      format: "mp3",
+      sample_rate: 44100,
+      bitrate: 256000,
+    });
+  });
+
+  it("keeps an explicitly configured legacy model on its legacy operation", () => {
+    vi.stubEnv("PIXAZO_SONG_MODEL", "minimax-music-generation-2-6");
+
+    expect(
+      buildPixazoMusicRequest({
+        prompt: "Soul song",
+        lyrics: "[verse]\nA legacy request",
+        withVocals: true,
+      }),
+    ).toMatchObject({
+      model: "minimax-music-generation-2-6",
+      op: "generate",
+      body: {
+        is_instrumental: false,
+      },
+    });
   });
 });
 

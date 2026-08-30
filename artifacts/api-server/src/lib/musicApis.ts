@@ -184,8 +184,11 @@ async function simulateSong(durationSeconds: number): Promise<SongResult> {
 // endpoint, polls the universal status endpoint, returns the audio URL. Defaults
 // to MiniMax Music with is_instrumental=true; override the model/operation via
 // PIXAZO_MUSIC_MODEL / PIXAZO_MUSIC_OP.
-async function generateWithPixazoMusic(req: SongRequest): Promise<string> {
-  const key = getEnv("PIXAZO_API_KEY")!;
+export function buildPixazoMusicRequest(req: SongRequest): {
+  model: string;
+  op: string;
+  body: Record<string, unknown>;
+} {
   const maxDuration = req.withVocals ? MAX_VOCAL_SONG_SECONDS : MAX_SONG_SECONDS;
   const duration = Math.min(Math.max(req.durationSeconds || 10, 3), maxDuration);
   // Vocals need either explicit lyrics or the "write it for me" optimizer.
@@ -195,23 +198,34 @@ async function generateWithPixazoMusic(req: SongRequest): Promise<string> {
   );
 
   // Per-request model select:
-  //   • VOCALS       → MiniMax Music (full songs w/ lyrics), op "generate",
-  //     ~$0.15/gen. Override slug via PIXAZO_SONG_MODEL.
+  //   • VOCALS       → MiniMax Music 3.0 (full songs w/ lyrics), op
+  //     "text-to-music", ~$0.15/gen. Override slug via PIXAZO_SONG_MODEL.
   //   • INSTRUMENTAL → Stable Audio 3 Small (cheap ~$0.0217/file), op
   //     "<model>-request". Override slug via PIXAZO_MUSIC_MODEL.
-  const VOCAL_MODEL = getEnv("PIXAZO_SONG_MODEL") || "minimax-music-generation-2-6";
+  const VOCAL_MODEL = getEnv("PIXAZO_SONG_MODEL") || "minimax-music-3-0";
   const INSTRUMENTAL_MODEL = getEnv("PIXAZO_MUSIC_MODEL") || "stable-audio-3-small-music-text-to-audio";
   const model = wantsVocals ? VOCAL_MODEL : INSTRUMENTAL_MODEL;
   const isMinimax = /minimax/i.test(model);
-  // MiniMax's endpoint op is "generate", not "<model>-request".
+  const isMinimax3 = /minimax-music-3/i.test(model);
+  // MiniMax Music 3 uses the current text-to-music contract. Keep the legacy
+  // operation available only when a legacy model slug is explicitly configured.
   const op = isMinimax
-    ? getEnv("PIXAZO_SONG_OP") || "generate"
+    ? getEnv("PIXAZO_SONG_OP") || (isMinimax3 ? "text-to-music" : "generate")
     : getEnv("PIXAZO_MUSIC_OP") || `${model}-request`;
 
   // Request body differs by model family: MiniMax (full songs) uses
   // is_instrumental/lyrics/lyrics_optimizer and ignores duration; MusicGen/Stable
   // Audio are instrumental per-second models that honor a short duration.
-  const body = isMinimax
+  const body = isMinimax3
+    ? {
+        prompt: req.prompt,
+        ...(wantsVocals && req.lyrics && req.lyrics.trim() ? { lyrics: req.lyrics } : {}),
+        ...(wantsVocals && req.lyricsOptimizer ? { lyrics_optimizer: true } : {}),
+        format: "mp3",
+        sample_rate: 44100,
+        bitrate: 256000,
+      }
+    : isMinimax
     ? {
         prompt: req.prompt,
         is_instrumental: !wantsVocals,
@@ -220,6 +234,12 @@ async function generateWithPixazoMusic(req: SongRequest): Promise<string> {
       }
     : { prompt: req.prompt, duration };
 
+  return { model, op, body };
+}
+
+async function generateWithPixazoMusic(req: SongRequest): Promise<string> {
+  const key = getEnv("PIXAZO_API_KEY")!;
+  const { model, op, body } = buildPixazoMusicRequest(req);
   const submit = await fetch(`https://gateway.pixazo.ai/${model}/v1/${op}`, {
     method: "POST",
     headers: { "Ocp-Apim-Subscription-Key": key, "Content-Type": "application/json" },

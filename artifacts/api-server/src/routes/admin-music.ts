@@ -69,8 +69,9 @@ router.get("/admin/music/status", (req: Request, res: Response) => {
     musicGenReady: !!process.env.REPLICATE_API_TOKEN,
     pixazoReady: !!process.env.PIXAZO_API_KEY,
     lyricsProvider: lyricsProviderAvailable(),
-    // The single Pixazo music model used for every Soundtrack.
-    musicModel: process.env.PIXAZO_MUSIC_MODEL || "stable-audio-3-small-music-text-to-audio",
+    instrumentalMusicModel:
+      process.env.PIXAZO_MUSIC_MODEL || "stable-audio-3-small-music-text-to-audio",
+    vocalMusicModel: process.env.PIXAZO_SONG_MODEL || "minimax-music-3-0",
   });
 });
 
