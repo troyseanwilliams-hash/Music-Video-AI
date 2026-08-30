@@ -287,6 +287,9 @@ export const creditsTable = pgTable("credits", {
   // Free monthly "Soundtracks" (instrumental) allowance usage, reset monthly.
   freeSoundtracksUsed: integer("free_soundtracks_used").notNull().default(0),
   freeSoundtracksResetAt: timestamp("free_soundtracks_reset_at", { withTimezone: true }),
+  // One-time introductory vocal song. Kept separate from the recurring
+  // instrumental allowance so monthly resets can never restore it.
+  freeVocalSongsUsed: integer("free_vocal_songs_used").notNull().default(0),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow()

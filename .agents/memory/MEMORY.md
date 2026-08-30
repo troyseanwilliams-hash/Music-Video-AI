@@ -48,3 +48,4 @@
 - [Suite Stripe authority](suite-stripe-authority.md) — Suite billing may use a separate Stripe account; keep customer IDs account-scoped and verify Suite webhooks independently.
 - [Existing artifact imports](existing-artifact-imports.md) — preserve artifact registration when replacing app files; deleting the artifact directory also removes its managed workflow.
 - [Generate is narrative-only](generate-narrative-only.md) — keep Visual Montage out of Generate; retain legacy montage internals for old jobs and separate Montage Studio workflows.
+- [Free first vocal song](free-first-vocal-song.md) — every account gets one lifetime free vocal song; claim before provider work, restore failures, and never touch paid or instrumental balances.

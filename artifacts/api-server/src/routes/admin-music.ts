@@ -7,7 +7,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import { db, creditsTable, usersTable, soundtracksTable, soundtrackLikesTable } from "@workspace/db";
-import { eq, sql, and, desc, isNull, inArray } from "drizzle-orm";
+import { eq, sql, and, desc, isNull, inArray, lt } from "drizzle-orm";
 import {
   generateSong,
   getActiveMusicProvider,
@@ -29,6 +29,7 @@ import { notifyFeatureRequest } from "../lib/notifications.js";
 import { getUncachableStripeClient } from "../lib/stripeClient.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { logger } from "../lib/logger.js";
+import { getSongSettlement } from "../lib/songEntitlement.js";
 
 // Determine a user's subscription tier (starter/pro/studio) from Stripe.
 async function getUserTier(user: { stripeSubscriptionId?: string | null }): Promise<string | null> {
@@ -125,6 +126,8 @@ const GenerateBody = z.object({
   lyricsOptimizer: z.boolean().optional(),
 });
 
+const FREE_VOCAL_SONGS_PER_ACCOUNT = 1;
+
 router.post("/admin/music/generate", async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: "Unauthorized" });
@@ -153,6 +156,10 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
   // it, each track costs credits.
   let isFree = admin; // no credit charge for this generation (admins never charged)
   let freeRemaining: number | null = null;
+  let claimedFreeVocalSong = false;
+  let freeVocalSongsRemaining: number | null = admin
+    ? null
+    : 0;
 
   if (!admin) {
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.user.id)).limit(1);
@@ -163,9 +170,29 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
     const active = (user?.subscriptionStatus ?? "none") === "active";
 
     if (wantsVocals) {
-      // Vocal songs run on the pricier vocal model — always credit-charged,
-      // never part of the free monthly Soundtracks allowance.
-      if ((credits?.creditsRemaining ?? 0) < cost) {
+      // Every account gets one lifetime introductory vocal song. Claim it
+      // atomically before the provider call so concurrent requests cannot both
+      // consume the same free use. Failures restore the claim in the catch path.
+      const claimed = await db
+        .update(creditsTable)
+        .set({
+          freeVocalSongsUsed: sql`${creditsTable.freeVocalSongsUsed} + 1`,
+        })
+        .where(
+          and(
+            eq(creditsTable.userId, req.user.id),
+            lt(creditsTable.freeVocalSongsUsed, FREE_VOCAL_SONGS_PER_ACCOUNT),
+          ),
+        )
+        .returning({ used: creditsTable.freeVocalSongsUsed });
+      if (claimed.length > 0) {
+        isFree = true;
+        claimedFreeVocalSong = true;
+        freeVocalSongsRemaining = Math.max(
+          0,
+          FREE_VOCAL_SONGS_PER_ACCOUNT - claimed[0].used,
+        );
+      } else if ((credits?.creditsRemaining ?? 0) < cost) {
         res.status(402).json({
           error: `A vocal song costs ${cost} credits but you have ${credits?.creditsRemaining ?? 0}.`,
           code: "INSUFFICIENT_CREDITS",
@@ -174,7 +201,8 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
         });
         return;
       }
-      // isFree stays false → credits are deducted on success below.
+      // When the free use was already consumed, isFree stays false and credits
+      // are deducted on success below.
     } else if (active) {
       // Subscriber: monthly free allowance by tier (lazy monthly reset).
       let used = credits?.freeSoundtracksUsed ?? 0;
@@ -254,12 +282,13 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
     // On success (non-admins only): a free track burns one of the monthly
     // allowance; a paid track deducts credits (subscription bucket drawn first).
     if (!admin) {
-      if (isFree) {
+      const settlement = getSongSettlement(isFree, wantsVocals);
+      if (settlement === "free-instrumental") {
         await db
           .update(creditsTable)
           .set({ freeSoundtracksUsed: sql`free_soundtracks_used + 1` })
           .where(eq(creditsTable.userId, req.user.id));
-      } else {
+      } else if (settlement === "paid") {
         await db
           .update(creditsTable)
           .set({
@@ -308,9 +337,24 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
       creditsCharged: isFree ? 0 : cost,
       wasFree: isFree, // true when covered by the monthly free allowance
       freeRemaining, // free tracks left this month (null for admins)
+      freeVocalSongsRemaining,
       savedToLibrary, // false if the library insert failed (track still returned)
     });
   } catch (err) {
+    if (claimedFreeVocalSong) {
+      await db
+        .update(creditsTable)
+        .set({
+          freeVocalSongsUsed: sql`GREATEST(${creditsTable.freeVocalSongsUsed} - 1, 0)`,
+        })
+        .where(eq(creditsTable.userId, req.user.id))
+        .catch((restoreErr) => {
+          logger.error(
+            { err: restoreErr, userId: req.user!.id },
+            "Failed to restore free vocal song after generation failure",
+          );
+        });
+    }
     logger.error({ err }, "Admin song generation failed");
     res.status(500).json({
       error: err instanceof Error ? err.message : "Song generation failed",
@@ -361,6 +405,12 @@ router.get("/music/soundtracks-status", async (req: Request, res: Response) => {
     // whether the Eleven Music model is configured.
     vocalCost: SONG_VOCAL_CREDITS,
     vocalCreditsPerMinute: VOCAL_SONG_CREDITS_PER_MINUTE,
+    freeVocalSongsRemaining: admin
+      ? null
+      : Math.max(
+          0,
+          FREE_VOCAL_SONGS_PER_ACCOUNT - (credits?.freeVocalSongsUsed ?? 0),
+        ),
     vocalsEnabled:
       isUsableElevenLabsMusicCredential() || !!process.env.PIXAZO_API_KEY,
   });

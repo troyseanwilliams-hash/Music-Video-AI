@@ -54,6 +54,7 @@ interface StatusResp {
   subscriptionActive: boolean;
   vocalCost?: number;
   vocalCreditsPerMinute?: number;
+  freeVocalSongsRemaining?: number | null;
   vocalsEnabled?: boolean;
 }
 
@@ -280,7 +281,12 @@ export default function Soundtracks() {
       });
       const data = await readApiResponse(res);
       if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "The music engine couldn't finish this track. Please try again.");
-      return data as { wasFree: boolean; creditsCharged: number; freeRemaining: number | null };
+      return data as {
+        wasFree: boolean;
+        creditsCharged: number;
+        freeRemaining: number | null;
+        freeVocalSongsRemaining: number | null;
+      };
     },
     onSuccess: (data) => {
       setProgress(100);
@@ -288,7 +294,11 @@ export default function Soundtracks() {
       queryClient.invalidateQueries({ queryKey: ["soundtracks", "status"] });
       toast({
         title: "Soundtrack ready",
-        description: data.wasFree ? "Used one of your free Soundtracks." : `${data.creditsCharged} credits used.`,
+        description: data.wasFree
+          ? withVocals
+            ? "Your free vocal song was used."
+            : "Used one of your free Soundtracks."
+          : `${data.creditsCharged} credits used.`,
       });
       setTimeout(() => setProgress(0), 900);
     },
@@ -549,7 +559,9 @@ export default function Soundtracks() {
                     <div className="flex items-center gap-3">
                       <h2 className="text-xl font-semibold">Vocals & Lyrics</h2>
                        <Badge variant="secondary" className="font-medium text-xs">
-                         {estimatedVocalCredits} credits est.
+                         {status?.admin || (status?.freeVocalSongsRemaining ?? 0) > 0
+                           ? "First song free"
+                           : `${estimatedVocalCredits} credits est.`}
                        </Badge>
                     </div>
                   </div>
@@ -687,7 +699,9 @@ export default function Soundtracks() {
           <div className="bg-muted/30 border-t border-border p-6 md:px-8 flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="text-sm text-muted-foreground w-full md:w-auto text-center md:text-left">
               {withVocals
-                ? `Estimated ${formatVocalDuration(estimatedVocalDuration)} vocal song: ${estimatedVocalCredits} credits.`
+                ? status?.admin || (status?.freeVocalSongsRemaining ?? 0) > 0
+                  ? `Your first vocal song is free. Estimated length: ${formatVocalDuration(estimatedVocalDuration)}.`
+                  : `Estimated ${formatVocalDuration(estimatedVocalDuration)} vocal song: ${estimatedVocalCredits} credits.`
                 : status?.admin || (status?.freeRemaining ?? 0) > 0
                   ? "You are using a free soundtrack generation."
                   : `Generating this soundtrack will use ≈ ${songCredits(duration)} credits.`}
@@ -714,10 +728,13 @@ export default function Soundtracks() {
                 className="w-full md:w-auto bg-gradient-electric text-white text-base font-bold px-8 h-12 shadow-md hover:shadow-lg transition-all"
                 disabled={prompt.trim().length < 3 || lyricsBusy}
                 onClick={() => {
-                  const generationIsFree = !withVocals && (status?.admin || (status?.freeRemaining ?? 0) > 0);
+                  const generationIsFree = withVocals
+                    ? status?.admin || (status?.freeVocalSongsRemaining ?? 0) > 0
+                    : status?.admin || (status?.freeRemaining ?? 0) > 0;
                   const requiredCredits = withVocals ? estimatedVocalCredits : generationIsFree ? 0 : songCredits(duration);
-                  if (!canAffordCredits(requiredCredits, status?.creditsRemaining)) {
-                    setTopUpCost(requiredCredits);
+                  const creditsToCheck = generationIsFree ? 0 : requiredCredits;
+                  if (!canAffordCredits(creditsToCheck, status?.creditsRemaining)) {
+                    setTopUpCost(creditsToCheck);
                     setTopUpOpen(true);
                     return;
                   }
