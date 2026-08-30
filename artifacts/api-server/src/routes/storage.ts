@@ -20,6 +20,10 @@ const objectStorageService = new ObjectStorageService();
  * Then uploads the file directly to the returned presigned URL.
  */
 router.post("/storage/uploads/request-url", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
   const parsed = RequestUploadUrlBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Missing or invalid required fields" });
@@ -58,7 +62,7 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
     };
     const ext = contentType ? CONTENT_TYPE_EXT[contentType.toLowerCase()] : undefined;
 
-    const uploadURL = await objectStorageService.getObjectEntityUploadURL(ext);
+    const uploadURL = await objectStorageService.getObjectEntityUploadURL(ext, req.user.id);
     const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
 
     res.json(
@@ -120,6 +124,19 @@ router.get("/storage/objects/*path", async (req: Request, res: Response) => {
   try {
     const raw = req.params.path;
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
+
+    // New direct uploads and imported audio are stored below an owner namespace.
+    // Treat a mismatched owner exactly like a missing object so opaque paths do
+    // not become a cross-account read capability.
+    if (wildcardPath.startsWith("uploads/") || wildcardPath.startsWith("audio/")) {
+      const [, ownerId] = wildcardPath.split("/");
+      if (ownerId && (wildcardPath.startsWith(`uploads/${ownerId}/`) || wildcardPath.startsWith(`audio/${ownerId}/`))) {
+        if (!req.isAuthenticated() || ownerId !== req.user.id) {
+          res.status(404).json({ error: "Object not found" });
+          return;
+        }
+      }
+    }
 
     // Image packs remain private unless explicitly published. A public row is
     // the ACL; knowing an opaque path alone never grants access.

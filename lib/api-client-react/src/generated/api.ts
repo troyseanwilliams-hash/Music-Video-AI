@@ -57,6 +57,10 @@ import type {
   RegisterRequest,
   RemixJobRequest,
   RemixJobResponse,
+  StudioProject,
+  StudioProjectInput,
+  StudioProjectSummary,
+  StudioProjectUpdate,
   SuccessResponse,
   SuiteBillingUrlResponse,
   SuiteCheckoutInput,
@@ -3737,6 +3741,425 @@ export const useAnalyzeAudio = <
   TContext
 > => {
   return useMutation(getAnalyzeAudioMutationOptions(options));
+};
+
+/**
+ * @summary List saved Remix projects for the current user
+ */
+export const getListStudioProjectsUrl = () => {
+  return `/api/studio/projects`;
+};
+
+export const listStudioProjects = async (
+  options?: RequestInit,
+): Promise<StudioProjectSummary[]> => {
+  return customFetch<StudioProjectSummary[]>(getListStudioProjectsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListStudioProjectsQueryKey = () => {
+  return [`/api/studio/projects`] as const;
+};
+
+export const getListStudioProjectsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listStudioProjects>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listStudioProjects>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListStudioProjectsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listStudioProjects>>
+  > = ({ signal }) => listStudioProjects({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listStudioProjects>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListStudioProjectsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listStudioProjects>>
+>;
+export type ListStudioProjectsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List saved Remix projects for the current user
+ */
+
+export function useListStudioProjects<
+  TData = Awaited<ReturnType<typeof listStudioProjects>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listStudioProjects>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListStudioProjectsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Save a Remix project
+ */
+export const getCreateStudioProjectUrl = () => {
+  return `/api/studio/projects`;
+};
+
+export const createStudioProject = async (
+  studioProjectInput: StudioProjectInput,
+  options?: RequestInit,
+): Promise<StudioProject> => {
+  return customFetch<StudioProject>(getCreateStudioProjectUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(studioProjectInput),
+  });
+};
+
+export const getCreateStudioProjectMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createStudioProject>>,
+    TError,
+    { data: BodyType<StudioProjectInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createStudioProject>>,
+  TError,
+  { data: BodyType<StudioProjectInput> },
+  TContext
+> => {
+  const mutationKey = ["createStudioProject"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createStudioProject>>,
+    { data: BodyType<StudioProjectInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createStudioProject(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateStudioProjectMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createStudioProject>>
+>;
+export type CreateStudioProjectMutationBody = BodyType<StudioProjectInput>;
+export type CreateStudioProjectMutationError = ErrorType<void>;
+
+/**
+ * @summary Save a Remix project
+ */
+export const useCreateStudioProject = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createStudioProject>>,
+    TError,
+    { data: BodyType<StudioProjectInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createStudioProject>>,
+  TError,
+  { data: BodyType<StudioProjectInput> },
+  TContext
+> => {
+  return useMutation(getCreateStudioProjectMutationOptions(options));
+};
+
+/**
+ * @summary Reopen a saved Remix project
+ */
+export const getGetStudioProjectUrl = (id: string) => {
+  return `/api/studio/projects/${id}`;
+};
+
+export const getStudioProject = async (
+  id: string,
+  options?: RequestInit,
+): Promise<StudioProject> => {
+  return customFetch<StudioProject>(getGetStudioProjectUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetStudioProjectQueryKey = (id: string) => {
+  return [`/api/studio/projects/${id}`] as const;
+};
+
+export const getGetStudioProjectQueryOptions = <
+  TData = Awaited<ReturnType<typeof getStudioProject>>,
+  TError = ErrorType<void>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getStudioProject>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetStudioProjectQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getStudioProject>>
+  > = ({ signal }) => getStudioProject(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getStudioProject>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetStudioProjectQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getStudioProject>>
+>;
+export type GetStudioProjectQueryError = ErrorType<void>;
+
+/**
+ * @summary Reopen a saved Remix project
+ */
+
+export function useGetStudioProject<
+  TData = Awaited<ReturnType<typeof getStudioProject>>,
+  TError = ErrorType<void>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getStudioProject>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetStudioProjectQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update a saved Remix project or rename it
+ */
+export const getUpdateStudioProjectUrl = (id: string) => {
+  return `/api/studio/projects/${id}`;
+};
+
+export const updateStudioProject = async (
+  id: string,
+  studioProjectUpdate: StudioProjectUpdate,
+  options?: RequestInit,
+): Promise<StudioProject> => {
+  return customFetch<StudioProject>(getUpdateStudioProjectUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(studioProjectUpdate),
+  });
+};
+
+export const getUpdateStudioProjectMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateStudioProject>>,
+    TError,
+    { id: string; data: BodyType<StudioProjectUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateStudioProject>>,
+  TError,
+  { id: string; data: BodyType<StudioProjectUpdate> },
+  TContext
+> => {
+  const mutationKey = ["updateStudioProject"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateStudioProject>>,
+    { id: string; data: BodyType<StudioProjectUpdate> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateStudioProject(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateStudioProjectMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateStudioProject>>
+>;
+export type UpdateStudioProjectMutationBody = BodyType<StudioProjectUpdate>;
+export type UpdateStudioProjectMutationError = ErrorType<void>;
+
+/**
+ * @summary Update a saved Remix project or rename it
+ */
+export const useUpdateStudioProject = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateStudioProject>>,
+    TError,
+    { id: string; data: BodyType<StudioProjectUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateStudioProject>>,
+  TError,
+  { id: string; data: BodyType<StudioProjectUpdate> },
+  TContext
+> => {
+  return useMutation(getUpdateStudioProjectMutationOptions(options));
+};
+
+/**
+ * @summary Delete a saved Remix project
+ */
+export const getDeleteStudioProjectUrl = (id: string) => {
+  return `/api/studio/projects/${id}`;
+};
+
+export const deleteStudioProject = async (
+  id: string,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteStudioProjectUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteStudioProjectMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteStudioProject>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteStudioProject>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["deleteStudioProject"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteStudioProject>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteStudioProject(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteStudioProjectMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteStudioProject>>
+>;
+
+export type DeleteStudioProjectMutationError = ErrorType<void>;
+
+/**
+ * @summary Delete a saved Remix project
+ */
+export const useDeleteStudioProject = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteStudioProject>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteStudioProject>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getDeleteStudioProjectMutationOptions(options));
 };
 
 /**

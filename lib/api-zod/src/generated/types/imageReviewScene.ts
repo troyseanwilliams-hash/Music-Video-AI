@@ -6,14 +6,17 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ImageReviewSceneSource } from "./imageReviewSceneSource";
+import type { ImageReviewSceneStatus } from "./imageReviewSceneStatus";
 
 export interface ImageReviewScene {
   /** @minimum 0 */
   index: number;
-  canonicalPath: string;
+  canonicalPath?: string;
   /** @minimum 1 */
   revision: number;
   source: ImageReviewSceneSource;
   prompt: string;
+  status: ImageReviewSceneStatus;
+  errorMessage?: string;
   acceptedRequestId?: string;
 }

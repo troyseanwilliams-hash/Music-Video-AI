@@ -1,14 +1,24 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, creditsTable, usersTable, imageAssetsTable } from "@workspace/db";
-import { eq, and, gte, ne, count, sql, inArray, isNull } from "drizzle-orm";
+import {
+  jobsTable,
+  creditsTable,
+  usersTable,
+  imageAssetsTable,
+  editorProjectsTable,
+  videosTable,
+  soundtracksTable,
+} from "@workspace/db";
+import { eq, and, gte, ne, count, sql, inArray, isNull, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import { FREE_EDITOR_EXPORTS_PER_MONTH, EDITOR_OVERAGE_COST, TRIAL_LYRIC_EXPORTS } from "../lib/editorCost.js";
 import { LYRIC_OVERLAY_COST, LYRIC_ALIGN_COST, TRIAL_FREE_ALIGNS } from "../lib/creditCost.js";
 import { MAX_LYRICS_LENGTH } from "../lib/lyricLimits.js";
+import { ObjectNotFoundError, ObjectStorageService } from "../lib/objectStorage.js";
 
 const router = Router();
+const storage = new ObjectStorageService();
 
 const SegmentSchema = z.object({
   objectPath: z.string().min(1),
@@ -62,6 +72,233 @@ const RenderSchema = z.object({
   // Karaoke lyric burn (same engine as the generator): plain text, LRC, or
   // word-level enhanced LRC.
   lyricsText: z.string().max(MAX_LYRICS_LENGTH).optional(),
+});
+
+const ProjectSegmentSchema = SegmentSchema.extend({
+  name: z.string().trim().min(1).max(120),
+  sourceVideoId: z.string().trim().min(1).nullable().optional(),
+}).strict();
+
+const ProjectManifestSchema = z.object({
+  version: z.literal(1),
+  segments: z.array(ProjectSegmentSchema).min(1).max(500),
+  music: z.object({
+    name: z.string().trim().min(1).max(120),
+    objectPath: z.string().min(1),
+    mode: z.enum(["mix", "replace"]),
+    volume: z.number().min(0).max(1),
+    loop: z.boolean(),
+    fade: z.boolean(),
+  }).strict().nullable().optional(),
+  transition: z.object({
+    type: z.enum([
+      "none", "crossfade", "fadeblack", "fadewhite", "dissolve", "pixelize",
+      "wipeleft", "wiperight", "wipeup", "wipedown", "slideleft", "slideright",
+      "slideup", "slidedown", "circleopen", "circleclose", "radial",
+      "wipe", "slide", "circle", "zoomin",
+    ]),
+    durationSec: z.number().min(0.2).max(2),
+  }).strict(),
+  resolution: z.enum(["720p", "1080p"]),
+  orientation: z.enum(["landscape", "portrait"]),
+  videoName: z.string().max(120),
+  sourceVideoId: z.string().trim().min(1).nullable(),
+  karaokeEnabled: z.boolean(),
+  lyricsText: z.string().max(MAX_LYRICS_LENGTH),
+  lyricsSyncSource: z.enum(["music", "video"]),
+  beatsPerPhoto: z.number().positive().max(128),
+}).strict();
+
+const ProjectInputSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  manifest: ProjectManifestSchema,
+}).strict();
+
+const ProjectUpdateSchema = z.object({
+  name: z.string().trim().min(1).max(120).optional(),
+  manifest: ProjectManifestSchema.optional(),
+}).strict().refine((value) => value.name !== undefined || value.manifest !== undefined, {
+  message: "Provide a project name or manifest.",
+});
+
+type ProjectManifest = z.infer<typeof ProjectManifestSchema>;
+type EditorMediaSegment = {
+  objectPath: string;
+  kind: "video" | "photo";
+  name?: string;
+};
+type EditorMusicReference = {
+  objectPath: string;
+  name?: string;
+};
+
+async function ensureStored(path: string): Promise<boolean> {
+  try {
+    await storage.getObjectEntityFile(path);
+    return true;
+  } catch (error) {
+    if (error instanceof ObjectNotFoundError) return false;
+    throw error;
+  }
+}
+
+async function validateOwnedEditorMedia(
+  userId: string,
+  segments: EditorMediaSegment[],
+  music?: EditorMusicReference | null,
+): Promise<string | null> {
+  const imagePaths = [...new Set(segments.filter((s) => s.kind === "photo").map((s) => s.objectPath))];
+  const videoPaths = [...new Set(segments.filter((s) => s.kind === "video").map((s) => s.objectPath))];
+  const ownedImages = imagePaths.length
+    ? await db.select({ objectPath: imageAssetsTable.objectPath }).from(imageAssetsTable).where(and(
+        eq(imageAssetsTable.userId, userId),
+        isNull(imageAssetsTable.deletedAt),
+        inArray(imageAssetsTable.objectPath, imagePaths),
+      ))
+    : [];
+  const ownedVideos = videoPaths.length
+    ? await db.select({ id: videosTable.id, objectPath: videosTable.videoObjectPath }).from(videosTable).where(and(
+        eq(videosTable.userId, userId),
+        isNull(videosTable.deletedAt),
+        inArray(videosTable.videoObjectPath, videoPaths),
+      ))
+    : [];
+  const ownedImagePaths = new Set(ownedImages.map((row) => row.objectPath));
+  const ownedVideoPaths = new Set(ownedVideos.map((row) => row.objectPath));
+  const userUploadPrefix = `/objects/uploads/${userId}/`;
+  const userAudioPrefix = `/objects/audio/${userId}/`;
+
+  for (const segment of segments) {
+    const ownerScopedUpload = segment.objectPath.startsWith(userUploadPrefix);
+    const ownedAsset = segment.kind === "photo"
+      ? ownedImagePaths.has(segment.objectPath)
+      : ownedVideoPaths.has(segment.objectPath);
+    if (!ownerScopedUpload && !ownedAsset) {
+      return `“${segment.name ?? "Selected media"}” is no longer available to this account. Re-add or remove it before continuing.`;
+    }
+  }
+
+  if (music) {
+    const musicPath = music.objectPath;
+    const ownerScoped = musicPath.startsWith(userUploadPrefix) || musicPath.startsWith(userAudioPrefix);
+    const [track] = ownerScoped ? [] : await db.select({ id: soundtracksTable.id }).from(soundtracksTable).where(and(
+      eq(soundtracksTable.userId, userId),
+      eq(soundtracksTable.objectPath, musicPath),
+      isNull(soundtracksTable.deletedAt),
+    )).limit(1);
+    if (!ownerScoped && !track) return `The music track “${music.name ?? "Selected music"}” is no longer available.`;
+  }
+
+  const paths = [...new Set([
+    ...segments.map((segment) => segment.objectPath),
+    ...(music ? [music.objectPath] : []),
+  ])];
+  const available = await Promise.all(paths.map(ensureStored));
+  const missingIndex = available.findIndex((value) => !value);
+  return missingIndex >= 0 ? `A saved media file is missing (${paths[missingIndex]}). Re-add it before saving.` : null;
+}
+
+async function validateProjectMedia(userId: string, manifest: ProjectManifest): Promise<string | null> {
+  const mediaError = await validateOwnedEditorMedia(userId, manifest.segments, manifest.music);
+  if (mediaError) return mediaError;
+  const sourceIds = [...new Set([
+    ...manifest.segments.flatMap((segment) => segment.sourceVideoId ? [segment.sourceVideoId] : []),
+    ...(manifest.sourceVideoId ? [manifest.sourceVideoId] : []),
+  ])];
+  if (sourceIds.length) {
+    const sources = await db.select({ id: videosTable.id }).from(videosTable).where(and(
+      eq(videosTable.userId, userId),
+      isNull(videosTable.deletedAt),
+      inArray(videosTable.id, sourceIds),
+    ));
+    if (sources.length !== sourceIds.length) return "A referenced Gallery video is no longer available.";
+  }
+  return null;
+}
+
+function projectResponse(project: typeof editorProjectsTable.$inferSelect) {
+  return {
+    ...project,
+    createdAt: project.createdAt.toISOString(),
+    updatedAt: project.updatedAt.toISOString(),
+  };
+}
+
+router.get("/studio/projects", async (req, res) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: "Unauthorized" });
+  const projects = await db.select({
+    id: editorProjectsTable.id,
+    name: editorProjectsTable.name,
+    lastVideoId: editorProjectsTable.lastVideoId,
+    createdAt: editorProjectsTable.createdAt,
+    updatedAt: editorProjectsTable.updatedAt,
+  }).from(editorProjectsTable).where(eq(editorProjectsTable.userId, req.user.id))
+    .orderBy(desc(editorProjectsTable.updatedAt));
+  res.json(projects.map((project) => ({
+    ...project,
+    createdAt: project.createdAt.toISOString(),
+    updatedAt: project.updatedAt.toISOString(),
+  })));
+});
+
+router.post("/studio/projects", async (req, res) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: "Unauthorized" });
+  const parsed = ProjectInputSchema.safeParse(req.body);
+  if (!parsed.success) return void res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid project." });
+  const mediaError = await validateProjectMedia(req.user.id, parsed.data.manifest);
+  if (mediaError) return void res.status(403).json({ error: mediaError, code: "PROJECT_MEDIA_UNAVAILABLE" });
+  const [project] = await db.insert(editorProjectsTable).values({
+    id: randomUUID(),
+    userId: req.user.id,
+    name: parsed.data.name,
+    manifest: parsed.data.manifest,
+  }).returning();
+  res.status(201).json(projectResponse(project!));
+});
+
+router.get("/studio/projects/:id", async (req, res) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: "Unauthorized" });
+  const [project] = await db.select().from(editorProjectsTable).where(and(
+    eq(editorProjectsTable.id, req.params.id),
+    eq(editorProjectsTable.userId, req.user.id),
+  )).limit(1);
+  if (!project) return void res.status(404).json({ error: "Project not found." });
+  const parsed = ProjectManifestSchema.safeParse(project.manifest);
+  if (!parsed.success) return void res.status(422).json({ error: "This project uses an unsupported saved format." });
+  const mediaError = await validateProjectMedia(req.user.id, parsed.data);
+  if (mediaError) return void res.status(409).json({ error: mediaError, code: "PROJECT_MEDIA_UNAVAILABLE" });
+  res.json(projectResponse(project));
+});
+
+router.patch("/studio/projects/:id", async (req, res) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: "Unauthorized" });
+  const parsed = ProjectUpdateSchema.safeParse(req.body);
+  if (!parsed.success) return void res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid project update." });
+  const [existing] = await db.select({ id: editorProjectsTable.id }).from(editorProjectsTable).where(and(
+    eq(editorProjectsTable.id, req.params.id),
+    eq(editorProjectsTable.userId, req.user.id),
+  )).limit(1);
+  if (!existing) return void res.status(404).json({ error: "Project not found." });
+  if (parsed.data.manifest) {
+    const mediaError = await validateProjectMedia(req.user.id, parsed.data.manifest);
+    if (mediaError) return void res.status(403).json({ error: mediaError, code: "PROJECT_MEDIA_UNAVAILABLE" });
+  }
+  const [project] = await db.update(editorProjectsTable).set({
+    ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
+    ...(parsed.data.manifest !== undefined ? { manifest: parsed.data.manifest } : {}),
+    updatedAt: new Date(),
+  }).where(and(eq(editorProjectsTable.id, req.params.id), eq(editorProjectsTable.userId, req.user.id))).returning();
+  res.json(projectResponse(project!));
+});
+
+router.delete("/studio/projects/:id", async (req, res) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: "Unauthorized" });
+  const [deleted] = await db.delete(editorProjectsTable).where(and(
+    eq(editorProjectsTable.id, req.params.id),
+    eq(editorProjectsTable.userId, req.user.id),
+  )).returning({ id: editorProjectsTable.id });
+  if (!deleted) return void res.status(404).json({ error: "Project not found." });
+  res.status(204).end();
 });
 
 // GET /api/studio/quota — this month's free-Remix usage for the current user.
@@ -147,27 +384,12 @@ router.post("/studio/render", async (req, res) => {
   }
   const input = parsed.data;
 
-  // Only the owner of a generated image can use it as a Remix photo segment.
-  // The storage read route repeats this check when previewing the image; doing
-  // it here also blocks a forged timeline manifest from reaching the worker.
-  const generatedImagePaths = [...new Set(
-    input.segments
-      .filter((segment) => segment.kind === "photo" && segment.objectPath.startsWith("/objects/image-packs/"))
-      .map((segment) => segment.objectPath),
-  )];
-  if (generatedImagePaths.length > 0) {
-    const ownedAssets = await db
-      .select({ objectPath: imageAssetsTable.objectPath })
-      .from(imageAssetsTable)
-      .where(and(
-        eq(imageAssetsTable.userId, req.user.id),
-        isNull(imageAssetsTable.deletedAt),
-        inArray(imageAssetsTable.objectPath, generatedImagePaths),
-      ));
-    if (ownedAssets.length !== generatedImagePaths.length) {
-      res.status(403).json({ error: "One or more selected generated images are unavailable." });
-      return;
-    }
+  // The worker reads storage with service credentials, so the render boundary
+  // must enforce the same ownership rules as project saving and browser reads.
+  const mediaError = await validateOwnedEditorMedia(req.user.id, input.segments, input.music);
+  if (mediaError) {
+    res.status(403).json({ error: mediaError, code: "EDITOR_MEDIA_UNAVAILABLE" });
+    return;
   }
 
   // Require the copyright/ownership attestation before rendering uploaded clips.

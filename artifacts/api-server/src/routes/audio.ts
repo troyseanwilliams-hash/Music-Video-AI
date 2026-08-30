@@ -4,6 +4,8 @@ import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.
 import { analyzeAudioBuffer } from "../lib/audioAnalysis.js";
 import { resolveSunoUrl } from "../lib/sunoResolver.js";
 import { signAudioAnalysisReceipt } from "../lib/audioAnalysisReceipt.js";
+import { and, eq, isNull } from "drizzle-orm";
+import { db, soundtracksTable } from "@workspace/db";
 
 const router = Router();
 const storageService = new ObjectStorageService();
@@ -60,7 +62,7 @@ router.post("/audio/import-from-link", async (req, res) => {
     }
     const buffer = Buffer.from(await dl.arrayBuffer());
     const songId = randomUUID();
-    const objectPath = await storageService.uploadAudioBuffer(buffer, songId, "mp3");
+    const objectPath = await storageService.uploadAudioBuffer(buffer, songId, "mp3", req.user.id);
     const signedUrl = await storageService.getObjectEntitySignedUrl(objectPath, 3600);
 
     res.json({ objectPath, url: signedUrl, title });
@@ -80,6 +82,27 @@ router.post("/audio/analyze", async (req, res) => {
   if (typeof objectPath !== "string" || !objectPath.trim()) {
     res.status(400).json({ error: "objectPath is required" });
     return;
+  }
+
+  const userUploadPrefix = `/objects/uploads/${req.user.id}/`;
+  const userAudioPrefix = `/objects/audio/${req.user.id}/`;
+  const ownerScoped =
+    objectPath.startsWith(userUploadPrefix)
+    || objectPath.startsWith(userAudioPrefix);
+  if (!ownerScoped) {
+    const [ownedTrack] = await db
+      .select({ id: soundtracksTable.id })
+      .from(soundtracksTable)
+      .where(and(
+        eq(soundtracksTable.userId, req.user.id),
+        eq(soundtracksTable.objectPath, objectPath),
+        isNull(soundtracksTable.deletedAt),
+      ))
+      .limit(1);
+    if (!ownedTrack) {
+      res.status(404).json({ error: "Audio file not found" });
+      return;
+    }
   }
 
   let file;

@@ -521,21 +521,7 @@ export default function JobStatus() {
     .length;
   const selectedReplacementCost = selectedReviewScenes
     .filter((index) => !blockedReviewIndexes.has(index))
-    .reduce(
-      (total, index) =>
-        total + (
-          imageReview?.scenes?.[String(index)]?.status === "failed"
-            ? 0
-            : GENERATED_IMAGE_CREDITS_PER_VISUAL
-        ),
-      0,
-    );
-  const selectedFailedRecoveryCount = selectedReviewScenes
-    .filter((index) =>
-      !blockedReviewIndexes.has(index)
-      && imageReview?.scenes?.[String(index)]?.status === "failed",
-    )
-    .length;
+    .length * GENERATED_IMAGE_CREDITS_PER_VISUAL;
   const reviewGallery = galleryImagesData?.assets ?? [];
   const imageSourceLabel: Record<string, string> = {
     original_generation: "Original generation",
@@ -1067,9 +1053,8 @@ export default function JobStatus() {
                         : "Nothing is animating yet. You can keep an image, choose a free source, or generate a paid replacement."}
                     </p>
                     <p className="mt-2 text-xs font-medium text-foreground/80">
-                      Failed initial images can be recovered at no extra cost because their original image charge was already reserved.
-                      Regenerating a usable image creates a new AI image and costs {GENERATED_IMAGE_CREDITS_PER_VISUAL} credits.
-                      Gallery images and uploads are free.
+                      Regenerating any scene creates a new AI image and costs {GENERATED_IMAGE_CREDITS_PER_VISUAL} credits.
+                      That includes a failed scene when its original attempt did not produce a charge. Gallery images and uploads are free.
                     </p>
                   </div>
                   <Button
@@ -1226,7 +1211,7 @@ export default function JobStatus() {
                           <p className="mt-2 text-xs text-primary">Generating replacement…</p>
                         ) : scene.status === "failed" ? (
                           <p className="mt-2 text-xs font-medium text-primary">
-                            Free recovery — the original image charge was already reserved.
+                            New image charge — {GENERATED_IMAGE_CREDITS_PER_VISUAL} credits because the failed attempt was not charged.
                           </p>
                         ) : null}
                       </div>

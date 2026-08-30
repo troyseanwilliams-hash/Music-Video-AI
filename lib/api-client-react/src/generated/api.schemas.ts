@@ -5,6 +5,191 @@
  * BeatVision AI API specification
  * OpenAPI spec version: 0.1.0
  */
+export type StudioSegmentKind =
+  (typeof StudioSegmentKind)[keyof typeof StudioSegmentKind];
+
+export const StudioSegmentKind = {
+  video: "video",
+  photo: "photo",
+} as const;
+
+export interface StudioSegment {
+  /**
+   * @minLength 1
+   * @maxLength 120
+   */
+  name: string;
+  kind: StudioSegmentKind;
+  /** @minLength 1 */
+  objectPath: string;
+  /**
+   * @maximum 600
+   * @exclusiveMinimum 0
+   */
+  durationSec: number;
+  /**
+   * @minimum 0
+   * @maximum 600
+   */
+  trimStart?: number;
+  /**
+   * @minimum 0
+   * @maximum 600
+   */
+  trimEnd?: number;
+  /** @nullable */
+  sourceVideoId?: string | null;
+}
+
+export type StudioMusicMode =
+  (typeof StudioMusicMode)[keyof typeof StudioMusicMode];
+
+export const StudioMusicMode = {
+  mix: "mix",
+  replace: "replace",
+} as const;
+
+export interface StudioMusic {
+  /**
+   * @minLength 1
+   * @maxLength 120
+   */
+  name: string;
+  /** @minLength 1 */
+  objectPath: string;
+  mode: StudioMusicMode;
+  /**
+   * @minimum 0
+   * @maximum 1
+   */
+  volume: number;
+  loop: boolean;
+  fade: boolean;
+}
+
+export type StudioTransitionType =
+  (typeof StudioTransitionType)[keyof typeof StudioTransitionType];
+
+export const StudioTransitionType = {
+  none: "none",
+  crossfade: "crossfade",
+  fadeblack: "fadeblack",
+  fadewhite: "fadewhite",
+  dissolve: "dissolve",
+  pixelize: "pixelize",
+  wipeleft: "wipeleft",
+  wiperight: "wiperight",
+  wipeup: "wipeup",
+  wipedown: "wipedown",
+  slideleft: "slideleft",
+  slideright: "slideright",
+  slideup: "slideup",
+  slidedown: "slidedown",
+  circleopen: "circleopen",
+  circleclose: "circleclose",
+  radial: "radial",
+  wipe: "wipe",
+  slide: "slide",
+  circle: "circle",
+  zoomin: "zoomin",
+} as const;
+
+export interface StudioTransition {
+  type: StudioTransitionType;
+  /**
+   * @minimum 0.2
+   * @maximum 2
+   */
+  durationSec: number;
+}
+
+export type StudioProjectManifestResolution =
+  (typeof StudioProjectManifestResolution)[keyof typeof StudioProjectManifestResolution];
+
+export const StudioProjectManifestResolution = {
+  "720p": "720p",
+  "1080p": "1080p",
+} as const;
+
+export type StudioProjectManifestOrientation =
+  (typeof StudioProjectManifestOrientation)[keyof typeof StudioProjectManifestOrientation];
+
+export const StudioProjectManifestOrientation = {
+  landscape: "landscape",
+  portrait: "portrait",
+} as const;
+
+export type StudioProjectManifestLyricsSyncSource =
+  (typeof StudioProjectManifestLyricsSyncSource)[keyof typeof StudioProjectManifestLyricsSyncSource];
+
+export const StudioProjectManifestLyricsSyncSource = {
+  music: "music",
+  video: "video",
+} as const;
+
+export interface StudioProjectManifest {
+  version: 1;
+  /**
+   * @minItems 1
+   * @maxItems 500
+   */
+  segments: StudioSegment[];
+  music?: StudioMusic | null;
+  transition: StudioTransition;
+  resolution: StudioProjectManifestResolution;
+  orientation: StudioProjectManifestOrientation;
+  /** @maxLength 120 */
+  videoName: string;
+  /** @nullable */
+  sourceVideoId: string | null;
+  karaokeEnabled: boolean;
+  /** @maxLength 50000 */
+  lyricsText: string;
+  lyricsSyncSource: StudioProjectManifestLyricsSyncSource;
+  /**
+   * @maximum 128
+   * @exclusiveMinimum 0
+   */
+  beatsPerPhoto: number;
+}
+
+export interface StudioProjectInput {
+  /**
+   * @minLength 1
+   * @maxLength 120
+   */
+  name: string;
+  manifest: StudioProjectManifest;
+}
+
+export interface StudioProjectUpdate {
+  /**
+   * @minLength 1
+   * @maxLength 120
+   */
+  name?: string;
+  manifest?: StudioProjectManifest;
+}
+
+export interface StudioProject {
+  id: string;
+  name: string;
+  manifest: StudioProjectManifest;
+  /** @nullable */
+  lastVideoId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StudioProjectSummary {
+  id: string;
+  name: string;
+  /** @nullable */
+  lastVideoId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface HealthStatus {
   status: string;
 }
@@ -336,14 +521,26 @@ export const ImageReviewSceneSource = {
   local_upload: "local_upload",
 } as const;
 
+export type ImageReviewSceneStatus =
+  (typeof ImageReviewSceneStatus)[keyof typeof ImageReviewSceneStatus];
+
+export const ImageReviewSceneStatus = {
+  ready: "ready",
+  failed: "failed",
+  pending: "pending",
+  uncertain: "uncertain",
+} as const;
+
 export interface ImageReviewScene {
   /** @minimum 0 */
   index: number;
-  canonicalPath: string;
+  canonicalPath?: string;
   /** @minimum 1 */
   revision: number;
   source: ImageReviewSceneSource;
   prompt: string;
+  status: ImageReviewSceneStatus;
+  errorMessage?: string;
   acceptedRequestId?: string;
 }
 
@@ -631,7 +828,10 @@ export interface ImageReviewReplacementRequest {
 
 export interface ImageReviewReplacementResponse {
   ok: true;
-  /** @minimum 1 */
+  /**
+   * Total credits reserved for the new image generations.
+   * @minimum 1
+   */
   credits: number;
   /** @minimum 1 */
   count: number;

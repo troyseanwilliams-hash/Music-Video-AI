@@ -44,6 +44,10 @@ import {
   Scissors,
   Check,
   Clock,
+  Save,
+  FolderOpen,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -63,6 +67,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 
 type Kind = "video" | "photo";
@@ -134,6 +139,35 @@ interface MusicTrack {
   uploading: boolean;
   loop?: boolean; // repeat a mixed track to fill the video (undefined = true)
   fade?: boolean; // fade in at the start, out at the end (undefined = false)
+}
+
+interface ProjectSummary {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  lastVideoId?: string | null;
+}
+
+interface ProjectManifest {
+  version: 1;
+  segments: Array<Pick<Segment, "name" | "kind" | "objectPath" | "durationSec" | "trimStart" | "trimEnd" | "sourceVideoId">>;
+  music?: Pick<MusicTrack, "name" | "objectPath" | "mode" | "volume" | "loop" | "fade">;
+  transition: { type: string; durationSec: number };
+  resolution: "720p" | "1080p";
+  orientation: "landscape" | "portrait";
+  videoName: string;
+  sourceVideoId: string | null;
+  karaokeEnabled: boolean;
+  lyricsText: string;
+  lyricsSyncSource: "music" | "video";
+  beatsPerPhoto: number;
+}
+
+function projectError(data: unknown, fallback: string) {
+  return typeof data === "object" && data && "error" in data && typeof data.error === "string"
+    ? data.error
+    : fallback;
 }
 
 const TRANSITIONS = [
@@ -374,6 +408,19 @@ export default function Editor() {
   const [beatInfo, setBeatInfo] = useState<{ bpm: number; beats: number[] } | null>(null);
   const [analyzingBeats, setAnalyzingBeats] = useState(false);
   const [beatsPerPhoto, setBeatsPerPhoto] = useState(2);
+  // Saved projects store only durable object paths, never temporary browser URLs.
+  const [currentProject, setCurrentProject] = useState<ProjectSummary | null>(null);
+  const [savedManifest, setSavedManifest] = useState<string | null>(null);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [projectsOpen, setProjectsOpen] = useState(false);
+  const [projectsLoading, setProjectsLoading] = useState(false);
+  const [projectsError, setProjectsError] = useState<string | null>(null);
+  const [savingProject, setSavingProject] = useState(false);
+  const [saveAsOpen, setSaveAsOpen] = useState(false);
+  const [projectNameDraft, setProjectNameDraft] = useState("");
+  const [pendingOpenId, setPendingOpenId] = useState<string | null>(null);
+  const [deleteProject, setDeleteProject] = useState<ProjectSummary | null>(null);
+  const [renameProject, setRenameProject] = useState<ProjectSummary | null>(null);
   const [acceptedCopyright, setAcceptedCopyright] = useState(false);
   const { data: statsData } = useGetDashboardStats({});
   const balance = statsData?.creditsRemaining ?? null;
@@ -690,6 +737,155 @@ export default function Editor() {
     hasKaraoke: karaokeEnabled && !!lyricsText.trim(),
   });
   const uploadsPending = segments.some((s) => s.uploading) || music?.uploading;
+
+  const projectManifest: ProjectManifest = {
+    version: 1,
+    segments: segments.map(({ name, kind, objectPath, durationSec, trimStart, trimEnd, sourceVideoId }) => ({
+      name, kind, objectPath, durationSec, trimStart, trimEnd, sourceVideoId,
+    })),
+    ...(music ? { music: { name: music.name, objectPath: music.objectPath, mode: music.mode, volume: music.volume, loop: music.loop !== false, fade: !!music.fade } } : {}),
+    transition: { type: transition, durationSec: transitionDuration },
+    resolution, orientation, videoName, sourceVideoId, karaokeEnabled, lyricsText, lyricsSyncSource, beatsPerPhoto,
+  };
+  const serializedManifest = JSON.stringify(projectManifest);
+  const hasUnsavedChanges = savedManifest !== null
+    ? savedManifest !== serializedManifest
+    : segments.length > 0 || !!music || !!videoName || karaokeEnabled || !!lyricsText;
+
+  function applyProject(project: { id: string; name: string; createdAt: string; updatedAt: string; lastVideoId?: string; manifest?: unknown }) {
+    const manifest = project.manifest as Partial<ProjectManifest> | undefined;
+    if (!manifest || manifest.version !== 1 || !Array.isArray(manifest.segments)) {
+      throw new Error("This project is missing a compatible Remix Lab manifest.");
+    }
+    const restored = manifest.segments.map((segment) => {
+      if (!segment || (segment.kind !== "video" && segment.kind !== "photo") || typeof segment.objectPath !== "string" || !segment.objectPath) {
+        throw new Error("This project contains missing media. Re-upload the affected clip or image before saving it again.");
+      }
+      const localUrl = `/api/storage${segment.objectPath}`;
+      return {
+        id: uid(), name: typeof segment.name === "string" ? segment.name : "Untitled media",
+        kind: segment.kind, objectPath: segment.objectPath, localUrl,
+        durationSec: typeof segment.durationSec === "number" ? segment.durationSec : 3,
+        thumb: segment.kind === "photo" ? localUrl : null, uploading: false,
+        trimStart: typeof segment.trimStart === "number" ? segment.trimStart : undefined,
+        trimEnd: typeof segment.trimEnd === "number" ? segment.trimEnd : undefined,
+        sourceVideoId: typeof segment.sourceVideoId === "string" ? segment.sourceVideoId : undefined,
+      } as Segment;
+    });
+    const restoredMusic = manifest.music;
+    if (restoredMusic && (!restoredMusic.objectPath || typeof restoredMusic.objectPath !== "string")) {
+      throw new Error("This project has a missing music file. Add a replacement track before saving it again.");
+    }
+    setSegments(restored);
+    setMusic(restoredMusic ? { ...restoredMusic, localUrl: `/api/storage${restoredMusic.objectPath}`, uploading: false } : null);
+    const restoredTransition = typeof manifest.transition?.type === "string" ? manifest.transition.type : "none";
+    const restoredTransitionDuration = typeof manifest.transition?.durationSec === "number" ? manifest.transition.durationSec : 0.5;
+    const restoredResolution = manifest.resolution === "1080p" ? "1080p" : "720p";
+    const restoredOrientation = manifest.orientation === "portrait" ? "portrait" : "landscape";
+    const restoredVideoName = typeof manifest.videoName === "string" ? manifest.videoName : "";
+    const restoredSourceVideoId = typeof manifest.sourceVideoId === "string" ? manifest.sourceVideoId : null;
+    const restoredLyrics = typeof manifest.lyricsText === "string" ? manifest.lyricsText : "";
+    const restoredSyncSource = manifest.lyricsSyncSource === "video" ? "video" : "music";
+    const restoredBeats = typeof manifest.beatsPerPhoto === "number" ? manifest.beatsPerPhoto : 2;
+    setTransition(restoredTransition); setTransitionDuration(restoredTransitionDuration);
+    setResolution(restoredResolution); setOrientation(restoredOrientation); setVideoName(restoredVideoName);
+    setSourceVideoId(restoredSourceVideoId); setKaraokeEnabled(!!manifest.karaokeEnabled);
+    setLyricsText(restoredLyrics); setLyricsSyncSource(restoredSyncSource); setBeatsPerPhoto(restoredBeats);
+    setCurrentProject(project);
+    // Derive this exact normalized state so reopening is immediately "Saved".
+    const restoredManifest: ProjectManifest = {
+      version: 1,
+      segments: restored.map(({ name, kind, objectPath, durationSec, trimStart, trimEnd, sourceVideoId }) => ({ name, kind, objectPath, durationSec, trimStart, trimEnd, sourceVideoId })),
+      ...(restoredMusic ? { music: { name: restoredMusic.name, objectPath: restoredMusic.objectPath, mode: restoredMusic.mode, volume: restoredMusic.volume, loop: restoredMusic.loop, fade: restoredMusic.fade } } : {}),
+      transition: { type: restoredTransition, durationSec: restoredTransitionDuration }, resolution: restoredResolution,
+      orientation: restoredOrientation, videoName: restoredVideoName, sourceVideoId: restoredSourceVideoId,
+      karaokeEnabled: !!manifest.karaokeEnabled, lyricsText: restoredLyrics, lyricsSyncSource: restoredSyncSource, beatsPerPhoto: restoredBeats,
+    };
+    setSavedManifest(JSON.stringify(restoredManifest));
+  }
+
+  async function loadProjects() {
+    setProjectsLoading(true); setProjectsError(null);
+    try {
+      const response = await fetch("/api/studio/projects", { credentials: "include" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(projectError(data, "Could not load saved projects."));
+      setProjects(Array.isArray(data) ? data : []);
+    } catch (error) {
+      setProjectsError(String((error as Error).message));
+    } finally { setProjectsLoading(false); }
+  }
+
+  function openProjects() { setProjectsOpen(true); void loadProjects(); }
+
+  async function openProject(id: string) {
+    try {
+      const response = await fetch(`/api/studio/projects/${id}`, { credentials: "include" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(projectError(data, "Could not open this project."));
+      applyProject(data);
+      setProjectsOpen(false); setPendingOpenId(null);
+      toast({ title: "Project opened", description: "Your saved timeline is ready to edit." });
+    } catch (error) {
+      toast({ title: "Couldn't open project", description: String((error as Error).message), variant: "destructive" });
+    }
+  }
+
+  function requestOpenProject(id: string) {
+    if (hasUnsavedChanges) setPendingOpenId(id);
+    else void openProject(id);
+  }
+
+  async function saveProject(asNew = false) {
+    if (uploadsPending) {
+      toast({ title: "Wait for uploads", description: "Finish uploading media before saving this project.", variant: "destructive" }); return;
+    }
+    const missing = segments.find((segment) => !segment.objectPath);
+    if (missing || (music && !music.objectPath)) {
+      toast({ title: "Missing media", description: `Upload "${missing?.name || music?.name}" before saving, or remove it from the timeline.`, variant: "destructive" }); return;
+    }
+    const name = (asNew ? projectNameDraft : currentProject?.name)?.trim();
+    if (!name) { setProjectNameDraft(currentProject?.name || videoName || "Untitled remix"); setSaveAsOpen(true); return; }
+    setSavingProject(true);
+    try {
+      const response = await fetch(asNew || !currentProject ? "/api/studio/projects" : `/api/studio/projects/${currentProject.id}`, {
+        method: asNew || !currentProject ? "POST" : "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(asNew || !currentProject ? { name, manifest: projectManifest } : { manifest: projectManifest }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(projectError(data, "Could not save project."));
+      const project = data as ProjectSummary;
+      setCurrentProject(project); setSavedManifest(serializedManifest); setSaveAsOpen(false);
+      toast({ title: "Project saved", description: `"${project.name}" is safely saved.` });
+    } catch (error) {
+      // Intentionally retain currentProject and savedManifest: failed saves never replace the last good version.
+      toast({ title: "Couldn't save project", description: String((error as Error).message), variant: "destructive" });
+    } finally { setSavingProject(false); }
+  }
+
+  async function deleteSavedProject(project: ProjectSummary) {
+    try {
+      const response = await fetch(`/api/studio/projects/${project.id}`, { method: "DELETE", credentials: "include" });
+      if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(projectError(data, "Could not delete project.")); }
+      if (currentProject?.id === project.id) { setCurrentProject(null); setSavedManifest(null); }
+      setProjects((items) => items.filter((item) => item.id !== project.id)); setDeleteProject(null);
+      toast({ title: "Project deleted" });
+    } catch (error) { toast({ title: "Couldn't delete project", description: String((error as Error).message), variant: "destructive" }); }
+  }
+
+  async function renameSavedProject() {
+    if (!renameProject || !projectNameDraft.trim()) return;
+    try {
+      const response = await fetch(`/api/studio/projects/${renameProject.id}`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: projectNameDraft.trim() }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(projectError(data, "Could not rename project."));
+      const changed = data as ProjectSummary;
+      setProjects((items) => items.map((item) => item.id === changed.id ? changed : item));
+      if (currentProject?.id === changed.id) setCurrentProject(changed);
+      setRenameProject(null); toast({ title: "Project renamed" });
+    } catch (error) { toast({ title: "Couldn't rename project", description: String((error as Error).message), variant: "destructive" }); }
+  }
 
   // Remix Lab is pure ffmpeg (no AI cost), so the real charge is the flat
   // freemium overage (studio.ts): free on trial/subscription and within the
@@ -1446,6 +1642,22 @@ export default function Editor() {
           Turn your photos and clips into a polished video — the easy, AI-powered
           alternative to CapCut. Made for weddings, work, social — or just for fun.
         </p>
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <Button size="sm" onClick={() => void saveProject()} disabled={savingProject}>
+            {savingProject ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+            Save
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => { setProjectNameDraft(`${currentProject?.name || videoName || "Untitled remix"} copy`); setSaveAsOpen(true); }}>
+            Save as
+          </Button>
+          <Button size="sm" variant="outline" onClick={openProjects}>
+            <FolderOpen className="mr-2 h-4 w-4" /> Open project
+          </Button>
+          <span className={hasUnsavedChanges ? "text-xs font-medium text-amber-600" : "text-xs font-medium text-emerald-600"}>
+            {hasUnsavedChanges ? "Unsaved changes" : currentProject ? "Saved" : "No changes yet"}
+          </span>
+          {currentProject && <span className="text-xs text-muted-foreground">· {currentProject.name}</span>}
+        </div>
         <div className="mt-4 flex flex-wrap gap-2">
           {["1080p export", "No watermark", "Music sync", "Smooth transitions", "Live preview"].map((chip) => (
             <span
@@ -2486,6 +2698,164 @@ export default function Editor() {
         )}
       </div>
     </div>
+
+    <Dialog open={projectsOpen} onOpenChange={setProjectsOpen}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Saved Remix projects</DialogTitle>
+          <DialogDescription>
+            Reopen a timeline without starting an export or using credits.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1">
+          {projectsLoading ? (
+            <div className="flex min-h-36 items-center justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            </div>
+          ) : projectsError ? (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm">
+              <p className="font-medium">Couldn&apos;t load projects</p>
+              <p className="mt-1 text-muted-foreground">{projectsError}</p>
+              <Button className="mt-3" size="sm" variant="outline" onClick={() => void loadProjects()}>
+                Try again
+              </Button>
+            </div>
+          ) : projects.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border p-8 text-center">
+              <FolderOpen className="mx-auto h-8 w-8 text-muted-foreground/60" />
+              <p className="mt-3 font-medium">No saved projects yet</p>
+              <p className="mt-1 text-sm text-muted-foreground">Build a timeline, then choose Save.</p>
+            </div>
+          ) : projects.map((project) => (
+            <div key={project.id} className="flex items-center gap-3 rounded-lg border border-border p-3">
+              <button
+                type="button"
+                className="min-w-0 flex-1 text-left"
+                onClick={() => requestOpenProject(project.id)}
+              >
+                <p className="truncate font-medium">{project.name}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Updated {new Date(project.updatedAt).toLocaleString()}
+                </p>
+              </button>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                aria-label={`Rename ${project.name}`}
+                onClick={() => {
+                  setProjectNameDraft(project.name);
+                  setRenameProject(project);
+                }}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                aria-label={`Delete ${project.name}`}
+                onClick={() => setDeleteProject(project)}
+              >
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog open={saveAsOpen} onOpenChange={setSaveAsOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Save project as</DialogTitle>
+          <DialogDescription>Create a separate saved copy of this timeline.</DialogDescription>
+        </DialogHeader>
+        <input
+          autoFocus
+          value={projectNameDraft}
+          onChange={(event) => setProjectNameDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && projectNameDraft.trim()) void saveProject(true);
+          }}
+          maxLength={120}
+          placeholder="Project name"
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+        />
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setSaveAsOpen(false)}>Cancel</Button>
+          <Button onClick={() => void saveProject(true)} disabled={savingProject || !projectNameDraft.trim()}>
+            {savingProject && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Save copy
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog open={pendingOpenId !== null} onOpenChange={(open) => !open && setPendingOpenId(null)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Discard unsaved changes?</DialogTitle>
+          <DialogDescription>
+            Opening another project replaces the current timeline. Your last saved version will remain available.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setPendingOpenId(null)}>Keep editing</Button>
+          <Button
+            variant="destructive"
+            onClick={() => pendingOpenId && void openProject(pendingOpenId)}
+          >
+            Discard and open
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog open={deleteProject !== null} onOpenChange={(open) => !open && setDeleteProject(null)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Delete project?</DialogTitle>
+          <DialogDescription>
+            “{deleteProject?.name}” will be removed from saved projects. Your media and finished videos will not be deleted.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setDeleteProject(null)}>Cancel</Button>
+          <Button
+            variant="destructive"
+            onClick={() => deleteProject && void deleteSavedProject(deleteProject)}
+          >
+            Delete project
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog open={renameProject !== null} onOpenChange={(open) => !open && setRenameProject(null)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Rename project</DialogTitle>
+          <DialogDescription>Change the saved project name without changing its timeline.</DialogDescription>
+        </DialogHeader>
+        <input
+          autoFocus
+          value={projectNameDraft}
+          onChange={(event) => setProjectNameDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && projectNameDraft.trim()) void renameSavedProject();
+          }}
+          maxLength={120}
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+        />
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setRenameProject(null)}>Cancel</Button>
+          <Button onClick={() => void renameSavedProject()} disabled={!projectNameDraft.trim()}>
+            Rename
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <TopUpRequiredDialog
       open={topUpOpen}

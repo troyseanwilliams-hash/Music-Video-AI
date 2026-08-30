@@ -478,7 +478,7 @@ export const ListJobsResponse = zod.object({
                       .min(
                         listJobsResponseJobsItemManifestOneImageReviewScenesIndexMin,
                       ),
-                    canonicalPath: zod.string(),
+                    canonicalPath: zod.string().optional(),
                     revision: zod.number().min(1),
                     source: zod.enum([
                       "original_generation",
@@ -487,6 +487,13 @@ export const ListJobsResponse = zod.object({
                       "local_upload",
                     ]),
                     prompt: zod.string(),
+                    status: zod.enum([
+                      "ready",
+                      "failed",
+                      "pending",
+                      "uncertain",
+                    ]),
+                    errorMessage: zod.string().optional(),
                     acceptedRequestId: zod.string().optional(),
                   }),
                 ),
@@ -1433,7 +1440,7 @@ export const GetJobResponse = zod.object({
                 index: zod
                   .number()
                   .min(getJobResponseManifestOneImageReviewScenesIndexMin),
-                canonicalPath: zod.string(),
+                canonicalPath: zod.string().optional(),
                 revision: zod.number().min(1),
                 source: zod.enum([
                   "original_generation",
@@ -1442,6 +1449,8 @@ export const GetJobResponse = zod.object({
                   "local_upload",
                 ]),
                 prompt: zod.string(),
+                status: zod.enum(["ready", "failed", "pending", "uncertain"]),
+                errorMessage: zod.string().optional(),
                 acceptedRequestId: zod.string().optional(),
               }),
             ),
@@ -1843,7 +1852,7 @@ export const ApproveImageReviewResponse = zod.object({
                   .min(
                     approveImageReviewResponseManifestOneImageReviewScenesIndexMin,
                   ),
-                canonicalPath: zod.string(),
+                canonicalPath: zod.string().optional(),
                 revision: zod.number().min(1),
                 source: zod.enum([
                   "original_generation",
@@ -1852,6 +1861,8 @@ export const ApproveImageReviewResponse = zod.object({
                   "local_upload",
                 ]),
                 prompt: zod.string(),
+                status: zod.enum(["ready", "failed", "pending", "uncertain"]),
+                errorMessage: zod.string().optional(),
                 acceptedRequestId: zod.string().optional(),
               }),
             ),
@@ -2574,6 +2585,595 @@ export const AnalyzeAudioResponse = zod.object({
 });
 
 /**
+ * @summary List saved Remix projects for the current user
+ */
+export const ListStudioProjectsHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const ListStudioProjectsResponseItem = zod.object({
+  id: zod.string(),
+  name: zod.string(),
+  lastVideoId: zod.string().nullable(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+export const ListStudioProjectsResponse = zod.array(
+  ListStudioProjectsResponseItem,
+);
+
+/**
+ * @summary Save a Remix project
+ */
+export const CreateStudioProjectHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const createStudioProjectBodyNameMax = 120;
+
+export const createStudioProjectBodyManifestSegmentsItemNameMax = 120;
+
+export const createStudioProjectBodyManifestSegmentsItemDurationSecExclusiveMin = 0;
+export const createStudioProjectBodyManifestSegmentsItemDurationSecMax = 600;
+
+export const createStudioProjectBodyManifestSegmentsItemTrimStartMin = 0;
+export const createStudioProjectBodyManifestSegmentsItemTrimStartMax = 600;
+
+export const createStudioProjectBodyManifestSegmentsItemTrimEndMin = 0;
+export const createStudioProjectBodyManifestSegmentsItemTrimEndMax = 600;
+
+export const createStudioProjectBodyManifestSegmentsMax = 500;
+
+export const createStudioProjectBodyManifestMusicOneNameMax = 120;
+
+export const createStudioProjectBodyManifestMusicOneVolumeMin = 0;
+export const createStudioProjectBodyManifestMusicOneVolumeMax = 1;
+
+export const createStudioProjectBodyManifestTransitionDurationSecMin = 0.2;
+export const createStudioProjectBodyManifestTransitionDurationSecMax = 2;
+
+export const createStudioProjectBodyManifestVideoNameMax = 120;
+
+export const createStudioProjectBodyManifestLyricsTextMax = 50000;
+
+export const createStudioProjectBodyManifestBeatsPerPhotoExclusiveMin = 0;
+export const createStudioProjectBodyManifestBeatsPerPhotoMax = 128;
+
+export const CreateStudioProjectBody = zod.object({
+  name: zod.string().min(1).max(createStudioProjectBodyNameMax),
+  manifest: zod.object({
+    version: zod.number(),
+    segments: zod
+      .array(
+        zod.object({
+          name: zod
+            .string()
+            .min(1)
+            .max(createStudioProjectBodyManifestSegmentsItemNameMax),
+          kind: zod.enum(["video", "photo"]),
+          objectPath: zod.string().min(1),
+          durationSec: zod
+            .number()
+            .gt(
+              createStudioProjectBodyManifestSegmentsItemDurationSecExclusiveMin,
+            )
+            .max(createStudioProjectBodyManifestSegmentsItemDurationSecMax),
+          trimStart: zod
+            .number()
+            .min(createStudioProjectBodyManifestSegmentsItemTrimStartMin)
+            .max(createStudioProjectBodyManifestSegmentsItemTrimStartMax)
+            .optional(),
+          trimEnd: zod
+            .number()
+            .min(createStudioProjectBodyManifestSegmentsItemTrimEndMin)
+            .max(createStudioProjectBodyManifestSegmentsItemTrimEndMax)
+            .optional(),
+          sourceVideoId: zod.string().nullish(),
+        }),
+      )
+      .min(1)
+      .max(createStudioProjectBodyManifestSegmentsMax),
+    music: zod
+      .union([
+        zod.object({
+          name: zod
+            .string()
+            .min(1)
+            .max(createStudioProjectBodyManifestMusicOneNameMax),
+          objectPath: zod.string().min(1),
+          mode: zod.enum(["mix", "replace"]),
+          volume: zod
+            .number()
+            .min(createStudioProjectBodyManifestMusicOneVolumeMin)
+            .max(createStudioProjectBodyManifestMusicOneVolumeMax),
+          loop: zod.boolean(),
+          fade: zod.boolean(),
+        }),
+        zod.null(),
+      ])
+      .optional(),
+    transition: zod.object({
+      type: zod.enum([
+        "none",
+        "crossfade",
+        "fadeblack",
+        "fadewhite",
+        "dissolve",
+        "pixelize",
+        "wipeleft",
+        "wiperight",
+        "wipeup",
+        "wipedown",
+        "slideleft",
+        "slideright",
+        "slideup",
+        "slidedown",
+        "circleopen",
+        "circleclose",
+        "radial",
+        "wipe",
+        "slide",
+        "circle",
+        "zoomin",
+      ]),
+      durationSec: zod
+        .number()
+        .min(createStudioProjectBodyManifestTransitionDurationSecMin)
+        .max(createStudioProjectBodyManifestTransitionDurationSecMax),
+    }),
+    resolution: zod.enum(["720p", "1080p"]),
+    orientation: zod.enum(["landscape", "portrait"]),
+    videoName: zod.string().max(createStudioProjectBodyManifestVideoNameMax),
+    sourceVideoId: zod.string().nullable(),
+    karaokeEnabled: zod.boolean(),
+    lyricsText: zod.string().max(createStudioProjectBodyManifestLyricsTextMax),
+    lyricsSyncSource: zod.enum(["music", "video"]),
+    beatsPerPhoto: zod
+      .number()
+      .gt(createStudioProjectBodyManifestBeatsPerPhotoExclusiveMin)
+      .max(createStudioProjectBodyManifestBeatsPerPhotoMax),
+  }),
+});
+
+/**
+ * @summary Reopen a saved Remix project
+ */
+export const GetStudioProjectParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const GetStudioProjectHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const getStudioProjectResponseManifestSegmentsItemNameMax = 120;
+
+export const getStudioProjectResponseManifestSegmentsItemDurationSecExclusiveMin = 0;
+export const getStudioProjectResponseManifestSegmentsItemDurationSecMax = 600;
+
+export const getStudioProjectResponseManifestSegmentsItemTrimStartMin = 0;
+export const getStudioProjectResponseManifestSegmentsItemTrimStartMax = 600;
+
+export const getStudioProjectResponseManifestSegmentsItemTrimEndMin = 0;
+export const getStudioProjectResponseManifestSegmentsItemTrimEndMax = 600;
+
+export const getStudioProjectResponseManifestSegmentsMax = 500;
+
+export const getStudioProjectResponseManifestMusicOneNameMax = 120;
+
+export const getStudioProjectResponseManifestMusicOneVolumeMin = 0;
+export const getStudioProjectResponseManifestMusicOneVolumeMax = 1;
+
+export const getStudioProjectResponseManifestTransitionDurationSecMin = 0.2;
+export const getStudioProjectResponseManifestTransitionDurationSecMax = 2;
+
+export const getStudioProjectResponseManifestVideoNameMax = 120;
+
+export const getStudioProjectResponseManifestLyricsTextMax = 50000;
+
+export const getStudioProjectResponseManifestBeatsPerPhotoExclusiveMin = 0;
+export const getStudioProjectResponseManifestBeatsPerPhotoMax = 128;
+
+export const GetStudioProjectResponse = zod.object({
+  id: zod.string(),
+  name: zod.string(),
+  manifest: zod.object({
+    version: zod.number(),
+    segments: zod
+      .array(
+        zod.object({
+          name: zod
+            .string()
+            .min(1)
+            .max(getStudioProjectResponseManifestSegmentsItemNameMax),
+          kind: zod.enum(["video", "photo"]),
+          objectPath: zod.string().min(1),
+          durationSec: zod
+            .number()
+            .gt(
+              getStudioProjectResponseManifestSegmentsItemDurationSecExclusiveMin,
+            )
+            .max(getStudioProjectResponseManifestSegmentsItemDurationSecMax),
+          trimStart: zod
+            .number()
+            .min(getStudioProjectResponseManifestSegmentsItemTrimStartMin)
+            .max(getStudioProjectResponseManifestSegmentsItemTrimStartMax)
+            .optional(),
+          trimEnd: zod
+            .number()
+            .min(getStudioProjectResponseManifestSegmentsItemTrimEndMin)
+            .max(getStudioProjectResponseManifestSegmentsItemTrimEndMax)
+            .optional(),
+          sourceVideoId: zod.string().nullish(),
+        }),
+      )
+      .min(1)
+      .max(getStudioProjectResponseManifestSegmentsMax),
+    music: zod
+      .union([
+        zod.object({
+          name: zod
+            .string()
+            .min(1)
+            .max(getStudioProjectResponseManifestMusicOneNameMax),
+          objectPath: zod.string().min(1),
+          mode: zod.enum(["mix", "replace"]),
+          volume: zod
+            .number()
+            .min(getStudioProjectResponseManifestMusicOneVolumeMin)
+            .max(getStudioProjectResponseManifestMusicOneVolumeMax),
+          loop: zod.boolean(),
+          fade: zod.boolean(),
+        }),
+        zod.null(),
+      ])
+      .optional(),
+    transition: zod.object({
+      type: zod.enum([
+        "none",
+        "crossfade",
+        "fadeblack",
+        "fadewhite",
+        "dissolve",
+        "pixelize",
+        "wipeleft",
+        "wiperight",
+        "wipeup",
+        "wipedown",
+        "slideleft",
+        "slideright",
+        "slideup",
+        "slidedown",
+        "circleopen",
+        "circleclose",
+        "radial",
+        "wipe",
+        "slide",
+        "circle",
+        "zoomin",
+      ]),
+      durationSec: zod
+        .number()
+        .min(getStudioProjectResponseManifestTransitionDurationSecMin)
+        .max(getStudioProjectResponseManifestTransitionDurationSecMax),
+    }),
+    resolution: zod.enum(["720p", "1080p"]),
+    orientation: zod.enum(["landscape", "portrait"]),
+    videoName: zod.string().max(getStudioProjectResponseManifestVideoNameMax),
+    sourceVideoId: zod.string().nullable(),
+    karaokeEnabled: zod.boolean(),
+    lyricsText: zod.string().max(getStudioProjectResponseManifestLyricsTextMax),
+    lyricsSyncSource: zod.enum(["music", "video"]),
+    beatsPerPhoto: zod
+      .number()
+      .gt(getStudioProjectResponseManifestBeatsPerPhotoExclusiveMin)
+      .max(getStudioProjectResponseManifestBeatsPerPhotoMax),
+  }),
+  lastVideoId: zod.string().nullable(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+
+/**
+ * @summary Update a saved Remix project or rename it
+ */
+export const UpdateStudioProjectParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const UpdateStudioProjectHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const updateStudioProjectBodyNameMax = 120;
+
+export const updateStudioProjectBodyManifestSegmentsItemNameMax = 120;
+
+export const updateStudioProjectBodyManifestSegmentsItemDurationSecExclusiveMin = 0;
+export const updateStudioProjectBodyManifestSegmentsItemDurationSecMax = 600;
+
+export const updateStudioProjectBodyManifestSegmentsItemTrimStartMin = 0;
+export const updateStudioProjectBodyManifestSegmentsItemTrimStartMax = 600;
+
+export const updateStudioProjectBodyManifestSegmentsItemTrimEndMin = 0;
+export const updateStudioProjectBodyManifestSegmentsItemTrimEndMax = 600;
+
+export const updateStudioProjectBodyManifestSegmentsMax = 500;
+
+export const updateStudioProjectBodyManifestMusicOneNameMax = 120;
+
+export const updateStudioProjectBodyManifestMusicOneVolumeMin = 0;
+export const updateStudioProjectBodyManifestMusicOneVolumeMax = 1;
+
+export const updateStudioProjectBodyManifestTransitionDurationSecMin = 0.2;
+export const updateStudioProjectBodyManifestTransitionDurationSecMax = 2;
+
+export const updateStudioProjectBodyManifestVideoNameMax = 120;
+
+export const updateStudioProjectBodyManifestLyricsTextMax = 50000;
+
+export const updateStudioProjectBodyManifestBeatsPerPhotoExclusiveMin = 0;
+export const updateStudioProjectBodyManifestBeatsPerPhotoMax = 128;
+
+export const UpdateStudioProjectBody = zod.object({
+  name: zod.string().min(1).max(updateStudioProjectBodyNameMax).optional(),
+  manifest: zod
+    .object({
+      version: zod.number(),
+      segments: zod
+        .array(
+          zod.object({
+            name: zod
+              .string()
+              .min(1)
+              .max(updateStudioProjectBodyManifestSegmentsItemNameMax),
+            kind: zod.enum(["video", "photo"]),
+            objectPath: zod.string().min(1),
+            durationSec: zod
+              .number()
+              .gt(
+                updateStudioProjectBodyManifestSegmentsItemDurationSecExclusiveMin,
+              )
+              .max(updateStudioProjectBodyManifestSegmentsItemDurationSecMax),
+            trimStart: zod
+              .number()
+              .min(updateStudioProjectBodyManifestSegmentsItemTrimStartMin)
+              .max(updateStudioProjectBodyManifestSegmentsItemTrimStartMax)
+              .optional(),
+            trimEnd: zod
+              .number()
+              .min(updateStudioProjectBodyManifestSegmentsItemTrimEndMin)
+              .max(updateStudioProjectBodyManifestSegmentsItemTrimEndMax)
+              .optional(),
+            sourceVideoId: zod.string().nullish(),
+          }),
+        )
+        .min(1)
+        .max(updateStudioProjectBodyManifestSegmentsMax),
+      music: zod
+        .union([
+          zod.object({
+            name: zod
+              .string()
+              .min(1)
+              .max(updateStudioProjectBodyManifestMusicOneNameMax),
+            objectPath: zod.string().min(1),
+            mode: zod.enum(["mix", "replace"]),
+            volume: zod
+              .number()
+              .min(updateStudioProjectBodyManifestMusicOneVolumeMin)
+              .max(updateStudioProjectBodyManifestMusicOneVolumeMax),
+            loop: zod.boolean(),
+            fade: zod.boolean(),
+          }),
+          zod.null(),
+        ])
+        .optional(),
+      transition: zod.object({
+        type: zod.enum([
+          "none",
+          "crossfade",
+          "fadeblack",
+          "fadewhite",
+          "dissolve",
+          "pixelize",
+          "wipeleft",
+          "wiperight",
+          "wipeup",
+          "wipedown",
+          "slideleft",
+          "slideright",
+          "slideup",
+          "slidedown",
+          "circleopen",
+          "circleclose",
+          "radial",
+          "wipe",
+          "slide",
+          "circle",
+          "zoomin",
+        ]),
+        durationSec: zod
+          .number()
+          .min(updateStudioProjectBodyManifestTransitionDurationSecMin)
+          .max(updateStudioProjectBodyManifestTransitionDurationSecMax),
+      }),
+      resolution: zod.enum(["720p", "1080p"]),
+      orientation: zod.enum(["landscape", "portrait"]),
+      videoName: zod.string().max(updateStudioProjectBodyManifestVideoNameMax),
+      sourceVideoId: zod.string().nullable(),
+      karaokeEnabled: zod.boolean(),
+      lyricsText: zod
+        .string()
+        .max(updateStudioProjectBodyManifestLyricsTextMax),
+      lyricsSyncSource: zod.enum(["music", "video"]),
+      beatsPerPhoto: zod
+        .number()
+        .gt(updateStudioProjectBodyManifestBeatsPerPhotoExclusiveMin)
+        .max(updateStudioProjectBodyManifestBeatsPerPhotoMax),
+    })
+    .optional(),
+});
+
+export const updateStudioProjectResponseManifestSegmentsItemNameMax = 120;
+
+export const updateStudioProjectResponseManifestSegmentsItemDurationSecExclusiveMin = 0;
+export const updateStudioProjectResponseManifestSegmentsItemDurationSecMax = 600;
+
+export const updateStudioProjectResponseManifestSegmentsItemTrimStartMin = 0;
+export const updateStudioProjectResponseManifestSegmentsItemTrimStartMax = 600;
+
+export const updateStudioProjectResponseManifestSegmentsItemTrimEndMin = 0;
+export const updateStudioProjectResponseManifestSegmentsItemTrimEndMax = 600;
+
+export const updateStudioProjectResponseManifestSegmentsMax = 500;
+
+export const updateStudioProjectResponseManifestMusicOneNameMax = 120;
+
+export const updateStudioProjectResponseManifestMusicOneVolumeMin = 0;
+export const updateStudioProjectResponseManifestMusicOneVolumeMax = 1;
+
+export const updateStudioProjectResponseManifestTransitionDurationSecMin = 0.2;
+export const updateStudioProjectResponseManifestTransitionDurationSecMax = 2;
+
+export const updateStudioProjectResponseManifestVideoNameMax = 120;
+
+export const updateStudioProjectResponseManifestLyricsTextMax = 50000;
+
+export const updateStudioProjectResponseManifestBeatsPerPhotoExclusiveMin = 0;
+export const updateStudioProjectResponseManifestBeatsPerPhotoMax = 128;
+
+export const UpdateStudioProjectResponse = zod.object({
+  id: zod.string(),
+  name: zod.string(),
+  manifest: zod.object({
+    version: zod.number(),
+    segments: zod
+      .array(
+        zod.object({
+          name: zod
+            .string()
+            .min(1)
+            .max(updateStudioProjectResponseManifestSegmentsItemNameMax),
+          kind: zod.enum(["video", "photo"]),
+          objectPath: zod.string().min(1),
+          durationSec: zod
+            .number()
+            .gt(
+              updateStudioProjectResponseManifestSegmentsItemDurationSecExclusiveMin,
+            )
+            .max(updateStudioProjectResponseManifestSegmentsItemDurationSecMax),
+          trimStart: zod
+            .number()
+            .min(updateStudioProjectResponseManifestSegmentsItemTrimStartMin)
+            .max(updateStudioProjectResponseManifestSegmentsItemTrimStartMax)
+            .optional(),
+          trimEnd: zod
+            .number()
+            .min(updateStudioProjectResponseManifestSegmentsItemTrimEndMin)
+            .max(updateStudioProjectResponseManifestSegmentsItemTrimEndMax)
+            .optional(),
+          sourceVideoId: zod.string().nullish(),
+        }),
+      )
+      .min(1)
+      .max(updateStudioProjectResponseManifestSegmentsMax),
+    music: zod
+      .union([
+        zod.object({
+          name: zod
+            .string()
+            .min(1)
+            .max(updateStudioProjectResponseManifestMusicOneNameMax),
+          objectPath: zod.string().min(1),
+          mode: zod.enum(["mix", "replace"]),
+          volume: zod
+            .number()
+            .min(updateStudioProjectResponseManifestMusicOneVolumeMin)
+            .max(updateStudioProjectResponseManifestMusicOneVolumeMax),
+          loop: zod.boolean(),
+          fade: zod.boolean(),
+        }),
+        zod.null(),
+      ])
+      .optional(),
+    transition: zod.object({
+      type: zod.enum([
+        "none",
+        "crossfade",
+        "fadeblack",
+        "fadewhite",
+        "dissolve",
+        "pixelize",
+        "wipeleft",
+        "wiperight",
+        "wipeup",
+        "wipedown",
+        "slideleft",
+        "slideright",
+        "slideup",
+        "slidedown",
+        "circleopen",
+        "circleclose",
+        "radial",
+        "wipe",
+        "slide",
+        "circle",
+        "zoomin",
+      ]),
+      durationSec: zod
+        .number()
+        .min(updateStudioProjectResponseManifestTransitionDurationSecMin)
+        .max(updateStudioProjectResponseManifestTransitionDurationSecMax),
+    }),
+    resolution: zod.enum(["720p", "1080p"]),
+    orientation: zod.enum(["landscape", "portrait"]),
+    videoName: zod
+      .string()
+      .max(updateStudioProjectResponseManifestVideoNameMax),
+    sourceVideoId: zod.string().nullable(),
+    karaokeEnabled: zod.boolean(),
+    lyricsText: zod
+      .string()
+      .max(updateStudioProjectResponseManifestLyricsTextMax),
+    lyricsSyncSource: zod.enum(["music", "video"]),
+    beatsPerPhoto: zod
+      .number()
+      .gt(updateStudioProjectResponseManifestBeatsPerPhotoExclusiveMin)
+      .max(updateStudioProjectResponseManifestBeatsPerPhotoMax),
+  }),
+  lastVideoId: zod.string().nullable(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+
+/**
+ * @summary Delete a saved Remix project
+ */
+export const DeleteStudioProjectParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const DeleteStudioProjectHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+/**
  * @summary Get dashboard summary stats for the current user
  */
 export const GetDashboardStatsHeader = zod.object({
@@ -2879,7 +3479,7 @@ export const GetDashboardStatsResponse = zod.object({
                         .min(
                           getDashboardStatsResponseRecentJobsItemManifestOneImageReviewScenesIndexMin,
                         ),
-                      canonicalPath: zod.string(),
+                      canonicalPath: zod.string().optional(),
                       revision: zod.number().min(1),
                       source: zod.enum([
                         "original_generation",
@@ -2888,6 +3488,13 @@ export const GetDashboardStatsResponse = zod.object({
                         "local_upload",
                       ]),
                       prompt: zod.string(),
+                      status: zod.enum([
+                        "ready",
+                        "failed",
+                        "pending",
+                        "uncertain",
+                      ]),
+                      errorMessage: zod.string().optional(),
                       acceptedRequestId: zod.string().optional(),
                     }),
                   ),

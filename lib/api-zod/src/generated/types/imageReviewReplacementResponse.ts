@@ -8,7 +8,10 @@
 
 export interface ImageReviewReplacementResponse {
   ok: true;
-  /** @minimum 1 */
+  /**
+   * Total credits reserved for the new image generations.
+   * @minimum 1
+   */
   credits: number;
   /** @minimum 1 */
   count: number;

@@ -652,7 +652,12 @@ router.get("/videos/:id/song-audio", async (req: Request<{ id: string }>, res: R
       const buffer = Buffer.from(await audioResp.arrayBuffer());
       const contentType = audioResp.headers.get("content-type") || "";
       const ext = contentType.includes("wav") ? "wav" : contentType.includes("ogg") ? "ogg" : "mp3";
-      const objectPath = await storageService.uploadAudioBuffer(buffer, randomUUID(), ext);
+      const objectPath = await storageService.uploadAudioBuffer(
+        buffer,
+        randomUUID(),
+        ext,
+        req.user.id,
+      );
       const url = await storageService.getObjectEntitySignedUrl(objectPath, 3600);
       res.json({ objectPath, durationSec, url });
       return;

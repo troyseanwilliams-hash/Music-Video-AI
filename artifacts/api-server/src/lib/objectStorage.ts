@@ -122,7 +122,7 @@ export class ObjectStorageService {
     return new Response(webStream, { headers });
   }
 
-  async getObjectEntityUploadURL(ext?: string): Promise<string> {
+  async getObjectEntityUploadURL(ext?: string, userId?: string): Promise<string> {
     const privateObjectDir = this.getPrivateObjectDir();
     if (!privateObjectDir) {
       throw new Error(
@@ -133,7 +133,8 @@ export class ObjectStorageService {
 
     const objectId = randomUUID();
     const suffix = ext ? `.${ext}` : "";
-    const fullPath = `${privateObjectDir}/uploads/${objectId}${suffix}`;
+    const ownerPrefix = userId ? `${userId}/` : "";
+    const fullPath = `${privateObjectDir}/uploads/${ownerPrefix}${objectId}${suffix}`;
 
     const { bucketName, objectName } = parseObjectPath(fullPath);
 
@@ -258,15 +259,16 @@ export class ObjectStorageService {
   }
 
   // Persist an AI-generated song so it can feed the generator like an upload.
-  async uploadAudioBuffer(buffer: Buffer, songId: string, ext = "mp3"): Promise<string> {
+  async uploadAudioBuffer(buffer: Buffer, songId: string, ext = "mp3", userId?: string): Promise<string> {
     const privateObjectDir = this.getPrivateObjectDir();
-    const objectEntityPath = `${privateObjectDir}/audio/${songId}.${ext}`;
+    const ownerPrefix = userId ? `${userId}/` : "";
+    const objectEntityPath = `${privateObjectDir}/audio/${ownerPrefix}${songId}.${ext}`;
     const { bucketName, objectName } = parseObjectPath(objectEntityPath);
     const bucket = objectStorageClient.bucket(bucketName);
     const file = bucket.file(objectName);
     const contentType = ext === "wav" ? "audio/wav" : "audio/mpeg";
     await file.save(buffer, { contentType, resumable: buffer.length > 5 * 1024 * 1024 });
-    return `/objects/audio/${songId}.${ext}`;
+    return `/objects/audio/${ownerPrefix}${songId}.${ext}`;
   }
 
   async uploadThumbnailBuffer(buffer: Buffer, videoId: string): Promise<string> {

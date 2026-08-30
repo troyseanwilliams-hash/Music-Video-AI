@@ -3,11 +3,11 @@ import { GENERATED_IMAGE_CREDITS_PER_VISUAL } from "./creditCost.js";
 import { imageReviewReplacementCredits } from "./imageReviewBilling.js";
 
 describe("image review replacement billing", () => {
-  it("allows a free recovery for a failed original generation", () => {
+  it("charges a new image when recovering a failed generation that was not charged", () => {
     expect(imageReviewReplacementCredits({
       source: "original_generation",
       status: "failed",
-    })).toBe(0);
+    })).toBe(GENERATED_IMAGE_CREDITS_PER_VISUAL);
   });
 
   it("charges a new generation when replacing a ready image", () => {
