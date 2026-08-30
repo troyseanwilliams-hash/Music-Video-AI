@@ -109,4 +109,29 @@ describe("image-first reservation settlement", () => {
     expect(amounts.chargedCredits).toBe(0);
     expect(amounts.refundedCredits).toBe(100);
   });
+
+  it("does not charge retained images again after a refunded job is resumed", () => {
+    const amounts = calculateImageFirstSettlement({
+      imageFirstVersion: 1,
+      reservedCredits: 279,
+      reservedSubscriptionCredits: 0,
+      reservedTopupCredits: 279,
+      imageCreditCost: 0,
+      videoCreditCost: 279,
+      narrativeImages: {
+        0: "/objects/retained-0.jpg",
+        1: "/objects/retained-1.jpg",
+        2: "/objects/retained-2.jpg",
+      },
+      storyboard,
+      partialClips: { 0: "/objects/resumed-clip-0.mp4" },
+    }, 3);
+
+    expect(amounts.completedImages).toBe(3);
+    expect(amounts.spentVideoScenes).toBe(1);
+    expect(amounts.chargedCredits).toBe(93);
+    expect(amounts.refundedCredits).toBe(186);
+    expect(amounts.subscriptionRefund).toBe(0);
+    expect(amounts.topupRefund).toBe(186);
+  });
 });

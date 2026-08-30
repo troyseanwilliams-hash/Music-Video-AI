@@ -48,6 +48,15 @@ type ImageReview = {
 type JobManifest = {
   imageFirstVersion?: number;
   strictUniqueSourcesVersion?: number;
+  refunded?: boolean;
+  imageFirstRefundedCredits?: number;
+  resumeReservationRequired?: number;
+  reservedCredits?: number;
+  reservedSubscriptionCredits?: number;
+  reservedTopupCredits?: number;
+  imageCreditCost?: number;
+  videoCreditCost?: number;
+  bundledLipSyncEnabled?: boolean;
   imageReview?: ImageReview;
   storyboard?: { shots?: unknown[] };
   pendingImageRequests?: Record<string, unknown>;
@@ -417,7 +426,12 @@ router.post("/jobs/:id/image-review/approve", async (req, res): Promise<void> =>
       .limit(1).for("update");
     const manifest = job?.manifest as JobManifest | null | undefined;
     const review = reviewOf(manifest);
-    if (!job || !review || review.phase !== "awaiting_approval") {
+    if (
+      !job
+      || job.status !== "pending_approval"
+      || !review
+      || review.phase !== "awaiting_approval"
+    ) {
       return { error: "This job is not waiting for image approval.", status: 409 as const };
     }
     if (review.revision !== preflightRevision) {
@@ -442,18 +456,98 @@ router.post("/jobs/:id/image-review/approve", async (req, res): Promise<void> =>
     })) {
       return { error: "Every approved scene image must be durably stored before approval.", status: 422 as const };
     }
+    const resumeCredits = manifest?.refunded === true
+      ? Math.max(0, manifest.resumeReservationRequired ?? 0)
+      : 0;
+    if (resumeCredits > 0 && manifest?.bundledLipSyncEnabled === true) {
+      return {
+        error: "This bundled generation cannot be resumed from retained images.",
+        status: 409 as const,
+        code: "BUNDLED_RESUME_UNAVAILABLE" as const,
+      };
+    }
+    let resumeSubscriptionDebit = 0;
+    let resumeTopupDebit = 0;
+    if (resumeCredits > 0) {
+      const [credits] = await tx
+        .select()
+        .from(creditsTable)
+        .where(eq(creditsTable.userId, req.user.id))
+        .limit(1)
+        .for("update");
+      const available = Math.max(0, credits?.creditsRemaining ?? 0);
+      if (!credits || available < resumeCredits) {
+        return {
+          error: `Resuming this video requires ${resumeCredits} credits, but you have ${available}.`,
+          status: 402 as const,
+          code: "INSUFFICIENT_CREDITS" as const,
+          creditsRequired: resumeCredits,
+          creditsRemaining: available,
+        };
+      }
+      resumeSubscriptionDebit = Math.min(
+        resumeCredits,
+        Math.max(0, credits.subscriptionCredits),
+      );
+      resumeTopupDebit = resumeCredits - resumeSubscriptionDebit;
+      if (resumeTopupDebit > Math.max(0, credits.topupCredits)) {
+        return {
+          error: `Resuming this video requires ${resumeCredits} credits, but you have ${available}.`,
+          status: 402 as const,
+          code: "INSUFFICIENT_CREDITS" as const,
+          creditsRequired: resumeCredits,
+          creditsRemaining: available,
+        };
+      }
+      await tx.update(creditsTable).set({
+        subscriptionCredits: sql`${creditsTable.subscriptionCredits} - ${resumeSubscriptionDebit}`,
+        topupCredits: sql`${creditsTable.topupCredits} - ${resumeTopupDebit}`,
+        creditsRemaining: sql`${creditsTable.creditsRemaining} - ${resumeCredits}`,
+        creditsUsed: sql`${creditsTable.creditsUsed} + ${resumeCredits}`,
+        updatedAt: new Date(),
+      }).where(eq(creditsTable.userId, req.user.id));
+    }
     const nextReview = { ...review, phase: "approved" as const, approvedRevision: review.revision };
+    const nextManifest = resumeCredits > 0
+      ? sql`jsonb_set(
+          COALESCE(${jobsTable.manifest}, '{}'::jsonb),
+          '{imageReview}',
+          ${JSON.stringify(nextReview)}::jsonb
+        ) || jsonb_build_object(
+          'refunded', false,
+          'reservedCredits', ${resumeCredits},
+          'reservedSubscriptionCredits', ${resumeSubscriptionDebit},
+          'reservedTopupCredits', ${resumeTopupDebit},
+          'imageCreditCost', 0,
+          'videoCreditCost', ${resumeCredits},
+          'imageFirstRefundedCredits', 0,
+          'resumeReservationRequired', 0
+        )`
+      : sql`jsonb_set(
+          COALESCE(${jobsTable.manifest}, '{}'::jsonb),
+          '{imageReview}',
+          ${JSON.stringify(nextReview)}::jsonb
+        )`;
     const [updated] = await tx.update(jobsTable).set({
       status: "queued",
       claimedAt: null,
       errorMessage: null,
-      manifest: sql`jsonb_set(COALESCE(${jobsTable.manifest}, '{}'::jsonb), '{imageReview}', ${JSON.stringify(nextReview)}::jsonb)`,
+      manifest: nextManifest,
       updatedAt: new Date(),
     }).where(and(eq(jobsTable.id, req.params.id), eq(jobsTable.status, "pending_approval"))).returning();
-    return updated ? { job: updated } : { error: "This job changed before approval could be saved.", status: 409 as const };
+    return updated
+      ? { job: updated }
+      : { error: "This job changed before approval could be saved.", status: 409 as const };
   });
   if ("error" in result) {
-    res.status(result.status ?? 409).json({ error: result.error });
+    res.status(result.status ?? 409).json({
+      error: result.error,
+      ...("code" in result ? {
+        code: result.code,
+        creditsRequired: result.creditsRequired,
+        creditsRemaining: result.creditsRemaining,
+      } : {}),
+    });
     return;
   }
   await notify(req.params.id);

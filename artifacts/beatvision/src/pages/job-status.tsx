@@ -286,11 +286,15 @@ export default function JobStatus() {
   const [replacementPrompts, setReplacementPrompts] = useState<Record<number, string>>({});
   const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewMessage, setReviewMessage] = useState<string | null>(null);
+  const [retryingWithRetainedImages, setRetryingWithRetainedImages] = useState(false);
+  const [retainedImageRetryError, setRetainedImageRetryError] = useState<string | null>(null);
 
   useEffect(() => {
     setWarningDismissed(false);
     setIsCanceling(false);
     setCancelError(null);
+    setRetryingWithRetainedImages(false);
+    setRetainedImageRetryError(null);
   }, [id]);
 
   const { data: job, isLoading } = useGetJob(id as string, {
@@ -450,6 +454,13 @@ export default function JobStatus() {
     job.jobType === "ai_video";
   const manifest = job.manifest ?? {};
   const imageFirstVideoJob = isGenerateJob && manifest.imageFirstVersion === 1;
+  const canRetryWithRetainedImages =
+    isFailed
+    && imageFirstVideoJob
+    && manifest.refunded === true
+    && Number(manifest.imageFirstRefundedCredits ?? 0) > 0
+    && manifest.bundledLipSyncEnabled !== true
+    && /duplicate source image content at positions \d+ and \d+/i.test(job.errorMessage ?? "");
   const storyboard = manifest.storyboard;
   const bundledLipSyncChildId =
     typeof manifest.bundledLipSyncChildId === "string"
@@ -551,6 +562,48 @@ export default function JobStatus() {
       return false;
     } finally {
       setReviewBusy(false);
+    }
+  };
+  const retryWithRetainedImages = async (): Promise<void> => {
+    if (!id || retryingWithRetainedImages) return;
+    setRetryingWithRetainedImages(true);
+    setRetainedImageRetryError(null);
+    try {
+      const response = await fetch(`/api/jobs/${id}/retry`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error ?? "This job could not be reopened.");
+      }
+      queryClient.setQueryData(getGetJobQueryKey(id), data);
+      await queryClient.invalidateQueries({ queryKey: getGetJobQueryKey(id) });
+      await queryClient.invalidateQueries({ queryKey: ["image-pack-assets", id] });
+      const reopenedScenes = Object.values(
+        (data.manifest as {
+          imageReview?: {
+            scenes?: Record<string, {
+              index: number;
+              status?: string;
+            }>;
+          };
+        } | undefined)?.imageReview?.scenes ?? {},
+      );
+      setSelectedReviewScenes(
+        reopenedScenes
+          .filter((scene) => scene.status === "failed")
+          .map((scene) => scene.index),
+      );
+      setReviewMessage("Your retained images are ready for review. Replace the flagged duplicate, then approve the storyboard to resume video creation.");
+    } catch (error) {
+      setRetainedImageRetryError(
+        error instanceof Error ? error.message : "This job could not be reopened.",
+      );
+    } finally {
+      setRetryingWithRetainedImages(false);
     }
   };
   const requestReplacements = () => {
@@ -1294,6 +1347,19 @@ export default function JobStatus() {
                       <p className="text-sm text-muted-foreground mb-3">{errInfo.detail}</p>
 
                       <div className="flex flex-wrap gap-3">
+                        {canRetryWithRetainedImages && (
+                          <Button
+                            onClick={() => void retryWithRetainedImages()}
+                            disabled={retryingWithRetainedImages}
+                          >
+                            {retryingWithRetainedImages ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <RotateCcw className="mr-2 h-4 w-4" />
+                            )}
+                            Retry with retained images
+                          </Button>
+                        )}
                         <Button variant="outline" onClick={() => setLocation("/generate")}>
                           <Plus className="mr-2 h-4 w-4" /> New generation
                         </Button>
@@ -1301,6 +1367,11 @@ export default function JobStatus() {
                           Dashboard
                         </Button>
                       </div>
+                      {retainedImageRetryError && (
+                        <p className="mt-3 text-sm text-destructive" role="alert">
+                          {retainedImageRetryError}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </CardContent>

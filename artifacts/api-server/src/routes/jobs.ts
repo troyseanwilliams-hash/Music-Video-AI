@@ -58,8 +58,15 @@ type AiJobMeta = {
   reservedSubscriptionCredits?: number;
   reservedTopupCredits?: number;
   refunded?: boolean;
+  imageFirstChargedCredits?: number;
+  imageFirstRefundedCredits?: number;
+  imageCreditCost?: number;
+  videoCreditCost?: number;
+  resumeReservationRequired?: number;
   partialClips?: Record<string, string>;
   bundledLipSyncChildId?: string;
+  bundledLipSyncEnabled?: boolean;
+  bundledLipSyncActivated?: boolean;
   imageFirstVersion?: number;
   imageReview?: {
     phase: "awaiting_approval" | "approved";
@@ -1217,14 +1224,118 @@ router.post("/jobs/:id/retry", async (req, res) => {
 
   const retryMeta =
     job.manifest && typeof job.manifest === "object"
-      ? (job.manifest as {
-          refunded?: boolean;
-          bundledLipSyncEnabled?: boolean;
-          bundledLipSyncActivated?: boolean;
+      ? (job.manifest as AiJobMeta & {
           uncertainSubmissions?: Record<string, unknown>;
-           rejectedRequests?: Record<string, unknown>;
+          rejectedRequests?: Record<string, unknown>;
         })
       : {};
+  const duplicatePositions =
+    /duplicate source image content at positions (\d+) and (\d+)/i.exec(
+      job.errorMessage ?? "",
+    );
+  const canResumeWithRetainedImages =
+    job.status === "failed"
+    && job.jobType === "ai"
+    && retryMeta.refunded === true
+    && retryMeta.imageFirstVersion === 1
+    && retryMeta.imageReview?.phase === "approved"
+    && (retryMeta.imageFirstRefundedCredits ?? 0) > 0
+    && retryMeta.bundledLipSyncEnabled !== true
+    && duplicatePositions !== null;
+  if (canResumeWithRetainedImages) {
+    const resumeResult = await db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select()
+        .from(jobsTable)
+        .where(and(eq(jobsTable.id, jobId), eq(jobsTable.userId, req.user.id)))
+        .limit(1)
+        .for("update");
+      const meta =
+        locked?.manifest && typeof locked.manifest === "object"
+          ? (locked.manifest as AiJobMeta)
+          : {};
+      const positions =
+        /duplicate source image content at positions (\d+) and (\d+)/i.exec(
+          locked?.errorMessage ?? "",
+        );
+      const review = meta.imageReview;
+      const resumeCredits = Math.max(0, meta.imageFirstRefundedCredits ?? 0);
+      if (
+        !locked
+        || locked.status !== "failed"
+        || meta.refunded !== true
+        || meta.imageFirstVersion !== 1
+        || review?.phase !== "approved"
+        || meta.bundledLipSyncEnabled === true
+        || !positions
+        || resumeCredits <= 0
+      ) {
+        return {
+          error: "This job is no longer available for a retained-image retry.",
+          status: 409 as const,
+        };
+      }
+      const duplicateOf = Number(positions[1]) - 1;
+      const replaceIndex = Number(positions[2]) - 1;
+      const replaceScene = review.scenes[String(replaceIndex)];
+      if (!replaceScene || !review.scenes[String(duplicateOf)]) {
+        return {
+          error: "The duplicate scenes could not be found in the retained storyboard.",
+          status: 409 as const,
+        };
+      }
+      const { approvedRevision: _approvedRevision, ...reviewWithoutApproval } = review;
+      const nextReview = {
+        ...reviewWithoutApproval,
+        phase: "awaiting_approval" as const,
+        scenes: {
+          ...review.scenes,
+          [String(replaceIndex)]: {
+            ...replaceScene,
+            status: "failed" as const,
+            errorMessage: `This image is too similar to scene ${duplicateOf + 1}. Replace it before approving the storyboard.`,
+          },
+        },
+      };
+      const [updated] = await tx
+        .update(jobsTable)
+        .set({
+          status: "pending_approval",
+          errorMessage: null,
+          claimedAt: null,
+          manifest: sql`jsonb_set(
+            jsonb_set(
+              COALESCE(${jobsTable.manifest}, '{}'::jsonb),
+              '{imageReview}',
+              ${JSON.stringify(nextReview)}::jsonb
+            ),
+            '{resumeReservationRequired}',
+            to_jsonb(${resumeCredits}::int)
+          )`,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(jobsTable.id, jobId), eq(jobsTable.status, "failed")))
+        .returning();
+      return updated
+        ? { job: updated, resumeCredits }
+        : {
+            error: "This job changed before the retry could be prepared.",
+            status: 409 as const,
+          };
+    });
+    if ("error" in resumeResult) {
+      res.status(resumeResult.status ?? 409).json({
+        error: resumeResult.error,
+        code: "RETAINED_IMAGE_RETRY_UNAVAILABLE",
+      });
+      return;
+    }
+    res.json({
+      ...toCustomerJobView(resumeResult.job),
+      resumeCreditsRequired: resumeResult.resumeCredits,
+    });
+    return;
+  }
   if (
     retryMeta.refunded ||
     (retryMeta.bundledLipSyncEnabled && !retryMeta.bundledLipSyncActivated)
