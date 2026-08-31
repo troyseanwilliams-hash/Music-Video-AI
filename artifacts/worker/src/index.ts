@@ -9,6 +9,7 @@ import {
   stopJobProcessor,
 } from "./lib/jobProcessor.js";
 import { startDeletedVideoPurgeSweep } from "./lib/purgeSweep.js";
+import { startEmailCampaignSweep } from "./lib/emailCampaignSweep.js";
 import { logger } from "./lib/logger.js";
 
 const port = Number(process.env.PORT ?? 9000);
@@ -42,6 +43,7 @@ type ChildSnapshot = Pick<
 };
 const childSnapshots = new Map<number, ChildSnapshot>();
 let stopPurgeSweep: (() => void) | null = null;
+let stopEmailCampaignSweep: (() => void) | null = null;
 let childShuttingDown = false;
 let childStatusTimer: NodeJS.Timeout | null = null;
 
@@ -270,6 +272,8 @@ async function shutdownSupervisor(signal: NodeJS.Signals): Promise<void> {
 
   stopPurgeSweep?.();
   stopPurgeSweep = null;
+  stopEmailCampaignSweep?.();
+  stopEmailCampaignSweep = null;
   const childExits = [...workerChildren.values()].map(
     (child) =>
       new Promise<void>((resolve) => {
@@ -313,6 +317,7 @@ if (isWorkerChild) {
     }
     // Run maintenance once per supervisor, never once per worker child.
     stopPurgeSweep = startDeletedVideoPurgeSweep();
+    stopEmailCampaignSweep = startEmailCampaignSweep();
   });
   process.on("SIGTERM", () => void shutdownSupervisor("SIGTERM"));
   process.on("SIGINT", () => void shutdownSupervisor("SIGINT"));

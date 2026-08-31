@@ -26,6 +26,7 @@ import emailPrefsRouter from "./email-prefs.js";
 import suiteRouter from "./suite.js";
 import imageAssetsRouter from "./image-assets.js";
 import imageReviewRouter from "./image-review.js";
+import adminEmailCampaignsRouter from "./admin-email-campaigns.js";
 
 const router: IRouter = Router();
 
@@ -56,5 +57,6 @@ router.use(emailPrefsRouter);
 router.use(suiteRouter);
 router.use(imageAssetsRouter);
 router.use(imageReviewRouter);
+router.use(adminEmailCampaignsRouter);
 
 export default router;

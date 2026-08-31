@@ -110,6 +110,64 @@ export function sectionLabel(text: string): string {
   return `<p style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;color:#888;margin:20px 0 4px">${text}</p>`;
 }
 
+export const GENERATE_VIDEO_CAMPAIGN_ID = "aibeatsync-generate-video-full-list-2026-08-30-v2";
+export const GENERATE_VIDEO_CAMPAIGN_SUBJECT = "Build the story before you render.";
+
+export function renderGenerateVideoCampaignHtml(p: { appUrl: string; unsubscribeUrl: string }): string {
+  const appUrl = escapeHtml(p.appUrl.replace(/\/+$/, ""));
+  const imageUrl = `${appUrl}/generate-video-storyboard.jpg`;
+  const suiteUrl = "https://aisyncsuite.com";
+  const beatSyncUrl = "https://aibeatsync.com";
+  const podSyncUrl = "https://aipodsync.com";
+  const videoUrl = "https://www.youtube.com/shorts/7bL-ts1M6R8";
+  return emailShell(
+    `
+      <img src="${imageUrl}" alt="Generate Video scene reference storyboard" style="display:block;width:100%;height:auto;border-radius:12px;margin:0 0 24px" />
+      <h1 style="font-size:26px;line-height:1.15;margin:0 0 12px">Build the story before you render.</h1>
+      <p style="font-size:15px;line-height:1.65;color:#333;margin:0 0 18px">
+        Meet the new Generate Video experience: scene-by-scene direction, stronger character continuity,
+        and image approvals before animation begins.
+      </p>
+      <p style="font-size:13px;line-height:1.6;color:#555;margin:0 0 16px">
+        Create with <a href="${beatSyncUrl}" style="color:#7c3aed;font-weight:600">AIBeatSync</a>,
+        explore the full <a href="${suiteUrl}" style="color:#7c3aed;font-weight:600">AISync Suite</a>,
+        and turn scripts into narrated shows with <a href="${podSyncUrl}" style="color:#7c3aed;font-weight:600">AIPodSync</a>.
+      </p>
+      ${ctaButton(suiteUrl, "Come join AISync Suite →")}
+      <p style="font-size:13px;line-height:1.6;color:#666;text-align:center;margin:0 0 12px">
+        Shape every scene, keep your characters consistent, and make the final call before your video renders.
+      </p>
+      <div style="margin-top:28px;padding-top:20px;border-top:1px solid #eee;text-align:center">
+        <a href="${videoUrl}" style="color:#7c3aed;font-size:14px;font-weight:600;text-decoration:none">Watch the finished video ↗</a>
+      </div>
+    `,
+    {
+      footerNote:
+        `<a href="${escapeHtml(p.unsubscribeUrl)}" style="color:#7c3aed;text-decoration:none">Unsubscribe from this announcement</a> — one click, no login needed. Questions? Just reply. — The AIBeatSync team`,
+    },
+  );
+}
+
+export function renderGenerateVideoCampaignText(p: { appUrl: string; unsubscribeUrl: string }): string {
+  const appUrl = p.appUrl.replace(/\/+$/, "");
+  return `Build the story before you render.
+
+Meet the new Generate Video experience: scene-by-scene direction, stronger character continuity, and image approvals before animation begins.
+
+Create with AIBeatSync: https://aibeatsync.com
+Explore the full AISync Suite: https://aisyncsuite.com
+Turn scripts into narrated shows with AIPodSync: https://aipodsync.com
+
+Come join AISync Suite: https://aisyncsuite.com
+
+Shape every scene, keep your characters consistent, and make the final call before your video renders.
+
+Watch the finished video: https://www.youtube.com/shorts/7bL-ts1M6R8
+
+Manage email preferences: ${appUrl}/settings
+Unsubscribe: ${p.unsubscribeUrl}`;
+}
+
 // ---------------------------------------------------------------------------
 // User-facing emails
 // ---------------------------------------------------------------------------

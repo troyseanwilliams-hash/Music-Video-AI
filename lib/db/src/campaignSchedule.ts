@@ -29,13 +29,14 @@ function partsInTimeZone(date: Date): DateParts {
 
 function zonedDateToUtc(year: number, month: number, day: number, hour: number): Date {
   const guessedUtc = Date.UTC(year, month - 1, day, hour, 0, 0);
+  const guessedLocal = partsInTimeZone(new Date(guessedUtc));
   const localAsUtc = Date.UTC(
-    partsInTimeZone(new Date(guessedUtc)).year,
-    partsInTimeZone(new Date(guessedUtc)).month - 1,
-    partsInTimeZone(new Date(guessedUtc)).day,
-    partsInTimeZone(new Date(guessedUtc)).hour,
-    partsInTimeZone(new Date(guessedUtc)).minute,
-    partsInTimeZone(new Date(guessedUtc)).second,
+    guessedLocal.year,
+    guessedLocal.month - 1,
+    guessedLocal.day,
+    guessedLocal.hour,
+    guessedLocal.minute,
+    guessedLocal.second,
   );
   return new Date(guessedUtc - (localAsUtc - guessedUtc));
 }
@@ -45,8 +46,12 @@ export function nextDailyCampaignRunAt(now = new Date()): Date {
   let candidate = zonedDateToUtc(local.year, local.month, local.day, CAMPAIGN_HOUR);
   if (candidate <= now) {
     const nextDay = new Date(Date.UTC(local.year, local.month - 1, local.day + 1));
-    const nextLocal = partsInTimeZone(nextDay);
-    candidate = zonedDateToUtc(nextLocal.year, nextLocal.month, nextLocal.day, CAMPAIGN_HOUR);
+    candidate = zonedDateToUtc(
+      nextDay.getUTCFullYear(),
+      nextDay.getUTCMonth() + 1,
+      nextDay.getUTCDate(),
+      CAMPAIGN_HOUR,
+    );
   }
   return candidate;
 }

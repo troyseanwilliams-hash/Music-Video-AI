@@ -3,8 +3,8 @@ name: Resend campaign limits
 description: Operational rules for bulk Resend sends from this project.
 ---
 
-Resend's batch endpoint expects the messages as a top-level JSON array, not an object wrapper. Send at most 100 messages per request and use a stable per-batch idempotency key so a later resume does not duplicate accepted batches.
+For durable campaign queues, use immutable cohorts of at most 100 recipients per local day and a unique, stable idempotency key for each recipient. Persist every accepted provider message ID. Batch APIs still require a top-level JSON array when intentionally used.
 
-**Why:** A full-list send can be partially accepted when the provider's daily quota is reached; treating the campaign as all-or-nothing would either lose recipients or duplicate already accepted messages.
+**Why:** Provider quotas can partially interrupt delivery, and idempotency retention is finite. Retrying an ambiguous timeout after the retention window can duplicate mail even with the same key.
 
-**How to apply:** Keep the recipient manifest stable for the campaign, record the last accepted batch, resume only from the next batch after quota recovery, and continue excluding disabled or unsubscribed users.
+**How to apply:** Record each recipient and outcome, never backfill a later cohort into the current day, and retry only explicit provider rejections. Treat timeouts or accepted responses without a message ID as terminal manual-review failures. Re-check disabled, unsubscribe, and current email identity immediately before sending.

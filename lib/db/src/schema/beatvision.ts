@@ -7,6 +7,7 @@ import {
   jsonb,
   pgEnum,
   boolean,
+  index,
   primaryKey,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
@@ -476,6 +477,7 @@ export const emailCampaignRecipientStatusEnum = pgEnum("email_campaign_recipient
   "sending",
   "sent",
   "skipped",
+  "failed",
 ]);
 
 export const emailCampaignsTable = pgTable("email_campaigns", {
@@ -503,12 +505,14 @@ export const emailCampaignRecipientsTable = pgTable(
       .references(() => usersTable.id, { onDelete: "cascade" }),
     email: text("email").notNull(),
     position: integer("position").notNull(),
+    batchNumber: integer("batch_number").notNull(),
     status: emailCampaignRecipientStatusEnum("status").notNull().default("pending"),
     attempts: integer("attempts").notNull().default(0),
     idempotencyKey: text("idempotency_key").notNull(),
     claimedAt: timestamp("claimed_at", { withTimezone: true }),
     sentAt: timestamp("sent_at", { withTimezone: true }),
     lastError: text("last_error"),
+    providerMessageId: text("provider_message_id"),
     providerResponse: text("provider_response"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
@@ -522,10 +526,18 @@ export const emailCampaignRecipientsTable = pgTable(
       table.campaignId,
       table.userId,
     ),
-    campaignStatusPositionIndex: uniqueIndex("email_campaign_recipients_campaign_status_position_idx").on(
+    campaignStatusPositionIndex: index("email_campaign_recipients_campaign_status_position_idx").on(
       table.campaignId,
       table.status,
       table.position,
+    ),
+    campaignBatchStatusIndex: index("email_campaign_recipients_campaign_batch_status_idx").on(
+      table.campaignId,
+      table.batchNumber,
+      table.status,
+    ),
+    idempotencyKeyUnique: uniqueIndex("email_campaign_recipients_idempotency_key_unique").on(
+      table.idempotencyKey,
     ),
   }),
 );
