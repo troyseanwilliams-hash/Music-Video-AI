@@ -56,4 +56,15 @@ export function nextDailyCampaignRunAt(now = new Date()): Date {
   return candidate;
 }
 
+export function tomorrowDailyCampaignRunAt(now = new Date()): Date {
+  const local = partsInTimeZone(now);
+  const nextDay = new Date(Date.UTC(local.year, local.month - 1, local.day + 1));
+  return zonedDateToUtc(
+    nextDay.getUTCFullYear(),
+    nextDay.getUTCMonth() + 1,
+    nextDay.getUTCDate(),
+    CAMPAIGN_HOUR,
+  );
+}
+
 export const DAILY_CAMPAIGN_TIME_ZONE = CAMPAIGN_TIME_ZONE;

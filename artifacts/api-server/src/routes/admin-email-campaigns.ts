@@ -5,6 +5,7 @@ import {
   db,
   emailCampaignRecipientsTable,
   emailCampaignsTable,
+  tomorrowDailyCampaignRunAt,
   usersTable,
 } from "@workspace/db";
 import {
@@ -80,7 +81,7 @@ router.post("/admin/email-campaigns/generate-video/queue", async (req, res) => {
       .orderBy(desc(usersTable.createdAt), desc(usersTable.id))
       .limit(BATCH_SIZE);
 
-    const nextRunAt = new Date();
+    const nextRunAt = tomorrowDailyCampaignRunAt();
     const status = users.length > 0 ? "queued" : "completed";
     await tx.insert(emailCampaignsTable).values({
       id: GENERATE_VIDEO_CAMPAIGN_ID,

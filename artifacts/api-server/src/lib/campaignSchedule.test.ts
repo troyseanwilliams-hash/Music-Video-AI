@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextDailyCampaignRunAt } from "@workspace/db";
+import { nextDailyCampaignRunAt, tomorrowDailyCampaignRunAt } from "@workspace/db";
 
 describe("daily email campaign schedule", () => {
   it("uses today's 9 AM Indianapolis run when it is still upcoming", () => {
@@ -17,6 +17,12 @@ describe("daily email campaign schedule", () => {
   it("accounts for Indianapolis standard time in winter", () => {
     expect(nextDailyCampaignRunAt(new Date("2026-12-30T18:00:00.000Z")).toISOString()).toBe(
       "2026-12-31T14:00:00.000Z",
+    );
+  });
+
+  it("can explicitly defer a prepared campaign until tomorrow", () => {
+    expect(tomorrowDailyCampaignRunAt(new Date("2026-08-30T12:00:00.000Z")).toISOString()).toBe(
+      "2026-08-31T13:00:00.000Z",
     );
   });
 });
