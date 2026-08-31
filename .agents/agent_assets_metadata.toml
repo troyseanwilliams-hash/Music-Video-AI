@@ -63,3 +63,10 @@ uri = "file://exports/aisync-suite.tar.gz"
 type = "unspecified"
 title = "Download AISync Suite for Mac"
 description = "Mac-friendly tar.gz archive. Double-click it in Finder to extract, then import the aisync-suite folder into your repository."
+
+[[outputs]]
+id = "m22iKWsYexpK2jLLupxIM"
+uri = "file://email-preview.html"
+type = "text"
+title = "Generate Video campaign email preview"
+description = "Self-contained preview of the one-time announcement email for the newest 100 eligible signups, with the storyboard image embedded at the top."
