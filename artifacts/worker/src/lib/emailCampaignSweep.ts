@@ -49,9 +49,9 @@ async function recoverInterruptedClaims(): Promise<void> {
   `);
   await db.execute(sql`
     UPDATE email_campaign_recipients
-    SET status = 'pending',
+    SET status = 'failed',
         claimed_at = NULL,
-        last_error = 'Recovered after worker interruption',
+        last_error = 'Delivery outcome unknown after worker interruption; manual review required',
         updated_at = NOW()
     WHERE campaign_id = ${GENERATE_VIDEO_CAMPAIGN_ID}
       AND status = 'sending'
@@ -242,7 +242,7 @@ async function sendRecipient(recipient: ClaimedRecipient): Promise<void> {
   if (!response.ok) {
     throw new CampaignDeliveryError(
       `Resend API ${response.status}: ${responseText.slice(0, 500)}`,
-      true,
+      response.status === 429 || response.status >= 500,
     );
   }
   let providerMessageId = "";

@@ -110,7 +110,7 @@ export function sectionLabel(text: string): string {
   return `<p style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;color:#888;margin:20px 0 4px">${text}</p>`;
 }
 
-export const GENERATE_VIDEO_CAMPAIGN_ID = "aibeatsync-generate-video-full-list-2026-08-30-v2";
+export const GENERATE_VIDEO_CAMPAIGN_ID = "aibeatsync-generate-video-last-100-2026-08-31-v1";
 export const GENERATE_VIDEO_CAMPAIGN_SUBJECT = "Build the story before you render.";
 
 export function renderGenerateVideoCampaignHtml(p: { appUrl: string; unsubscribeUrl: string }): string {

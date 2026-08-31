@@ -1,11 +1,10 @@
 import { Router } from "express";
-import { and, asc, count, eq, isNotNull } from "drizzle-orm";
+import { and, count, desc, eq, isNotNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
   db,
   emailCampaignRecipientsTable,
   emailCampaignsTable,
-  nextDailyCampaignRunAt,
   usersTable,
 } from "@workspace/db";
 import {
@@ -14,7 +13,6 @@ import {
 } from "../lib/emailTemplates.js";
 
 const router = Router();
-const ALREADY_SENT_COUNT = 100;
 const BATCH_SIZE = 100;
 
 function isAdmin(email: string | null | undefined): boolean {
@@ -29,8 +27,31 @@ function requireAdmin(req: { isAuthenticated(): boolean; user?: { email?: string
   return true;
 }
 
+function requireSameOrigin(
+  req: { get(name: string): string | undefined },
+  res: { status(code: number): { json(body: unknown): void } },
+): boolean {
+  const origin = req.get("origin");
+  const host = req.get("host");
+  if (!origin || !host) {
+    res.status(403).json({ error: "Same-origin request required" });
+    return false;
+  }
+  try {
+    if (new URL(origin).host !== host) {
+      res.status(403).json({ error: "Same-origin request required" });
+      return false;
+    }
+  } catch {
+    res.status(403).json({ error: "Same-origin request required" });
+    return false;
+  }
+  return true;
+}
+
 router.post("/admin/email-campaigns/generate-video/queue", async (req, res) => {
   if (!requireAdmin(req, res)) return;
+  if (!requireSameOrigin(req, res)) return;
 
   const result = await db.transaction(async (tx) => {
     const [existing] = await tx
@@ -56,11 +77,11 @@ router.post("/admin/email-campaigns/generate-video/queue", async (req, res) => {
           eq(usersTable.notifyOnComplete, true),
         ),
       )
-      .orderBy(asc(usersTable.createdAt), asc(usersTable.id));
+      .orderBy(desc(usersTable.createdAt), desc(usersTable.id))
+      .limit(BATCH_SIZE);
 
-    const nextRunAt = nextDailyCampaignRunAt();
-    const pendingCount = Math.max(0, users.length - ALREADY_SENT_COUNT);
-    const status = pendingCount > 0 ? "queued" : "completed";
+    const nextRunAt = new Date();
+    const status = users.length > 0 ? "queued" : "completed";
     await tx.insert(emailCampaignsTable).values({
       id: GENERATE_VIDEO_CAMPAIGN_ID,
       subject: GENERATE_VIDEO_CAMPAIGN_SUBJECT,
@@ -73,17 +94,15 @@ router.post("/admin/email-campaigns/generate-video/queue", async (req, res) => {
     if (users.length > 0) {
       await tx.insert(emailCampaignRecipientsTable).values(
         users.map((user, position) => {
-          const recipientStatus: "sent" | "pending" =
-            position < ALREADY_SENT_COUNT ? "sent" : "pending";
           return {
             id: randomUUID(),
             campaignId: GENERATE_VIDEO_CAMPAIGN_ID,
             userId: user.id,
             email: user.email!,
             position,
-            batchNumber: Math.floor(position / BATCH_SIZE),
-            status: recipientStatus,
-            sentAt: position < ALREADY_SENT_COUNT ? new Date() : null,
+            batchNumber: 0,
+            status: "pending" as const,
+            sentAt: null,
             idempotencyKey: `${GENERATE_VIDEO_CAMPAIGN_ID}-recipient-${user.id}`,
           };
         }),
@@ -93,8 +112,7 @@ router.post("/admin/email-campaigns/generate-video/queue", async (req, res) => {
     return {
       created: true,
       campaignId: GENERATE_VIDEO_CAMPAIGN_ID,
-      recordedSentRecipients: Math.min(ALREADY_SENT_COUNT, users.length),
-      queuedRecipients: pendingCount,
+      queuedRecipients: users.length,
       nextRunAt,
     };
   });

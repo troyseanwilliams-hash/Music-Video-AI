@@ -53,10 +53,15 @@ function queueHandler() {
   return layer.route.stack[0].handle as (req: any, res: FakeResponse) => Promise<void>;
 }
 
-function request(authenticated = true) {
+function request(authenticated = true, origin = "https://app.example.test") {
   return {
     user: { email: "admin@example.test" },
     isAuthenticated: () => authenticated,
+    get: (name: string) => {
+      if (name.toLowerCase() === "origin") return origin;
+      if (name.toLowerCase() === "host") return "app.example.test";
+      return undefined;
+    },
   };
 }
 
@@ -76,7 +81,9 @@ function transactionWith(options?: { existingCampaign?: unknown[]; users?: Array
           return builder;
         },
         limit: vi.fn(async () => (
-          table === emailCampaignsTable ? (options?.existingCampaign ?? []) : []
+          table === emailCampaignsTable
+            ? (options?.existingCampaign ?? [])
+            : (options?.users ?? [])
         )),
         then(resolve: (value: unknown) => unknown) {
           return Promise.resolve(options?.users ?? []).then(resolve);
@@ -110,6 +117,13 @@ describe("Generate Video campaign queue", () => {
     expect(mocks.db.transaction).not.toHaveBeenCalled();
   });
 
+  it("rejects cross-origin requests from a logged-in admin", async () => {
+    const res = response();
+    await queueHandler()(request(true, "https://malicious.example"), res);
+    expect(res.statusCode).toBe(403);
+    expect(mocks.db.transaction).not.toHaveBeenCalled();
+  });
+
   it("refuses to create the same campaign twice", async () => {
     transactionWith({
       existingCampaign: [{ id: GENERATE_VIDEO_CAMPAIGN_ID, status: "queued", nextRunAt: new Date() }],
@@ -121,10 +135,10 @@ describe("Generate Video campaign queue", () => {
     expect(mocks.recipientInserts).toHaveLength(0);
   });
 
-  it("records the first 100 as sent and queues immutable daily cohorts", async () => {
-    const users = Array.from({ length: 101 }, (_, index) => ({
-      id: `user-${index + 101}`,
-      email: `user-${index + 101}@example.test`,
+  it("queues the newest 100 eligible users as one immutable cohort", async () => {
+    const users = Array.from({ length: 100 }, (_, index) => ({
+      id: `user-${index}`,
+      email: `user-${index}@example.test`,
     }));
     transactionWith({ users });
     const res = response();
@@ -137,10 +151,9 @@ describe("Generate Video campaign queue", () => {
       status: string;
       idempotencyKey: string;
     }>;
-    expect(rows).toHaveLength(101);
-    expect(rows[0]).toMatchObject({ position: 0, batchNumber: 0, status: "sent" });
-    expect(rows[99]).toMatchObject({ position: 99, batchNumber: 0, status: "sent" });
-    expect(rows[100]).toMatchObject({ position: 100, batchNumber: 1, status: "pending" });
-    expect(new Set(rows.map((row) => row.idempotencyKey)).size).toBe(101);
+    expect(rows).toHaveLength(100);
+    expect(rows[0]).toMatchObject({ position: 0, batchNumber: 0, status: "pending" });
+    expect(rows[99]).toMatchObject({ position: 99, batchNumber: 0, status: "pending" });
+    expect(new Set(rows.map((row) => row.idempotencyKey)).size).toBe(100);
   });
 });
