@@ -70,3 +70,10 @@ uri = "file://email-preview.html"
 type = "text"
 title = "Generate Video campaign email preview"
 description = "Self-contained preview of the one-time announcement email for the newest 100 eligible signups, with the storyboard image embedded at the top."
+
+[[outputs]]
+id = "5vYTvwyoGF6_jJR-B2G4U"
+uri = "file://artifacts/beatvision/public/generate-video-storyboard.jpg"
+type = "image"
+title = "Storyboard image from the email"
+description = "This is the image placed at the very top of the Generate Video announcement email."
