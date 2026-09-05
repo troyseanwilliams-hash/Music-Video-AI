@@ -18,6 +18,7 @@ import {
 } from "@workspace/api-client-react";
 import { canAffordCredits, LYRIC_ALIGN_COST } from "@/lib/creditPricing";
 import { getRemixTimeEstimate } from "@/lib/jobEstimates";
+import { trackEvent } from "@/lib/analytics";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SAMPLE_LYRICS } from "@/lib/sampleLyrics";
 import { MAX_LYRICS_LENGTH } from "@/lib/lyricLimits";
@@ -1534,6 +1535,12 @@ export default function Editor() {
     }
     pause();
     setSubmitting(true);
+    trackEvent("export_started", {
+      export_type: "montage",
+      segment_count: ready.length,
+      has_music: Boolean(music?.objectPath),
+      has_karaoke: karaokeEnabled && lyricsText.trim().length > 0,
+    });
     try {
       // Fall back to a friendly, dated default when the user leaves it blank —
       // never the generic "Editor export".
@@ -1588,6 +1595,7 @@ export default function Editor() {
         throw new Error(e.error || `Render request failed (${res.status})`);
       }
       const { job } = await res.json();
+      trackEvent("export_accepted", { export_type: "montage" });
       setLocation(`/jobs/${job.id}`);
     } catch (err) {
       toast({ title: "Export failed", description: String((err as Error).message), variant: "destructive" });

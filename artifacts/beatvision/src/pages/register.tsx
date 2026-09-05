@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Music2, Eye, EyeOff, CheckCircle2, Gift } from "lucide-react";
 import { motion } from "framer-motion";
+import { trackEvent } from "@/lib/analytics";
 
 export default function Register() {
   const { register } = useAuth();
@@ -39,8 +40,10 @@ export default function Register() {
     }
 
     setIsSubmitting(true);
+    trackEvent("signup_started", { has_referral: Boolean(referralCode) });
     try {
       await register(name, email, password, referralCode ?? undefined);
+      trackEvent("signup_completed", { has_referral: Boolean(referralCode) });
       setLocation("/generate");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");

@@ -35,6 +35,7 @@ import ReferEarnCard from "@/components/ReferEarnCard";
 import GenerationFiller from "@/components/GenerationFiller";
 import GenerationStoryboard from "@/components/GenerationStoryboard";
 import { shouldShowVideoScenePreviews } from "@/lib/jobStatusDisplay";
+import { trackEvent } from "@/lib/analytics";
 
 const TERMINAL_STATUSES = new Set(["ready", "failed"]);
 
@@ -1639,6 +1640,7 @@ function DownloadBar({ jobId, prompt }: { jobId: string; prompt?: string | null 
       a.click();
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+      trackEvent("export_downloaded", { export_type: "video" });
       setStatus("idle");
     } catch {
       setStatus("error");

@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { TutorialTip } from "@/components/TutorialTip";
 import { LYRICS_BUILD_COST, canAffordCredits } from "@/lib/creditPricing";
 import TopUpRequiredDialog from "@/components/TopUpRequiredDialog";
+import { trackEvent } from "@/lib/analytics";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -257,6 +258,12 @@ export default function Soundtracks() {
 
   const gen = useMutation({
     mutationFn: async () => {
+      trackEvent("creation_started", {
+        creation_type: "soundtrack",
+        soundtrack_type: withVocals ? "vocals" : "instrumental",
+        duration_seconds: withVocals ? estimatedVocalDuration : Math.max(duration, loopToSeconds),
+        has_lyrics: withVocals && lyrics.trim().length > 0,
+      });
       // Fold the chosen vocal style (male/female/duet/…) into the prompt — the
       // song model reads the voice from the prompt text.
       const styleDesc = VOCAL_STYLES.find((s) => s.key === vocalStyle)?.desc;
@@ -289,6 +296,8 @@ export default function Soundtracks() {
       };
     },
     onSuccess: (data) => {
+      trackEvent("creation_accepted", { creation_type: "soundtrack" });
+      trackEvent("creation_completed", { creation_type: "soundtrack" });
       setProgress(100);
       queryClient.invalidateQueries({ queryKey: ["soundtracks"] });
       queryClient.invalidateQueries({ queryKey: ["soundtracks", "status"] });
@@ -407,10 +416,12 @@ export default function Soundtracks() {
   });
 
   const useInGenerate = (s: Soundtrack) => {
+    trackEvent("soundtrack_sent_to_video", { destination: "generate" });
     const t = encodeURIComponent(s.title || "AI Soundtrack");
     navigate(`/generate?audioObjectPath=${encodeURIComponent(s.objectPath)}&title=${t}`);
   };
   const useInRemix = (s: Soundtrack) => {
+    trackEvent("soundtrack_sent_to_video", { destination: "montage" });
     const t = encodeURIComponent(s.title || "AI Soundtrack");
     navigate(`/editor?audio=${encodeURIComponent(s.url)}&title=${t}`);
   };
@@ -867,7 +878,11 @@ export default function Soundtracks() {
                   <Button size="sm" variant="outline" onClick={() => useInGenerate(s)} className="h-8">
                     <Video className="h-3.5 w-3.5 mr-1.5" /> Generate
                   </Button>
-                  <a href={s.url} download={`${(s.title || "soundtrack").replace(/[^\w-]+/g, "_")}.${s.ext}`}>
+                  <a
+                    href={s.url}
+                    download={`${(s.title || "soundtrack").replace(/[^\w-]+/g, "_")}.${s.ext}`}
+                    onClick={() => trackEvent("export_downloaded", { export_type: "soundtrack" })}
+                  >
                     <Button size="sm" variant="outline" className="h-8"><Download className="h-3.5 w-3.5 mr-1.5" /> Download</Button>
                   </a>
                   {s.isPublic ? (

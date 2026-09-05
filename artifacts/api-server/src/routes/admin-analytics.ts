@@ -38,24 +38,52 @@ router.get("/admin/analytics/overview", async (req, res) => {
 
   try {
     // ── Funnel ────────────────────────────────────────────────────────────
-    // Visitors: distinct anonymous ids seen in a pageview in the window.
-    // Signups → Activated → Paid follow the cohort of users CREATED in the
-    // window, so the funnel reads as one coherent story.
+    // Follow one attributable cohort: anonymous visitors seen in the window
+    // are linked to accounts when the same browser later sends an authenticated
+    // event. Activation and payment are then measured for those linked users.
     const funnelQ = db.execute(sql`
-      WITH win AS (SELECT NOW() - make_interval(days => ${days}) AS since)
+      WITH
+      win AS (SELECT NOW() - make_interval(days => ${days}) AS since),
+      visitors AS (
+        SELECT DISTINCT anon_id
+        FROM analytics_events, win
+        WHERE event_type = 'pageview'
+          AND anon_id IS NOT NULL
+          AND created_at >= win.since
+      ),
+      identity_links AS (
+        SELECT DISTINCT ON (ae.anon_id)
+               ae.anon_id,
+               ae.user_id
+        FROM analytics_events ae
+        JOIN visitors v ON v.anon_id = ae.anon_id
+        WHERE ae.user_id IS NOT NULL
+        ORDER BY ae.anon_id, ae.created_at ASC
+      ),
+      cohort_users AS (
+        SELECT DISTINCT u.id
+        FROM identity_links il
+        JOIN users u ON u.id = il.user_id
+        CROSS JOIN win
+        WHERE u.created_at >= win.since
+      )
       SELECT
-        (SELECT COUNT(DISTINCT anon_id) FROM analytics_events, win
-           WHERE event_type = 'pageview' AND anon_id IS NOT NULL AND created_at >= win.since) AS visitors,
-        (SELECT COUNT(*) FROM users, win WHERE created_at >= win.since) AS signups,
-        (SELECT COUNT(DISTINCT u.id) FROM users u, win
-           WHERE u.created_at >= win.since
-             AND (EXISTS (SELECT 1 FROM jobs j WHERE j.user_id = u.id)
-                  OR EXISTS (SELECT 1 FROM soundtracks s WHERE s.user_id = u.id))) AS activated,
-        (SELECT COUNT(DISTINCT u.id) FROM users u, win
-           WHERE u.created_at >= win.since
-             AND (u.subscription_status = 'active'
-                  OR EXISTS (SELECT 1 FROM credit_grants g
-                             WHERE g.user_id = u.id AND g.source IN ('subscription','topup')))) AS paid
+        (SELECT COUNT(*) FROM visitors) AS visitors,
+        (SELECT COUNT(*) FROM cohort_users) AS signups,
+        (SELECT COUNT(*) FROM cohort_users cu
+           WHERE EXISTS (
+             SELECT 1 FROM jobs j WHERE j.user_id = cu.id AND j.status = 'ready'
+           )
+           OR EXISTS (
+             SELECT 1 FROM soundtracks s WHERE s.user_id = cu.id
+           )) AS activated,
+        (SELECT COUNT(*) FROM cohort_users cu
+           JOIN users u ON u.id = cu.id
+           WHERE u.subscription_status = 'active'
+              OR EXISTS (
+                SELECT 1 FROM credit_grants g
+                WHERE g.user_id = cu.id AND g.source IN ('subscription','topup')
+              )) AS paid
     `);
 
     // ── Time per page ─────────────────────────────────────────────────────

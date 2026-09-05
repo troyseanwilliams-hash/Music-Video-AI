@@ -15,7 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { track } from "@/lib/analytics";
+import { track, trackEvent } from "@/lib/analytics";
 import { GENERATED_IMAGE_CREDITS_PER_VISUAL } from "@/lib/creditPricing";
 import {
   Check,
@@ -88,8 +88,15 @@ export default function Pricing() {
   });
 
   useEffect(() => {
+    if (!isAuthLoading) {
+      trackEvent("pricing_viewed", { authenticated: isAuthenticated });
+    }
+  }, [isAuthenticated, isAuthLoading]);
+
+  useEffect(() => {
     const status = getQueryParam("status");
     if (status === "success") {
+      trackEvent("checkout_returned", { outcome: "success" });
       toast({
         title: "Payment successful",
         description: "Thanks! Updating your credits…",
@@ -133,6 +140,7 @@ export default function Pricing() {
 
       return () => window.clearInterval(intervalId);
     } else if (status === "cancelled") {
+      trackEvent("checkout_returned", { outcome: "cancelled" });
       toast({
         title: "Checkout cancelled",
         description: "No charge was made.",
@@ -159,7 +167,18 @@ export default function Pricing() {
     [subscriptions],
   );
 
-  const handleSubscribe = async (priceId: string) => {
+  const handleSubscribe = async (
+    priceId: string,
+    plan: string,
+    billingInterval: string,
+    purchaseType: "subscription" | "topup",
+  ) => {
+    trackEvent("plan_selected", {
+      plan,
+      billing_interval: billingInterval,
+      purchase_type: purchaseType,
+      authenticated: isAuthenticated,
+    });
     if (!isAuthenticated) {
       track("checkout_intent_logged_out", { priceId });
       setLocation("/login");
@@ -563,7 +582,12 @@ export default function Pricing() {
                   }`}
                   variant={plan.popular ? "default" : "outline"}
                   disabled={busyPriceId === price.id || Boolean(isCurrent)}
-                  onClick={() => handleSubscribe(price.id)}
+                  onClick={() => handleSubscribe(
+                    price.id,
+                    plan.name.toLowerCase(),
+                    price.interval ?? interval,
+                    "subscription",
+                  )}
                   data-testid={`button-subscribe-${plan.name.toLowerCase()}`}
                 >
                   {busyPriceId === price.id ? (
@@ -654,7 +678,12 @@ export default function Pricing() {
                       className={`w-full ${plan.popular ? "bg-gradient-electric text-white shadow-glow" : ""}`}
                       variant={plan.popular ? "default" : "outline"}
                       disabled={busyPriceId === price.id}
-                      onClick={() => handleSubscribe(price.id)}
+                      onClick={() => handleSubscribe(
+                        price.id,
+                        plan.name.toLowerCase(),
+                        price.interval ?? "one_time",
+                        "topup",
+                      )}
                       data-testid={`button-topup-${price.credits}`}
                     >
                       {busyPriceId === price.id ? (

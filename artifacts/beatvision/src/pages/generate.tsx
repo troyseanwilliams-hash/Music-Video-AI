@@ -40,6 +40,7 @@ import {
 import { getGenerationTimeEstimate } from "@/lib/jobEstimates";
 import { detectNamedSubject } from "@/lib/promptWarnings";
 import { consumeSceneScriptHandoff } from "@/lib/sceneScriptHandoff";
+import { trackEvent, track } from "@/lib/analytics";
 import {
   compactGeneratedImagePromptScript,
   MAX_CREATIVE_PROMPT_LENGTH,
@@ -158,32 +159,30 @@ const STYLES = [
 const TEMPLATES: {
   id: string;
   label: string;
-  emoji: string;
   prompt: string;
   style: VideoStyle;
   aspect: CreateJobRequestAspectRatio;
   duration: CreateJobRequestRequestedDuration;
 }[] = [
-  { id: "neon-tiktok", label: "Neon TikTok loop", emoji: "🌆", prompt: "neon-lit city at night, glowing reflections on wet streets, cyberpunk mood, rhythmic pulsing lights", style: VideoStyle.neon, aspect: CreateJobRequestAspectRatio["9:16"], duration: CreateJobRequestRequestedDuration.NUMBER_10 },
-  { id: "anime-mv", label: "Anime music video", emoji: "🌸", prompt: "anime protagonist, dynamic action poses, falling sakura petals, dramatic anime lighting and speed lines", style: VideoStyle.anime, aspect: CreateJobRequestAspectRatio["16:9"], duration: CreateJobRequestRequestedDuration.NUMBER_30 },
-  { id: "cinematic", label: "Cinematic trailer", emoji: "🎬", prompt: "epic cinematic landscapes, slow sweeping camera moves, volumetric light, film grain, moody color grade", style: VideoStyle.cinematic, aspect: CreateJobRequestAspectRatio["16:9"], duration: CreateJobRequestRequestedDuration.NUMBER_30 },
-  { id: "dreamy", label: "Dreamy aesthetic", emoji: "✨", prompt: "ethereal dreamscape, soft glowing haze, floating particles, pastel gradients, slow drifting motion", style: VideoStyle.fantasy, aspect: CreateJobRequestAspectRatio["9:16"], duration: CreateJobRequestRequestedDuration.NUMBER_10 },
-  { id: "retro", label: "Retro 80s vibes", emoji: "📼", prompt: "retro 1980s aesthetic, VHS grain, chrome text, sunset gradient grid, synthwave mood", style: VideoStyle.vintage, aspect: CreateJobRequestAspectRatio["16:9"], duration: CreateJobRequestRequestedDuration.NUMBER_10 },
-  { id: "canvas", label: "Spotify Canvas loop", emoji: "🔁", prompt: "abstract flowing liquid gradients, seamless hypnotic loop, smooth continuous motion", style: VideoStyle.abstract, aspect: CreateJobRequestAspectRatio["9:16"], duration: CreateJobRequestRequestedDuration.NUMBER_5 },
+  { id: "neon-tiktok", label: "Neon TikTok loop", prompt: "neon-lit city at night, glowing reflections on wet streets, cyberpunk mood, rhythmic pulsing lights", style: VideoStyle.neon, aspect: CreateJobRequestAspectRatio["9:16"], duration: CreateJobRequestRequestedDuration.NUMBER_10 },
+  { id: "anime-mv", label: "Anime music video", prompt: "anime protagonist, dynamic action poses, falling sakura petals, dramatic anime lighting and speed lines", style: VideoStyle.anime, aspect: CreateJobRequestAspectRatio["16:9"], duration: CreateJobRequestRequestedDuration.NUMBER_30 },
+  { id: "cinematic", label: "Cinematic trailer", prompt: "epic cinematic landscapes, slow sweeping camera moves, volumetric light, film grain, moody color grade", style: VideoStyle.cinematic, aspect: CreateJobRequestAspectRatio["16:9"], duration: CreateJobRequestRequestedDuration.NUMBER_30 },
+  { id: "dreamy", label: "Dreamy aesthetic", prompt: "ethereal dreamscape, soft glowing haze, floating particles, pastel gradients, slow drifting motion", style: VideoStyle.fantasy, aspect: CreateJobRequestAspectRatio["9:16"], duration: CreateJobRequestRequestedDuration.NUMBER_10 },
+  { id: "retro", label: "Retro 80s vibes", prompt: "retro 1980s aesthetic, VHS grain, chrome text, sunset gradient grid, synthwave mood", style: VideoStyle.vintage, aspect: CreateJobRequestAspectRatio["16:9"], duration: CreateJobRequestRequestedDuration.NUMBER_10 },
+  { id: "canvas", label: "Spotify Canvas loop", prompt: "abstract flowing liquid gradients, seamless hypnotic loop, smooth continuous motion", style: VideoStyle.abstract, aspect: CreateJobRequestAspectRatio["9:16"], duration: CreateJobRequestRequestedDuration.NUMBER_5 },
 ];
 
 // Platform presets: one click sets the right aspect ratio + length for a target.
 const PLATFORM_PRESETS: {
   id: string;
   label: string;
-  emoji: string;
   aspect: CreateJobRequestAspectRatio;
   duration: CreateJobRequestRequestedDuration;
 }[] = [
-  { id: "vertical", label: "TikTok · Reels · Shorts", emoji: "📱", aspect: CreateJobRequestAspectRatio["9:16"], duration: CreateJobRequestRequestedDuration.NUMBER_10 },
-  { id: "youtube", label: "YouTube", emoji: "▶️", aspect: CreateJobRequestAspectRatio["16:9"], duration: CreateJobRequestRequestedDuration.NUMBER_30 },
-  { id: "canvas", label: "Spotify Canvas", emoji: "🎵", aspect: CreateJobRequestAspectRatio["9:16"], duration: CreateJobRequestRequestedDuration.NUMBER_5 },
-  { id: "square", label: "Square feed", emoji: "⬜", aspect: CreateJobRequestAspectRatio["1:1"], duration: CreateJobRequestRequestedDuration.NUMBER_10 },
+  { id: "vertical", label: "TikTok · Reels · Shorts", aspect: CreateJobRequestAspectRatio["9:16"], duration: CreateJobRequestRequestedDuration.NUMBER_10 },
+  { id: "youtube", label: "YouTube", aspect: CreateJobRequestAspectRatio["16:9"], duration: CreateJobRequestRequestedDuration.NUMBER_30 },
+  { id: "canvas", label: "Spotify Canvas", aspect: CreateJobRequestAspectRatio["9:16"], duration: CreateJobRequestRequestedDuration.NUMBER_5 },
+  { id: "square", label: "Square feed", aspect: CreateJobRequestAspectRatio["1:1"], duration: CreateJobRequestRequestedDuration.NUMBER_10 },
 ];
 
 const ASPECT_RATIOS = [
@@ -239,10 +238,62 @@ function formatDuration(seconds: number | null | undefined): string {
 // estimateCreditCost + provider pricing now live in "@/lib/creditPricing"
 // (imported above) so the generate page and pricing page share one source.
 
+const INTENTS = [
+  {
+    id: "music-video",
+    label: "Music Video",
+    icon: Film,
+    aspect: CreateJobRequestAspectRatio["16:9"],
+    style: VideoStyle.cinematic,
+    duration: CreateJobRequestRequestedDuration.NUMBER_30,
+    prompt: "A cinematic performance with dynamic lighting, deep shadows, and sweeping dramatic camera angles.",
+    desc: "Full widescreen cinematic cut",
+  },
+  {
+    id: "spotify-canvas",
+    label: "Spotify Canvas",
+    icon: Layers,
+    aspect: CreateJobRequestAspectRatio["9:16"],
+    style: VideoStyle.abstract,
+    duration: CreateJobRequestRequestedDuration.NUMBER_5,
+    prompt: "Seamless abstract liquid gradients flowing smoothly, hypnotic infinite loop.",
+    desc: "Short vertical loop for Spotify",
+  },
+  {
+    id: "social-teaser",
+    label: "Social Teaser",
+    icon: Zap,
+    aspect: CreateJobRequestAspectRatio["9:16"],
+    style: VideoStyle.neon,
+    duration: CreateJobRequestRequestedDuration.NUMBER_10,
+    prompt: "Fast-paced neon-lit urban scenes, vibrant colors, energetic camera movement.",
+    desc: "High-energy vertical promo",
+  },
+];
+
 export default function Generate() {
   const [, setLocation] = useLocation();
   const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const styleRef = useRef<HTMLDivElement>(null);
+
+  const [guidedDismissed, setGuidedDismissed] = useState(() => {
+    try {
+      const dismissed = localStorage.getItem("bv-release-guided-dismissed") === "true";
+      const params = new URLSearchParams(window.location.search);
+      // Skip guide if handing off from another page
+      if (params.get("audioObjectPath") || params.get("prompt")) return true;
+      return dismissed;
+    } catch {
+      return false;
+    }
+  });
+  const [guidedStep, setGuidedStep] = useState(0);
+
+  const dismissGuide = useCallback(() => {
+    try { localStorage.setItem("bv-release-guided-dismissed", "true"); } catch {}
+    setGuidedDismissed(true);
+    track("guided_release_dismissed", { step: guidedStep });
+  }, [guidedStep]);
 
   const [sourceType, setSourceType] = useState<CreateJobRequestAudioSourceType>(
     CreateJobRequestAudioSourceType.upload,
@@ -1195,6 +1246,13 @@ export default function Generate() {
       return;
     }
     setConfirmOpen(false);
+    const trackedDuration = Number.parseInt(String(effectiveRequestedDuration), 10);
+    trackEvent("creation_started", {
+      creation_type: "video",
+      has_audio: sourceType !== CreateJobRequestAudioSourceType.none,
+      has_lyrics: lyricsEnabled && lyricsText.trim().length > 0,
+      ...(Number.isFinite(trackedDuration) ? { duration_seconds: trackedDuration } : {}),
+    });
     createJob.mutate(
       {
         data: {
@@ -1256,7 +1314,10 @@ export default function Generate() {
         } as unknown as CreateJobRequest,
       },
       {
-        onSuccess: (job) => setLocation(`/jobs/${job.id}`),
+        onSuccess: (job) => {
+          trackEvent("creation_accepted", { creation_type: "video" });
+          setLocation(`/jobs/${job.id}`);
+        },
         onError: async (err: unknown) => {
           let title = "Generation failed";
           let message = "Something went wrong. Please try again.";
@@ -1330,6 +1391,10 @@ export default function Generate() {
 
     setConfirmOpen(false);
     setImagePackSubmitting(true);
+    trackEvent("creation_started", {
+      creation_type: "image_pack",
+      image_count: effectiveImagePackCount,
+    });
 
     createImagePack.mutate({
       data: {
@@ -1343,6 +1408,7 @@ export default function Generate() {
     }, {
       onSuccess: (job) => {
         setImagePackSubmitting(false);
+        trackEvent("creation_accepted", { creation_type: "image_pack" });
         setLocation(`/jobs/${job.id}`);
       },
       onError: (err: any) => {
@@ -1430,7 +1496,7 @@ export default function Generate() {
     }
   };
 
-  const handleGenerate = () => {
+  const handleGenerate = (): boolean => {
     const errors: {
       prompt?: string;
       audio?: string;
@@ -1505,7 +1571,7 @@ export default function Generate() {
         promptRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
         promptRef.current?.focus();
       }
-      return;
+      return false;
     }
 
     setFieldErrors({});
@@ -1513,7 +1579,7 @@ export default function Generate() {
     // Proactive credit check — use the compounded video + Lip Sync total.
     if (!canAfford) {
       setTopUpOpen(true);
-      return;
+      return false;
     }
 
     if (
@@ -1522,14 +1588,199 @@ export default function Generate() {
       && !refImageObjectPath
     ) {
       setReferenceChoiceOpen(true);
-      return;
+      return false;
     }
 
     openGenerationReview();
+    return true;
   };
+
+  const finishGuide = useCallback(() => {
+    const reviewOpened = handleGenerate();
+    if (!reviewOpened) {
+      // Reveal the underlying advanced flow and any blocking dialog without
+      // permanently completing the guide. Reloading resumes first-run guidance.
+      setGuidedDismissed(true);
+      return;
+    }
+    try { localStorage.setItem("bv-release-guided-dismissed", "true"); } catch {}
+    setGuidedDismissed(true);
+    track("guided_release_completed", { step: guidedStep });
+  }, [guidedStep, handleGenerate]);
 
   return (
     <>
+    {!guidedDismissed && !imagePackMode && isAuthenticated && (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-background/95 p-4 backdrop-blur-xl sm:p-6">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="w-full max-w-2xl rounded-2xl border border-primary/20 bg-card/60 p-6 sm:p-10 shadow-2xl"
+        >
+          <div className="mb-8 flex items-center justify-between">
+            <div>
+              <div className="mb-2 flex gap-2">
+                {[0, 1, 2].map((stepIdx) => (
+                  <div key={stepIdx} className={`h-1.5 w-12 rounded-full ${guidedStep >= stepIdx ? "bg-primary" : "bg-primary/20"}`} />
+                ))}
+              </div>
+              <h2 className="text-2xl font-bold">New Release Project</h2>
+              <p className="text-muted-foreground">Let's set up your first video.</p>
+            </div>
+            <Button variant="ghost" onClick={dismissGuide} className="text-muted-foreground">
+              Skip to advanced
+            </Button>
+          </div>
+
+          {guidedStep === 0 && (
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold">What are you releasing?</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {INTENTS.map((intent) => (
+                  <button
+                    key={intent.id}
+                    onClick={() => {
+                      setAspectRatio(intent.aspect);
+                      setSelectedStyle(intent.style);
+                      handleDurationChange(intent.duration);
+                      setPrompt(intent.prompt);
+                      setQuickStartTemplateId(intent.id);
+                      setGuidedStep(1);
+                    }}
+                    className="flex flex-col items-start gap-3 rounded-xl border border-border/50 bg-background/50 p-4 text-left transition-colors hover:border-primary/50 hover:bg-primary/5"
+                  >
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <intent.icon className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="font-semibold">{intent.label}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">{intent.desc}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {guidedStep === 1 && (
+            <div className="space-y-6">
+              <h3 className="text-lg font-semibold">Add your audio track</h3>
+
+              <Tabs value={sourceType} onValueChange={(v) => setSourceType(v as CreateJobRequestAudioSourceType)}>
+                <TabsList className="mb-4">
+                  <TabsTrigger value={CreateJobRequestAudioSourceType.upload} className="flex gap-2"><Upload className="h-4 w-4"/> Upload</TabsTrigger>
+                  <TabsTrigger value={CreateJobRequestAudioSourceType.suno} className="flex gap-2"><MonitorPlay className="h-4 w-4 text-[#1DB954]"/> Suno Link</TabsTrigger>
+                  <TabsTrigger value={CreateJobRequestAudioSourceType.none} className="flex gap-2"><VideoOff className="h-4 w-4"/> Silent</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value={CreateJobRequestAudioSourceType.upload} className="space-y-4">
+                  {uploadedFileName ? (
+                    <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 p-4">
+                      <div className="flex items-center gap-3">
+                        <CheckCircle2 className="h-5 w-5 text-primary" />
+                        <span className="font-medium">{uploadedFileName}</span>
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={() => { setObjectPath(null); setUploadedFileName(null); setUploadedFile(null); }}>Change</Button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border/60 bg-background/30 p-8 text-center">
+                      <div className="rounded-full bg-primary/10 p-4">
+                        <Upload className="h-6 w-6 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-medium">Upload your track</p>
+                        <p className="text-xs text-muted-foreground">MP3 or MP4 up to 50MB</p>
+                      </div>
+                      <Button onClick={() => fileInputRef.current?.click()} disabled={isUploading}>
+                        {isUploading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : "Select File"}
+                      </Button>
+                    </div>
+                  )}
+                </TabsContent>
+
+                <TabsContent value={CreateJobRequestAudioSourceType.suno} className="space-y-4">
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Paste a Suno song link..."
+                      value={sunoInputUrl}
+                      onChange={(e) => {
+                        setSunoInputUrl(e.target.value);
+                        setSunoResolved(null);
+                        setSunoError(null);
+                      }}
+                      onBlur={handleSunoResolve}
+                    />
+                    <Button variant="outline" onClick={handleSunoResolve} disabled={sunoResolving || !sunoInputUrl.trim()}>
+                      {sunoResolving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Load"}
+                    </Button>
+                  </div>
+                  {sunoResolved && (
+                    <div className="flex items-center gap-2 rounded-lg bg-[#1DB954]/10 p-3 text-sm">
+                      <CheckCircle2 className="h-4 w-4 text-[#1DB954]" />
+                      <span className="font-medium">{sunoResolved.title}</span>
+                    </div>
+                  )}
+                  {sunoError && (
+                    <p className="flex items-center gap-1.5 text-sm text-destructive">
+                      <XCircle className="h-4 w-4 shrink-0" /> {sunoError}
+                    </p>
+                  )}
+                </TabsContent>
+
+                <TabsContent value={CreateJobRequestAudioSourceType.none}>
+                  <div className="rounded-lg border border-border/60 bg-background/30 p-4 text-sm text-muted-foreground">
+                    Your video will have no audio. You can add music later in the Editor.
+                  </div>
+                </TabsContent>
+              </Tabs>
+
+              <div className="flex justify-between border-t border-border/40 pt-6">
+                <Button variant="outline" onClick={() => setGuidedStep(0)}>Back</Button>
+                <Button onClick={() => setGuidedStep(2)} disabled={
+                  (sourceType === CreateJobRequestAudioSourceType.upload && !objectPath) ||
+                  (sourceType === CreateJobRequestAudioSourceType.suno && !sunoResolved)
+                }>
+                  Next step
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {guidedStep === 2 && (
+            <div className="space-y-6">
+              <h3 className="text-lg font-semibold">Describe the visual direction</h3>
+
+              <div className="space-y-2">
+                <Label>Prompt</Label>
+                <Textarea
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  className="min-h-[120px] resize-none"
+                  placeholder="Describe what happens in your video..."
+                />
+              </div>
+
+              <div className="rounded-lg border border-border/50 bg-secondary/30 p-4 text-sm text-muted-foreground">
+                <p><strong>Advanced controls</strong> (Aspect ratio, Engine, Lip Sync, Custom Character) are available in the full editor if needed.</p>
+              </div>
+
+              <div className="flex justify-between border-t border-border/40 pt-6">
+                <Button variant="outline" onClick={() => setGuidedStep(1)}>Back</Button>
+                <Button
+                  className="bg-gradient-electric text-white shadow-glow border-0"
+                  onClick={finishGuide}
+                  disabled={prompt.trim().length < 5}
+                >
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Preview Storyboard
+                </Button>
+              </div>
+            </div>
+          )}
+        </motion.div>
+      </div>
+    )}
+
     <div className="container mx-auto px-4 py-6 sm:py-12 max-w-4xl">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -1659,7 +1910,6 @@ export default function Generate() {
                 onClick={() => applyTemplate(t)}
                 className="inline-flex items-center rounded-full border border-border/60 bg-secondary/40 px-3 py-1.5 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-secondary/70"
               >
-                <span className="mr-1">{t.emoji}</span>
                 {t.label}
               </button>
             ))}
@@ -1690,7 +1940,6 @@ export default function Generate() {
                         : "border-border/60 bg-secondary/40 hover:border-primary/40 hover:bg-secondary/70"
                     }`}
                   >
-                    <span className="mr-1">{p.emoji}</span>
                     {p.label}
                   </button>
                 );

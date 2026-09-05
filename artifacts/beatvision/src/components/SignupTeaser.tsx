@@ -2,6 +2,7 @@ import type { ComponentType, ReactNode } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Play, Sparkles, Scissors, Lock, Wand2, Music, ArrowRight } from "lucide-react";
+import { trackEvent } from "@/lib/analytics";
 
 const SAMPLES = ["/sample1.mp4", "/sample2.mp4", "/sample3.mp4"];
 
@@ -54,12 +55,18 @@ export default function SignupTeaser({ variant }: { variant: "generate" | "remix
           <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight mb-4 leading-tight">{c.title}</h1>
           <p className="text-lg text-muted-foreground mb-8">{c.sub}</p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">
-            <Link href="/register">
+            <Link
+              href="/register"
+              onClick={() => trackEvent("teaser_cta_clicked", { source: variant, destination: "register" })}
+            >
               <Button size="lg" className="w-full sm:w-auto h-12 px-8 text-base bg-gradient-electric text-white shadow-glow border-0 hover:opacity-90">
                 Sign up free <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
             </Link>
-            <Link href="/pricing">
+            <Link
+              href="/pricing"
+              onClick={() => trackEvent("teaser_cta_clicked", { source: variant, destination: "pricing" })}
+            >
               <Button size="lg" variant="outline" className="w-full sm:w-auto h-12 px-8 text-base">
                 See plans
               </Button>
@@ -97,7 +104,10 @@ export default function SignupTeaser({ variant }: { variant: "generate" | "remix
         </div>
 
         <div className="text-center mt-12">
-          <Link href="/register">
+          <Link
+            href="/register"
+            onClick={() => trackEvent("teaser_cta_clicked", { source: variant, destination: "register" })}
+          >
             <Button size="lg" className="bg-gradient-electric text-white shadow-glow border-0 hover:opacity-90">
               Create your free account <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
