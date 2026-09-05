@@ -36,6 +36,7 @@ import {
   shotPlanFingerprint,
 } from "../lib/shotPlan.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { perceptualFingerprint } from "../lib/mediaUniqueness.js";
 import { MAX_LYRICS_LENGTH } from "../lib/lyricLimits.js";
 import { verifyAudioAnalysisReceipt } from "../lib/audioAnalysisReceipt.js";
 import { toCustomerJobView } from "../lib/customerJobView.js";
@@ -108,6 +109,64 @@ type AiJobMeta = {
     }>;
   };
 };
+
+const STRICT_SOURCE_INSPECTION_FAILURE = /Strict source image inspection failed(?: at scene (\d+))?/i;
+const UNREADABLE_SOURCE_MESSAGE =
+  "This stored image could not be read. Replace it before approving the storyboard.";
+
+function isStrictSourceInspectionFailure(errorMessage: string | null | undefined): boolean {
+  return STRICT_SOURCE_INSPECTION_FAILURE.test(errorMessage ?? "");
+}
+
+function strictSourceFailureScene(errorMessage: string | null | undefined): number | null {
+  const match = STRICT_SOURCE_INSPECTION_FAILURE.exec(errorMessage ?? "");
+  if (!match?.[1]) return null;
+  const index = Number(match[1]) - 1;
+  return Number.isInteger(index) && index >= 0 ? index : null;
+}
+
+async function findUnreadableReviewScenes(
+  jobId: string,
+  review: NonNullable<AiJobMeta["imageReview"]>,
+): Promise<number[]> {
+  const assets = await db
+    .select({
+      assetIndex: imageAssetsTable.assetIndex,
+      objectPath: imageAssetsTable.objectPath,
+    })
+    .from(imageAssetsTable)
+    .where(eq(imageAssetsTable.jobId, jobId));
+  const persistedByIndex = new Map(assets.map((asset) => [asset.assetIndex, asset.objectPath]));
+  const indexes = Object.keys(review.scenes)
+    .map(Number)
+    .filter((index) => Number.isInteger(index) && index >= 0)
+    .sort((a, b) => a - b);
+  const failures = new Set<number>();
+  const storage = new ObjectStorageService();
+  let cursor = 0;
+  const inspectNext = async (): Promise<void> => {
+    while (cursor < indexes.length) {
+      const index = indexes[cursor++]!;
+      const scenePath = review.scenes[String(index)]?.canonicalPath;
+      const persistedPath = persistedByIndex.get(index);
+      if (!scenePath || !persistedPath || scenePath !== persistedPath) {
+        failures.add(index);
+        continue;
+      }
+      try {
+        const file = await storage.getObjectEntityFile(scenePath);
+        const [buffer] = await file.download();
+        await perceptualFingerprint(buffer, "image");
+      } catch {
+        failures.add(index);
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(3, Math.max(1, indexes.length)) }, () => inspectNext()),
+  );
+  return [...failures].sort((a, b) => a - b);
+}
 
 // Turn manifest.partialClips (clip index -> raw object storage path, e.g.
 // "/objects/clips/job-xxx/2.mp4") into URLs the frontend can drop straight
@@ -1243,6 +1302,102 @@ router.post("/jobs/:id/retry", async (req, res) => {
           rejectedRequests?: Record<string, unknown>;
         })
       : {};
+  const canInspectRetainedSources =
+    job.status === "failed"
+    && job.jobType === "ai"
+    && retryMeta.imageFirstVersion === 1
+    && retryMeta.refunded === true
+    && Number(retryMeta.imageFirstRefundedCredits ?? 0) > 0
+    && retryMeta.bundledLipSyncEnabled !== true
+    && retryMeta.imageReview?.phase === "approved"
+    && isStrictSourceInspectionFailure(job.errorMessage);
+  if (canInspectRetainedSources) {
+    const errorScene = strictSourceFailureScene(job.errorMessage);
+    const failedIndexes = errorScene === null
+      ? await findUnreadableReviewScenes(jobId, retryMeta.imageReview!)
+      : [errorScene];
+    if (failedIndexes.length === 0) {
+      res.status(409).json({
+        error: "The retained images are readable now. Please try the recovery again or contact support.",
+        code: "SOURCE_IMAGE_INSPECTION_INCONCLUSIVE",
+      });
+      return;
+    }
+    const recovery = await db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select()
+        .from(jobsTable)
+        .where(and(eq(jobsTable.id, jobId), eq(jobsTable.userId, req.user.id)))
+        .limit(1)
+        .for("update");
+      const meta = locked?.manifest && typeof locked.manifest === "object"
+        ? (locked.manifest as AiJobMeta)
+        : {};
+      const review = meta.imageReview;
+      if (
+        !locked
+        || locked.status !== "failed"
+        || !isStrictSourceInspectionFailure(locked.errorMessage)
+        || meta.refunded !== true
+        || review?.phase !== "approved"
+      ) {
+        return null;
+      }
+      const revision = review.revision + 1;
+      const scenes = { ...review.scenes };
+      for (const index of failedIndexes) {
+        const scene = scenes[String(index)];
+        if (!scene) return null;
+        scenes[String(index)] = {
+          ...scene,
+          revision,
+          status: "failed",
+          errorMessage: UNREADABLE_SOURCE_MESSAGE,
+        };
+      }
+      const { approvedRevision: _approvedRevision, ...reviewWithoutApproval } = review;
+      const nextReview = {
+        ...reviewWithoutApproval,
+        phase: "awaiting_approval" as const,
+        revision,
+        scenes,
+      };
+      const resumeCredits = Math.max(0, meta.imageFirstRefundedCredits ?? 0);
+      const [updated] = await tx
+        .update(jobsTable)
+        .set({
+          status: "pending_approval",
+          claimedAt: null,
+          errorMessage: null,
+          manifest: sql`jsonb_set(
+            jsonb_set(
+              COALESCE(${jobsTable.manifest}, '{}'::jsonb),
+              '{imageReview}',
+              ${JSON.stringify(nextReview)}::jsonb
+            ),
+            '{resumeReservationRequired}',
+            to_jsonb(${resumeCredits}::int)
+          )`,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(jobsTable.id, jobId), eq(jobsTable.status, "failed")))
+        .returning();
+      return updated ? { job: updated, resumeCredits } : null;
+    });
+    if (!recovery) {
+      res.status(409).json({
+        error: "This job changed before its image review could be reopened.",
+        code: "SOURCE_IMAGE_RECOVERY_UNAVAILABLE",
+      });
+      return;
+    }
+    res.json({
+      ...toCustomerJobView(recovery.job),
+      resumeCreditsRequired: recovery.resumeCredits,
+      recoveryScenes: failedIndexes.map((index) => index + 1),
+    });
+    return;
+  }
   const canResumeWithRetainedImages =
     job.status === "failed"
     && job.jobType === "ai"

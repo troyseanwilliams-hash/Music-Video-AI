@@ -6,7 +6,10 @@ import { creditsTable, db, imageAssetsTable, jobsTable } from "@workspace/db";
 import { GENERATED_IMAGE_CREDITS_PER_VISUAL } from "../lib/creditCost.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { toCustomerJobView } from "../lib/customerJobView.js";
-import { imageReviewReplacementCredits } from "../lib/imageReviewBilling.js";
+import {
+  imageReviewReplacementCredits,
+  isOwnedUploadObjectPath,
+} from "../lib/imageReviewBilling.js";
 import {
   assertStrictUniqueMedia,
   perceptualFingerprint,
@@ -265,6 +268,9 @@ router.post("/jobs/:id/image-review/source", async (req, res): Promise<void> => 
       return;
     }
     sourcePath = asset.objectPath;
+  } else if (!isOwnedUploadObjectPath(sourcePath, req.user.id)) {
+    res.status(404).json({ error: "Object not found" });
+    return;
   }
   try {
     const file = await storage.getObjectEntityFile(sourcePath!);

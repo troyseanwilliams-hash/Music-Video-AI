@@ -136,6 +136,12 @@ function customerFailureMessage(message?: string | null): {
   headline: string;
   detail: string;
 } {
+  if (/strict source image inspection failed/i.test(message ?? "")) {
+    return {
+      headline: "One scene image needs to be replaced",
+      detail: "A retained image could not be read. Inspect the storyboard to replace only that image; completed clips and credits for unfinished work are preserved.",
+    };
+  }
   if (/automated safety checks/i.test(message ?? "")) {
     return {
       headline: "A scene needs different wording",
@@ -461,7 +467,12 @@ export default function JobStatus() {
     && manifest.refunded === true
     && Number(manifest.imageFirstRefundedCredits ?? 0) > 0
     && manifest.bundledLipSyncEnabled !== true
-    && /duplicate source image content at positions \d+ and \d+/i.test(job.errorMessage ?? "");
+    && (
+      /duplicate source image content at positions \d+ and \d+/i.test(job.errorMessage ?? "")
+      || /strict source image inspection failed/i.test(job.errorMessage ?? "")
+    );
+  const hasUnreadableSourceFailure =
+    /strict source image inspection failed/i.test(job.errorMessage ?? "");
   const storyboard = manifest.storyboard;
   const bundledLipSyncChildId =
     typeof manifest.bundledLipSyncChildId === "string"
@@ -533,7 +544,13 @@ export default function JobStatus() {
     .length;
   const selectedReplacementCost = selectedReviewScenes
     .filter((index) => !blockedReviewIndexes.has(index))
-    .length * GENERATED_IMAGE_CREDITS_PER_VISUAL;
+    .reduce((total, index) => {
+      const scene = imageReview?.scenes?.[String(index)];
+      const isUnreadableStoredImage =
+        scene?.status === "failed"
+        && scene.errorMessage?.startsWith("This stored image could not be read.");
+      return total + (isUnreadableStoredImage ? 0 : GENERATED_IMAGE_CREDITS_PER_VISUAL);
+    }, 0);
   const reviewGallery = galleryImagesData?.assets ?? [];
   const imageSourceLabel: Record<string, string> = {
     original_generation: "Original generation",
@@ -598,7 +615,14 @@ export default function JobStatus() {
           .filter((scene) => scene.status === "failed")
           .map((scene) => scene.index),
       );
-      setReviewMessage("The duplicate scene is being regenerated automatically. Review the replacement when it finishes, then approve the storyboard to resume video creation.");
+      const recoveryScenes = Array.isArray(data.recoveryScenes)
+        ? data.recoveryScenes.filter((scene: unknown): scene is number => Number.isInteger(scene))
+        : [];
+      setReviewMessage(
+        recoveryScenes.length > 0
+          ? `${recoveryScenes.length === 1 ? `Scene ${recoveryScenes[0]}` : `Scenes ${recoveryScenes.join(", ")}`} could not be read. Upload an image, choose one from your gallery, or generate a free replacement, then approve the storyboard to resume.`
+          : "The duplicate scene is being regenerated automatically. Review the replacement when it finishes, then approve the storyboard to resume video creation.",
+      );
     } catch (error) {
       setRetainedImageRetryError(
         error instanceof Error ? error.message : "This job could not be reopened.",
@@ -1358,7 +1382,9 @@ export default function JobStatus() {
                             ) : (
                               <RotateCcw className="mr-2 h-4 w-4" />
                             )}
-                            Retry with retained images
+                            {hasUnreadableSourceFailure
+                              ? "Inspect and replace image"
+                              : "Retry with retained images"}
                           </Button>
                         )}
                         <Button variant="outline" onClick={() => setLocation("/generate")}>

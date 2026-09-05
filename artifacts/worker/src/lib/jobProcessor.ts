@@ -1202,14 +1202,17 @@ async function validateStrictSourceFoundation(
     throw new Error(`${IMAGE_API_FAILURE}: Strict job prepared images are not durably persisted for every segment`);
   }
   const fingerprints = [];
-  for (const path of paths) {
+  for (const shot of shots) {
+    const path = preparedImages[shot.index];
     try {
       const file = await storageService.getObjectEntityFile(path!);
       const [buffer] = await file.download();
       fingerprints.push(await perceptualFingerprint(buffer, "image"));
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      throw new Error(`${IMAGE_API_FAILURE}: Strict source image inspection failed: ${detail}`);
+      throw new Error(
+        `${IMAGE_API_FAILURE}: Strict source image inspection failed at scene ${shot.index + 1}: ${detail}`,
+      );
     }
   }
   try {
