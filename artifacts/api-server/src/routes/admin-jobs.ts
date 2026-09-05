@@ -18,6 +18,7 @@ import {
   prepareDuplicateImageRetry,
 } from "../lib/duplicateImageRetry.js";
 import { canResumeDuplicateClipJob } from "../lib/duplicateClipRetry.js";
+import { imageFirstRetryReservation } from "../lib/imageFirstSettlement.js";
 
 // Billing/salvage state AI jobs stash in the manifest jsonb.
 type AiJobMeta = {
@@ -396,7 +397,10 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
         .where(eq(creditsTable.userId, job.userId))
         .limit(1)
         .for("update");
-      const total = meta.reservedCredits ?? 0;
+      // Image-first failures settle completed work immediately and return only
+      // the unfinished portion. Re-reserve exactly that returned amount so
+      // retained images/clips are never charged twice on an admin recovery.
+      const total = imageFirstRetryReservation(meta);
       const subscriptionDebit = Math.min(credits?.subscriptionCredits ?? 0, total);
       const topupDebit = total - subscriptionDebit;
       if (

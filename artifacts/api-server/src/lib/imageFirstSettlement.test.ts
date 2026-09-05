@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { calculateImageFirstSettlement } from "./imageFirstSettlement.js";
+import {
+  calculateImageFirstSettlement,
+  imageFirstRetryReservation,
+} from "./imageFirstSettlement.js";
 
 const storyboard = {
   shots: [{ index: 0 }, { index: 1 }, { index: 2 }],
@@ -133,5 +136,41 @@ describe("image-first reservation settlement", () => {
     expect(amounts.refundedCredits).toBe(186);
     expect(amounts.subscriptionRefund).toBe(0);
     expect(amounts.topupRefund).toBe(186);
+  });
+
+  it("reserves only the portion returned by a partial image-first settlement", () => {
+    expect(imageFirstRetryReservation({
+      imageFirstVersion: 1,
+      refunded: true,
+      reservedCredits: 7462,
+      imageFirstRefundedCredits: 6475,
+    })).toBe(6475);
+  });
+
+  it("settles a second failure against only the resumed reservation", () => {
+    const amounts = calculateImageFirstSettlement({
+      imageFirstVersion: 1,
+      reservedCredits: 300,
+      reservedSubscriptionCredits: 10,
+      reservedTopupCredits: 190,
+      imageCreditCost: 21,
+      videoCreditCost: 279,
+      imageFirstChargedCredits: 100,
+      narrativeImages: {
+        0: "/objects/retained-0.jpg",
+        1: "/objects/retained-1.jpg",
+        2: "/objects/retained-2.jpg",
+      },
+      storyboard,
+      partialClips: {
+        0: "/objects/resumed-clip-0.mp4",
+        1: "/objects/resumed-clip-1.mp4",
+      },
+    }, 3);
+
+    expect(amounts.chargedCredits).toBe(207);
+    expect(amounts.refundedCredits).toBe(93);
+    expect(amounts.subscriptionRefund).toBe(0);
+    expect(amounts.topupRefund).toBe(93);
   });
 });

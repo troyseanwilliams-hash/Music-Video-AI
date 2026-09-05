@@ -12,6 +12,8 @@ type ImageFirstBillingMeta = {
   reusedSourceImageCount?: number;
   videoCreditCost?: number;
   refunded?: boolean;
+  imageFirstChargedCredits?: number;
+  imageFirstRefundedCredits?: number;
   bundledLipSyncChildId?: string;
   bundledLipSyncActivated?: boolean;
   storyboard?: { shots?: Array<{ index?: number }> };
@@ -32,6 +34,20 @@ export type ImageFirstSettlementAmounts = {
   completedImages: number;
   spentVideoScenes: number;
 };
+
+export function imageFirstRetryReservation(meta: {
+  imageFirstVersion?: number;
+  refunded?: boolean;
+  reservedCredits?: number;
+  imageFirstRefundedCredits?: number;
+}): number {
+  const reserved = Math.max(0, meta.reservedCredits ?? 0);
+  if (meta.imageFirstVersion !== 1 || !meta.refunded) return reserved;
+  return Math.min(
+    reserved,
+    Math.max(0, meta.imageFirstRefundedCredits ?? reserved),
+  );
+}
 
 function zeroSettlementAmounts(): ImageFirstSettlementAmounts {
   return {
@@ -84,20 +100,30 @@ export function calculateImageFirstSettlement(
   const videoCharge = sceneCount > 0
     ? Math.min(videoCreditCost, Math.ceil((videoCreditCost * spentVideoScenes) / sceneCount))
     : 0;
-  const chargedCredits = Math.min(reserved, imageCharge + videoCharge);
+  const cumulativeCharge = Math.min(reserved, imageCharge + videoCharge);
   const originalSubscription = Math.max(
     0,
     meta.reservedSubscriptionCredits
       ?? (meta.reservedTopupCredits === undefined ? reserved : 0),
   );
   const originalTopup = Math.max(0, meta.reservedTopupCredits ?? 0);
+  const currentReservation = Math.min(reserved, originalSubscription + originalTopup);
+  const previouslyCharged = Math.min(
+    reserved,
+    Math.max(0, meta.imageFirstChargedCredits ?? 0),
+  );
+  const newlyCharged = Math.min(
+    currentReservation,
+    Math.max(0, cumulativeCharge - previouslyCharged),
+  );
+  const chargedCredits = Math.min(reserved, previouslyCharged + newlyCharged);
   const subscriptionRefund = Math.max(
     0,
-    originalSubscription - Math.min(chargedCredits, originalSubscription),
+    originalSubscription - Math.min(newlyCharged, originalSubscription),
   );
   const topupRefund = Math.max(
     0,
-    originalTopup - Math.max(0, chargedCredits - originalSubscription),
+    originalTopup - Math.max(0, newlyCharged - originalSubscription),
   );
   return {
     chargedCredits,
