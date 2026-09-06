@@ -1,5 +1,5 @@
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { startAnalytics, trackPageview } from "@/lib/analytics";
 import { ScrollToTop } from "@/components/ScrollToTop";
@@ -49,8 +49,32 @@ import Comparison from "@/pages/comparison";
 import Podcast from "@/pages/podcast";
 
 import TutorialScriptToVideo from "@/pages/tutorial-script-to-video";
+import { useAuth } from "@/hooks/useAuth";
+import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
+
+function AdminOnly({ children }: { children: ReactNode }) {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return user?.isAdmin === true ? children : <NotFound />;
+}
+
+function AdminRoute() {
+  return <AdminOnly><Admin /></AdminOnly>;
+}
+
+function AdminRunwayLipSyncRoute() {
+  return <AdminOnly><AdminRunwayLipSync /></AdminOnly>;
+}
 
 // Fires a pageview on every route change and records time-on-page. Rendered
 // inside the router so it sees wouter's location.
@@ -94,8 +118,8 @@ function Router() {
           <Route path="/jobs/:id" component={JobStatus} />
           <Route path="/pricing" component={Pricing} />
           <Route path="/redeem" component={Redeem} />
-          <Route path="/admin" component={Admin} />
-          <Route path="/admin/runway-lipsync" component={AdminRunwayLipSync} />
+          <Route path="/admin" component={AdminRoute} />
+          <Route path="/admin/runway-lipsync" component={AdminRunwayLipSyncRoute} />
           <Route path="/terms" component={Terms} />
           <Route path="/dmca" component={Dmca} />
           <Route path="/privacy" component={Privacy} />

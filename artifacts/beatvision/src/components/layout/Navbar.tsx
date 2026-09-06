@@ -177,7 +177,7 @@ export function Navbar() {
                         <span>Support</span>
                       </Link>
                     </DropdownMenuItem>
-                    {user.isAdmin && (
+                    {user.isAdmin === true && (
                       <>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem asChild>
