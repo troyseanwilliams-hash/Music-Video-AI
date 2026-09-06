@@ -648,14 +648,19 @@ export function planShots(input: ShotPlanInput): ShotPlan {
   );
   const hasReal = !!(input.analysis?.sections && input.analysis.sections.length > 0);
   const sections = hasReal ? input.analysis!.sections! : fallbackSections(target || durationSec || 60);
-  const numberedScript = generationMode === "montage"
-    ? parseNumberedImagePackScript(input.prompt || "")
-    : null;
+  // Numbered scripts can originate in Prompt Studio's editable, music-aware
+  // planner. Narrative jobs still add continuity/style language around each
+  // item, but must retain the user's exact order and scene concepts rather
+  // than collapsing the script into one prose concept.
+  const numberedScript = parseNumberedImagePackScript(input.prompt || "");
   const concepts = numberedScript?.scenes.length === numClips
     ? numberedScript.scenes
     : splitPromptIntoConcepts(input.prompt || "music video", numClips);
   const orderedStoryConcepts = generationMode === "narrative"
-    ? narrativeScriptConcepts(input.prompt || "music video")
+    ? (
+        numberedScript?.scenes.map((scene) => scene.replace(/[.!?]+$/, ""))
+        ?? narrativeScriptConcepts(input.prompt || "music video")
+      )
     : numberedScript?.scenes.length === numClips
       ? numberedScript.scenes
       : promptConcepts(input.prompt || "music video");

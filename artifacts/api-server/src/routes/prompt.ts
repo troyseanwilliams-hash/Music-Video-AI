@@ -11,7 +11,8 @@ import {
   promptProviderAvailable,
 } from "../lib/promptBuilder.js";
 import { generateLyrics, lyricsProviderAvailable } from "../lib/lyricsGen.js";
-import { planShots } from "../lib/shotPlan.js";
+import { planShots, shotPlanFingerprint } from "../lib/shotPlan.js";
+import { verifyAudioAnalysisReceipt } from "../lib/audioAnalysisReceipt.js";
 import { db, creditsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -150,34 +151,72 @@ const VideoSceneListBody = z.object({
   sceneCount: z.number().int().min(2).max(MAX_SCENE_BUILDER_SCENES).default(6),
   hasReferenceImage: z.boolean().optional(),
   style: z.string().trim().max(40).optional(),
+  audioObjectPath: z.string().startsWith("/objects/").optional(),
+  audioAnalysis: z.record(z.unknown()).optional(),
 });
 
 router.post("/prompt/video-scenes", async (req: Request, res: Response) => {
   if (!guard(req, res)) return;
+  const user = req.user;
+  if (!user) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
   const parsed = VideoSceneListBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid story." });
     return;
   }
   try {
-    const { story, sceneCount, hasReferenceImage, style } = parsed.data;
+    const { story, sceneCount, hasReferenceImage, style, audioObjectPath, audioAnalysis } = parsed.data;
+    const receipt = audioAnalysis?.analysisReceipt;
+    const verifiedAnalysis = audioObjectPath
+      ? verifyAudioAnalysisReceipt({
+          userId: user.id,
+          objectPath: audioObjectPath,
+          analysis: audioAnalysis,
+          receipt,
+        })
+      : null;
+    if (
+      verifiedAnalysis
+      && typeof verifiedAnalysis.durationSeconds === "number"
+      && verifiedAnalysis.durationSeconds > 600
+    ) {
+      res.status(422).json({ error: "Music-aware video planning supports tracks up to 10 minutes." });
+      return;
+    }
+    if (audioObjectPath && !verifiedAnalysis) {
+      res.status(422).json({
+        error: "Audio analysis must be current for the selected soundtrack. Analyze it again before planning.",
+        code: "AUDIO_ANALYSIS_REQUIRED",
+      });
+      return;
+    }
     const plan = planShots({
       prompt: story,
       style: style || "cinematic",
       hasCharacterReference: Boolean(hasReferenceImage),
-      requestedDuration: String(sceneCount * 10),
+      // A verified track is planned across its real full duration, yielding the
+      // exact one-image-per-render-segment count and timings Generate will use.
+      requestedDuration: verifiedAnalysis ? "full" : String(sceneCount * 10),
       generationMode: "narrative",
+      analysis: verifiedAnalysis as never,
     });
     const scenes = plan.shots.map((shot, index) => ({
       number: index + 1,
       title: shot.label,
       imagePrompt: shot.prompt,
+      startTime: shot.startTime,
+      duration: Math.min(plan.clipDurationSec, plan.targetOutputDuration - shot.startTime),
     }));
     res.json({
       mode: "montage",
       scenes,
       script: scenes.map((scene) => `${scene.number}. ${scene.imagePrompt}`).join("\n"),
       sceneCount: scenes.length,
+      exactToAudio: Boolean(verifiedAnalysis),
+      plannerFingerprint: shotPlanFingerprint(plan),
       hasReferenceImage: Boolean(hasReferenceImage),
       source: "generate-planner",
     });

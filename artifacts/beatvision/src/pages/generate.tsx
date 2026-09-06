@@ -484,6 +484,24 @@ export default function Generate() {
     const referenceImagePath = params.get("referenceImagePath");
     if (sceneScript) {
       setPrompt(sceneScript.script);
+      // Prompt Studio only hands over an object path after its analysis
+      // succeeded. We deliberately trigger Generate's normal analysis again:
+      // receipts are short-lived and a planner fingerprint is never trusted
+      // across pages/settings.
+      if (sceneScript.audio) {
+        setSourceType(CreateJobRequestAudioSourceType.upload);
+        setObjectPath(sceneScript.audio.objectPath);
+        setUploadedFileName(sceneScript.audio.title);
+        handleDurationChange(CreateJobRequestRequestedDuration.full);
+      }
+      if (sceneScript.originalStory) {
+        toast({
+          title: "Prompt Studio plan loaded",
+          description: sceneScript.audio
+            ? "Your edited numbered scenes and selected track were loaded. Audio will be re-analyzed before review."
+            : "Your edited numbered scenes were loaded for storyboard review.",
+        });
+      }
     }
     else if (p) setPrompt(p);
     if (referenceImagePath?.startsWith("/objects/")) {

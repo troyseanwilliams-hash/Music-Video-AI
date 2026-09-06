@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -10,9 +10,10 @@ import { LYRICS_BUILD_COST, canAffordCredits } from "@/lib/creditPricing";
 import { saveSceneScriptHandoff } from "@/lib/sceneScriptHandoff";
 import { useGetDashboardStats } from "@workspace/api-client-react";
 import TopUpRequiredDialog from "@/components/TopUpRequiredDialog";
+import { SoundtrackPickerDialog, type PickedSoundtrack } from "@/components/SoundtrackPickerDialog";
 import {
   Sparkles, Music2, Film, FileText, Copy, Check, Loader2, ArrowRight, Wand2, Lightbulb,
-  ListOrdered, ChevronUp, ChevronDown, Plus, Trash2,
+  ListOrdered, ChevronUp, ChevronDown, Plus, Trash2, Upload, X,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
@@ -20,7 +21,9 @@ import {
 
 type AudioResult = { prompt: string; genre: string; mood: string; bpm: number | null; tags: string[]; source: string };
 type LyricsResult = { lyrics: string; source: string };
-type SceneBuilderScene = { number: number; title: string; imagePrompt: string };
+type AudioAnalysis = { durationSeconds: number; analysisReceipt: string; bpm?: number | null; mood?: string | null; sections?: unknown[] };
+type SelectedPlanningAudio = { title: string; objectPath: string; analysis: AudioAnalysis };
+type SceneBuilderScene = { number: number; title: string; imagePrompt: string; startTime?: number; duration?: number };
 type SceneBuilderResult = {
   mode: "montage" | "narrative";
   scenes: SceneBuilderScene[];
@@ -28,6 +31,8 @@ type SceneBuilderResult = {
   sceneCount: number;
   hasReferenceImage: boolean;
   source: string;
+  exactToAudio?: boolean;
+  plannerFingerprint?: string;
 };
 
 const MAX_CREATIVE_PROMPT_LENGTH = 12_000;
@@ -165,6 +170,10 @@ export default function PromptStudio() {
   const [hasReferenceImage, setHasReferenceImage] = useState(false);
   const [sceneBusy, setSceneBusy] = useState(false);
   const [sceneRes, setSceneRes] = useState<SceneBuilderResult | null>(null);
+  const [planningAudio, setPlanningAudio] = useState<SelectedPlanningAudio | null>(null);
+  const [planningAudioBusy, setPlanningAudioBusy] = useState(false);
+  const [planningAudioError, setPlanningAudioError] = useState<string | null>(null);
+  const planningAudioInputRef = useRef<HTMLInputElement>(null);
 
   // Lyrics tab
   const [theme, setTheme] = useState("");
@@ -194,12 +203,57 @@ export default function PromptStudio() {
     try {
       setSceneRes(await postJSON<SceneBuilderResult>("/api/prompt/video-scenes", {
         story,
-        sceneCount: autoSceneCount
+        ...(planningAudio ? {
+          audioObjectPath: planningAudio.objectPath,
+          audioAnalysis: planningAudio.analysis,
+        } : { sceneCount: autoSceneCount
           ? Math.max(3, Math.min(12, Math.round(story.trim().split(/\s+/).length / 45) || 3))
-          : sceneCount,
+          : sceneCount }),
         hasReferenceImage,
       }));
     } catch (err) { fail(err); } finally { setSceneBusy(false); }
+  }
+  async function analyzePlanningAudio(track: PickedSoundtrack) {
+    setPlanningAudioBusy(true);
+    setPlanningAudioError(null);
+    setSceneRes(null);
+    try {
+      const analysis = await postJSON<AudioAnalysis>("/api/audio/analyze", { objectPath: track.objectPath });
+      if (!Number.isFinite(analysis.durationSeconds) || !analysis.analysisReceipt) {
+        throw new Error("Audio analysis did not return a usable duration.");
+      }
+      if (analysis.durationSeconds > 600) {
+        throw new Error("Music-aware video planning supports tracks up to 10 minutes.");
+      }
+      setPlanningAudio({ title: track.title, objectPath: track.objectPath, analysis });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not analyze audio.";
+      setPlanningAudioError(message);
+      fail(err);
+    } finally {
+      setPlanningAudioBusy(false);
+    }
+  }
+  async function uploadPlanningAudio(file: File) {
+    const extension = file.name.toLowerCase().split(".").pop() ?? "";
+    const contentType = file.type || (extension === "mp3" ? "audio/mpeg" : "application/octet-stream");
+    setPlanningAudioBusy(true);
+    setPlanningAudioError(null);
+    setSceneRes(null);
+    try {
+      const upload = await postJSON<{ uploadURL: string; objectPath: string }>("/api/storage/uploads/request-url", {
+        name: file.name, size: file.size, contentType,
+      });
+      const put = await fetch(upload.uploadURL, { method: "PUT", headers: { "Content-Type": contentType }, body: file });
+      if (!put.ok) throw new Error(`Storage upload failed (${put.status}).`);
+      await analyzePlanningAudio({ title: file.name, objectPath: upload.objectPath, url: "" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Audio upload failed.";
+      setPlanningAudioError(message);
+      fail(err);
+    } finally {
+      setPlanningAudioBusy(false);
+    }
   }
   function updateScenes(transform: (scenes: SceneBuilderScene[]) => SceneBuilderScene[]) {
     setSceneRes((current) => {
@@ -217,9 +271,16 @@ export default function PromptStudio() {
     });
   }
   function updateScene(index: number, patch: Partial<Pick<SceneBuilderScene, "title" | "imagePrompt">>) {
-    updateScenes((scenes) => scenes.map((scene, sceneIndex) =>
-      sceneIndex === index ? { ...scene, ...patch } : scene
-    ));
+    setSceneRes((current) => current ? {
+      ...current,
+      plannerFingerprint: undefined,
+      scenes: current.scenes.map((scene, sceneIndex) =>
+        sceneIndex === index ? { ...scene, ...patch } : scene
+      ),
+      script: buildNumberedImageScript(current.scenes.map((scene, sceneIndex) =>
+        sceneIndex === index ? { ...scene, ...patch } : scene
+      )),
+    } : current);
   }
   function moveScene(index: number, direction: -1 | 1) {
     updateScenes((scenes) => {
@@ -356,6 +417,43 @@ export default function PromptStudio() {
               {story.length.toLocaleString()} / {MAX_CREATIVE_PROMPT_LENGTH.toLocaleString()}
             </span>
           </div>
+          <div className="rounded-xl border border-border/60 bg-secondary/20 p-4 space-y-3">
+            <div>
+              <p className="text-sm font-medium">Plan to music <span className="font-normal text-muted-foreground">(optional)</span></p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Choose or upload a track to build the exact full-track scene count and timing from its analyzed sections.
+              </p>
+            </div>
+            {planningAudio ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{planningAudio.title}</p>
+                  <p className="text-xs text-muted-foreground">Analyzed duration: {Math.floor(planningAudio.analysis.durationSeconds / 60)}:{String(Math.round(planningAudio.analysis.durationSeconds % 60)).padStart(2, "0")} · Full track timing</p>
+                </div>
+                <Button type="button" variant="ghost" size="sm" onClick={() => { setPlanningAudio(null); setSceneRes(null); }}>
+                  <X className="mr-1 h-3.5 w-3.5" /> Remove
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                <SoundtrackPickerDialog onSelect={analyzePlanningAudio}>
+                  <Button type="button" variant="outline" size="sm" disabled={planningAudioBusy}>
+                    <Music2 className="mr-1.5 h-3.5 w-3.5" /> Choose soundtrack
+                  </Button>
+                </SoundtrackPickerDialog>
+                <Button type="button" variant="outline" size="sm" disabled={planningAudioBusy} onClick={() => planningAudioInputRef.current?.click()}>
+                  <Upload className="mr-1.5 h-3.5 w-3.5" /> Upload audio
+                </Button>
+                <input ref={planningAudioInputRef} type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac" className="hidden" onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.currentTarget.value = "";
+                  if (file) void uploadPlanningAudio(file);
+                }} />
+              </div>
+            )}
+            {planningAudioBusy && <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Uploading and analyzing audio…</p>}
+            {planningAudioError && <p className="text-xs text-destructive">{planningAudioError}</p>}
+          </div>
 
           <div className="grid gap-3 rounded-xl border border-border/60 bg-secondary/20 p-4 sm:grid-cols-2">
             <div className="space-y-2">
@@ -427,6 +525,7 @@ export default function PromptStudio() {
                       : <>One still image, moment, and setting per scene.
                         {sceneRes.hasReferenceImage ? " Character scenes use the attached reference image." : ""}</>}
                   </p>
+                  {sceneRes.exactToAudio && <p className="mt-1 text-xs font-medium text-primary">Exact full-track timing · {planningAudio ? `${Math.floor(planningAudio.analysis.durationSeconds / 60)}:${String(Math.round(planningAudio.analysis.durationSeconds % 60)).padStart(2, "0")}` : "analyzed audio"}</p>}
                 </div>
                 <span className={`text-xs tabular-nums ${sceneScript.length > MAX_CREATIVE_PROMPT_LENGTH ? "font-medium text-destructive" : "text-muted-foreground"}`}>
                   {sceneScript.length.toLocaleString()} / {MAX_CREATIVE_PROMPT_LENGTH.toLocaleString()}
@@ -449,6 +548,11 @@ export default function PromptStudio() {
                       <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
                         {index + 1}
                       </span>
+                      {sceneRes.exactToAudio && typeof scene.startTime === "number" && (
+                        <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                          {Math.floor(scene.startTime / 60)}:{String(Math.round(scene.startTime % 60)).padStart(2, "0")} · {Math.round(scene.duration ?? 0)}s
+                        </span>
+                      )}
                       <Input
                         value={scene.title}
                         maxLength={70}
@@ -461,7 +565,7 @@ export default function PromptStudio() {
                         variant="ghost"
                         size="icon"
                         onClick={() => moveScene(index, -1)}
-                        disabled={index === 0}
+                        disabled={index === 0 || sceneRes.exactToAudio}
                         aria-label={`Move scene ${index + 1} up`}
                       >
                         <ChevronUp className="h-4 w-4" />
@@ -471,7 +575,7 @@ export default function PromptStudio() {
                         variant="ghost"
                         size="icon"
                         onClick={() => moveScene(index, 1)}
-                        disabled={index === sceneRes.scenes.length - 1}
+                        disabled={index === sceneRes.scenes.length - 1 || sceneRes.exactToAudio}
                         aria-label={`Move scene ${index + 1} down`}
                       >
                         <ChevronDown className="h-4 w-4" />
@@ -481,7 +585,7 @@ export default function PromptStudio() {
                         variant="ghost"
                         size="icon"
                         onClick={() => updateScenes((scenes) => scenes.filter((_, sceneIndex) => sceneIndex !== index))}
-                        disabled={sceneRes.scenes.length <= 2}
+                        disabled={sceneRes.scenes.length <= 2 || sceneRes.exactToAudio}
                         aria-label={`Delete scene ${index + 1}`}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -507,7 +611,7 @@ export default function PromptStudio() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={sceneRes.scenes.length >= 20}
+                  disabled={sceneRes.scenes.length >= 20 || sceneRes.exactToAudio}
                   onClick={() => updateScenes((scenes) => [
                     ...scenes,
                     { number: scenes.length + 1, title: `Scene ${scenes.length + 1}`, imagePrompt: "" },
@@ -521,7 +625,27 @@ export default function PromptStudio() {
                   size="sm"
                   disabled={!sceneScriptValid}
                   onClick={() => {
-                     if (!saveSceneScriptHandoff({ mode: "narrative", script: story.trim() })) {
+                     if (!saveSceneScriptHandoff({
+                       mode: "montage",
+                       script: sceneScript,
+                       originalStory: story.trim(),
+                       ...(planningAudio ? {
+                         audio: {
+                           title: planningAudio.title,
+                           objectPath: planningAudio.objectPath,
+                           durationSeconds: planningAudio.analysis.durationSeconds,
+                         },
+                       } : {}),
+                       ...(sceneRes.plannerFingerprint ? {
+                         planner: {
+                           fingerprint: sceneRes.plannerFingerprint,
+                           settings: {
+                             hasReferenceImage,
+                             requestedDuration: planningAudio ? "full" : undefined,
+                           },
+                         },
+                       } : {}),
+                     })) {
                        fail(new Error("The short story does not fit the Creative Prompt field."));
                       return;
                     }
@@ -537,7 +661,9 @@ export default function PromptStudio() {
                 </p>
               )}
               <p className="text-xs text-muted-foreground">
-                This is a planning preview. Generate will rebuild the final chronological scene list from your original story after the music and duration are known.
+                {sceneRes.exactToAudio
+                  ? "This music-aware plan is timed to the analyzed full track. Your edited numbered prompts are carried into Generate for review."
+                  : "This is an approximate planning preview. Add music to plan the exact full-track count and timing."}
               </p>
             </div>
           )}
