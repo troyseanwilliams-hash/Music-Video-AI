@@ -184,25 +184,25 @@ export default function Home() {
                 whileInView={{ opacity: 1, scale: 1 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.8 }}
-                className="relative h-[600px] rounded-3xl border border-white/10 bg-black/50 p-6 flex flex-col justify-center overflow-hidden shadow-2xl"
+                className="relative min-h-[430px] md:h-[600px] rounded-3xl border border-white/10 bg-black/50 p-3 sm:p-5 md:p-6 flex flex-col justify-center overflow-hidden shadow-2xl"
               >
                 <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-[size:24px_24px]" />
 
                 <div className="relative z-10 space-y-6">
-                  <div className="rounded-xl border border-white/10 bg-[#07070a] shadow-xl overflow-hidden transform -rotate-2 hover:rotate-0 transition-transform duration-500">
-                    <div className="flex items-center justify-between border-b border-white/10 bg-white/5 px-4 py-3">
-                      <span className="text-sm font-semibold">1. Visual Blueprint</span>
+                  <div className="rounded-xl border border-white/10 bg-[#07070a] shadow-xl overflow-hidden md:transform md:-rotate-2 md:hover:rotate-0 transition-transform duration-500">
+                    <div className="flex items-center justify-between gap-2 border-b border-white/10 bg-white/5 px-3 sm:px-4 py-3">
+                      <span className="text-xs sm:text-sm font-semibold whitespace-nowrap">1. Visual Blueprint</span>
                       <span className="rounded-full bg-primary/20 px-2 py-0.5 text-[10px] text-primary">Pending Approval</span>
                     </div>
-                    <img src="/narrative-gen-preview.png" alt="Storyboard preview" className="w-full h-auto opacity-80 hover:opacity-100 transition-opacity" />
+                    <img src="/narrative-gen-preview.png" alt="Storyboard preview" className="w-full h-[150px] sm:h-[180px] md:h-[190px] object-cover object-top opacity-80 hover:opacity-100 transition-opacity" />
                   </div>
 
-                  <div className="rounded-xl border border-white/10 bg-[#07070a] shadow-xl overflow-hidden transform translate-x-8 rotate-1 hover:rotate-0 transition-transform duration-500">
-                     <div className="flex items-center justify-between border-b border-white/10 bg-white/5 px-4 py-3">
-                      <span className="text-sm font-semibold">2. Final Render</span>
+                  <div className="rounded-xl border border-white/10 bg-[#07070a] shadow-xl overflow-hidden md:transform md:translate-x-8 md:rotate-1 md:hover:rotate-0 transition-transform duration-500 md:max-w-[calc(100%-2rem)]">
+                     <div className="flex items-center justify-between gap-2 border-b border-white/10 bg-white/5 px-3 sm:px-4 py-3">
+                      <span className="text-xs sm:text-sm font-semibold whitespace-nowrap">2. Final Render</span>
                       <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[10px] text-accent">Processing</span>
                     </div>
-                    <img src="/narrative-gen-processing.png" alt="Render processing" className="w-full h-auto opacity-80 hover:opacity-100 transition-opacity" />
+                    <img src="/narrative-gen-processing.png" alt="Render processing" className="w-full h-[150px] sm:h-[180px] md:h-[190px] object-cover object-top opacity-80 hover:opacity-100 transition-opacity" />
                   </div>
                 </div>
               </motion.div>
