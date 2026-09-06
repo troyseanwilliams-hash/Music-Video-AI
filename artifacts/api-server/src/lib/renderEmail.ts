@@ -179,8 +179,19 @@ export async function notifyAdminRenderFailed(job: RenderEmailJob, reason: strin
   }
 }
 
+export function shouldSuppressCustomerFailureEmail(reason: string): boolean {
+  return /Strict source image inspection failed/i.test(reason);
+}
+
 /** Emails the job owner that their render permanently failed. Never throws. */
-export async function notifyRenderFailed(job: RenderEmailJob, _reason: string): Promise<void> {
+export async function notifyRenderFailed(job: RenderEmailJob, reason: string): Promise<void> {
+  if (shouldSuppressCustomerFailureEmail(reason)) {
+    logger.info(
+      { jobId: job.id },
+      "Customer failure email suppressed while source-image recovery is available",
+    );
+    return;
+  }
   try {
     const [user] = await db
       .select({ email: usersTable.email, notifyOnComplete: usersTable.notifyOnComplete })
