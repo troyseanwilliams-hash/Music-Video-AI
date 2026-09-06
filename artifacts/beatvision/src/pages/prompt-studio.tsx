@@ -19,7 +19,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 type AudioResult = { prompt: string; genre: string; mood: string; bpm: number | null; tags: string[]; source: string };
-type VideoResult = { prompt: string; negativePrompt: string; source: string };
 type LyricsResult = { lyrics: string; source: string };
 type SceneBuilderScene = { number: number; title: string; imagePrompt: string };
 type SceneBuilderResult = {
@@ -154,22 +153,13 @@ export default function PromptStudio() {
   const { user, isAuthenticated, isLoading } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const isAdmin = user?.isAdmin ?? false;
-
   // Audio tab
   const [audioDesc, setAudioDesc] = useState("");
   const [audioBusy, setAudioBusy] = useState(false);
   const [audioRes, setAudioRes] = useState<AudioResult | null>(null);
 
-  // Video tab
-  const [videoDesc, setVideoDesc] = useState("");
-  const [videoStyle, setVideoStyle] = useState("");
-  const [videoBusy, setVideoBusy] = useState(false);
-  const [videoRes, setVideoRes] = useState<VideoResult | null>(null);
-
-  // Scene Builder tab
+  // Video scene builder
   const [story, setStory] = useState("");
-  const [sceneMode, setSceneMode] = useState<"montage" | "narrative">("narrative");
   const [sceneCount, setSceneCount] = useState(6);
   const [autoSceneCount, setAutoSceneCount] = useState(true);
   const [hasReferenceImage, setHasReferenceImage] = useState(false);
@@ -198,22 +188,15 @@ export default function PromptStudio() {
       setAudioRes(await postJSON<AudioResult>("/api/prompt/audio", { description: audioDesc }));
     } catch (err) { fail(err); } finally { setAudioBusy(false); }
   }
-  async function buildVideo() {
-    if (videoDesc.trim().length < 2) return;
-    setVideoBusy(true);
-    try {
-      setVideoRes(await postJSON<VideoResult>("/api/prompt/video", { description: videoDesc, style: videoStyle || undefined }));
-    } catch (err) { fail(err); } finally { setVideoBusy(false); }
-  }
   async function buildScenes() {
     if (story.trim().length < 2) return;
     setSceneBusy(true);
     try {
       setSceneRes(await postJSON<SceneBuilderResult>("/api/prompt/scene-builder", {
         story,
-        mode: isAdmin ? sceneMode : "narrative",
+        mode: "montage",
         sceneCount: autoSceneCount ? undefined : sceneCount,
-        hasReferenceImage: isAdmin && sceneMode === "montage" ? hasReferenceImage : false,
+        hasReferenceImage,
       }));
     } catch (err) { fail(err); } finally { setSceneBusy(false); }
   }
@@ -301,16 +284,15 @@ export default function PromptStudio() {
           Prompt
         </h1>
         <p className="text-muted-foreground mt-2 text-sm sm:text-base max-w-xl mx-auto">
-          Describe what you want in plain words — we'll turn it into a ready-to-use prompt. The soundtrack &amp; video
-          prompt builders are free; writing full lyrics costs {LYRICS_BUILD_COST} credits.
+          Describe what you want in plain words — we'll turn it into a ready-to-use prompt. The soundtrack and video
+          scene builders are free; writing full lyrics costs {LYRICS_BUILD_COST} credits.
         </p>
       </div>
 
       <Tabs defaultValue="audio" className="w-full">
-        <TabsList className="grid h-auto w-full grid-cols-2 sm:grid-cols-4">
+        <TabsList className="grid h-auto w-full grid-cols-3">
           <TabsTrigger value="audio"><Music2 className="mr-1.5 h-4 w-4" /> Soundtrack</TabsTrigger>
           <TabsTrigger value="video"><Film className="mr-1.5 h-4 w-4" /> Video</TabsTrigger>
-          <TabsTrigger value="scenes"><ListOrdered className="mr-1.5 h-4 w-4" /> Scenes</TabsTrigger>
           <TabsTrigger value="lyrics"><FileText className="mr-1.5 h-4 w-4" /> Lyrics</TabsTrigger>
         </TabsList>
 
@@ -349,76 +331,17 @@ export default function PromptStudio() {
           )}
         </TabsContent>
 
-        {/* Video */}
+        {/* Video scene builder */}
         <TabsContent value="video" className="space-y-4 pt-4">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <label className="text-sm font-medium">Describe the scene</label>
-            <PresetMenu items={VIDEO_SAMPLES} onPick={setVideoDesc} label="Need inspiration?" />
-          </div>
-          <Textarea
-            value={videoDesc}
-            onChange={(e) => setVideoDesc(e.target.value)}
-            placeholder="e.g. a lone astronaut discovering a glowing forest on an alien planet at dusk"
-            className="min-h-[90px]"
-          />
-          <Input value={videoStyle} onChange={(e) => setVideoStyle(e.target.value)} placeholder="Optional style — cinematic, anime, neon, vintage…" className="max-w-xs" />
-          <div>
-            <Button onClick={buildVideo} disabled={videoBusy || videoDesc.trim().length < 2} className="bg-gradient-electric text-white border-0">
-              {videoBusy ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Building…</> : <><Wand2 className="mr-2 h-4 w-4" /> Build video prompt</>}
-            </Button>
-          </div>
-
-          {videoRes && (
-            <div className="rounded-xl border border-border/60 bg-secondary/30 p-4 space-y-3">
-              <p className="text-sm leading-relaxed">{videoRes.prompt}</p>
-              {videoRes.negativePrompt && (
-                <p className="text-xs text-muted-foreground"><span className="font-medium">Avoid:</span> {videoRes.negativePrompt}</p>
-              )}
-              <div className="flex flex-wrap gap-2 pt-1">
-                <CopyButton text={videoRes.prompt} />
-                <Button size="sm" onClick={() => setLocation(`/generate?prompt=${encodeURIComponent(videoRes.prompt)}`)}>
-                  Use in Generate <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </div>
-          )}
-        </TabsContent>
-
-        {/* Scene Builder */}
-        <TabsContent value="scenes" className="space-y-4 pt-4">
-          <div className="grid grid-cols-2 gap-2 rounded-xl border border-border/60 bg-secondary/20 p-1.5">
-            {([
-              ["narrative", "Narrative Story", "One cohesive story; Generate derives the scenes."],
-              ["montage", "Visual Montage", "An editable ordered source-image plan."],
-            ] as const).filter(([mode]) => mode === "narrative" || isAdmin).map(([mode, label, description]) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => {
-                  setSceneMode(mode);
-                  setSceneRes(null);
-                }}
-                className={`rounded-lg px-3 py-2.5 text-left transition-colors ${
-                  sceneMode === mode
-                    ? "bg-background text-foreground shadow-sm ring-1 ring-primary/30"
-                    : "text-muted-foreground hover:bg-background/60"
-                }`}
-              >
-                <span className="block text-sm font-semibold">{label}</span>
-                <span className="mt-0.5 block text-[11px] leading-relaxed">{description}</span>
-              </button>
-            ))}
-          </div>
           <div>
             <label htmlFor="scene-builder-story" className="text-sm font-medium">
-              {sceneMode === "narrative" ? "Describe your story or premise" : "Describe the montage"}
+              Describe your video story
             </label>
             <p className="mt-1 text-xs text-muted-foreground">
-              {sceneMode === "narrative"
-                ? "We’ll shape it into one cohesive story. Generate will derive pacing and chronological scenes after you choose the music and duration."
-                : "We’ll split it into concise, ordered image prompts that you can edit before Generate."}
+              We’ll turn it into a chronological, bulleted scene list that you can edit before using it in Generate.
             </p>
           </div>
+          <PresetMenu items={VIDEO_SAMPLES} onPick={setStory} label="Need inspiration?" />
           <Textarea
             id="scene-builder-story"
             value={story}
@@ -433,7 +356,6 @@ export default function PromptStudio() {
             </span>
           </div>
 
-          {sceneMode === "montage" && (
           <div className="grid gap-3 rounded-xl border border-border/60 bg-secondary/20 p-4 sm:grid-cols-2">
             <div className="space-y-2">
               <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
@@ -480,7 +402,6 @@ export default function PromptStudio() {
               </label>
             </div>
           </div>
-          )}
 
           <Button
             onClick={buildScenes}
@@ -489,7 +410,7 @@ export default function PromptStudio() {
           >
             {sceneBusy
               ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Building scenes…</>
-               : <><Wand2 className="mr-2 h-4 w-4" /> Build {sceneMode === "narrative" ? "story" : "scene plan"}</>}
+               : <><Wand2 className="mr-2 h-4 w-4" /> Build scene list</>}
           </Button>
 
           {sceneRes && (
