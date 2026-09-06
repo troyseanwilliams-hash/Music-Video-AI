@@ -13,7 +13,7 @@ import TopUpRequiredDialog from "@/components/TopUpRequiredDialog";
 import { SoundtrackPickerDialog, type PickedSoundtrack } from "@/components/SoundtrackPickerDialog";
 import {
   Sparkles, Music2, Film, FileText, Copy, Check, Loader2, ArrowRight, Wand2, Lightbulb,
-  ListOrdered, ChevronUp, ChevronDown, Plus, Trash2, Upload, X,
+  ListOrdered, ChevronUp, ChevronDown, Plus, Trash2, Upload, X, Link2,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
@@ -173,6 +173,7 @@ export default function PromptStudio() {
   const [planningAudio, setPlanningAudio] = useState<SelectedPlanningAudio | null>(null);
   const [planningAudioBusy, setPlanningAudioBusy] = useState(false);
   const [planningAudioError, setPlanningAudioError] = useState<string | null>(null);
+  const [planningSunoUrl, setPlanningSunoUrl] = useState("");
   const planningAudioInputRef = useRef<HTMLInputElement>(null);
 
   // Lyrics tab
@@ -236,7 +237,14 @@ export default function PromptStudio() {
   }
   async function uploadPlanningAudio(file: File) {
     const extension = file.name.toLowerCase().split(".").pop() ?? "";
-    const contentType = file.type || (extension === "mp3" ? "audio/mpeg" : "application/octet-stream");
+    const contentType =
+      file.type && file.type !== "application/octet-stream"
+        ? file.type
+        : extension === "mp4"
+          ? "video/mp4"
+          : extension === "mp3"
+            ? "audio/mpeg"
+            : file.type || "application/octet-stream";
     setPlanningAudioBusy(true);
     setPlanningAudioError(null);
     setSceneRes(null);
@@ -249,6 +257,26 @@ export default function PromptStudio() {
       await analyzePlanningAudio({ title: file.name, objectPath: upload.objectPath, url: "" });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Audio upload failed.";
+      setPlanningAudioError(message);
+      fail(err);
+    } finally {
+      setPlanningAudioBusy(false);
+    }
+  }
+  async function importPlanningSunoTrack() {
+    if (!planningSunoUrl.trim() || planningAudioBusy) return;
+    setPlanningAudioBusy(true);
+    setPlanningAudioError(null);
+    setSceneRes(null);
+    try {
+      const imported = await postJSON<{ objectPath: string; url: string; title: string }>(
+        "/api/audio/import-from-link",
+        { url: planningSunoUrl.trim() },
+      );
+      await analyzePlanningAudio(imported);
+      setPlanningSunoUrl("");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not import the Suno track.";
       setPlanningAudioError(message);
       fail(err);
     } finally {
@@ -444,11 +472,43 @@ export default function PromptStudio() {
                 <Button type="button" variant="outline" size="sm" disabled={planningAudioBusy} onClick={() => planningAudioInputRef.current?.click()}>
                   <Upload className="mr-1.5 h-3.5 w-3.5" /> Upload audio
                 </Button>
-                <input ref={planningAudioInputRef} type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac" className="hidden" onChange={(event) => {
+                <input ref={planningAudioInputRef} type="file" accept="audio/*,video/mp4,.mp3,.mp4,.wav,.m4a,.aac,.ogg,.flac" className="hidden" onChange={(event) => {
                   const file = event.target.files?.[0];
                   event.currentTarget.value = "";
                   if (file) void uploadPlanningAudio(file);
                 }} />
+              </div>
+            )}
+            {!planningAudio && (
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  type="url"
+                  value={planningSunoUrl}
+                  onChange={(event) => setPlanningSunoUrl(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void importPlanningSunoTrack();
+                    }
+                  }}
+                  placeholder="Paste a Suno song link…"
+                  aria-label="Suno song link"
+                  disabled={planningAudioBusy}
+                  className="min-w-0 flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={planningAudioBusy || !planningSunoUrl.trim()}
+                  onClick={() => void importPlanningSunoTrack()}
+                  className="sm:self-center"
+                >
+                  {planningAudioBusy
+                    ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                    : <Link2 className="mr-1.5 h-3.5 w-3.5" />}
+                  Import Suno
+                </Button>
               </div>
             )}
             {planningAudioBusy && <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Uploading and analyzing audio…</p>}
