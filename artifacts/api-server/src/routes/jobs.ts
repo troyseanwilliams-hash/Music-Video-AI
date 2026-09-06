@@ -1751,6 +1751,35 @@ router.post("/jobs/:id/cancel", async (req, res) => {
   res.json({ ok: true, refunded });
 });
 
+// Cancel every queued or active browser-preview backfill owned by the signed-in
+// user. Preview jobs never reserve credits, so this is status-only cancellation.
+router.post("/jobs/preview-backfills/cancel-all", async (req, res) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const IN_PROGRESS = ["queued", "analyzing", "generating", "stitching"] as const;
+  const canceled = await db
+    .update(jobsTable)
+    .set({
+      status: "failed",
+      errorMessage: "Preview canceled by you",
+      claimedAt: null,
+      updatedAt: new Date(),
+    })
+    .where(and(
+      eq(jobsTable.userId, req.user.id),
+      eq(jobsTable.jobType, "preview_backfill"),
+      inArray(jobsTable.status, IN_PROGRESS),
+    ))
+    .returning({ id: jobsTable.id });
+  req.log.info(
+    { userId: req.user.id, canceledPreviewJobs: canceled.length },
+    "User canceled all preview backfill jobs",
+  );
+  res.json({ ok: true, canceled: canceled.length });
+});
+
 const RemixBody = z.object({
   clipIndexes: z.array(z.number().int().min(0)).min(1).max(64),
   style: z

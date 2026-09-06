@@ -66,6 +66,9 @@ router.get("/dashboard/stats", async (req, res) => {
       jobType: j.jobType,
       createdAt: j.createdAt,
     }));
+  const activePreviewJobs = allJobs.filter(
+    (j) => j.jobType === "preview_backfill" && IN_PROGRESS.includes(j.status),
+  ).length;
 
   let creditsRemaining = 10;
   let subscriptionCredits = 10;
@@ -106,6 +109,7 @@ router.get("/dashboard/stats", async (req, res) => {
     topupCredits,
     recentJobs,
     activeJobs,
+    activePreviewJobs,
   });
 });
 

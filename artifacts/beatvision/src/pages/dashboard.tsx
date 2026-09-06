@@ -11,6 +11,7 @@ import ReferEarnCard from "@/components/ReferEarnCard";
 import { Switch } from "@/components/ui/switch";
 import { useQuery } from "@tanstack/react-query";
 import { getDailyContent, type DailyItemType } from "@/lib/dailyContent";
+import { useToast } from "@/hooks/use-toast";
 
 const LOW_CREDIT_THRESHOLD = 60; // ≈ one 10s video left
 
@@ -64,6 +65,7 @@ export default function Dashboard() {
     setWelcomeDismissed(true);
   };
   const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   // Delete a video straight from the dashboard. Soft-deletes it (removed from
   // the dashboard, library and gallery); refresh stats so it disappears here.
@@ -87,10 +89,46 @@ export default function Dashboard() {
     setCancelingId(jobId);
     try {
       const r = await fetch(`/api/jobs/${jobId}/cancel`, { method: "POST", credentials: "include" });
-      if (!r.ok) throw new Error("cancel failed");
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error || "Could not cancel this job.");
+      }
       await queryClient.invalidateQueries({ queryKey: getGetDashboardStatsQueryKey() });
-    } catch {
-      // silently ignore
+      toast({ title: "Job stopped" });
+    } catch (error) {
+      toast({
+        title: "Could not stop the job",
+        description: error instanceof Error ? error.message : "Try again in a moment.",
+        variant: "destructive",
+      });
+    } finally {
+      setCancelingId(null);
+    }
+  }
+
+  async function handleCancelAllPreviews() {
+    if (!window.confirm("Stop all queued and active browser preview jobs? Your completed master videos will be kept.")) return;
+    setCancelingId("all-preview-backfills");
+    try {
+      const r = await fetch("/api/jobs/preview-backfills/cancel-all", {
+        method: "POST",
+        credentials: "include",
+      });
+      const body = await r.json().catch(() => ({})) as { error?: string; canceled?: number };
+      if (!r.ok) throw new Error(body.error || "Could not stop preview jobs.");
+      await queryClient.invalidateQueries({ queryKey: getGetDashboardStatsQueryKey() });
+      toast({
+        title: "Preview jobs stopped",
+        description: body.canceled
+          ? `${body.canceled} preview job${body.canceled === 1 ? "" : "s"} canceled. Your master videos were kept.`
+          : "No running preview jobs remained.",
+      });
+    } catch (error) {
+      toast({
+        title: "Could not stop preview jobs",
+        description: error instanceof Error ? error.message : "Try again in a moment.",
+        variant: "destructive",
+      });
     } finally {
       setCancelingId(null);
     }
@@ -137,6 +175,7 @@ export default function Dashboard() {
   const activeJobs = ((stats as unknown as { activeJobs?: Array<{
     id: string; prompt: string | null; status: string; progressPercent: number | null; jobType?: string | null;
   }> })?.activeJobs) ?? [];
+  const activePreviewJobs = (stats as unknown as { activePreviewJobs?: number })?.activePreviewJobs ?? 0;
 
   // Render-finished email preference.
   const { data: prefs } = useQuery({
@@ -360,14 +399,32 @@ export default function Dashboard() {
 
           {activeJobs.length > 0 && (
             <div className="mb-8">
-              <h2 className="mb-4 flex items-center gap-2 text-2xl font-semibold">
-                <Loader2 className="h-5 w-5 animate-spin text-primary" /> Processing
-              </h2>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="flex items-center gap-2 text-2xl font-semibold">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" /> Processing
+                </h2>
+                {activePreviewJobs > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    disabled={cancelingId === "all-preview-backfills"}
+                    onClick={handleCancelAllPreviews}
+                  >
+                    {cancelingId === "all-preview-backfills"
+                      ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      : <X className="mr-2 h-4 w-4" />}
+                    Stop All Preview Jobs ({activePreviewJobs})
+                  </Button>
+                )}
+              </div>
               <div className="space-y-3">
                 {activeJobs.map((j) => {
                   const pct = typeof j.progressPercent === "number" ? j.progressPercent : null;
-                  const label =
-                     j.status === "pending_approval" ? "Gen Preview · Review required"
+                   const label =
+                      j.jobType === "preview_backfill"
+                        ? j.status === "queued" ? "Browser preview queued" : "Creating browser preview"
+                     : j.status === "pending_approval" ? "Gen Preview · Review required"
                     : j.status === "queued" ? "Queued"
                     : j.status === "analyzing" ? "Analyzing audio"
                     : j.status === "generating" ? "Generating clips"
@@ -378,7 +435,11 @@ export default function Dashboard() {
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium">
-                            {j.prompt || (j.jobType === "editor_render" ? "Montage Studio export" : "AI video")}
+                            {j.prompt || (
+                              j.jobType === "preview_backfill"
+                                ? "Optimized browser preview"
+                                : j.jobType === "editor_render" ? "Montage Studio export" : "AI video"
+                            )}
                           </p>
                           <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                             <Loader2 className="h-3 w-3 animate-spin text-primary" /> {label}{pct !== null ? ` · ${pct}%` : ""}
