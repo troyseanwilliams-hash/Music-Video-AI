@@ -2,13 +2,37 @@ import { Router } from "express";
 import { randomUUID } from "crypto";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
 import { analyzeAudioBuffer } from "../lib/audioAnalysis.js";
-import { resolveSunoUrl } from "../lib/sunoResolver.js";
+import { fetchTrustedSunoCdn, isCanonicalSunoShareUrl, resolveSunoUrl } from "../lib/sunoResolver.js";
 import { signAudioAnalysisReceipt } from "../lib/audioAnalysisReceipt.js";
 import { and, eq, isNull } from "drizzle-orm";
 import { db, soundtracksTable } from "@workspace/db";
 
 const router = Router();
 const storageService = new ObjectStorageService();
+const MAX_IMPORTED_AUDIO_BYTES = 50 * 1024 * 1024;
+
+export async function readBoundedAudio(response: Response): Promise<Buffer> {
+  const contentLength = Number(response.headers.get("content-length") ?? "0");
+  if (Number.isFinite(contentLength) && contentLength > MAX_IMPORTED_AUDIO_BYTES) {
+    throw new Error("Imported audio is too large.");
+  }
+  if (!response.body) throw new Error("Imported audio has no content.");
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_IMPORTED_AUDIO_BYTES) throw new Error("Imported audio is too large.");
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks);
+}
 
 // Import audio from a Suno (fully supported) or YouTube link into object
 // storage so it can be used like an uploaded track — powers "Add from link"
@@ -20,15 +44,11 @@ router.post("/audio/import-from-link", async (req, res) => {
   }
   const rawUrl = String((req.body as Record<string, unknown>)?.url ?? "").trim();
   if (!rawUrl) {
-    res.status(400).json({ error: "A Suno or YouTube link is required." });
+    res.status(400).json({ error: "A Suno song link is required." });
     return;
   }
 
-  const isSuno = /suno\.(?:com|ai)\/song\//i.test(rawUrl);
-  const isYouTube = /(?:youtube\.com\/watch|youtu\.be\/|music\.youtube\.com)/i.test(rawUrl);
-  // A direct audio file link (e.g. a track generated on Digital Drift, or any
-  // hosted mp3/wav). Lets partner sites hand a song straight into the editor.
-  const isDirectAudio = /^https?:\/\/.+\.(?:mp3|wav|m4a|ogg|aac|flac)(?:\?.*)?$/i.test(rawUrl);
+  const isSuno = isCanonicalSunoShareUrl(rawUrl);
 
   try {
     let audioUrl: string;
@@ -38,34 +58,62 @@ router.post("/audio/import-from-link", async (req, res) => {
       const track = await resolveSunoUrl(rawUrl);
       audioUrl = track.audioUrl;
       title = track.title || title;
-    } else if (isDirectAudio) {
-      audioUrl = rawUrl;
-    } else if (isYouTube) {
-      // Server-side YouTube audio extraction requires a dedicated downloader
-      // (yt-dlp) that isn't available in this environment, and is subject to
-      // YouTube's Terms of Service. Fail clearly rather than silently.
-      res.status(422).json({
-        error: "YouTube import isn't available yet. For now, download the audio and upload it, or paste a Suno link.",
-        code: "YOUTUBE_UNAVAILABLE",
-      });
-      return;
     } else {
-      res.status(400).json({ error: "Paste a Suno song link (suno.com/song/…) or a direct audio file link (.mp3/.wav)." });
+      res.status(400).json({ error: "Paste a valid Suno song link (suno.com/song/…)." });
       return;
     }
 
     // Download the resolved audio and store it.
-    const dl = await fetch(audioUrl, { headers: { "User-Agent": "AIBeatSync/1.0" } });
+    const dl = await fetchTrustedSunoCdn(audioUrl, {
+      headers: { "User-Agent": "AIBeatSync/1.0" },
+      signal: AbortSignal.timeout(30_000),
+    });
     if (!dl.ok) {
       res.status(422).json({ error: `Could not fetch the track (status ${dl.status}). Make sure it's public.` });
       return;
     }
-    const buffer = Buffer.from(await dl.arrayBuffer());
+    const buffer = await readBoundedAudio(dl);
+    const analysis = await analyzeAudioBuffer(buffer, "mp3").catch(() => null);
+    if (!analysis) {
+      res.status(422).json({ error: "The imported file is not valid audio." });
+      return;
+    }
+    title = title.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 200)
+      || "Imported track";
     const songId = randomUUID();
     const objectPath = await storageService.uploadAudioBuffer(buffer, songId, "mp3", req.user.id);
+    let soundtrackId: string;
+    try {
+      const [existing] = await db.select({ id: soundtracksTable.id })
+        .from(soundtracksTable)
+        .where(and(
+          eq(soundtracksTable.userId, req.user.id),
+          eq(soundtracksTable.objectPath, objectPath),
+          isNull(soundtracksTable.deletedAt),
+        ))
+        .limit(1);
+      soundtrackId = existing?.id ?? songId;
+      if (!existing) {
+        await db.insert(soundtracksTable).values({
+          id: soundtrackId,
+          userId: req.user.id,
+          title,
+          prompt: null,
+          objectPath,
+          ext: "mp3",
+          durationSeconds: Math.max(1, Math.round(analysis.durationSeconds)),
+          provider: isSuno ? "suno-import" : "direct-import",
+          isPublic: false,
+          shareToken: null,
+        });
+      }
+    } catch (error) {
+      await storageService.deleteObject(objectPath).catch(() => {});
+      throw error;
+    }
     const signedUrl = await storageService.getObjectEntitySignedUrl(objectPath, 3600);
 
-    res.json({ objectPath, url: signedUrl, title });
+    res.json({ objectPath, url: signedUrl, title, soundtrackId });
   } catch (err) {
     req.log.warn({ err, url: rawUrl }, "Audio import failed");
     res.status(502).json({ error: err instanceof Error ? err.message : "Could not import audio from link" });

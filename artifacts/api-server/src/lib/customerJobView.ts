@@ -14,6 +14,7 @@ const PRIVATE_MANIFEST_KEYS = new Set([
   "script",
   "voiceId",
   "musicPrompt",
+  "musicObjectPath",
   "idempotencyKey",
   "narrationRequestId",
   "musicRequestId",

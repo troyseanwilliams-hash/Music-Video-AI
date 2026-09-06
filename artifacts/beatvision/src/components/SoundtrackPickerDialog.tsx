@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Music2, Check } from "lucide-react";
 
 export interface PickedSoundtrack {
+  id?: string;
   objectPath: string;
   url: string;
   title: string;
@@ -41,7 +42,7 @@ export function SoundtrackPickerDialog({
   });
 
   const pick = (t: LibTrack) => {
-    onSelect({ objectPath: t.objectPath, url: t.url, title: t.title || "AI Soundtrack" });
+    onSelect({ id: t.id, objectPath: t.objectPath, url: t.url, title: t.title || "AI Soundtrack" });
     setOpen(false);
   };
 

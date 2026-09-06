@@ -6,6 +6,29 @@ export const MIN_SCRIPT_CHARS = 40;
 export const MAX_SCRIPT_CHARS = 39_000;
 export const MUSIC_CREDITS = 4;
 export const NARRATION_CREDITS_PER_1000 = 3;
+export const NARRATION_MUSIC_SOURCES = ["none", "generated", "soundtrack", "upload", "suno"] as const;
+export type NarrationMusicSource = typeof NARRATION_MUSIC_SOURCES[number];
+
+export function resolveNarrationMusicSource(input: {
+  musicSource?: NarrationMusicSource;
+  includeMusic?: boolean;
+}): NarrationMusicSource {
+  return input.musicSource ?? (input.includeMusic === true ? "generated" : "none");
+}
+
+export function narrationMusicSurcharge(source: NarrationMusicSource): number {
+  return source === "generated" ? MUSIC_CREDITS : 0;
+}
+
+export function narrationUsesExistingMusic(source: NarrationMusicSource): boolean {
+  return source === "soundtrack" || source === "upload" || source === "suno";
+}
+
+export function isOwnerScopedNarrationMusicPath(objectPath: string, userId: string): boolean {
+  const ownerScoped = objectPath.startsWith(`/objects/uploads/${userId}/`)
+    || objectPath.startsWith(`/objects/audio/${userId}/`);
+  return ownerScoped && /\.(?:mp3|wav|m4a|ogg|aac|flac)$/i.test(objectPath);
+}
 
 export const NARRATION_VOICES = [
   { id: "E7olrBbFOdiUavKo8uDz", label: "Warm host — male" },
@@ -20,9 +43,12 @@ export const NARRATION_VOICES = [
   { id: "o7l3uDPo9s9vhmimPYUa", label: "Executive authoritative — female" },
 ] as const;
 
-export function narrationCost(scriptLength: number, includeMusic = false): number {
+export function narrationCost(scriptLength: number, includeMusic: boolean | NarrationMusicSource = false): number {
   const narration = Math.max(3, Math.ceil(scriptLength / 1000) * NARRATION_CREDITS_PER_1000);
-  return narration + (includeMusic ? MUSIC_CREDITS : 0);
+  const source = typeof includeMusic === "string"
+    ? includeMusic
+    : includeMusic ? "generated" : "none";
+  return narration + narrationMusicSurcharge(source);
 }
 
 export function defaultNarrationVoiceId(): string {

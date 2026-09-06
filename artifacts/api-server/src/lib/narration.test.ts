@@ -7,8 +7,12 @@ import {
   narrationCost,
   NARRATION_VOICES,
   isConclusivePreAcceptanceStatus,
+  isOwnerScopedNarrationMusicPath,
+  narrationUsesExistingMusic,
+  resolveNarrationMusicSource,
 } from "./narration.js";
-import { isUncertainNarrationSubmission } from "./narrationProcessor.js";
+import { isUncertainNarrationSubmission, narrationRefundSplit } from "./narrationProcessor.js";
+import { resolveMusic } from "../routes/narration.js";
 
 describe("AIBeatSync narration contract", () => {
   it("charges three credits per started 1,000 characters, minimum three", () => {
@@ -21,6 +25,37 @@ describe("AIBeatSync narration contract", () => {
   it("mirrors the proven four-credit optional music surcharge", () => {
     expect(narrationCost(40, true)).toBe(7);
     expect(narrationCost(1_001, true)).toBe(10);
+    expect(narrationCost(40, "generated")).toBe(7);
+    expect(narrationCost(40, "soundtrack")).toBe(3);
+    expect(narrationCost(40, "upload")).toBe(3);
+    expect(narrationCost(40, "suno")).toBe(3);
+  });
+
+  it("parses explicit music sources while retaining includeMusic compatibility", () => {
+    expect(resolveNarrationMusicSource({})).toBe("none");
+    expect(resolveNarrationMusicSource({ includeMusic: false })).toBe("none");
+    expect(resolveNarrationMusicSource({ includeMusic: true })).toBe("generated");
+    expect(resolveNarrationMusicSource({ musicSource: "upload", includeMusic: true })).toBe("upload");
+  });
+
+  it("lets both estimate and create's shared resolver use the legacy default prompt", async () => {
+    await expect(resolveMusic("user-1", {
+      script: "x".repeat(40),
+      musicSource: "generated",
+    })).resolves.toEqual({ source: "generated" });
+  });
+
+  it("only mixes selected stored sources from owner-scoped paths", () => {
+    expect(narrationUsesExistingMusic("soundtrack")).toBe(true);
+    expect(narrationUsesExistingMusic("upload")).toBe(true);
+    expect(narrationUsesExistingMusic("suno")).toBe(true);
+    expect(narrationUsesExistingMusic("generated")).toBe(false);
+    expect(isOwnerScopedNarrationMusicPath("/objects/audio/user-1/song.mp3", "user-1")).toBe(true);
+    expect(isOwnerScopedNarrationMusicPath("/objects/uploads/user-1/song.mp3", "user-1")).toBe(true);
+    expect(isOwnerScopedNarrationMusicPath("/objects/audio/user-2/song.mp3", "user-1")).toBe(false);
+    expect(isOwnerScopedNarrationMusicPath("https://signed.example/song.mp3", "user-1")).toBe(false);
+    expect(isOwnerScopedNarrationMusicPath("/objects/videos/user-1/song.mp3", "user-1")).toBe(false);
+    expect(isOwnerScopedNarrationMusicPath("/objects/audio/user-1/not-audio.mp4", "user-1")).toBe(false);
   });
 
   it("only accepts server-owned voices and defaults to one of them", () => {
@@ -46,5 +81,12 @@ describe("AIBeatSync narration contract", () => {
     expect(isUncertainNarrationSubmission("tts_submission_uncertain", new Error("recovery"))).toBe(true);
     expect(isUncertainNarrationSubmission("tts_accepted", new Error("worker died before storage"))).toBe(true);
     expect(isUncertainNarrationSubmission("music_accepted", new Error("worker died before mix"))).toBe(true);
+  });
+
+  it("refunds the exact persisted subscription and top-up split", () => {
+    expect(narrationRefundSplit({
+      chargedSubscriptionCredits: 5,
+      chargedTopupCredits: 2,
+    })).toEqual({ subscription: 5, topup: 2, total: 7 });
   });
 });

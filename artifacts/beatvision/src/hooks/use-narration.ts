@@ -82,8 +82,11 @@ export function useNarrationJob(id: string | null) {
 export type EstimateNarrationParams = {
   script: string;
   voiceId?: string;
-  includeMusic?: boolean;
+  musicSource?: "none" | "generated" | "soundtrack" | "upload" | "suno";
   musicPrompt?: string;
+  soundtrackId?: string;
+  musicObjectPath?: string;
+  musicTitle?: string;
 };
 
 export function useEstimateNarration() {

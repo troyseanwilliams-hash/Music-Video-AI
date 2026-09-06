@@ -1,16 +1,22 @@
 import { randomUUID } from "crypto";
 import { Router } from "express";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
-import { creditsTable, db, jobsTable, usersTable } from "@workspace/db";
+import { creditsTable, db, jobsTable, soundtracksTable, usersTable } from "@workspace/db";
+import { analyzeAudioBuffer } from "../lib/audioAnalysis.js";
 import {
   defaultNarrationVoiceId,
   isAllowedNarrationVoice,
+  isOwnerScopedNarrationMusicPath,
   MAX_SCRIPT_CHARS,
   MIN_SCRIPT_CHARS,
   narrationCost,
+  narrationMusicSurcharge,
+  NARRATION_MUSIC_SOURCES,
   NARRATION_VOICES,
   narrationVoicePreview,
+  resolveNarrationMusicSource,
+  type NarrationMusicSource,
 } from "../lib/narration.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 
@@ -19,9 +25,81 @@ const storage = new ObjectStorageService();
 const bodySchema = z.object({
   script: z.string().trim().min(MIN_SCRIPT_CHARS).max(MAX_SCRIPT_CHARS),
   voiceId: z.string().trim().max(100).optional(),
-  includeMusic: z.boolean().default(false),
+  includeMusic: z.boolean().optional(),
+  musicSource: z.enum(NARRATION_MUSIC_SOURCES).optional(),
   musicPrompt: z.string().trim().max(300).optional(),
+  soundtrackId: z.string().trim().max(100).optional(),
+  musicObjectPath: z.string().trim().max(500).optional(),
+  musicTitle: z.string().trim().max(200).optional(),
 }).strict();
+
+type ResolvedMusic = {
+  source: NarrationMusicSource;
+  objectPath?: string;
+  title?: string;
+};
+
+class MusicInputError extends Error {}
+
+export async function resolveMusic(userId: string, input: z.infer<typeof bodySchema>): Promise<ResolvedMusic> {
+  const source = resolveNarrationMusicSource(input);
+  if (source === "none") {
+    if (input.musicPrompt || input.soundtrackId || input.musicObjectPath) {
+      throw new MusicInputError("Remove music details or select a music source.");
+    }
+    return { source };
+  }
+  if (source === "generated") {
+    if (input.soundtrackId || input.musicObjectPath) {
+      throw new MusicInputError("Generated music cannot use an existing audio file.");
+    }
+    return { source };
+  }
+  if (input.musicPrompt) throw new MusicInputError("A music prompt is only valid for generated music.");
+
+  let objectPath: string;
+  let title: string | undefined;
+  if (source === "soundtrack") {
+    const selector = input.soundtrackId
+      ? eq(soundtracksTable.id, input.soundtrackId)
+      : eq(soundtracksTable.objectPath, input.musicObjectPath ?? "");
+    const [track] = await db.select({
+      objectPath: soundtracksTable.objectPath,
+      title: soundtracksTable.title,
+    }).from(soundtracksTable).where(and(
+      eq(soundtracksTable.userId, userId),
+      isNull(soundtracksTable.deletedAt),
+      selector,
+    )).limit(1);
+    if (!track) throw new MusicInputError("Soundtrack not found.");
+    objectPath = track.objectPath;
+    title = track.title ?? undefined;
+    if (!/\.(?:mp3|wav|m4a|ogg|aac|flac)$/i.test(objectPath)) {
+      throw new MusicInputError("Soundtrack is not a valid audio file.");
+    }
+  } else {
+    objectPath = input.musicObjectPath ?? "";
+    if (!isOwnerScopedNarrationMusicPath(objectPath, userId)) {
+      throw new MusicInputError("Music file not found.");
+    }
+    const filename = objectPath.split("/").pop()?.replace(/\.[^.]+$/, "") ?? "";
+    try {
+      title = input.musicTitle || decodeURIComponent(filename);
+    } catch {
+      title = input.musicTitle || filename;
+    }
+  }
+  try {
+    const buffer = await storage.downloadObjectBuffer(objectPath);
+    const filename = objectPath.split("/").pop() ?? "";
+    const ext = filename.includes(".") ? filename.split(".").pop()!.toLowerCase() : "mp3";
+    await analyzeAudioBuffer(buffer, ext);
+  } catch {
+    throw new MusicInputError("Music file is missing or is not valid audio.");
+  }
+  const safeTitle = title?.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
+  return { source, objectPath, title: safeTitle || "Music track" };
+}
 
 function admin(email: string | null | undefined): boolean {
   return Boolean(email && process.env.ADMIN_EMAIL && email.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase());
@@ -85,15 +163,22 @@ router.get("/narrations/voices/:voiceId/preview", async (req, res) => {
   }
 });
 
-router.post("/narrations/estimate", (req, res) => {
+router.post("/narrations/estimate", async (req, res) => {
   if (!req.isAuthenticated()) return void res.status(401).json({ error: "Unauthorized" });
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) return void res.status(400).json({ error: "Enter a script between 40 and 39,000 characters." });
-  res.json({
-    scriptCharacters: parsed.data.script.length,
-    estimatedCost: narrationCost(parsed.data.script.length, parsed.data.includeMusic),
-    musicCost: parsed.data.includeMusic ? 4 : 0,
-  });
+  try {
+    const music = await resolveMusic(req.user.id, parsed.data);
+    res.json({
+      scriptCharacters: parsed.data.script.length,
+      estimatedCost: narrationCost(parsed.data.script.length, music.source),
+      musicCost: narrationMusicSurcharge(music.source),
+      musicSource: music.source,
+    });
+  } catch (error) {
+    if (error instanceof MusicInputError) return void res.status(400).json({ error: error.message });
+    throw error;
+  }
 });
 
 router.post("/narrations", async (req, res) => {
@@ -108,8 +193,12 @@ router.post("/narrations", async (req, res) => {
   if (parsed.data.voiceId && !isAllowedNarrationVoice(parsed.data.voiceId)) {
     return void res.status(400).json({ error: "Select an available narration voice." });
   }
-  if (parsed.data.musicPrompt && !parsed.data.includeMusic) {
-    return void res.status(400).json({ error: "Enable background music before adding a music prompt." });
+  let music: ResolvedMusic;
+  try {
+    music = await resolveMusic(req.user.id, parsed.data);
+  } catch (error) {
+    if (error instanceof MusicInputError) return void res.status(400).json({ error: error.message });
+    throw error;
   }
   if (!process.env.ELEVENLABS_API_KEY) {
     return void res.status(503).json({ error: "AI narration is temporarily unavailable." });
@@ -126,7 +215,7 @@ router.post("/narrations", async (req, res) => {
       code: "SUBSCRIPTION_REQUIRED",
     });
   }
-  const estimatedCost = narrationCost(parsed.data.script.length, parsed.data.includeMusic);
+  const estimatedCost = narrationCost(parsed.data.script.length, music.source);
   const result = await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`${req.user.id}:${idempotencyKey}`}))`);
     const [existing] = await tx.select().from(jobsTable).where(and(
@@ -169,8 +258,10 @@ router.post("/narrations", async (req, res) => {
       manifest: {
         script: parsed.data.script,
         voiceId: parsed.data.voiceId ?? defaultNarrationVoiceId(),
-        includeMusic: parsed.data.includeMusic,
+        musicSource: music.source,
         musicPrompt: parsed.data.musicPrompt,
+        musicObjectPath: music.objectPath,
+        musicTitle: music.title,
         stage: "queued",
         idempotencyKey,
         estimatedCost,

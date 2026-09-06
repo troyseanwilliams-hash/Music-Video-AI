@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getNarrationRefetchInterval, isNarrationGenerating } from "./use-narration";
+import { narrationCost, narrationMusicSurcharge } from "../../../api-server/src/lib/narration";
 
 describe("use-narration logic", () => {
   it("polls during active states including stitching", () => {
@@ -23,5 +24,37 @@ describe("use-narration logic", () => {
     expect(isNarrationGenerating("ready")).toBe(false);
     expect(isNarrationGenerating("failed")).toBe(false);
     expect(isNarrationGenerating(undefined)).toBe(false);
+  });
+});
+
+describe("narration cost", () => {
+  it("only charges +4 credits when musicSource is 'generated'", () => {
+    const baseCost = narrationCost(100, "none"); // e.g. 3
+    expect(narrationCost(100, "generated")).toBe(baseCost + 4);
+    expect(narrationCost(100, "soundtrack")).toBe(baseCost);
+    expect(narrationCost(100, "upload")).toBe(baseCost);
+    expect(narrationCost(100, "suno")).toBe(baseCost);
+  });
+});
+
+describe("Narration payload logic", () => {
+  function isSelectionComplete(musicSource: string, soundtrackId?: string, musicObjectPath?: string) {
+    if (musicSource === "soundtrack" && !soundtrackId) return false;
+    if (["upload", "suno"].includes(musicSource) && !musicObjectPath) return false;
+    return true;
+  }
+
+  it("requires proper assets before allowing estimation or submission", () => {
+    expect(isSelectionComplete("none")).toBe(true);
+    expect(isSelectionComplete("generated")).toBe(true);
+
+    expect(isSelectionComplete("soundtrack")).toBe(false);
+    expect(isSelectionComplete("soundtrack", "st-123", "/objects/st-123")).toBe(true);
+
+    expect(isSelectionComplete("upload")).toBe(false);
+    expect(isSelectionComplete("upload", undefined, "/objects/upload/abc")).toBe(true);
+
+    expect(isSelectionComplete("suno")).toBe(false);
+    expect(isSelectionComplete("suno", undefined, "/objects/audio/suno-123")).toBe(true);
   });
 });

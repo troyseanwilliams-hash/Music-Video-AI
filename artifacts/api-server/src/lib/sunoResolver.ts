@@ -15,8 +15,55 @@ export interface SunoTrack {
   artist: string;
 }
 
+const CANONICAL_SUNO_HOSTS = new Set(["suno.com", "www.suno.com", "suno.ai", "www.suno.ai"]);
+export const TRUSTED_SUNO_CDN_HOST = "cdn1.suno.ai";
+const MAX_REDIRECTS = 3;
+
+function parsedTrustedUrl(raw: string, hosts: Set<string>): URL | null {
+  try {
+    const url = new URL(raw);
+    if (
+      url.protocol !== "https:"
+      || url.username
+      || url.password
+      || url.port
+      || !hosts.has(url.hostname.toLowerCase())
+    ) return null;
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+export function isCanonicalSunoShareUrl(raw: string): boolean {
+  const url = parsedTrustedUrl(raw, CANONICAL_SUNO_HOSTS);
+  return Boolean(url && /^\/song\/[a-f0-9-]{36}\/?$/i.test(url.pathname));
+}
+
+export function isTrustedSunoCdnUrl(raw: string): boolean {
+  return Boolean(parsedTrustedUrl(raw, new Set([TRUSTED_SUNO_CDN_HOST])));
+}
+
+export async function fetchTrustedSunoCdn(url: string, init: RequestInit = {}): Promise<Response> {
+  return fetchTrustedSuno(url, new Set([TRUSTED_SUNO_CDN_HOST]), init);
+}
+
+async function fetchTrustedSuno(url: string, hosts: Set<string>, init: RequestInit): Promise<Response> {
+  let current = url;
+  for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
+    if (!parsedTrustedUrl(current, hosts)) throw new Error("Untrusted Suno download location");
+    const response = await fetch(current, { ...init, redirect: "manual", signal: init.signal ?? AbortSignal.timeout(30_000) });
+    if (response.status < 300 || response.status >= 400) return response;
+    const location = response.headers.get("location");
+    if (!location) throw new Error("Audio download redirect was invalid");
+    current = new URL(location, current).toString();
+  }
+  throw new Error("Audio download redirected too many times");
+}
+
 export function extractSunoId(url: string): string | null {
-  const match = url.match(/suno\.(?:com|ai)\/song\/([a-f0-9-]{36})/i);
+  if (!isCanonicalSunoShareUrl(url)) return null;
+  const match = url.match(/\/song\/([a-f0-9-]{36})/i);
   return match?.[1] ?? null;
 }
 
@@ -31,10 +78,10 @@ export async function resolveSunoUrl(url: string): Promise<SunoTrack> {
   const songId = extractSunoId(url);
   if (!songId) throw new Error("Not a valid Suno share URL");
 
-  const audioUrl = `https://cdn1.suno.ai/${songId}.mp3`;
+  const audioUrl = `https://${TRUSTED_SUNO_CDN_HOST}/${songId}.mp3`;
 
   // Verify the audio file exists on the CDN
-  const headRes = await fetch(audioUrl, { method: "HEAD" });
+  const headRes = await fetchTrustedSunoCdn(audioUrl, { method: "HEAD" });
   if (!headRes.ok) {
     throw new Error(
       `Track not found on Suno CDN (status ${headRes.status}). Make sure the song is public.`,
@@ -47,7 +94,7 @@ export async function resolveSunoUrl(url: string): Promise<SunoTrack> {
   let artist = "Suno";
 
   try {
-    const pageRes = await fetch(`https://suno.com/song/${songId}`, {
+    const pageRes = await fetchTrustedSuno(`https://suno.com/song/${songId}`, CANONICAL_SUNO_HOSTS, {
       headers: BROWSER_HEADERS,
       signal: AbortSignal.timeout(6000),
     });

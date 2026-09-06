@@ -8,7 +8,13 @@ import { and, eq, sql } from "drizzle-orm";
 import { creditsTable, db, jobsTable, withResourceLease } from "@workspace/db";
 import { analyzeAudioBuffer } from "./audioAnalysis.js";
 import { signAudioAnalysisReceipt } from "./audioAnalysisReceipt.js";
-import { ConclusiveNarrationError, synthesizeMusic, synthesizeNarration } from "./narration.js";
+import {
+  ConclusiveNarrationError,
+  narrationUsesExistingMusic,
+  synthesizeMusic,
+  synthesizeNarration,
+  type NarrationMusicSource,
+} from "./narration.js";
 import { ObjectStorageService } from "./objectStorage.js";
 
 const execFileAsync = promisify(execFile);
@@ -17,8 +23,11 @@ type Job = typeof jobsTable.$inferSelect;
 type Meta = {
   script: string;
   voiceId: string;
-  includeMusic: boolean;
+  includeMusic?: boolean;
+  musicSource?: NarrationMusicSource;
   musicPrompt?: string;
+  musicObjectPath?: string;
+  musicTitle?: string;
   stage?: string;
   idempotencyKey?: string;
   chargedCredits: number;
@@ -32,6 +41,12 @@ type Meta = {
 
 function metaOf(job: Job): Meta {
   return job.manifest as Meta;
+}
+
+export function narrationRefundSplit(meta: Pick<Meta, "chargedSubscriptionCredits" | "chargedTopupCredits">) {
+  const subscription = Math.max(0, meta.chargedSubscriptionCredits ?? 0);
+  const topup = Math.max(0, meta.chargedTopupCredits ?? 0);
+  return { subscription, topup, total: subscription + topup };
 }
 
 async function updateOwned(job: Job, values: Partial<typeof jobsTable.$inferInsert>): Promise<void> {
@@ -54,9 +69,7 @@ export async function refundNarrationOnce(jobId: string): Promise<number> {
     if (!job || job.jobType !== "narration") return 0;
     const meta = metaOf(job);
     if (meta.refunded || meta.chargedCredits <= 0 || job.status === "ready") return 0;
-    const subscription = Math.max(0, meta.chargedSubscriptionCredits ?? 0);
-    const topup = Math.max(0, meta.chargedTopupCredits ?? 0);
-    const total = subscription + topup;
+    const { subscription, topup, total } = narrationRefundSplit(meta);
     await tx.update(creditsTable).set({
       subscriptionCredits: sql`subscription_credits + ${subscription}`,
       topupCredits: sql`topup_credits + ${topup}`,
@@ -127,14 +140,22 @@ export async function processNarrationJob(job: Job): Promise<void> {
     await writeFile(join(dir, "narration.mp3"), narration.buffer);
     let output = join(dir, "narration.mp3");
 
-    if (meta.includeMusic) {
-      meta = await checkpoint(job, meta, "music_submission_intent");
-      const music = await synthesizeMusic(
-        meta.musicPrompt || "Subtle cinematic instrumental underscore, no vocals, supportive of spoken narration",
-        job.id,
-      );
-      meta = await checkpoint(job, meta, "music_accepted", { musicRequestId: music.requestId });
-      await writeFile(join(dir, "music.mp3"), music.buffer);
+    const musicSource = meta.musicSource ?? (meta.includeMusic ? "generated" : "none");
+    if (musicSource !== "none") {
+      if (musicSource === "generated") {
+        meta = await checkpoint(job, meta, "music_submission_intent");
+        const music = await synthesizeMusic(
+          meta.musicPrompt || "Subtle cinematic instrumental underscore, no vocals, supportive of spoken narration",
+          job.id,
+        );
+        meta = await checkpoint(job, meta, "music_accepted", { musicRequestId: music.requestId });
+        await writeFile(join(dir, "music.mp3"), music.buffer);
+      } else if (narrationUsesExistingMusic(musicSource) && meta.musicObjectPath) {
+        // downloadObjectToFile releases its storage lease before ffmpeg is acquired.
+        await storage.downloadObjectToFile(meta.musicObjectPath, join(dir, "music.mp3"));
+      } else {
+        throw new Error("Selected narration music is unavailable");
+      }
       output = join(dir, "master.mp3");
       await updateOwned(job, { status: "generating", progressPercent: 65 });
       await withResourceLease("ffmpeg_light", ({ signal }) => execFileAsync("ffmpeg", [
