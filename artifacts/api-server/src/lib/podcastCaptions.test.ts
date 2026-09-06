@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTimedSrt, podcastRenderArgs, selectPodcastHighlights } from "./podcastCaptions.js";
+import { buildTimedSrt, ffprobeHasVideoStream, podcastRenderArgs, selectPodcastHighlights } from "./podcastCaptions.js";
 
 describe("buildTimedSrt", () => {
   it("uses AssemblyAI word timestamps rather than distributing transcript text", () => {
@@ -28,6 +28,20 @@ describe("buildTimedSrt", () => {
     expect(video).toContain("0:v:0");
     expect(audio).toContain("[0:a]showwaves=s=1920x1080:mode=line:colors=0x7dd3fc,format=yuv420p,subtitles=captions.srt[v]");
     expect(audio).toContain("[v]");
+  });
+
+  it.each([
+    ["audio/mp4", [{ codec_type: "audio" }], false],
+    ["audio/x-m4a", [{ codec_type: "audio" }], false],
+    ["application/ogg", [{ codec_type: "audio" }], false],
+    ["audio/x-flac", [{ codec_type: "audio" }], false],
+    ["video/mp4", [{ codec_type: "video" }, { codec_type: "audio" }], true],
+  ])("classifies a %s upload from its actual ffprobe streams", (_mime, streams, expected) => {
+    expect(ffprobeHasVideoStream(JSON.stringify({ streams }))).toBe(expected);
+  });
+
+  it("rejects malformed ffprobe stream metadata", () => {
+    expect(() => ffprobeHasVideoStream("{}")).toThrow(/invalid stream metadata/i);
   });
 
   it("selects distinct transcript-led non-overlapping highlights", () => {

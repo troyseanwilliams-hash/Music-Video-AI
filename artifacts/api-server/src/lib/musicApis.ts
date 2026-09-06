@@ -10,6 +10,7 @@
 // Suno is intentionally NOT wired here yet — drop it in as another provider
 // once their public API ships. Nothing calls this outside the admin routes,
 // so it stays isolated from the product until you're ready to expose it.
+import { withResourceLease } from "@workspace/db";
 
 export type MusicProvider = "simulation" | "acestep" | "musicgen" | "pixazo" | "elevenlabs";
 
@@ -203,7 +204,7 @@ async function generateWithElevenMusic(req: SongRequest): Promise<SongResult> {
   const { prompt, musicLengthMs, modelId } = buildElevenMusicRequest(req);
   let response: Response;
   try {
-    response = await fetch(
+    response = await withResourceLease("elevenlabs_submission", ({ signal }) => fetch(
       "https://api.elevenlabs.io/v1/music?output_format=mp3_48000_192",
       {
         method: "POST",
@@ -216,9 +217,9 @@ async function generateWithElevenMusic(req: SongRequest): Promise<SongResult> {
           music_length_ms: musicLengthMs,
           model_id: modelId,
         }),
-        signal: AbortSignal.timeout(ELEVEN_MUSIC_TIMEOUT_MS),
+        signal: AbortSignal.any([signal, AbortSignal.timeout(ELEVEN_MUSIC_TIMEOUT_MS)]),
       },
-    );
+    ));
   } catch (err) {
     if (err instanceof DOMException && err.name === "TimeoutError") {
       throw new Error("The music engine took too long to respond. No credits were charged; please try again.");
@@ -301,13 +302,13 @@ async function simulateSong(durationSeconds: number): Promise<SongResult> {
   // capped at 5.5 min like the real providers.
   const dur = Math.min(Math.max(durationSeconds, 5), MAX_SONG_SECONDS);
   try {
-    await execAsync(
+    await withResourceLease("ffmpeg_light", ({ signal }) => execAsync(
       `ffmpeg -y -f lavfi -i "sine=frequency=220:duration=${dur}" ` +
         `-f lavfi -i "sine=frequency=330:duration=${dur}" ` +
         `-filter_complex "[0:a][1:a]amix=inputs=2,volume=0.25" ` +
         `-c:a libmp3lame -b:a 128k "${out}"`,
-      { timeout: 30_000 },
-    );
+      { timeout: 30_000, signal },
+    ));
     const buffer = await readFile(out);
     return { audioBuffer: buffer, ext: "mp3", provider: "simulation", hasVocals: false };
   } finally {
@@ -435,12 +436,12 @@ export async function loopAudioToLength(
     await writeFile(inPath, buffer);
     // -stream_loop -1 repeats the clip indefinitely; -t cuts it at the target.
     // A short fade in/out trims any hard edges at the ends.
-    await execAsync(
+    await withResourceLease("ffmpeg_light", ({ signal }) => execAsync(
       `ffmpeg -y -stream_loop -1 -i "${inPath}" -t ${target} ` +
         `-af "afade=t=in:st=0:d=0.05,afade=t=out:st=${Math.max(0, target - 0.1)}:d=0.1" ` +
         `-c:a libmp3lame -b:a 192k "${outPath}"`,
-      { timeout: 60_000 },
-    );
+      { timeout: 60_000, signal },
+    ));
     return { buffer: await readFile(outPath), ext: "mp3" };
   } finally {
     await unlink(inPath).catch(() => {});
@@ -474,10 +475,10 @@ export async function trimAudioToLength(
     await writeFile(inPath, buffer);
     // -ss before -i for a fast (keyframe-independent, since this is audio-only)
     // seek to the requested start offset, then -t caps the output length.
-    await execAsync(
+    await withResourceLease("ffmpeg_light", ({ signal }) => execAsync(
       `ffmpeg -y -ss ${start} -t ${secs} -i "${inPath}" -c:a libmp3lame -b:a 192k "${outPath}"`,
-      { timeout: 60_000 },
-    );
+      { timeout: 60_000, signal },
+    ));
     return { buffer: await readFile(outPath), ext: "mp3" };
   } finally {
     await unlink(inPath).catch(() => {});

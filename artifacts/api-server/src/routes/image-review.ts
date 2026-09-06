@@ -273,8 +273,7 @@ router.post("/jobs/:id/image-review/source", async (req, res): Promise<void> => 
     return;
   }
   try {
-    const file = await storage.getObjectEntityFile(sourcePath!);
-    const [buffer] = await file.download();
+    const buffer = await storage.downloadObjectBuffer(sourcePath!);
     if (buffer.length > 15 * 1024 * 1024 || !validImage(buffer)) {
       res.status(422).json({ error: "Use a JPEG, PNG, or WebP image up to 15 MB." });
       return;
@@ -402,8 +401,7 @@ router.post("/jobs/:id/image-review/approve", async (req, res): Promise<void> =>
     try {
       const fingerprints = [];
       for (const index of indexes) {
-        const file = await storage.getObjectEntityFile(byIndex.get(index)!);
-        const [buffer] = await file.download();
+        const buffer = await storage.downloadObjectBuffer(byIndex.get(index)!);
         fingerprints.push(await perceptualFingerprint(buffer, "image"));
       }
       assertStrictUniqueMedia(true, fingerprints, "scene image");

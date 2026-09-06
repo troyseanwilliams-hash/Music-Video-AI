@@ -1,4 +1,8 @@
 import { Storage, File } from "@google-cloud/storage";
+import { withResourceLease } from "@workspace/db";
+import { createReadStream, createWriteStream } from "fs";
+import { Readable, Writable } from "stream";
+import { pipeline } from "stream/promises";
 
 const REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
 
@@ -26,6 +30,40 @@ export class ObjectNotFoundError extends Error {
     this.name = "ObjectNotFoundError";
     Object.setPrototypeOf(this, ObjectNotFoundError.prototype);
   }
+}
+
+type GcsWriteOptions = Parameters<File["createWriteStream"]>[0];
+
+async function writeBufferAbortable(file: File, buffer: Buffer, options: GcsWriteOptions): Promise<void> {
+  await withResourceLease("object_storage_transfer", async ({ signal }) => {
+    await pipeline(Readable.from(buffer), file.createWriteStream(options), { signal });
+  });
+}
+
+async function readBufferAbortable(file: File): Promise<Buffer> {
+  return withResourceLease("object_storage_transfer", async ({ signal }) => {
+    const chunks: Buffer[] = [];
+    const sink = new Writable({
+      write(chunk, _encoding, callback) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        callback();
+      },
+    });
+    await pipeline(file.createReadStream(), sink, { signal });
+    return Buffer.concat(chunks);
+  });
+}
+
+async function downloadFileAbortable(file: File, destination: string): Promise<void> {
+  await withResourceLease("object_storage_transfer", async ({ signal }) => {
+    await pipeline(file.createReadStream(), createWriteStream(destination), { signal });
+  });
+}
+
+async function uploadFileAbortable(file: File, sourcePath: string, options: GcsWriteOptions): Promise<void> {
+  await withResourceLease("object_storage_transfer", async ({ signal }) => {
+    await pipeline(createReadStream(sourcePath), file.createWriteStream(options), { signal });
+  });
 }
 
 export class ObjectStorageService {
@@ -113,9 +151,9 @@ export class ObjectStorageService {
     const { bucketName, objectName } = parseObjectPath(objectEntityPath);
     const bucket = objectStorageClient.bucket(bucketName);
     const file = bucket.file(objectName);
-    await file.save(buffer, {
-      contentType: "video/mp4",
+    await writeBufferAbortable(file, buffer, {
       resumable: buffer.length > 5 * 1024 * 1024,
+      metadata: { contentType: "video/mp4" },
     });
     return `/objects/videos/${videoId}.mp4`;
   }
@@ -126,17 +164,16 @@ export class ObjectStorageService {
     const { bucketName, objectName } = parseObjectPath(objectEntityPath);
     const bucket = objectStorageClient.bucket(bucketName);
     const file = bucket.file(objectName);
-    await file.save(buffer, {
-      contentType: "video/mp4",
+    await writeBufferAbortable(file, buffer, {
       resumable: buffer.length > 5 * 1024 * 1024,
+      metadata: { contentType: "video/mp4" },
     });
     return `/objects/video-previews/${videoId}.mp4`;
   }
 
   async downloadObjectBuffer(objectPath: string): Promise<Buffer> {
     const file = await this.getObjectEntityFile(objectPath);
-    const [buffer] = await file.download();
-    return buffer;
+    return readBufferAbortable(file);
   }
 
   async objectExists(objectPath: string): Promise<boolean> {
@@ -165,7 +202,7 @@ export class ObjectStorageService {
     const bucket = objectStorageClient.bucket(bucketName);
     const file = bucket.file(objectName);
     const contentType = ext === "wav" ? "audio/wav" : "audio/mpeg";
-    await file.save(buffer, { contentType, resumable: buffer.length > 5 * 1024 * 1024 });
+    await writeBufferAbortable(file, buffer, { metadata: { contentType }, resumable: buffer.length > 5 * 1024 * 1024 });
     return `/objects/audio/${songId}.${ext}`;
   }
 
@@ -175,7 +212,7 @@ export class ObjectStorageService {
     const { bucketName, objectName } = parseObjectPath(objectEntityPath);
     const bucket = objectStorageClient.bucket(bucketName);
     const file = bucket.file(objectName);
-    await file.save(buffer, { contentType: "image/jpeg", resumable: false });
+    await writeBufferAbortable(file, buffer, { metadata: { contentType: "image/jpeg" }, resumable: false });
     return `/objects/thumbnails/${videoId}.jpg`;
   }
 
@@ -187,7 +224,7 @@ export class ObjectStorageService {
     const objectEntityPath = `${privateObjectDir}/narrative-images/${jobId}/${index}.jpg`;
     const { bucketName, objectName } = parseObjectPath(objectEntityPath);
     const file = objectStorageClient.bucket(bucketName).file(objectName);
-    await file.save(buffer, { contentType: "image/jpeg", resumable: buffer.length > 5 * 1024 * 1024 });
+    await writeBufferAbortable(file, buffer, { metadata: { contentType: "image/jpeg" }, resumable: buffer.length > 5 * 1024 * 1024 });
     return `/objects/narrative-images/${jobId}/${index}.jpg`;
   }
 
@@ -198,10 +235,9 @@ export class ObjectStorageService {
     const objectEntityPath = `${privateObjectDir}/image-packs/${jobId}/${index}.jpg`;
     const { bucketName, objectName } = parseObjectPath(objectEntityPath);
     const file = objectStorageClient.bucket(bucketName).file(objectName);
-    await file.save(buffer, {
-      contentType: "image/jpeg",
+    await writeBufferAbortable(file, buffer, {
       resumable: false,
-      metadata: { cacheControl: "private, max-age=3600" },
+      metadata: { contentType: "image/jpeg", cacheControl: "private, max-age=3600" },
     });
     return `/objects/image-packs/${jobId}/${index}.jpg`;
   }
@@ -214,7 +250,7 @@ export class ObjectStorageService {
     const { bucketName, objectName } = parseObjectPath(objectEntityPath);
     const bucket = objectStorageClient.bucket(bucketName);
     const file = bucket.file(objectName);
-    await file.save(buffer, { contentType: "video/mp4", resumable: buffer.length > 5 * 1024 * 1024 });
+    await writeBufferAbortable(file, buffer, { metadata: { contentType: "video/mp4" }, resumable: buffer.length > 5 * 1024 * 1024 });
     return `/objects/clips/${videoId}/${index}.mp4`;
   }
 
@@ -222,24 +258,23 @@ export class ObjectStorageService {
     const privateObjectDir = this.getPrivateObjectDir();
     const objectEntityPath = `${privateObjectDir}/podcasts/${podcastId}/${name}`;
     const { bucketName, objectName } = parseObjectPath(objectEntityPath);
-    await objectStorageClient.bucket(bucketName).file(objectName).save(buffer, {
-      contentType,
+    await writeBufferAbortable(objectStorageClient.bucket(bucketName).file(objectName), buffer, {
       resumable: buffer.length > 5 * 1024 * 1024,
+      metadata: { contentType },
     });
     return `/objects/podcasts/${podcastId}/${name}`;
   }
 
   async downloadObjectToFile(objectPath: string, destination: string): Promise<void> {
     const file = await this.getObjectEntityFile(objectPath);
-    await file.download({ destination });
+    await downloadFileAbortable(file, destination);
   }
 
   async uploadPodcastFile(sourcePath: string, podcastId: string, name: string, contentType: string): Promise<string> {
     const privateObjectDir = this.getPrivateObjectDir();
     const objectEntityPath = `${privateObjectDir}/podcasts/${podcastId}/${name}`;
     const { bucketName, objectName } = parseObjectPath(objectEntityPath);
-    await objectStorageClient.bucket(bucketName).upload(sourcePath, {
-      destination: objectName,
+    await uploadFileAbortable(objectStorageClient.bucket(bucketName).file(objectName), sourcePath, {
       resumable: true,
       metadata: { contentType },
     });

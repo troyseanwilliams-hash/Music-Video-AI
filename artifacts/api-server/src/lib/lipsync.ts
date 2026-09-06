@@ -5,6 +5,7 @@
 //   PIXAZO_LIPSYNC_MODEL      — model path segment (default bytedance-omnihuman-v1-5-290)
 //   PIXAZO_LIPSYNC_OP         — request op (OmniHuman drops the trailing -290)
 //   PIXAZO_LIPSYNC_RESOLUTION — output resolution hint (default 720p)
+import { withResourceLease } from "@workspace/db";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -44,12 +45,12 @@ export async function generateLipsync(params: {
     const model = lipsyncModel();
     const op = lipsyncOp(model);
     const resolution = process.env.PIXAZO_LIPSYNC_RESOLUTION?.trim() || "720p";
-    const submit = await fetch(`https://gateway.pixazo.ai/${model}/v1/${op}`, {
+    const submit = await withResourceLease("gateway_video_submission", (lease) => fetch(`https://gateway.pixazo.ai/${model}/v1/${op}`, {
       method: "POST",
       headers: { "Ocp-Apim-Subscription-Key": key, "Content-Type": "application/json" },
       body: JSON.stringify({ image_url: params.imageUrl, audio_url: params.audioUrl, resolution }),
-      signal: AbortSignal.timeout(30_000),
-    });
+      signal: AbortSignal.any([AbortSignal.timeout(30_000), lease.signal]),
+    }));
     if (!submit.ok) {
       throw new Error(`Pixazo lipsync ${submit.status}: ${(await submit.text()).slice(0, 200)}`);
     }

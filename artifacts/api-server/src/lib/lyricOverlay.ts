@@ -8,6 +8,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 import { randomUUID } from "crypto";
 import { buildTimedLines, buildAssKaraoke, karaokeFontsDir } from "./lyricTiming.js";
+import { withResourceLease } from "@workspace/db";
 
 // `:fontsdir=` option pointing libass at the bundled karaoke font (Archivo
 // Black); empty string when the font directory is missing.
@@ -18,9 +19,13 @@ function fontsDirOpt(): string {
 
 
 function runFfmpeg(cmd: ffmpeg.FfmpegCommand): Promise<void> {
-  return new Promise((resolve, reject) => {
+  return withResourceLease("ffmpeg_heavy", ({ signal }) => new Promise<void>((resolve, reject) => {
+    signal.addEventListener("abort", () => {
+      try { cmd.kill("SIGKILL"); } catch { /* exited */ }
+      reject(signal.reason);
+    }, { once: true });
     cmd.on("end", () => resolve()).on("error", (err) => reject(err)).run();
-  });
+  }), { ttlMs: 10 * 60_000 });
 }
 
 /**

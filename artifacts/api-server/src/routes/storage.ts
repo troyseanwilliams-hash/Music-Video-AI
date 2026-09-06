@@ -8,6 +8,7 @@ import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.
 import { ObjectPermission } from "../lib/objectAcl.js";
 import { db, imageAssetsTable, podcastJobsTable } from "@workspace/db";
 import { and, eq, isNull, or, sql } from "drizzle-orm";
+import { extensionForUploadContentType } from "../lib/uploadMime.js";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -33,34 +34,7 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
   try {
     const { name, size, contentType } = parsed.data;
 
-    const CONTENT_TYPE_EXT: Record<string, string> = {
-      "audio/mpeg": "mp3",
-      "audio/mp3": "mp3",
-      "audio/wav": "wav",
-      "audio/x-wav": "wav",
-      "audio/wave": "wav",
-      "audio/mp4": "mp4",
-      "audio/aac": "aac",
-      "audio/ogg": "ogg",
-      "audio/flac": "flac",
-      "audio/webm": "webm",
-      "image/jpeg": "jpg",
-      "image/png": "png",
-      "image/webp": "webp",
-      "image/gif": "gif",
-      "video/mp4": "mp4",
-      "video/quicktime": "mov",
-      "video/webm": "webm",
-      "video/x-matroska": "mkv",
-      "video/x-msvideo": "avi",
-      "video/x-ms-wmv": "wmv",
-      "video/3gpp": "3gp",
-      "video/mp2t": "ts",
-      "video/ogg": "ogv",
-      "video/x-m4v": "m4v",
-      "video/m4v": "m4v",
-    };
-    const ext = contentType ? CONTENT_TYPE_EXT[contentType.toLowerCase()] : undefined;
+    const ext = extensionForUploadContentType(contentType);
 
     const uploadURL = await objectStorageService.getObjectEntityUploadURL(ext, req.user.id);
     const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);

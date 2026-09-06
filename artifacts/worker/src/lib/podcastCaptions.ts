@@ -1,5 +1,13 @@
 export type PodcastWordTiming = { text: string; start: number; end: number };
 
+/** Classifies ffprobe JSON by actual streams, never by filename or container MIME. */
+export function ffprobeHasVideoStream(output: string): boolean {
+  const parsed = JSON.parse(output) as { streams?: unknown };
+  if (!Array.isArray(parsed.streams)) throw new Error("ffprobe returned invalid stream metadata");
+  return parsed.streams.some((stream) =>
+    !!stream && typeof stream === "object" && (stream as { codec_type?: unknown }).codec_type === "video");
+}
+
 /** Converts AssemblyAI millisecond word timings to production SRT cues. */
 export function buildTimedSrt(words: PodcastWordTiming[]): string {
   const stamp = (ms: number) => {

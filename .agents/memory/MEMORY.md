@@ -31,6 +31,7 @@
 - [Numbered image-pack story scripts](numbered-image-pack-story-scripts.md) — authored one-scene-per-line scripts are the reliable standalone story-image path; this does not extend automatically to video.
 - [Source-image recovery](source-image-recovery.md) — persist accepted image requests, tolerate transient polling failures, and decode downloaded images before storage.
 - [Worker deployment cutover](worker-deployment-cutover.md) — keep the API processor enabled until an always-on production worker is actually deployed and healthy.
+- [Cross-deployment resource leases](cross-deployment-resource-leases.md) — cap paid submissions, FFmpeg, and storage separately with renewable DB leases; lease loss must cancel work.
 - [Named-subject reference prompts](named-subject-reference-prompts.md) — offer a reference or safe description replacement; never send a raw named subject through the no-reference path.
 - [Reference-image prompt authoring](reference-image-prompt-authoring.md) — when a reference is attached, generated prompts should point to it instead of repeating character appearance.
 - [Generated character anchors](generated-character-anchors.md) — the earliest durable character image anchors later character scenes only; it is never reused as a scene output.

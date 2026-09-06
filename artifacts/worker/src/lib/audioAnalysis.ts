@@ -4,6 +4,7 @@ import { writeFile, readFile, unlink } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { randomUUID } from "crypto";
+import { withResourceLease } from "@workspace/db";
 
 const execAsync = promisify(exec);
 
@@ -39,17 +40,17 @@ async function decodeAudioToPCM(
   await writeFile(inFile, buffer);
 
   try {
-    const { stdout: probeOut } = await execAsync(
+    const { stdout: probeOut } = await withResourceLease("ffmpeg_light", ({ signal }) => execAsync(
       `ffprobe -v quiet -show_entries format=duration -of csv=p=0 "${inFile}"`,
-      { timeout: 15_000 },
-    ).catch(() => ({ stdout: "0" }));
+      { timeout: 15_000, signal },
+    )).catch(() => ({ stdout: "0" }));
 
     const duration = parseFloat(probeOut.trim()) || 0;
 
-    await execAsync(
+    await withResourceLease("ffmpeg_heavy", ({ signal }) => execAsync(
       `ffmpeg -y -loglevel error -i "${inFile}" -f f32le -acodec pcm_f32le -ar ${SAMPLE_RATE} -ac 1 "${outFile}"`,
-      { timeout: 120_000, maxBuffer: 50 * 1024 * 1024 },
-    );
+      { timeout: 120_000, maxBuffer: 50 * 1024 * 1024, signal },
+    ));
 
     const raw = await readFile(outFile);
     const samples = new Float32Array(

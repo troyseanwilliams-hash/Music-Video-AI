@@ -118,7 +118,7 @@ router.post("/audio/analyze", async (req, res) => {
 
   let buf: Buffer;
   try {
-    [buf] = await file.download();
+    buf = await storageService.downloadObjectBuffer(objectPath);
   } catch {
     res.status(422).json({ error: "Could not download audio file" });
     return;

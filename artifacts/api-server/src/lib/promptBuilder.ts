@@ -333,7 +333,7 @@ function hasExplicitCharacterConflict(sourceBeat: string, generatedPrompt: strin
 
   // New multi-word proper names are strong evidence that the model invented
   // another person. Named-subject replacement runs before this comparison.
-  const properNames = (value: string) =>
+  const properNames = (value: string): string[] =>
     value.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b/g) ?? [];
   const sourceNames = new Set(properNames(sourceBeat).map((name) => name.toLocaleLowerCase()));
   return properNames(generatedPrompt)

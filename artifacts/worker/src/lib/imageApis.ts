@@ -5,6 +5,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { promisify } from "util";
 import { sanitizeGeneratedMediaPrompt } from "./promptSafety.js";
+import { withResourceLease } from "@workspace/db";
 
 export const IMAGE_API_FAILURE = "[IMAGE_API_FAILURE]";
 export const IMAGE_POLL_TIMEOUT = "[IMAGE_POLL_TIMEOUT]";
@@ -67,7 +68,7 @@ export async function generateNarrativeImage(req: NarrativeImageRequest): Promis
     const endpoint = `https://gateway.pixazo.ai/${model}/v1/${model}-request`;
     let response: Response;
     try {
-      response = await fetch(endpoint, {
+      response = await withResourceLease("image_provider_submission", (lease) => fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -83,8 +84,8 @@ export async function generateNarrativeImage(req: NarrativeImageRequest): Promis
           output_format: "jpeg",
           sync_mode: false,
         }),
-        signal: AbortSignal.timeout(90_000),
-      });
+        signal: AbortSignal.any([AbortSignal.timeout(90_000), lease.signal]),
+      }));
     } catch (error) {
       await req.onUncertainSubmission?.({
         reason: `Image submission transport error: ${error instanceof Error ? error.message : String(error)}`.slice(0, 240),
@@ -179,11 +180,11 @@ async function assertDecodableImage(buffer: Buffer): Promise<void> {
   const path = join(tmpdir(), `beatsync-image-check-${randomUUID()}.img`);
   try {
     await writeFile(path, buffer);
-    await execFileAsync(
+    await withResourceLease("ffmpeg_light", ({ signal }) => execFileAsync(
       "ffmpeg",
       ["-v", "error", "-i", path, "-map", "0:v:0", "-frames:v", "1", "-f", "null", "-"],
-      { timeout: 30_000, maxBuffer: 256 * 1024 },
-    );
+      { timeout: 30_000, maxBuffer: 256 * 1024, signal },
+    ));
   } catch {
     throw new Error(`${IMAGE_API_FAILURE} The generated source image was invalid and was not added.`);
   } finally {

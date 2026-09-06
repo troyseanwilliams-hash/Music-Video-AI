@@ -27,14 +27,19 @@ export function normalizePodcastHighlights(value: unknown): PodcastHighlight[] {
       return { id: String(index), title: `Highlight ${index + 1}`, description: item };
     }
     const record = item && typeof item === "object" ? item as Record<string, unknown> : {};
+    const startSeconds = typeof record.startSeconds === "number" ? record.startSeconds
+      : typeof record.startTime === "number" ? record.startTime : undefined;
+    const endSeconds = typeof record.endSeconds === "number" ? record.endSeconds
+      : startSeconds !== undefined && typeof record.durationSeconds === "number"
+        ? startSeconds + record.durationSeconds : undefined;
     return {
       id: typeof record.id === "string" ? record.id : String(index),
       title: typeof record.title === "string" && record.title.trim()
         ? record.title : `Highlight ${index + 1}`,
       description: typeof record.description === "string" ? record.description
         : typeof record.summary === "string" ? record.summary : "",
-      startSeconds: typeof record.startSeconds === "number" ? record.startSeconds : undefined,
-      endSeconds: typeof record.endSeconds === "number" ? record.endSeconds : undefined,
+      startSeconds,
+      endSeconds,
       path: typeof record.path === "string" ? record.path
         : typeof record.clipPath === "string" ? record.clipPath : undefined,
     };

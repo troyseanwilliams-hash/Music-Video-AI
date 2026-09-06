@@ -10,6 +10,7 @@ import { writeFile, readFile, mkdir, rm } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { randomUUID } from "crypto";
+import { withResourceLease } from "@workspace/db";
 
 export interface TeaserMeta {
   index: number;
@@ -31,9 +32,13 @@ export const TEASER_DURATION_SEC = 10;
 const HIGH_ENERGY_LABELS = new Set(["chorus", "drop", "hook", "climax"]);
 
 function runFfmpeg(cmd: ffmpeg.FfmpegCommand): Promise<void> {
-  return new Promise((resolve, reject) => {
+  return withResourceLease("ffmpeg_heavy", ({ signal }) => new Promise<void>((resolve, reject) => {
+    signal.addEventListener("abort", () => {
+      try { cmd.kill("SIGKILL"); } catch { /* exited */ }
+      reject(signal.reason);
+    }, { once: true });
     cmd.on("end", () => resolve()).on("error", (err) => reject(err)).run();
-  });
+  }), { ttlMs: 10 * 60_000 });
 }
 
 /**

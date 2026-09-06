@@ -1,4 +1,5 @@
 import { sanitizeGeneratedMediaPrompt } from "./promptSafety.js";
+import { withResourceLease } from "@workspace/db";
 export interface ClipRequest {
   prompt: string;
   durationSeconds: number;
@@ -149,7 +150,7 @@ export function runwayCharacterLipsyncAvailable(): boolean {
 
 async function createRunwayAvatar(imageUrl: string, label: string): Promise<string> {
   const apiKey = process.env.RUNWAY_API_KEY!;
-  const res = await fetch(`${RUNWAY_BASE}/avatars`, {
+  const res = await withResourceLease("runway_submission", (lease) => fetch(`${RUNWAY_BASE}/avatars`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -166,8 +167,8 @@ async function createRunwayAvatar(imageUrl: string, label: string): Promise<stri
       personality: "A character used for a single audio-driven test video. Not used for conversation.",
       voice: { type: "runway-live-preset", presetId: "clara" },
     }),
-    signal: AbortSignal.timeout(30_000),
-  });
+    signal: AbortSignal.any([AbortSignal.timeout(30_000), lease.signal]),
+  }));
   if (!res.ok)
     throw new Error(`Runway avatar creation ${res.status}: ${(await res.text()).slice(0, 300)}`);
   const avatar = (await res.json()) as { id: string };
@@ -202,7 +203,7 @@ export async function generateRunwayCharacterLipsync(req: RunwayLipsyncRequest):
 
   let taskId: string;
   try {
-    const genRes = await fetch(`${RUNWAY_BASE}/avatar_videos`, {
+    const genRes = await withResourceLease("runway_submission", (lease) => fetch(`${RUNWAY_BASE}/avatar_videos`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -214,8 +215,8 @@ export async function generateRunwayCharacterLipsync(req: RunwayLipsyncRequest):
         avatar: { type: "custom", avatarId },
         speech: { type: "audio", audio: req.audioUrl },
       }),
-      signal: AbortSignal.timeout(30_000),
-    });
+      signal: AbortSignal.any([AbortSignal.timeout(30_000), lease.signal]),
+    }));
     if (!genRes.ok)
       throw new Error(`Runway avatar video ${genRes.status}: ${(await genRes.text()).slice(0, 300)}`);
     const task = (await genRes.json()) as { id: string };
@@ -263,15 +264,15 @@ export async function generateRunwayCharacterLipsync(req: RunwayLipsyncRequest):
 async function generateWithLuma(req: ClipRequest): Promise<string> {
   const apiKey = process.env.LUMA_API_KEY!;
 
-  const genRes = await fetch("https://api.lumalabs.ai/dream-machine/v1/generations", {
+  const genRes = await withResourceLease("other_video_submission", (lease) => fetch("https://api.lumalabs.ai/dream-machine/v1/generations", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       prompt: sanitizeGeneratedMediaPrompt(req.prompt).prompt.slice(0, 2000),
       aspect_ratio: req.aspectRatio ?? "16:9",
     }),
-    signal: AbortSignal.timeout(30_000),
-  });
+    signal: AbortSignal.any([AbortSignal.timeout(30_000), lease.signal]),
+  }));
 
   if (!genRes.ok)
     throw new Error(`Luma ${genRes.status}: ${(await genRes.text()).slice(0, 200)}`);
@@ -426,7 +427,7 @@ async function generateWithRunway(req: ClipRequest): Promise<string> {
 
   let submit: Response;
   try {
-    submit = await fetch(endpoint, {
+    submit = await withResourceLease("runway_submission", (lease) => fetch(endpoint, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${key}`,
@@ -434,8 +435,8 @@ async function generateWithRunway(req: ClipRequest): Promise<string> {
         "X-Runway-Version": RUNWAY_VERSION,
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(PIXAZO_SUBMIT_TIMEOUT_MS),
-    });
+      signal: AbortSignal.any([AbortSignal.timeout(PIXAZO_SUBMIT_TIMEOUT_MS), lease.signal]),
+    }));
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     await req.onUncertainSubmission?.({
@@ -556,7 +557,7 @@ async function generateWithPixazo(
   const uncertainProvider = req.provider ?? "pixazo";
   let submit: Response;
   try {
-    submit = await fetch(endpoint, {
+    submit = await withResourceLease("gateway_video_submission", (lease) => fetch(endpoint, {
       method: "POST",
       headers: {
         "Ocp-Apim-Subscription-Key": key,
@@ -566,8 +567,8 @@ async function generateWithPixazo(
       // Submission can slow down during provider traffic spikes. Give the
       // request enough time to return its durable request id; aborting too early
       // leaves an ambiguous paid request that cannot be safely recovered.
-      signal: AbortSignal.timeout(PIXAZO_SUBMIT_TIMEOUT_MS),
-    });
+      signal: AbortSignal.any([AbortSignal.timeout(PIXAZO_SUBMIT_TIMEOUT_MS), lease.signal]),
+    }));
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     await req.onUncertainSubmission?.({

@@ -4,6 +4,7 @@ import { promisify } from "util";
 import { writeFile, unlink } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
+import { withResourceLease } from "@workspace/db";
 
 const execFileAsync = promisify(execFile);
 const SIDE = 16;
@@ -68,7 +69,7 @@ export async function perceptualFingerprint(
     await writeFile(inputPath, buffer);
     let duration = 0;
     if (kind === "video") {
-      const { stdout } = await execFileAsync(
+      const { stdout } = await withResourceLease("ffmpeg_light", ({ signal }) => execFileAsync(
         "ffprobe",
         [
           "-v", "error", "-select_streams", "v:0",
@@ -76,8 +77,8 @@ export async function perceptualFingerprint(
           "-of", "default=noprint_wrappers=1:nokey=1",
           inputPath,
         ],
-        { timeout: 15_000, encoding: "utf8", maxBuffer: 64 * 1024 },
-      );
+        { timeout: 15_000, encoding: "utf8", maxBuffer: 64 * 1024, signal },
+      ));
       duration = Number.parseFloat(stdout);
       if (!Number.isFinite(duration) || duration <= 0) {
         throw new Error("video duration could not be determined");
@@ -91,7 +92,7 @@ export async function perceptualFingerprint(
       // interval), unlike taking the first N decoded frames.
       ...(kind === "video" ? [`fps=${videoSampleCount}/${duration}`] : []),
     ].join(",");
-    const { stdout } = await execFileAsync(
+    const { stdout } = await withResourceLease("ffmpeg_heavy", ({ signal }) => execFileAsync(
       "ffmpeg",
       [
         "-v", "error", "-i", inputPath,
@@ -99,8 +100,8 @@ export async function perceptualFingerprint(
         "-frames:v", kind === "video" ? String(videoSampleCount) : "1",
         "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1",
       ],
-      { timeout: 45_000, encoding: "buffer", maxBuffer: FRAME_BYTES * 16 },
-    );
+      { timeout: 45_000, encoding: "buffer", maxBuffer: FRAME_BYTES * 16, signal },
+    ));
     const frames = fingerprintRgbFrames(stdout as Buffer);
     if (frames.length === 0) throw new Error("media contains no decodable visual frame");
     if (kind === "video" && frames.length < 8) {

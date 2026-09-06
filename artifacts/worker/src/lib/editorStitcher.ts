@@ -6,6 +6,7 @@
 //
 // A single bad segment is skipped rather than failing the whole render.
 import { spawn } from "node:child_process";
+import { withResourceLease } from "@workspace/db";
 import { writeFile, readFile, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -126,7 +127,7 @@ const XFADE: Record<string, string> = {
 const FFMPEG_STEP_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 
 function run(args: string[]): Promise<void> {
-  return new Promise((resolve, reject) => {
+  return withResourceLease("ffmpeg_heavy", (lease) => new Promise<void>((resolve, reject) => {
     // -threads 2: caps ffmpeg worker threads to limit peak RAM (prevents OOM in production VMs).
     const p = spawn("ffmpeg", ["-threads", "2", ...args]);
     let stderr = "";
@@ -135,6 +136,10 @@ function run(args: string[]): Promise<void> {
       timedOut = true;
       p.kill("SIGKILL");
     }, FFMPEG_STEP_TIMEOUT_MS);
+    lease.signal.addEventListener("abort", () => {
+      if (timedOut) return;
+      timedOut = true; clearTimeout(timer); p.kill("SIGKILL"); reject(lease.signal.reason);
+    }, { once: true });
     p.stderr.on("data", (d) => {
       stderr = (stderr + d.toString()).slice(-8000);
     });
@@ -158,7 +163,7 @@ function run(args: string[]): Promise<void> {
           : `exited ${code}`;
       reject(new Error(`ffmpeg ${reason}: ${stderr.slice(-500)}`));
     });
-  });
+  }), { ttlMs: 10 * 60_000 });
 }
 
 // ffprobe should answer in seconds; kill it after a minute so a probe against
@@ -166,7 +171,7 @@ function run(args: string[]): Promise<void> {
 const FFPROBE_TIMEOUT_MS = 60 * 1000;
 
 function probeDuration(file: string): Promise<number> {
-  return new Promise((resolve) => {
+  return withResourceLease("ffmpeg_light", ({ signal }) => new Promise<number>((resolve) => {
     const p = spawn("ffprobe", [
       "-v", "error",
       "-show_entries", "format=duration",
@@ -174,6 +179,7 @@ function probeDuration(file: string): Promise<number> {
       file,
     ]);
     const timer = setTimeout(() => p.kill("SIGKILL"), FFPROBE_TIMEOUT_MS);
+    signal.addEventListener("abort", () => { p.kill("SIGKILL"); resolve(0); }, { once: true });
     let s = "";
     p.stdout.on("data", (d) => (s += d.toString()));
     p.on("error", () => {
@@ -184,11 +190,11 @@ function probeDuration(file: string): Promise<number> {
       clearTimeout(timer);
       resolve(parseFloat(s.trim()) || 0);
     });
-  });
+  }));
 }
 
 function hasAudio(file: string): Promise<boolean> {
-  return new Promise((resolve) => {
+  return withResourceLease("ffmpeg_light", ({ signal }) => new Promise<boolean>((resolve) => {
     const p = spawn("ffprobe", [
       "-v", "error",
       "-select_streams", "a",
@@ -197,6 +203,7 @@ function hasAudio(file: string): Promise<boolean> {
       file,
     ]);
     const timer = setTimeout(() => p.kill("SIGKILL"), FFPROBE_TIMEOUT_MS);
+    signal.addEventListener("abort", () => { p.kill("SIGKILL"); resolve(false); }, { once: true });
     let s = "";
     p.stdout.on("data", (d) => (s += d.toString()));
     p.on("error", () => {
@@ -207,7 +214,7 @@ function hasAudio(file: string): Promise<boolean> {
       clearTimeout(timer);
       resolve(s.trim().length > 0);
     });
-  });
+  }));
 }
 
 export async function stitchEditorTimeline(

@@ -34,7 +34,7 @@ const restartAttempts = new Map<number, number>();
 type ProcessorHealth = Awaited<ReturnType<typeof getJobProcessorHealth>>;
 type ChildSnapshot = Pick<
   ProcessorHealth,
-  "workerId" | "state" | "capacity" | "activeJobs" | "activeJobIds" | "jobsStarted" | "jobsCompleted" | "jobsFailed"
+  "workerId" | "state" | "capacity" | "activeJobs" | "activeJobIds" | "jobsStarted" | "jobsCompleted" | "jobsFailed" | "resourceLeases" | "resourceLeaseWaiters"
 > & {
   slot: number;
   pid: number | null;
@@ -111,6 +111,8 @@ function startWorkerChild(slot: number): void {
         jobsStarted: health.jobsStarted,
         jobsCompleted: health.jobsCompleted,
         jobsFailed: health.jobsFailed,
+        resourceLeases: health.resourceLeases,
+        resourceLeaseWaiters: health.resourceLeaseWaiters,
         lastReportedAt: new Date().toISOString(),
       });
     }

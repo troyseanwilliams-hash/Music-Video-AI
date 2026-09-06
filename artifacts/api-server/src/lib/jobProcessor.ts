@@ -1,4 +1,4 @@
-import { db } from "@workspace/db";
+import { db, runWithResourceLeaseExecutionContext, withResourceLease } from "@workspace/db";
 import { jobsTable, videosTable, creditsTable, imageAssetsTable } from "@workspace/db";
 import type { VideoClipMeta } from "@workspace/db";
 import { eq, and, sql, count, isNull } from "drizzle-orm";
@@ -202,10 +202,10 @@ async function extractAudioClip(
   const outputPath = join(tmpdir(), `bv_clip_${id}.mp3`);
   try {
     await writeFile(inputPath, audio.buffer);
-    await execAsync(
+    await withResourceLease("ffmpeg_light", ({ signal }) => execAsync(
       `ffmpeg -y -ss ${startSec.toFixed(3)} -t ${durationSec} -i "${inputPath}" -map 0:a:0 -vn -c:a libmp3lame -b:a 192k "${outputPath}"`,
-      { timeout: 30_000 },
-    );
+      { timeout: 30_000, signal },
+    ));
     const { readFile } = await import("fs/promises");
     const clipped = await readFile(outputPath);
     return { buffer: clipped, ext: "mp3" };
@@ -1290,8 +1290,7 @@ async function validateStrictSourceFoundation(
   for (const shot of shots) {
     const path = preparedImages[shot.index];
     try {
-      const file = await storageService.getObjectEntityFile(path!);
-      const [buffer] = await file.download();
+      const buffer = await storageService.downloadObjectBuffer(path!);
       fingerprints.push(await perceptualFingerprint(buffer, "image"));
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
@@ -1998,8 +1997,7 @@ async function getAudioBuffer(
   // Uploaded file path
   if (job.audioObjectPath) {
     try {
-      const file = await storageService.getObjectEntityFile(job.audioObjectPath);
-      const [buf] = await file.download();
+      const buf = await storageService.downloadObjectBuffer(job.audioObjectPath);
       const audioFilename = job.audioObjectPath.split("/").pop() ?? "";
       const audioDot = audioFilename.lastIndexOf(".");
       const ext = audioDot !== -1 ? audioFilename.slice(audioDot + 1).toLowerCase() : "mp3";
@@ -2089,14 +2087,14 @@ async function createSimulationClip(durationSec: number): Promise<Buffer> {
   const id = randomUUID();
   const outPath = join(tmpdir(), `bv_sim_${id}.mp4`);
   try {
-    await execAsync(
+    await withResourceLease("ffmpeg_light", ({ signal }) => execAsync(
       `ffmpeg -y -f lavfi -i color=c=0x1a0533:size=1280x720:rate=30 ` +
         `-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 ` +
         `-t ${Math.min(durationSec, 10)} ` +
         `-c:v libx264 -preset ultrafast -crf 28 ` +
         `-c:a aac -shortest "${outPath}"`,
-      { timeout: 30_000 },
-    );
+      { timeout: 30_000, signal },
+    ));
     const { readFile } = await import("fs/promises");
     return readFile(outPath);
   } finally {
@@ -3171,8 +3169,7 @@ async function processEditorJob(job: JobRow): Promise<void> {
     for (let i = 0; i < manifest.segments.length; i++) {
       const s = manifest.segments[i]!;
       try {
-        const file = await storageService.getObjectEntityFile(s.objectPath);
-        const [buf] = await file.download();
+        const buf = await storageService.downloadObjectBuffer(s.objectPath);
         const ext = extFromObjectPath(s.objectPath, s.kind === "photo" ? "jpg" : "mp4");
         segments.push({
           buffer: buf,
@@ -3198,8 +3195,7 @@ async function processEditorJob(job: JobRow): Promise<void> {
     let music;
     if (manifest.music?.objectPath) {
       try {
-        const file = await storageService.getObjectEntityFile(manifest.music.objectPath);
-        const [buf] = await file.download();
+        const buf = await storageService.downloadObjectBuffer(manifest.music.objectPath);
         const ext = extFromObjectPath(manifest.music.objectPath, "mp3");
         music = {
           buffer: buf,
@@ -3441,8 +3437,7 @@ async function processRemixJob(job: JobRow): Promise<void> {
         // Reuse the existing clip bytes untouched.
         let buffer: Buffer;
         try {
-          const file = await storageService.getObjectEntityFile(clip.objectPath);
-          [buffer] = await file.download();
+          buffer = await storageService.downloadObjectBuffer(clip.objectPath);
         } catch (err) {
           logger.warn({ err, jobId: job.id, index: clip.index }, "Could not reuse clip; substituting placeholder");
           buffer = await createSimulationClip(duration);
@@ -3721,7 +3716,7 @@ async function processRunwayLipSyncJob(job: JobRow): Promise<void> {
   }
 }
 
-async function processJob(job: JobRow): Promise<void> {
+async function processJobInner(job: JobRow): Promise<void> {
   if (job.jobType === "podcast") {
     await processPodcastJob(job);
     return;
@@ -4071,6 +4066,14 @@ async function processJob(job: JobRow): Promise<void> {
   } catch (err) {
     await retryOrFail(job, err);
   }
+}
+
+async function processJob(job: JobRow): Promise<void> {
+  return runWithResourceLeaseExecutionContext({
+    jobId: job.id,
+    heartbeat: () => assertJobOwned(job),
+    shouldAbort: () => processorState.state === "draining" || processorState.state === "stopped",
+  }, () => processJobInner(job));
 }
 
 // Reset jobs that have been stuck in a non-terminal, non-queued state for

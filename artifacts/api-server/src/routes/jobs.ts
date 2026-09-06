@@ -154,8 +154,7 @@ async function findUnreadableReviewScenes(
         continue;
       }
       try {
-        const file = await storage.getObjectEntityFile(scenePath);
-        const [buffer] = await file.download();
+        const buffer = await storage.downloadObjectBuffer(scenePath);
         await perceptualFingerprint(buffer, "image");
       } catch {
         failures.add(index);

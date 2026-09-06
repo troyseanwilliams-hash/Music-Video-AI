@@ -97,6 +97,37 @@ export const jobsTable = pgTable("jobs", {
     .$onUpdate(() => new Date()),
 });
 
+// Cross-process capacity gates for expensive external resources.  A row is a
+// numbered slot rather than a lock held by a database connection: callers
+// renew its short TTL while doing work, so a stopped process is recovered
+// automatically without holding a transaction across a network call.
+export const resourceLeasesTable = pgTable(
+  "resource_leases",
+  {
+    resourceKey: text("resource_key").notNull(),
+    slot: integer("slot").notNull(),
+    ownerToken: text("owner_token").notNull(),
+    jobId: text("job_id"),
+    acquiredAt: timestamp("acquired_at", { withTimezone: true }).notNull().defaultNow(),
+    heartbeatAt: timestamp("heartbeat_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    resourceSlotUnique: uniqueIndex("resource_leases_resource_slot_unique").on(
+      table.resourceKey,
+      table.slot,
+    ),
+    expiryIndex: index("resource_leases_expires_at_idx").on(table.expiresAt),
+    resourceExpiryIndex: index("resource_leases_resource_expires_at_idx").on(
+      table.resourceKey,
+      table.expiresAt,
+    ),
+    jobIndex: index("resource_leases_job_id_idx").on(table.jobId),
+  }),
+);
+
+export type ResourceLease = typeof resourceLeasesTable.$inferSelect;
+
 export const videosTable = pgTable("videos", {
   id: text("id").primaryKey(),
   userId: text("user_id")

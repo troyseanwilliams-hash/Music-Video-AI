@@ -1,4 +1,5 @@
 import ffmpeg from "fluent-ffmpeg";
+import { withResourceLease } from "@workspace/db";
 import { writeFile, readFile, unlink, mkdir, rm } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -37,9 +38,13 @@ export interface StitchResult {
 }
 
 function runFfmpeg(cmd: ffmpeg.FfmpegCommand): Promise<void> {
-  return new Promise((resolve, reject) => {
+  return withResourceLease("ffmpeg_heavy", (lease) => new Promise<void>((resolve, reject) => {
+    lease.signal.addEventListener("abort", () => {
+      try { cmd.kill("SIGKILL"); } catch { /* already exited */ }
+      reject(lease.signal.reason);
+    }, { once: true });
     cmd.on("end", () => resolve()).on("error", (err) => reject(err)).run();
-  });
+  }), { ttlMs: 10 * 60_000 });
 }
 
 // A short render should never wait forever, but long caption/watermark encodes
@@ -57,7 +62,7 @@ function runFfmpegWithTimeout(
   cmd: ffmpeg.FfmpegCommand,
   timeoutMs = MIN_FFMPEG_TIMEOUT_MS,
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
+  return withResourceLease("ffmpeg_heavy", (lease) => new Promise<void>((resolve, reject) => {
     let settled = false;
     const timer = setTimeout(() => {
       if (settled) return;
@@ -65,11 +70,17 @@ function runFfmpegWithTimeout(
       try { cmd.kill("SIGKILL"); } catch { /* ignore */ }
       reject(new Error(`ffmpeg processing exceeded ${Math.ceil(timeoutMs / 60_000)} minutes`));
     }, timeoutMs);
+    lease.signal.addEventListener("abort", () => {
+      if (settled) return;
+      settled = true; clearTimeout(timer);
+      try { cmd.kill("SIGKILL"); } catch { /* already exited */ }
+      reject(lease.signal.reason);
+    }, { once: true });
     cmd
       .on("end", () => { if (!settled) { settled = true; clearTimeout(timer); resolve(); } })
       .on("error", (err) => { if (!settled) { settled = true; clearTimeout(timer); reject(err); } })
       .run();
-  });
+  }), { ttlMs: 10 * 60_000 });
 }
 
 // Burns a small semi-transparent "AIBeatSync" watermark (bottom-right) onto a

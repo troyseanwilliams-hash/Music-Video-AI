@@ -129,8 +129,7 @@ async function generateCuts(params: {
 }): Promise<TeaserMetaRow[]> {
   const { video, count, durationSec, startIndex, kind } = params;
   const sections = await getAnalysisSections(video.jobId);
-  const file = await storageService.getObjectEntityFile(video.videoObjectPath);
-  const [videoBuffer] = await file.download();
+  const videoBuffer = await storageService.downloadObjectBuffer(video.videoObjectPath);
   const videoDuration = video.durationSeconds ?? 30;
 
   const moments = pickTeaserMoments(
@@ -267,8 +266,7 @@ router.post("/videos/:id/lyrics", async (req: Request<{ id: string }>, res: Resp
   }
 
   try {
-    const file = await storageService.getObjectEntityFile(video.videoObjectPath);
-    const [srcBuffer] = await file.download();
+    const srcBuffer = await storageService.downloadObjectBuffer(video.videoObjectPath);
     const durationSeconds = video.durationSeconds ?? 30;
 
     const outBuffer = await burnLyricsOnVideo(srcBuffer, parsed.data.lyricsText, durationSeconds);
@@ -395,8 +393,7 @@ router.post("/videos/:id/release-kit", async (req: Request<{ id: string }>, res:
     // Optional karaoke-lyrics version → saved as a NEW video (original untouched).
     let lyricVideo: { videoId: string; url: string } | null = null;
     if (lyricsText) {
-      const file = await storageService.getObjectEntityFile(video.videoObjectPath);
-      const [srcBuffer] = await file.download();
+      const srcBuffer = await storageService.downloadObjectBuffer(video.videoObjectPath);
       const durationSeconds = video.durationSeconds ?? 30;
       const outBuffer = await burnLyricsOnVideo(srcBuffer, lyricsText, durationSeconds);
       const thumbBuffer = await extractVideoThumbnail(outBuffer, Math.max(1, durationSeconds * 0.3));

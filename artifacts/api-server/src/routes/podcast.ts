@@ -83,10 +83,10 @@ router.post("/podcast/jobs", async (req, res) => {
   try {
     const [metadata] = await file.getMetadata();
     if (Number(metadata.size ?? 0) > MAX_PODCAST_BYTES) {
-      return void res.status(413).json({ error: "Podcast media must be 1 GB or smaller." });
+      return void res.status(413).json({ error: "Podcast media must be 250 MB or smaller." });
     }
     const temp = `/tmp/podcast-check-${randomUUID()}-${audioObjectPath.split("/").pop()}`;
-    await file.download({ destination: temp });
+    await storage.downloadObjectToFile(audioObjectPath, temp);
     try { duration = await probeDuration(temp); } finally { await (await import("fs/promises")).unlink(temp).catch(() => {}); }
   } catch {
     return void res.status(422).json({ error: "The uploaded media could not be decoded." });

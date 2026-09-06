@@ -10,6 +10,7 @@
 //
 // Env: ASSEMBLYAI_API_KEY. Keep Universal-2 as the cost-conscious async tier.
 // AssemblyAI fetches the (signed) audio URL directly.
+import { withResourceLease } from "@workspace/db";
 
 const AAI_BASE = "https://api.assemblyai.com/v2";
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -98,7 +99,7 @@ export async function alignLyrics(params: { audioUrl: string; lyricsText?: strin
   if (!key) throw new Error("Lyric alignment requires ASSEMBLYAI_API_KEY");
 
   // 1. Submit — AssemblyAI pulls the signed audio URL itself.
-  const submit = await fetch(`${AAI_BASE}/transcript`, {
+  const submit = await withResourceLease("assemblyai_submission", ({ signal }) => fetch(`${AAI_BASE}/transcript`, {
     method: "POST",
     headers: { authorization: key, "content-type": "application/json" },
     body: JSON.stringify({
@@ -107,8 +108,8 @@ export async function alignLyrics(params: { audioUrl: string; lyricsText?: strin
       punctuate: true,
       format_text: false,
     }),
-    signal: AbortSignal.timeout(30_000),
-  });
+    signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
+  }));
   if (!submit.ok) throw new Error(`AssemblyAI submit ${submit.status}: ${(await submit.text()).slice(0, 200)}`);
   const submitted = (await submit.json()) as { id?: string };
   const id = submitted.id;
