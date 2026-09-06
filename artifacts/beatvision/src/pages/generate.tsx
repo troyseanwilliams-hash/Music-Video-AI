@@ -105,8 +105,9 @@ import {
   Users, Clapperboard, Layers, Zap, Film, Wand2, Video as VideoIcon, FileText,
   ChevronDown, User, Maximize2, Captions, Pencil, MonitorPlay, ImageIcon, X,
   Lock, Crown, Coins, AlertTriangle, CreditCard, Clock, ShieldAlert, Info, VideoOff, CircleHelp,
-  Copy, RotateCcw, CheckCheck,
+  Copy, RotateCcw, CheckCheck, Mic
 } from "lucide-react";
+import { NarrationGenerator } from "@/components/NarrationGenerator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 // Original sample lyrics (safe to ship — written for this app) showing all
@@ -295,7 +296,7 @@ export default function Generate() {
     track("guided_release_dismissed", { step: guidedStep });
   }, [guidedStep]);
 
-  const [sourceType, setSourceType] = useState<CreateJobRequestAudioSourceType>(
+  const [sourceType, setSourceType] = useState<CreateJobRequestAudioSourceType | "narration">(
     CreateJobRequestAudioSourceType.upload,
   );
   const [sunoInputUrl, setSunoInputUrl] = useState("");
@@ -601,6 +602,16 @@ export default function Generate() {
   const handleDurationChange = useCallback((dur: CreateJobRequestRequestedDuration) => {
     setRequestedDuration(dur);
     setClipStartTime(0);
+  }, []);
+
+  const handleNarrationHandoff = useCallback((handoff: any, title: string) => {
+    setSourceType(CreateJobRequestAudioSourceType.upload);
+    setObjectPath(handoff.audioObjectPath);
+    setUploadedFileName(title);
+    setFieldErrors((e) => ({ ...e, audio: undefined }));
+    setShotPlan(null); // Invalidate any prior storyboard
+    setRequestedDuration(CreateJobRequestRequestedDuration.full);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
   const handleFileSelect = async (file: File) => {
@@ -1716,6 +1727,17 @@ export default function Generate() {
                   )}
                 </TabsContent>
 
+                <TabsContent value="narration" className="space-y-4">
+                  <NarrationGenerator onHandoff={handleNarrationHandoff} onCostError={(error) => setErrorDialog({
+                    open: true,
+                    title: "Not Enough Credits",
+                    message: error.message,
+                    code: error.code,
+                    creditsRequired: error.creditsRequired,
+                    creditsRemaining: error.creditsRemaining
+                  })} />
+                </TabsContent>
+
                 <TabsContent value={CreateJobRequestAudioSourceType.suno} className="space-y-4">
                   <div className="flex gap-2">
                     <Input
@@ -2372,13 +2394,20 @@ export default function Generate() {
             }}
             className="w-full"
           >
-            <TabsList className="grid w-full grid-cols-3 mb-6">
+            <TabsList className="grid w-full grid-cols-4 mb-6">
               <TabsTrigger
                 value={CreateJobRequestAudioSourceType.upload}
                 className="flex items-center gap-1.5 text-xs sm:text-sm"
               >
                 <Upload className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
                 <span>Audio</span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="narration"
+                className="flex items-center gap-1.5 text-xs sm:text-sm"
+              >
+                <Mic className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+                <span>Narration</span>
               </TabsTrigger>
               <TabsTrigger
                 value={CreateJobRequestAudioSourceType.suno}
@@ -2787,6 +2816,17 @@ export default function Generate() {
                   </div>
                 </div>
               )}
+            </TabsContent>
+
+            <TabsContent value="narration" className="mt-0">
+              <NarrationGenerator onHandoff={handleNarrationHandoff} onCostError={(error) => setErrorDialog({
+                open: true,
+                title: "Not Enough Credits",
+                message: error.message,
+                code: error.code,
+                creditsRequired: error.creditsRequired,
+                creditsRemaining: error.creditsRemaining
+              })} />
             </TabsContent>
 
             <TabsContent value={CreateJobRequestAudioSourceType.suno} className="mt-0">

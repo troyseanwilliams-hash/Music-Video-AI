@@ -1,0 +1,221 @@
+import { randomUUID } from "crypto";
+import { Router } from "express";
+import { and, eq, sql } from "drizzle-orm";
+import { z } from "zod";
+import { creditsTable, db, jobsTable, usersTable } from "@workspace/db";
+import {
+  defaultNarrationVoiceId,
+  isAllowedNarrationVoice,
+  MAX_SCRIPT_CHARS,
+  MIN_SCRIPT_CHARS,
+  narrationCost,
+  NARRATION_VOICES,
+  narrationVoicePreview,
+} from "../lib/narration.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
+
+const router = Router();
+const storage = new ObjectStorageService();
+const bodySchema = z.object({
+  script: z.string().trim().min(MIN_SCRIPT_CHARS).max(MAX_SCRIPT_CHARS),
+  voiceId: z.string().trim().max(100).optional(),
+  includeMusic: z.boolean().default(false),
+  musicPrompt: z.string().trim().max(300).optional(),
+}).strict();
+
+function admin(email: string | null | undefined): boolean {
+  return Boolean(email && process.env.ADMIN_EMAIL && email.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase());
+}
+
+function view(job: typeof jobsTable.$inferSelect) {
+  const meta = job.manifest && typeof job.manifest === "object"
+    ? job.manifest as Record<string, unknown>
+    : {};
+  const charged = Number(meta.chargedCredits ?? 0);
+  return {
+    id: job.id,
+    status: job.status,
+    progressPercent: job.progressPercent ?? 0,
+    error: job.errorMessage,
+    estimatedCost: Number(meta.estimatedCost ?? charged),
+    chargedCost: charged,
+    refunded: meta.refunded === true,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+    ...(job.status === "ready" && job.audioObjectPath ? {
+      result: {
+        audioObjectPath: job.audioObjectPath,
+        audioAnalysis: job.audioAnalysis,
+        downloadPath: `/api/narrations/${job.id}/download`,
+        handoff: {
+          audioSourceType: "upload",
+          audioObjectPath: job.audioObjectPath,
+          audioAnalysis: job.audioAnalysis,
+        },
+      },
+    } : {}),
+  };
+}
+
+router.get("/narrations/voices", (req, res) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: "Unauthorized" });
+  res.json({
+    voices: NARRATION_VOICES.map((voice) => ({
+      ...voice,
+      isDefault: voice.id === defaultNarrationVoiceId(),
+      previewPath: `/api/narrations/voices/${voice.id}/preview`,
+    })),
+    defaultVoiceId: defaultNarrationVoiceId(),
+  });
+});
+
+router.get("/narrations/voices/:voiceId/preview", async (req, res) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: "Unauthorized" });
+  if (!isAllowedNarrationVoice(req.params.voiceId)) {
+    return void res.status(404).json({ error: "Voice not found" });
+  }
+  try {
+    const audio = await narrationVoicePreview(req.params.voiceId);
+    res.setHeader("content-type", "audio/mpeg");
+    res.setHeader("cache-control", "private, max-age=86400");
+    res.send(audio);
+  } catch (error) {
+    req.log.error({ error }, "Narration voice preview failed");
+    res.status(503).json({ error: "Voice preview is temporarily unavailable." });
+  }
+});
+
+router.post("/narrations/estimate", (req, res) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: "Unauthorized" });
+  const parsed = bodySchema.safeParse(req.body);
+  if (!parsed.success) return void res.status(400).json({ error: "Enter a script between 40 and 39,000 characters." });
+  res.json({
+    scriptCharacters: parsed.data.script.length,
+    estimatedCost: narrationCost(parsed.data.script.length, parsed.data.includeMusic),
+    musicCost: parsed.data.includeMusic ? 4 : 0,
+  });
+});
+
+router.post("/narrations", async (req, res) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: "Unauthorized" });
+  const parsed = bodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return void res.status(400).json({
+      error: "Enter a script between 40 and 39,000 characters and valid narration options.",
+      details: parsed.error.flatten(),
+    });
+  }
+  if (parsed.data.voiceId && !isAllowedNarrationVoice(parsed.data.voiceId)) {
+    return void res.status(400).json({ error: "Select an available narration voice." });
+  }
+  if (parsed.data.musicPrompt && !parsed.data.includeMusic) {
+    return void res.status(400).json({ error: "Enable background music before adding a music prompt." });
+  }
+  if (!process.env.ELEVENLABS_API_KEY) {
+    return void res.status(503).json({ error: "AI narration is temporarily unavailable." });
+  }
+  const idempotencyKey = String(req.get("Idempotency-Key") ?? "").trim();
+  if (!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) {
+    return void res.status(400).json({ error: "A valid Idempotency-Key header is required." });
+  }
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.user.id)).limit(1);
+  const isAdmin = admin(user?.email);
+  if (!isAdmin && user?.subscriptionStatus !== "active" && user?.subscriptionStatus !== "trialing") {
+    return void res.status(403).json({
+      error: "An active membership or trial is required for AI narration.",
+      code: "SUBSCRIPTION_REQUIRED",
+    });
+  }
+  const estimatedCost = narrationCost(parsed.data.script.length, parsed.data.includeMusic);
+  const result = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`${req.user.id}:${idempotencyKey}`}))`);
+    const [existing] = await tx.select().from(jobsTable).where(and(
+      eq(jobsTable.userId, req.user.id),
+      eq(jobsTable.jobType, "narration"),
+      sql`${jobsTable.manifest}->>'idempotencyKey' = ${idempotencyKey}`,
+    )).limit(1);
+    if (existing) return { job: existing, remaining: null, replay: true };
+
+    let [credits] = await tx.select().from(creditsTable).where(eq(creditsTable.userId, req.user.id)).limit(1).for("update");
+    if (!credits) {
+      [credits] = await tx.insert(creditsTable).values({ id: randomUUID(), userId: req.user.id }).returning();
+    }
+    const charged = isAdmin ? 0 : estimatedCost;
+    if (!isAdmin && credits.creditsRemaining < charged) {
+      return { job: null, remaining: credits.creditsRemaining, replay: false };
+    }
+    const subscriptionDebit = isAdmin ? 0 : Math.min(charged, Math.max(0, credits.subscriptionCredits));
+    const topupDebit = isAdmin ? 0 : charged - subscriptionDebit;
+    if (topupDebit > Math.max(0, credits.topupCredits)) {
+      return { job: null, remaining: credits.creditsRemaining, replay: false };
+    }
+    if (charged > 0) {
+      await tx.update(creditsTable).set({
+        subscriptionCredits: sql`subscription_credits - ${subscriptionDebit}`,
+        topupCredits: sql`topup_credits - ${topupDebit}`,
+        creditsRemaining: sql`credits_remaining - ${charged}`,
+        creditsUsed: sql`credits_used + ${charged}`,
+        updatedAt: new Date(),
+      }).where(eq(creditsTable.userId, req.user.id));
+    }
+    const [job] = await tx.insert(jobsTable).values({
+      id: randomUUID(),
+      userId: req.user.id,
+      jobType: "narration",
+      status: "queued",
+      audioSourceType: null,
+      prompt: "AI narration",
+      progressPercent: 0,
+      manifest: {
+        script: parsed.data.script,
+        voiceId: parsed.data.voiceId ?? defaultNarrationVoiceId(),
+        includeMusic: parsed.data.includeMusic,
+        musicPrompt: parsed.data.musicPrompt,
+        stage: "queued",
+        idempotencyKey,
+        estimatedCost,
+        chargedCredits: charged,
+        chargedSubscriptionCredits: subscriptionDebit,
+        chargedTopupCredits: topupDebit,
+        refunded: false,
+      },
+    }).returning();
+    return { job, remaining: credits.creditsRemaining - charged, replay: false };
+  });
+  if (!result.job) {
+    return void res.status(402).json({
+      error: `Narration costs ${estimatedCost} credits, but only ${result.remaining} are available.`,
+      code: "INSUFFICIENT_CREDITS",
+      estimatedCost,
+      chargedCost: 0,
+      creditsRequired: estimatedCost,
+      creditsRemaining: result.remaining,
+    });
+  }
+  res.status(result.replay ? 200 : 202).json({ narration: view(result.job), idempotentReplay: result.replay });
+});
+
+router.get("/narrations/:id", async (req, res) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: "Unauthorized" });
+  const [job] = await db.select().from(jobsTable).where(and(
+    eq(jobsTable.id, req.params.id),
+    eq(jobsTable.userId, req.user.id),
+    eq(jobsTable.jobType, "narration"),
+  )).limit(1);
+  if (!job) return void res.status(404).json({ error: "Narration not found" });
+  res.json({ narration: view(job) });
+});
+
+router.get("/narrations/:id/download", async (req, res) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: "Unauthorized" });
+  const [job] = await db.select().from(jobsTable).where(and(
+    eq(jobsTable.id, req.params.id),
+    eq(jobsTable.userId, req.user.id),
+    eq(jobsTable.jobType, "narration"),
+    eq(jobsTable.status, "ready"),
+  )).limit(1);
+  if (!job?.audioObjectPath) return void res.status(404).json({ error: "Narration audio is not ready." });
+  res.redirect(302, await storage.getObjectEntitySignedUrl(job.audioObjectPath, 300));
+});
+
+export default router;

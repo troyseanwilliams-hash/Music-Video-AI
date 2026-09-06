@@ -61,3 +61,4 @@
 - [Preview backfill deletion locking](preview-backfill-deletion-locking.md) — preview attachment and every permanent video purge must serialize on the same video-row lock.
 - [Member media retention](member-media-retention.md) — never automatically purge videos belonging to current members; permanent deletion is an explicit admin action only.
 - [Music-aware prompt handoff](music-aware-prompt-handoff.md) — exact prompt plans require receipt-verified audio; preserve edits as numbered input, then revalidate in Generate before charging.
+- [Narration credit authority](narration-credit-authority.md) — AIBeatSync narration mirrors AIPodSync’s core workflow but charges only AIBeatSync credits.

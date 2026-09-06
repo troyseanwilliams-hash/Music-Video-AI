@@ -11,6 +11,15 @@ const PRIVATE_MANIFEST_KEYS = new Set([
   "lipSyncPollUrl",
   "finalizeWithPartial",
   "retryAfter",
+  "script",
+  "voiceId",
+  "musicPrompt",
+  "idempotencyKey",
+  "narrationRequestId",
+  "musicRequestId",
+  "acceptedOutputPath",
+  "chargedSubscriptionCredits",
+  "chargedTopupCredits",
   // imageReview is intentionally public to the owning customer: it contains
   // canonical scene paths, revisions, and editable prompts, but no billing
   // bucket or provider submission internals.

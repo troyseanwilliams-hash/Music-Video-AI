@@ -40,6 +40,7 @@ import {
   recoverableInfrastructureError,
 } from "./infrastructureRetry.js";
 import { processPodcastJob } from "./podcastProcessor.js";
+import { processNarrationJob } from "./narrationProcessor.js";
 
 const execAsync = promisify(exec);
 const MAX_RETRIES = 3;
@@ -3717,6 +3718,10 @@ async function processRunwayLipSyncJob(job: JobRow): Promise<void> {
 }
 
 async function processJobInner(job: JobRow): Promise<void> {
+  if (job.jobType === "narration") {
+    await processNarrationJob(job);
+    return;
+  }
   if (job.jobType === "podcast") {
     await processPodcastJob(job);
     return;

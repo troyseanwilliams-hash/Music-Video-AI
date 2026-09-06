@@ -8,6 +8,7 @@ export type ResourceKey =
   | "gateway_video_submission"
   | "other_video_submission"
   | "elevenlabs_submission"
+  | "elevenlabs"
   | "assemblyai_submission"
   | "ffmpeg_heavy"
   | "ffmpeg_light"
@@ -19,6 +20,7 @@ const definitions: Record<ResourceKey, { env: string; fallback: number; maximum:
   gateway_video_submission: { env: "GATEWAY_VIDEO_SUBMISSION_CONCURRENCY", fallback: 2, maximum: 20 },
   other_video_submission: { env: "OTHER_VIDEO_SUBMISSION_CONCURRENCY", fallback: 2, maximum: 20 },
   elevenlabs_submission: { env: "ELEVENLABS_SUBMISSION_CONCURRENCY", fallback: 2, maximum: 20 },
+  elevenlabs: { env: "ELEVENLABS_CONCURRENCY", fallback: 2, maximum: 20 },
   assemblyai_submission: { env: "ASSEMBLYAI_SUBMISSION_CONCURRENCY", fallback: 4, maximum: 40 },
   ffmpeg_heavy: { env: "FFMPEG_HEAVY_CONCURRENCY", fallback: 2, maximum: 20 },
   ffmpeg_light: { env: "FFMPEG_LIGHT_CONCURRENCY", fallback: 4, maximum: 40 },

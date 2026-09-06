@@ -44,6 +44,7 @@ export const jobTypeEnum = pgEnum("job_type", [
   "image_pack",
   "preview_backfill",
   "podcast",
+  "narration",
 ]);
 
 export const videoStyleEnum = pgEnum("video_style", [
