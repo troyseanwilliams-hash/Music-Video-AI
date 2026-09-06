@@ -32,6 +32,24 @@ export const pool = new Pool({
   connectionTimeoutMillis,
   maxUses: positiveIntEnv("DB_POOL_MAX_USES", 0, 100_000) || undefined,
 });
+
+// pg-pool emits an `error` event when an idle client is terminated by a
+// database restart or failover. Without a listener, Node treats that event as
+// uncaught and exits the entire API/worker process, abandoning any active job.
+// The pool has already removed the failed client and will open a replacement
+// for the next query, so log the incident without terminating the process.
+pool.on("error", (error) => {
+  const code =
+    typeof (error as Error & { code?: unknown }).code === "string"
+      ? (error as Error & { code: string }).code
+      : undefined;
+  console.error("Unexpected idle PostgreSQL client error; discarded failed client", {
+    name: error.name,
+    code,
+    message: error.message,
+  });
+});
+
 export const db = drizzle(pool, { schema });
 
 export * from "./schema";
