@@ -67,7 +67,10 @@ router.get("/admin/videos/:id/preview-url", async (req, res) => {
 
   try {
     const storageService = new ObjectStorageService();
-    const url = await storageService.getObjectEntitySignedUrl(video.videoObjectPath, 3600);
+    const url = await storageService.getObjectEntitySignedUrl(
+      video.previewObjectPath || video.videoObjectPath,
+      3600,
+    );
     res.json({ url });
   } catch {
     // The DB row exists but the underlying file is already gone from storage.

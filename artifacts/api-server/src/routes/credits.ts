@@ -266,6 +266,7 @@ router.get("/admin/users/:id/videos", async (req, res) => {
     .select({
       id: videosTable.id,
       videoObjectPath: videosTable.videoObjectPath,
+      previewObjectPath: videosTable.previewObjectPath,
       thumbnailObjectPath: videosTable.thumbnailObjectPath,
       title: videosTable.title,
       prompt: videosTable.prompt,

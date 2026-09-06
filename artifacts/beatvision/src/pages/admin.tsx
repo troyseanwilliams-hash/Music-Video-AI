@@ -41,6 +41,7 @@ interface AdminUser {
 interface AdminUserVideo {
   id: string;
   videoObjectPath: string;
+  previewObjectPath: string | null;
   thumbnailObjectPath: string | null;
   title: string | null;
   prompt: string | null;
@@ -252,10 +253,11 @@ function UserRow({ user, onChanged }: { user: AdminUser; onChanged: () => void }
                 {videos.map((v) => (
                   <div key={v.id} className="min-w-0">
                     <video
-                      src={`/api/storage${v.videoObjectPath}`}
+                      src={`/api/storage${v.previewObjectPath || v.videoObjectPath}`}
                       poster={v.thumbnailObjectPath ? `/api/storage${v.thumbnailObjectPath}` : undefined}
                       controls
-                      preload="none"
+                      preload="metadata"
+                      playsInline
                       className="w-full aspect-video rounded-md border border-border bg-black"
                     />
                     <div className="mt-1 truncate text-xs text-muted-foreground" title={v.title || v.prompt || ""}>
@@ -2188,7 +2190,14 @@ export default function AdminPage() {
           >
             <div className="relative w-full max-w-3xl" onClick={(e) => e.stopPropagation()}>
               {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-              <video src={previewUrl} controls autoPlay className="w-full rounded-lg shadow-xl bg-black" />
+              <video
+                src={previewUrl}
+                controls
+                autoPlay
+                playsInline
+                preload="metadata"
+                className="w-full rounded-lg shadow-xl bg-black"
+              />
               <Button
                 size="sm"
                 variant="secondary"
