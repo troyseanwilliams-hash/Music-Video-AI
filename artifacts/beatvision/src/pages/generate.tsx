@@ -2153,15 +2153,15 @@ export default function Generate() {
               <Maximize2 className="h-3.5 w-3.5 text-muted-foreground/50" />
             </div>
 
-            {/* Pill row — scrollable on mobile, wraps on larger screens */}
-            <div className="flex items-center gap-1.5 px-3 py-2 flex-wrap overflow-x-auto scrollbar-none">
+            {/* Settings use a two-column grid on phones and compact pills on larger screens. */}
+            <div className="grid grid-cols-2 items-center gap-1.5 px-3 py-2 sm:flex sm:flex-wrap">
 
               {/* Character */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 px-3 py-1.5 text-sm font-medium transition-colors">
+                  <button className="flex min-w-0 w-full items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 px-3 py-1.5 text-sm font-medium transition-colors sm:w-auto">
                     <User className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span>{characterLabel}</span>
+                    <span className="truncate">{characterLabel}</span>
                     <ChevronDown className="h-3 w-3 text-muted-foreground ml-0.5" />
                   </button>
                 </DropdownMenuTrigger>
@@ -2190,9 +2190,9 @@ export default function Generate() {
               {/* AI provider */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 px-3 py-1.5 text-sm font-medium transition-colors">
+                  <button className="flex min-w-0 w-full items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 px-3 py-1.5 text-sm font-medium transition-colors sm:w-auto">
                     <Wand2 className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span>{PROVIDER_LABELS[aiProvider]}</span>
+                    <span className="truncate">{PROVIDER_LABELS[aiProvider]}</span>
                     <ChevronDown className="h-3 w-3 text-muted-foreground ml-0.5" />
                   </button>
                 </DropdownMenuTrigger>
@@ -2218,9 +2218,9 @@ export default function Generate() {
               {/* Duration */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 px-3 py-1.5 text-sm font-medium transition-colors">
+                  <button className="flex min-w-0 w-full items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 px-3 py-1.5 text-sm font-medium transition-colors sm:w-auto">
                     <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span>{
+                    <span className="truncate">{
                        sourceType === CreateJobRequestAudioSourceType.none ? `Silent · ${formatDuration(silentFilmDurationSeconds)}`
                          : requestedDuration === CreateJobRequestRequestedDuration.full ? fullTrackLabel
                         : (requestedDuration as string) === "300" ? "5 min"
@@ -2287,7 +2287,7 @@ export default function Generate() {
               {/* Aspect Ratio */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 px-3 py-1.5 text-sm font-medium transition-colors">
+                  <button className="flex min-w-0 w-full items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 px-3 py-1.5 text-sm font-medium transition-colors sm:w-auto">
                     <Maximize2 className="h-3.5 w-3.5 text-muted-foreground" />
                     <span>{aspectRatio}</span>
                     <ChevronDown className="h-3 w-3 text-muted-foreground ml-0.5" />
@@ -2309,7 +2309,7 @@ export default function Generate() {
               {/* Resolution */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 px-3 py-1.5 text-sm font-medium transition-colors">
+                  <button className="flex min-w-0 w-full items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 px-3 py-1.5 text-sm font-medium transition-colors sm:w-auto">
                     <MonitorPlay className="h-3.5 w-3.5 text-muted-foreground" />
                     <span>{RES_LABELS[resolution as string] ?? resolution}</span>
                     <ChevronDown className="h-3 w-3 text-muted-foreground ml-0.5" />
@@ -2352,7 +2352,7 @@ export default function Generate() {
               {/* Style */}
               <button
                 onClick={() => styleRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}
-                className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 px-3 py-1.5 text-sm font-medium transition-colors"
+                className="flex min-w-0 w-full items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 px-3 py-1.5 text-sm font-medium transition-colors sm:w-auto"
               >
                 <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
                 <span>Style</span>
@@ -2361,7 +2361,7 @@ export default function Generate() {
               {/* Captions */}
               <button
                 onClick={() => setLyricsEnabled((v) => !v)}
-                className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+                className={`flex min-w-0 w-full items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors sm:w-auto ${
                   lyricsEnabled
                     ? "border-primary/40 bg-primary/10 text-primary"
                     : "border-border/50 bg-secondary/40 hover:bg-secondary/70"
@@ -2372,7 +2372,7 @@ export default function Generate() {
               </button>
 
               {/* Spacer + Edit prompt */}
-              <div className="ml-auto">
+              <div className="col-span-2 flex justify-end sm:ml-auto">
                 <button
                   onClick={() => document.getElementById("prompt")?.focus()}
                   className="flex items-center justify-center h-8 w-8 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 transition-colors"

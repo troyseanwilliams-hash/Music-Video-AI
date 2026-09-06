@@ -516,12 +516,12 @@ export function NarrationGenerator({ onHandoff, onExit, onCostError }: Narration
       <div className="space-y-4 pt-4 border-t">
         <Label className="text-base">Background Music</Label>
         <Tabs value={musicSource} onValueChange={(v: any) => { setMusicSource(v); clearMusicSelection(); }}>
-          <TabsList className="grid grid-cols-5 w-full">
-            <TabsTrigger value="none">None</TabsTrigger>
-            <TabsTrigger value="generated">Generate</TabsTrigger>
-            <TabsTrigger value="soundtrack">My Music</TabsTrigger>
-            <TabsTrigger value="upload">Upload</TabsTrigger>
-            <TabsTrigger value="suno">Suno</TabsTrigger>
+          <TabsList className="grid h-auto w-full grid-cols-3 gap-1 sm:grid-cols-5">
+            <TabsTrigger value="none" className="min-w-0 px-2 text-xs sm:text-sm">None</TabsTrigger>
+            <TabsTrigger value="generated" className="min-w-0 px-2 text-xs sm:text-sm">Generate</TabsTrigger>
+            <TabsTrigger value="soundtrack" className="min-w-0 px-2 text-xs sm:text-sm">My Music</TabsTrigger>
+            <TabsTrigger value="upload" className="min-w-0 px-2 text-xs sm:text-sm">Upload</TabsTrigger>
+            <TabsTrigger value="suno" className="min-w-0 px-2 text-xs sm:text-sm">Suno</TabsTrigger>
           </TabsList>
 
           <div className="mt-4">
