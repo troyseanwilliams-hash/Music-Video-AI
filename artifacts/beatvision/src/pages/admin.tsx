@@ -762,6 +762,7 @@ type RecoverableJob = {
   partialClips: number;
   pendingRequests: number;
   salvageable: boolean;
+  requiresIndividualRetry: boolean;
   updatedAt: string;
 };
 type RecoverReport = {
@@ -806,12 +807,32 @@ function RecoverStrandedPanel() {
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Recovery failed");
-      return d as { requeued: number; recharged: number; scanned: number };
+      const protectedIds = Array.isArray(d.requiresIndividualRetryIds)
+        ? d.requiresIndividualRetryIds.filter((id: unknown): id is string => typeof id === "string")
+        : [];
+      for (const jobId of protectedIds) {
+        const retryRes = await fetch(`/api/admin/jobs/${jobId}/retry`, {
+          method: "POST",
+          credentials: "include",
+        });
+        const retryData = await retryRes.json().catch(() => null);
+        if (!retryRes.ok) {
+          throw new Error(retryData?.error ?? `Protected recovery failed for ${jobId.slice(0, 8)}`);
+        }
+      }
+      return {
+        requeued: Number(d.requeued ?? 0) + protectedIds.length,
+        recharged: Number(d.recharged ?? 0),
+        scanned: Number(d.scanned ?? 0),
+        protectedRetries: protectedIds.length,
+      };
     },
     onSuccess: (d) => {
       toast({
         title: `Re-queued ${d.requeued} job${d.requeued === 1 ? "" : "s"}`,
-        description: d.recharged
+        description: d.protectedRetries
+          ? `${d.protectedRetries} refunded or terminal-scene job${d.protectedRetries === 1 ? " was" : "s were"} routed through protected one-scene recovery.`
+          : d.recharged
           ? `${d.recharged} previously-refunded job(s) were re-charged (user receives the video).`
           : "Finished renders will be reclaimed with no new provider spend.",
       });

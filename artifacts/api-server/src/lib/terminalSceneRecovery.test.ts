@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  requiresProtectedAdminRetry,
   retryProviderAfterTerminalFailure,
   terminalSceneRecovery,
 } from "./terminalSceneRecovery.js";
@@ -49,6 +50,33 @@ describe("terminalSceneRecovery", () => {
       sceneKey: null,
       unsafe: false,
     });
+  });
+});
+
+describe("requiresProtectedAdminRetry", () => {
+  it("routes terminal scene failures through targeted recovery", () => {
+    expect(requiresProtectedAdminRetry({
+      storyboard: { numClips: 41 },
+      rejectedRequests: {
+        "3": {
+          pollUrl: "https://api.dev.runwayml.com/v1/tasks/failed-task",
+        },
+      },
+    }, "AI scene FAILED")).toBe(true);
+  });
+
+  it("routes refunded jobs through row-locked credit reservation", () => {
+    expect(requiresProtectedAdminRetry({
+      refunded: true,
+      storyboard: { numClips: 10 },
+    }, "Render failed")).toBe(true);
+  });
+
+  it("allows ordinary non-refunded salvage recovery to stay bulk", () => {
+    expect(requiresProtectedAdminRetry({
+      refunded: false,
+      storyboard: { numClips: 10 },
+    }, "Render failed")).toBe(false);
   });
 });
 

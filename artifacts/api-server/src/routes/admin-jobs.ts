@@ -10,6 +10,7 @@ import {
   validateClipAttachment,
 } from "../lib/adminClipAttachments.js";
 import {
+  requiresProtectedAdminRetry,
   retryProviderAfterTerminalFailure,
   terminalSceneRecovery,
 } from "../lib/terminalSceneRecovery.js";
@@ -1064,6 +1065,7 @@ router.get("/admin/jobs/recoverable", async (req, res) => {
       pendingRequests,
       // "salvageable" = has clips to reuse or requests to reclaim for free.
       salvageable: partialClips > 0 || pendingRequests > 0,
+      requiresIndividualRetry: requiresProtectedAdminRetry(m, r.errorMessage),
     };
   });
 
@@ -1097,7 +1099,12 @@ router.post("/admin/jobs/recover", async (req, res) => {
   const onlyWithSalvage = req.body?.onlyWithSalvage !== false;
 
   const rows = await db
-    .select({ id: jobsTable.id, userId: jobsTable.userId, manifest: jobsTable.manifest })
+    .select({
+      id: jobsTable.id,
+      userId: jobsTable.userId,
+      errorMessage: jobsTable.errorMessage,
+      manifest: jobsTable.manifest,
+    })
     .from(jobsTable)
     .where(
       ids && ids.length
@@ -1112,44 +1119,48 @@ router.post("/admin/jobs/recover", async (req, res) => {
     return Object.keys(m.partialClips ?? {}).length > 0 || Object.keys(m.pendingRequests ?? {}).length > 0;
   });
 
-  let recharged = 0;
-  for (const r of candidates) {
-    const m = metaOf(r.manifest);
-    // If we refunded this job on failure, re-reserve the credits now — the user
-    // is about to receive the finished video, so charge as a normal render.
-    if (m.refunded && (m.reservedCredits ?? 0) > 0) {
-      const reserved = m.reservedCredits!;
-      await db
-        .update(creditsTable)
-        .set({
-          subscriptionCredits: sql`GREATEST(subscription_credits - ${reserved}, 0)`,
-          topupCredits: sql`GREATEST(topup_credits - GREATEST(${reserved} - subscription_credits, 0), 0)`,
-          creditsRemaining: sql`GREATEST(credits_remaining - ${reserved}, 0)`,
-          creditsUsed: sql`credits_used + ${reserved}`,
-          updatedAt: new Date(),
-        })
-        .where(eq(creditsTable.userId, r.userId));
-      await db.execute(sql`
-        UPDATE jobs SET manifest = jsonb_set(COALESCE(manifest, '{}'::jsonb), '{refunded}', 'false'::jsonb)
-        WHERE id = ${r.id}
-      `);
-      recharged++;
-    }
-  }
+  // Refunded jobs and terminal scene failures require the row-locked individual
+  // retry path. It reserves the exact unfinished amount and selects a safe
+  // replacement engine. Bulk requeueing these jobs would repeat the failed
+  // request or charge an inaccurate amount.
+  const requiresIndividualRetryIds = candidates
+    .filter((r) => requiresProtectedAdminRetry(metaOf(r.manifest), r.errorMessage))
+    .map((r) => r.id);
+  const individualRetrySet = new Set(requiresIndividualRetryIds);
+  const bulkCandidates = candidates.filter((r) => !individualRetrySet.has(r.id));
 
-  const requeuedIds = candidates.map((r) => r.id);
-  if (requeuedIds.length) {
-    await db
+  const bulkCandidateIds = bulkCandidates.map((r) => r.id);
+  let requeuedIds: string[] = [];
+  if (bulkCandidateIds.length) {
+    const transitioned = await db
       .update(jobsTable)
       .set({ status: "queued", errorMessage: null, retryCount: 0, claimedAt: null, updatedAt: new Date() })
-      .where(inArray(jobsTable.id, requeuedIds));
+      .where(and(
+        inArray(jobsTable.id, bulkCandidateIds),
+        eq(jobsTable.status, "failed"),
+      ))
+      .returning({ id: jobsTable.id });
+    requeuedIds = transitioned.map((row) => row.id);
   }
 
   req.log.info(
-    { requeued: requeuedIds.length, recharged, onlyWithSalvage, scoped: !!(ids && ids.length), scanned: rows.length },
+    {
+      requeued: requeuedIds.length,
+      requiresIndividualRetry: requiresIndividualRetryIds.length,
+      onlyWithSalvage,
+      scoped: !!(ids && ids.length),
+      scanned: rows.length,
+    },
     "Admin bulk-recovered failed jobs",
   );
-  res.json({ ok: true, requeued: requeuedIds.length, recharged, scanned: rows.length, requeuedIds });
+  res.json({
+    ok: true,
+    requeued: requeuedIds.length,
+    recharged: 0,
+    scanned: rows.length,
+    requeuedIds,
+    requiresIndividualRetryIds,
+  });
 });
 
 export default router;

@@ -27,6 +27,12 @@ An explicit admin retry may replace a terminally rejected request, but it must b
 
 **How to apply:** Validate recovery state before any credit debit, clear only archived rejected indexes, preserve unrelated pending handles plus all clip/image intents and uncertainty markers, and block customer retries whenever terminal or uncertain provider state exists.
 
+Every admin recovery entry point, including bulk and scoped recovery tools, must route refunded or terminal-scene jobs through the same protected individual transition.
+
+**Why:** A bulk salvage action bypassed targeted recovery, repeated the same failed engine, and could reset a live worker claim under concurrent requests.
+
+**How to apply:** Exclude protected jobs from direct bulk requeue, return them for row-locked individual retry, condition bulk updates on status still being failed, and report only rows actually transitioned.
+
 Targeted scene recovery must remain bound to the immutable storyboard index.
 
 **Why:** A replacement generated from the next available prompt or image can break narrative continuity even when it fills the missing runtime slot.

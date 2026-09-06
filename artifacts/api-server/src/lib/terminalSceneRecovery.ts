@@ -5,6 +5,7 @@ export type TerminalSceneRecoveryMeta = {
   storyboard?: {
     numClips?: number;
   };
+  refunded?: boolean;
 };
 
 function providerFromRequest(value: unknown): string | null {
@@ -98,4 +99,12 @@ export function terminalSceneRecovery(
   return isValidPlannedSceneKey(sceneKey, plannedScenes)
     ? { sceneKey, unsafe: false }
     : { sceneKey: null, unsafe: true };
+}
+
+export function requiresProtectedAdminRetry(
+  meta: TerminalSceneRecoveryMeta,
+  errorMessage: string | null,
+): boolean {
+  const recovery = terminalSceneRecovery(meta, errorMessage);
+  return meta.refunded === true || recovery.sceneKey !== null || recovery.unsafe;
 }
