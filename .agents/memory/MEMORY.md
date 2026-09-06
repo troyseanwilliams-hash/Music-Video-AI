@@ -52,3 +52,4 @@
 - [Post-approval clip duplicates](duplicate-clip-recovery.md) — image uniqueness is enforced before approval; generated clips may repeat afterward and must still stitch.
 - [Resend campaign limits](resend-campaign-limits.md) — use immutable daily cohorts and per-recipient outcomes; never auto-retry an ambiguous send after finite idempotency retention.
 - [Production JSON object counts](production-json-object-counts.md) — production SQL lacks jsonb_object_length; count jsonb_object_keys rows instead.
+- [Orval upgrade compatibility](orval-upgrade-compatibility.md) — patched Orval releases need an explicit Zod 3 target and deterministic barrel cleanup in this workspace.
