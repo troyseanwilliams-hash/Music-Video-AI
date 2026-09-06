@@ -1677,9 +1677,9 @@ export default function Editor() {
           ))}
         </div>
         <p className="mt-3 text-xs text-muted-foreground text-center">
-          <a href="https://aipodsync.com" className="text-primary font-medium hover:underline">
-            Narrate your videos on AIPodSync
-          </a>
+          <Link href="/generate" className="text-primary font-medium hover:underline">
+            Create narration in AIBeatSync
+          </Link>
         </p>
       </div>
 

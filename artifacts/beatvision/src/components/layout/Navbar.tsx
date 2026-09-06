@@ -93,14 +93,14 @@ export function Navbar() {
 
           <div className="flex items-center gap-3">
             {/* Always visible — icon-only on mobile, icon+label from sm: up — so it's never dropped from the right nav on small screens. */}
-            <a
-              href="https://aipodsync.com"
+            <Link
+              href="/generate"
               className="hidden sm:flex items-center gap-1.5 rounded-full border border-border/50 bg-secondary/40 px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
-              aria-label="Narrate your videos on AIPodSync"
+              aria-label="Create narrated videos in AIBeatSync"
             >
               <Mic className="h-3.5 w-3.5" aria-hidden="true" />
               <span className="hidden sm:inline">Narrated Videos</span>
-            </a>
+            </Link>
             {isAuthenticated && processingCount > 0 && (
               <Link
                 href="/dashboard"

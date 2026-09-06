@@ -1959,10 +1959,14 @@ export default function Generate() {
           </p>
           <p className="mt-1.5 text-xs text-muted-foreground">
             Need narration for your video too?{" "}
-            <a href="https://aipodsync.com" className="text-primary font-medium hover:underline">
-              Narrate your videos on AIPodSync
-            </a>
-            .
+            <button
+              type="button"
+              onClick={() => setSourceType("narration")}
+              className="text-primary font-medium hover:underline"
+            >
+              Create it here with AIBeatSync
+            </button>
+            —your narration uses the same credit balance.
           </p>
           <div className="mt-4 border-t border-border/40 pt-3">
             <div className="mb-2 text-xs font-medium text-muted-foreground">Sized for</div>

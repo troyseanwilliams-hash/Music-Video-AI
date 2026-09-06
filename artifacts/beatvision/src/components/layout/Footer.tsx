@@ -6,6 +6,8 @@ const COLUMNS: { title: string; links: { label: string; href: string; external?:
     title: "Create",
     links: [
       { label: "Generate", href: "/generate" },
+      { label: "Create Narration", href: "/generate" },
+      { label: "Podcast Media", href: "/podcast" },
       { label: "Make Music", href: "/soundtracks" },
       { label: "Montage Studio", href: "/editor" },
       { label: "Explore", href: "/explore" },
@@ -30,7 +32,6 @@ const COLUMNS: { title: string; links: { label: string; href: string; external?:
       { label: "DMCA / Copyright", href: "/dmca" },
       { label: "Contact", href: "mailto:legal@aibeatsync.com", external: true },
       { label: "AISync Suite", href: "https://aisyncsuite.com", external: true },
-      { label: "Narrate Your Videos", href: "https://aipodsync.com", external: true },
     ],
   },
 ];
@@ -49,7 +50,7 @@ export function Footer() {
               <span className="text-lg font-bold tracking-tight">AIBeatSync</span>
             </Link>
             <p className="mt-3 max-w-xs text-sm text-muted-foreground">
-              Create original songs and audio, then turn them into beat-synced AI videos—or use the music on its own.
+              Create music, narration, podcast media, cinematic videos, captions, and social-ready releases in one studio.
             </p>
           </div>
 

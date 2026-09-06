@@ -28,6 +28,7 @@ import {
   Music2,
   ImageIcon,
   Youtube,
+  Mic2,
 } from "lucide-react";
 
 type Interval = "month" | "year";
@@ -292,8 +293,8 @@ export default function Pricing() {
           Choose your <span className="text-gradient-electric">plan</span>
         </h1>
         <p className="text-base leading-7 text-muted-foreground max-w-xl mx-auto sm:text-lg">
-          Pick the credits that fit your output. Every plan includes access to music, AI image generation, narrative
-          videos, Montage Studio, and a free 7-day trial. Plan credits refresh with your billing cycle; top-ups never expire.
+          Pick the credits that fit your output. Every plan includes music, narration, AI images, narrative video,
+          Podcast Media, Montage Studio, and a free 7-day trial. Plan credits refresh with your billing cycle; top-ups never expire.
         </p>
         <div className="mx-auto mt-5 flex max-w-md items-start gap-2 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-3 text-left text-sm font-medium sm:inline-flex sm:max-w-none sm:items-center sm:rounded-full sm:py-2">
           <Sparkles className="h-4 w-4 text-primary" />
@@ -384,7 +385,7 @@ export default function Pricing() {
             Your plan credits unlock the full AIBeatSync creative suite as your tier grows.
           </p>
         </div>
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {[
             {
               icon: Music2,
@@ -400,6 +401,11 @@ export default function Pricing() {
               icon: Youtube,
               title: "Narrative Videos for YouTube",
               description: "Build chronological, story-led videos with scene-by-scene visuals for long-form YouTube content.",
+            },
+            {
+              icon: Mic2,
+              title: "Narration & Podcast Media",
+              description: "Create mixed narration from a script, then turn long-form audio or video into captioned episodes and highlights.",
             },
           ].map(({ icon: FeatureIcon, title, description }) => (
             <div
@@ -533,6 +539,33 @@ export default function Pricing() {
                       <strong>Unlimited AI Soundtracks</strong>{" "}
                       <span className="text-muted-foreground">
                         — instrumental songs use 5–10 credits by length; songs with lyrics use 18 credits per generated minute
+                      </span>
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                    <span>
+                      <strong>AI Narration</strong>{" "}
+                      <span className="text-muted-foreground">
+                        — 3 credits per started 1,000 script characters, 3-credit minimum; a generated music bed adds 4 credits
+                      </span>
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                    <span>
+                      <strong>Use your own background music at no extra music-generation charge</strong>{" "}
+                      <span className="text-muted-foreground">
+                        — choose an AIBeatSync soundtrack, upload audio, import a Suno song, or use voice only
+                      </span>
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                    <span>
+                      <strong>Podcast Media</strong>{" "}
+                      <span className="text-muted-foreground">
+                        — captioned 16:9 episodes, three vertical highlights, titles, descriptions, and downloads
                       </span>
                     </span>
                   </li>

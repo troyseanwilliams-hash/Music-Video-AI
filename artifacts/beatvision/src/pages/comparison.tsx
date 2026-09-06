@@ -152,20 +152,20 @@ export default function Comparison() {
             <Layers className="h-7 w-7 text-foreground" />
           </div>
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            One subscription. Two studios.
+            One subscription. One creator studio.
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
-            The AISync Suite gives you dedicated, separate monthly credit balances for AIBeatSync and AIPodSync on a single bill. Your video generation credits never compete with your podcast credits.
+            AIBeatSync now brings music, narration, podcast media, cinematic video, captions, and editing together with one shared credit balance.
           </p>
           <div className="mt-8 flex flex-col sm:flex-row justify-center gap-4">
              <Button asChild variant="outline" size="lg" className="border-border/60 hover:bg-card">
-                <a href="https://aipodsync.com" target="_blank" rel="noopener noreferrer">
-                  Discover AIPodSync
+                <a href="/podcast">
+                  Open Podcast Media
                 </a>
              </Button>
              <Button asChild size="lg" className="bg-foreground text-background hover:bg-foreground/90 border-0">
-                <a href="https://aisyncsuite.com" target="_blank" rel="noopener noreferrer">
-                  View Suite Pricing
+                <a href="/pricing">
+                  View AIBeatSync Pricing
                 </a>
              </Button>
           </div>
@@ -268,8 +268,8 @@ export default function Comparison() {
           </div>
           <div className="mt-10">
             <Button asChild variant="link" className="h-auto p-0 text-sm font-semibold text-accent">
-              <a href="https://aipodsync.com" target="_blank" rel="noopener noreferrer">
-                Visit AIPodSync <ChevronRight className="ml-1 h-4 w-4" />
+              <a href="/podcast">
+                Create Podcast Media <ChevronRight className="ml-1 h-4 w-4" />
               </a>
             </Button>
           </div>

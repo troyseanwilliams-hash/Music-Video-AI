@@ -57,7 +57,7 @@ export default function Home() {
               </h1>
 
               <p className="text-lg md:text-2xl text-white/60 mb-12 max-w-3xl mx-auto font-light leading-relaxed">
-                Stop juggling disconnected creative tools. Generate premium video with <span className="text-white font-medium">Kling</span> and <span className="text-white font-medium">Runway</span>, sync your lyrics, and edit the final cut—all powered by one shared credit balance.
+                Write the soundtrack, turn a script into narrated audio, create a podcast release, generate the visuals, sync lyrics, and edit the final cut—all from one site and one shared credit balance.
               </p>
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-5 w-full sm:w-auto">
@@ -85,6 +85,14 @@ export default function Home() {
                   <Music className="h-3.5 w-3.5" /> Generate Soundtracks
                 </Link>
                 <span>&middot;</span>
+                <Link href="/generate" className="hover:text-white transition-colors flex items-center gap-1.5">
+                  <Mic2 className="h-3.5 w-3.5" /> Create Narration
+                </Link>
+                <span>&middot;</span>
+                <Link href="/podcast" className="hover:text-white transition-colors flex items-center gap-1.5">
+                  <Share2 className="h-3.5 w-3.5" /> Podcast Media
+                </Link>
+                <span>&middot;</span>
                 <Link href="/gallery" className="hover:text-white transition-colors flex items-center gap-1.5">
                   <Play className="h-3.5 w-3.5" /> Browse Gallery
                 </Link>
@@ -107,18 +115,20 @@ export default function Home() {
                   <span className="text-white/40">Shared balance.</span>
                 </h2>
                 <p className="text-lg text-white/60 leading-relaxed mb-8">
-                  Music releases used to require a patchwork of subscriptions: an audio generator, an image AI, a video engine, and a separate editor. AIBeatSync replaces them all.
+                  Creator releases used to require a patchwork of subscriptions for music, voiceover, podcast clips, images, video, captions, and editing. AIBeatSync brings the full workflow together.
                 </p>
                 <div className="flex items-start gap-4 text-sm font-medium text-white/80 p-5 rounded-2xl bg-white/5 border border-white/10">
                   <CreditCard className="h-6 w-6 text-primary shrink-0" />
-                  <p className="leading-relaxed">Your single credit balance powers audio generation, premium video rendering, and karaoke syncing.</p>
+                  <p className="leading-relaxed">Your single credit balance powers soundtracks, narration, images, premium video rendering, and release-ready exports.</p>
                 </div>
               </div>
               
-              <div className="lg:col-span-7 grid sm:grid-cols-2 gap-4">
+               <div className="lg:col-span-7 grid sm:grid-cols-2 gap-4">
                 {[
                   { title: "Premium Video", desc: "Kling & Runway generation.", icon: Clapperboard, color: "text-accent", bg: "bg-accent/10", border: "border-accent/20" },
                   { title: "Audio & Vocals", desc: "Generate tracks & instrumentals.", icon: Music, color: "text-primary", bg: "bg-primary/10", border: "border-primary/20" },
+                   { title: "Narration Studio", desc: "Turn scripts into mixed, video-ready voiceovers.", icon: Mic2, color: "text-cyan-400", bg: "bg-cyan-500/10", border: "border-cyan-500/20" },
+                   { title: "Podcast Media", desc: "Create a captioned episode and vertical highlights.", icon: Share2, color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20" },
                   { title: "Visual Control", desc: "Storyboard before animating.", icon: Eye, color: "text-pink-400", bg: "bg-pink-500/10", border: "border-pink-500/20" },
                   { title: "Timeline Editor", desc: "Trim and export up to 4K.", icon: Scissors, color: "text-white", bg: "bg-white/10", border: "border-white/20" }
                 ].map((item, i) => (
@@ -299,7 +309,7 @@ export default function Home() {
           <div className="container px-4 md:px-6 mx-auto max-w-6xl">
             <div className="text-center mb-16">
               <h2 className="text-3xl md:text-5xl font-extrabold tracking-tight mb-6">
-                Everything you need to <span className="text-white/40">finish the track.</span>
+                Everything you need to <span className="text-white/40">tell the whole story.</span>
               </h2>
               <p className="text-lg text-white/60 max-w-2xl mx-auto">
                 No jumping between tabs. Every tool is integrated into one seamless workflow.
@@ -349,8 +359,8 @@ export default function Home() {
                     <p className="text-sm text-white/50 leading-relaxed">Generate original instrumentals you fully own and drop them straight into your timeline.</p>
                   </div>
                   <div>
-                    <h4 className="text-white font-semibold mb-2">Score It Later</h4>
-                    <p className="text-sm text-white/50 leading-relaxed">Render visuals with no soundtrack, then add the perfect audio later in the editor.</p>
+                     <h4 className="text-white font-semibold mb-2">Narration & Music Beds</h4>
+                     <p className="text-sm text-white/50 leading-relaxed">Turn a script into narration, then use generated music, your library, an upload, a Suno track, or no music.</p>
                   </div>
                 </div>
               </div>
@@ -373,8 +383,8 @@ export default function Home() {
                     <p className="text-sm text-white/50 leading-relaxed">Go beyond quick clips: render crisp 4K and full-length videos up to ten minutes.</p>
                   </div>
                   <div>
-                    <h4 className="text-white font-semibold mb-2">Release Kit</h4>
-                    <p className="text-sm text-white/50 leading-relaxed">One click turns your finished video into vertical, square, and widescreen social exports.</p>
+                     <h4 className="text-white font-semibold mb-2">Podcast Release Kit</h4>
+                     <p className="text-sm text-white/50 leading-relaxed">Turn an episode into a captioned widescreen video, three vertical highlights, and suggested post copy.</p>
                   </div>
                 </div>
               </div>
@@ -458,7 +468,7 @@ export default function Home() {
               Ready for your next release?
             </h2>
             <p className="text-xl text-white/50 mb-12">
-              Join the independent artists using AIBeatSync to direct and publish high-fidelity music videos.
+              Join creators using AIBeatSync to produce music, narrated stories, podcast media, cinematic videos, and social-ready releases.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-5">
               <Link href="/pricing" onClick={() => trackCTA("footer", "view_pricing", "View pricing plans")}>
