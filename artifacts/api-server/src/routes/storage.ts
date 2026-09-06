@@ -164,11 +164,21 @@ router.get("/storage/objects/*path", async (req: Request, res: Response) => {
       }
     }
 
-    // For video files: redirect to a signed GCS URL so the browser can stream
-    // directly from GCS (supports Range requests natively, no server proxying).
-    if (wildcardPath.startsWith("videos/") && wildcardPath.endsWith(".mp4")) {
-      const videoId = wildcardPath.slice("videos/".length, -".mp4".length);
-      const signedUrl = await objectStorageService.getVideoSignedUrl(videoId, 3600);
+    // Stream master and optimized-preview MP4s directly from object storage.
+    // Proxying long preview files through this API adds latency to every Range
+    // request and can make a lower-bitrate rendition stutter anyway.
+    if (
+      wildcardPath.endsWith(".mp4")
+      && (
+        wildcardPath.startsWith("videos/")
+        || wildcardPath.startsWith("video-previews/")
+      )
+    ) {
+      const signedUrl = await objectStorageService.getObjectEntitySignedUrl(
+        `/objects/${wildcardPath}`,
+        3600,
+      );
+      res.setHeader("Cache-Control", "no-store");
       res.redirect(302, signedUrl);
       return;
     }
