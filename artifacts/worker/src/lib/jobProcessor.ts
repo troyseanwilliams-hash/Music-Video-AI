@@ -27,6 +27,13 @@ import {
 import { settleImageFirstReservation } from "./imageFirstSettlement.js";
 import { hasCompleteSavedClipSet } from "./finalizeSavedClips.js";
 import { retryNoChargeOperation } from "./noChargeRetry.js";
+import {
+  lazyBuffer,
+  materializeLazyBuffers,
+  pendingFirstOrder,
+  resolveSceneConcurrency,
+  runBoundedScenes,
+} from "./clipGenerationScheduler.js";
 
 const execAsync = promisify(exec);
 const MAX_RETRIES = 3;
@@ -194,6 +201,7 @@ type PersistedStoryboardShot = {
 
 type GeneratedClip = {
   buffer: Buffer;
+  loadBuffer?: () => Promise<Buffer>;
   targetDuration: number;
   prompt: string;
   visualIndex: number;
@@ -1487,6 +1495,21 @@ async function persistClipSubmissionIntent(
   return result.rows.length > 0;
 }
 
+async function clearUnsubmittedClipIntent(job: JobRow, index: number): Promise<void> {
+  await db.execute(sql`
+    UPDATE jobs
+    SET manifest = jsonb_set(
+          COALESCE(manifest, '{}'::jsonb),
+          '{submissionIntents}',
+          COALESCE(manifest->'submissionIntents', '{}'::jsonb) - ${String(index)}
+        ),
+        updated_at = NOW()
+    WHERE id = ${job.id}
+      AND status = 'generating'
+      AND claimed_at = ${job.claimedAt}
+  `);
+}
+
 async function persistTargetedClipSubmissionIntent(
   job: JobRow,
   index: number,
@@ -2141,12 +2164,13 @@ async function generateClips(
   ) {
     throw new Error(`${PROVIDER_API_FAILURE}: Targeted scene recovery is outside the immutable storyboard`);
   }
-  const generationOrder = targetedSceneIndex === undefined
+  const baseGenerationOrder = targetedSceneIndex === undefined
     ? sections.map((_, index) => index)
     : [
         targetedSceneIndex,
         ...sections.map((_, index) => index).filter((index) => index !== targetedSceneIndex),
       ];
+  const generationOrder = pendingFirstOrder(baseGenerationOrder, pending);
   const skippedTerminalScenes = new Set<number>();
   const reuseCount = Object.keys(persisted).length;
   const finalizeOnly = clipMeta.finalizeWithPartial === true;
@@ -2175,13 +2199,17 @@ async function generateClips(
     30 + Math.floor((completedClipIndexes.size / sections.length) * 40),
   );
   await onProgress(reportedProgress);
-  const reportClipComplete = async (index: number): Promise<void> => {
-    completedClipIndexes.add(index);
-    reportedProgress = Math.max(
-      reportedProgress,
-      30 + Math.floor((completedClipIndexes.size / sections.length) * 40),
-    );
-    await onProgress(reportedProgress);
+  let progressWrites = Promise.resolve();
+  const reportClipComplete = (index: number): Promise<void> => {
+    progressWrites = progressWrites.then(async () => {
+      completedClipIndexes.add(index);
+      reportedProgress = Math.max(
+        reportedProgress,
+        30 + Math.floor((completedClipIndexes.size / sections.length) * 40),
+      );
+      await onProgress(reportedProgress);
+    });
+    return progressWrites;
   };
 
   // 4K clips are expensive, so don't burn a second full-price attempt on them;
@@ -2189,7 +2217,22 @@ async function generateClips(
   const is4k = (job.resolution ?? "").toLowerCase() === "4k";
   const clipAttempts = is4k ? 1 : 2;
 
-  for (const i of generationOrder) {
+  const forceSequential =
+    strictUniqueSources ||
+    targetedSceneIndex !== undefined ||
+    finalizeOnly ||
+    Object.keys(submissionIntents).length > 0 ||
+    Object.keys(uncertainSubmissions).length > 0 ||
+    allowTargetedTerminalSkip ||
+    Boolean(terminalFallbackProvider);
+  const sceneConcurrency = resolveSceneConcurrency({
+    requested: process.env.CLIP_GENERATION_CONCURRENCY,
+    forceSequential,
+  });
+  let generationShortfallNotice: string | undefined;
+  let generationShortfallError: unknown;
+  let paidSceneStopReason: unknown;
+  const processScene = async (i: number): Promise<void> => {
     const storyboardShot = strictUniqueSources || generationMode === "narrative"
       ? storyboardShots[i]!
       : storyboardShots.length > 0
@@ -2216,37 +2259,33 @@ async function generateClips(
     const prompt = visualShot?.prompt ?? buildSectionPrompt(job, analysis, section);
 
     // 1) Reuse a previously-rendered clip if we have one (salvage on retry).
-    if (persisted[i]) {
-      try {
-        const buf = await readClipWithNoChargeRetry(job, i, persisted[i]!, async () => {
-          const url = await storageService.getObjectEntitySignedUrl(persisted[i]!, 3600);
-          return downloadClip(url);
-        });
-        clips[i] = { buffer: buf, targetDuration, prompt, visualIndex };
-        if (targetedSceneIndex === i) {
-          await persistTargetedSceneClip(
-            job,
-            i,
-            persisted[i]!,
-            targetedSceneRequestedAt!,
+    if (persisted[i] && !pending[i]) {
+      const savedPath = persisted[i]!;
+      const deferred = lazyBuffer(async () => {
+        try {
+          return await readClipWithNoChargeRetry(job, i, savedPath, async () => {
+            const url = await storageService.getObjectEntitySignedUrl(savedPath, 3600);
+            return downloadClip(url);
+          });
+        } catch (e) {
+          const detail = e instanceof Error ? e.message : String(e);
+          if (detail.includes(OWNERSHIP_LOST) || detail.includes(PROVIDER_MEDIA_TERMINAL)) throw e;
+          logger.warn(
+            { jobId: job.id, clip: i, objectPath: savedPath, err: e },
+            "Persisted clip unreadable during lazy materialization",
+          );
+          throw new Error(
+            `${PROVIDER_POLL_TIMEOUT} Saved scene ${i + 1} is temporarily unavailable. Its stored output was preserved for recovery.`,
           );
         }
-        logger.info({ jobId: job.id, clip: i }, "Reused previously-rendered clip (salvage)");
-        await reportClipComplete(i);
-        continue;
-      } catch (e) {
-        const detail = e instanceof Error ? e.message : String(e);
-        if (detail.includes(OWNERSHIP_LOST) || detail.includes(PROVIDER_MEDIA_TERMINAL)) {
-          throw e;
-        }
-        logger.warn(
-          { jobId: job.id, clip: i, objectPath: persisted[i], err: e },
-          "Persisted clip unreadable — preserving saved output and stopping before provider submission",
-        );
-        throw new Error(
-          `${PROVIDER_POLL_TIMEOUT} Saved scene ${i + 1} is temporarily unavailable. Its stored output was preserved for recovery.`,
-        );
+      });
+      clips[i] = { ...deferred, targetDuration, prompt, visualIndex };
+      if (targetedSceneIndex === i) {
+        await persistTargetedSceneClip(job, i, savedPath, targetedSceneRequestedAt!);
       }
+      logger.info({ jobId: job.id, clip: i }, "Queued previously-rendered clip for lazy salvage");
+      await reportClipComplete(i);
+      return;
     }
 
     // 2) Continue polling a request accepted on a previous attempt. This sends
@@ -2279,7 +2318,7 @@ async function generateClips(
         logger.info({ jobId: job.id, clip: i }, "Recovered stranded clip from provider (no new spend)");
         delete pending[i];
         await reportClipComplete(i);
-        continue;
+        return;
       } catch (e) {
         const detail = e instanceof Error ? e.message : String(e);
         if (detail.includes(OWNERSHIP_LOST) || detail.includes(PROVIDER_POLL_ABORTED)) {
@@ -2304,7 +2343,7 @@ async function generateClips(
               { jobId: job.id, clip: i },
               "Targeted replacement was terminally rejected — continuing remaining scenes and filling this slot from adjacent footage",
             );
-            continue;
+            return;
           }
           throw e;
         }
@@ -2329,7 +2368,7 @@ async function generateClips(
     //    couldn't be reused/reclaimed for free.
     if (finalizeOnly) {
       logger.info({ jobId: job.id, clip: i }, "Finalize-only: skipping missing clip (no new spend)");
-      continue;
+      return;
     }
 
     // 3b) Simulation fallback (no real provider configured).
@@ -2346,7 +2385,7 @@ async function generateClips(
           visualIndex,
       };
       await reportClipComplete(i);
-      continue;
+      return;
     }
 
     // 4) Generate the clip, retrying THIS clip a couple of times before failing
@@ -2370,6 +2409,7 @@ async function generateClips(
         const narrativeImageUrl = imagePath
           ? await storageService.getObjectEntitySignedUrl(imagePath, 3600)
           : refImageUrl ?? undefined;
+        if (paidSceneStopReason !== undefined || generationShortfallNotice !== undefined) return;
         const intentPersisted = targetedSceneIndex === i
           ? await persistTargetedClipSubmissionIntent(
               job,
@@ -2380,6 +2420,10 @@ async function generateClips(
           : await persistClipSubmissionIntent(job, i, provider);
         if (!intentPersisted) {
           throw new Error(`${OWNERSHIP_LOST} (clip submission intent fence)`);
+        }
+        if (paidSceneStopReason !== undefined || generationShortfallNotice !== undefined) {
+          await clearUnsubmittedClipIntent(job, i);
+          return;
         }
         const result = await generateClip({
           prompt,
@@ -2480,18 +2524,9 @@ async function generateClips(
             throw e;
           }
           if (strictUniqueSources || generationMode === "narrative") throw e;
-          const done = clips.filter(Boolean).length;
-          if (done > 0) {
-            logger.warn(
-              { jobId: job.id, clip: i, done, planned: sections.length },
-              "Provider out of tokens — stopping generation and salvaging rendered clips",
-            );
-            return {
-              clips: clips.filter(Boolean),
-              shortfallNotice: "Out of tokens",
-            };
-          }
-          throw e; // nothing rendered yet → normal provider-failure path
+          generationShortfallNotice = "Out of tokens";
+          generationShortfallError ??= e;
+          return;
         }
         if (
           msg.includes(PROVIDER_API_FAILURE) ||
@@ -2506,7 +2541,7 @@ async function generateClips(
         throw new Error(`${PROVIDER_API_FAILURE} ${msg}`);
       }
     }
-    if (skipTerminalScene) continue;
+    if (skipTerminalScene) return;
     if (!clipBuffer) throw clipErr ?? new Error(`Clip ${i} failed to render`);
 
     // 5) Persist the successful clip so a future job retry can reuse it.
@@ -2530,6 +2565,26 @@ async function generateClips(
 
     clips[i] = { buffer: clipBuffer, targetDuration, prompt, visualIndex };
     await reportClipComplete(i);
+  };
+  const pendingOrder = generationOrder.filter((index) => Boolean(pending[index]));
+  const remainingOrder = generationOrder.filter((index) => !pending[index]);
+  await runBoundedScenes(pendingOrder, sceneConcurrency, processScene);
+  await runBoundedScenes(
+    remainingOrder,
+    sceneConcurrency,
+    processScene,
+    () => generationShortfallNotice === undefined && paidSceneStopReason === undefined,
+    (error) => { paidSceneStopReason ??= error; },
+  );
+  await progressWrites;
+  if (generationShortfallNotice) {
+    const salvaged = clips.filter(Boolean);
+    if (salvaged.length === 0) throw generationShortfallError;
+    logger.warn(
+      { jobId: job.id, done: salvaged.length, planned: sections.length },
+      "Provider out of tokens — stopping generation and salvaging rendered clips",
+    );
+    return { clips: salvaged, shortfallNotice: generationShortfallNotice };
   }
 
   for (const skippedIndex of skippedTerminalScenes) {
@@ -2537,6 +2592,7 @@ async function generateClips(
     if (!adjacentClip) {
       throw new Error(`${PROVIDER_API_FAILURE}: No adjacent story footage is available to cover skipped scene ${skippedIndex + 1}`);
     }
+    await materializeLazyBuffers([adjacentClip]);
     const fallbackClip: GeneratedClip = {
       ...adjacentClip,
       targetDuration: clipDurationSec,
@@ -3628,6 +3684,7 @@ async function processJob(job: JobRow): Promise<void> {
     await updateJobStatus(job.id, { status: "stitching", progressPercent: 75 });
 
     // === STITCHING ===
+    await materializeLazyBuffers(clips);
     logger.info({ jobId: job.id, clipCount: clips.length }, "Stitching clips with audio");
 
     const lyricsText = extJob.lyricsText ?? undefined;

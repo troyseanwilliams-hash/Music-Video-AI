@@ -27,6 +27,12 @@ Transient reads of saved clips and accepted-request media should retry automatic
 
 **How to apply:** Retry only GET/download operations with bounded backoff, check ownership before and after poll delays, preserve request and object paths, stop immediately on ownership loss, and never classify terminal 4xx access failures as transient.
 
+Ordinary scene generation may run two lanes concurrently, but paid recovery-sensitive modes remain sequential and every failure must close a shared pre-submission gate.
+
+**Why:** Concurrency reduces long narrative runtimes, but a lane that fails while a peer has not yet submitted can otherwise create paid work after the job is already destined to fail. Returning before accepted peers settle can also lose their recovery handles.
+
+**How to apply:** Cap scene concurrency at three (default two); force one lane for targeted, strict, finalize-only, uncertain-intent, and fallback-sensitive runs. Stop before intent and provider POST, join accepted in-flight work, and decide partial salvage only afterward.
+
 An explicit admin retry may replace a terminally rejected request, but it must be a per-scene transition.
 
 **Why:** Clearing the entire pending map after one rejected scene can duplicate other accepted requests. Validating the retry after reserving credits can charge a customer even when the retry is rejected.
