@@ -98,6 +98,9 @@ export const videosTable = pgTable("videos", {
     .notNull()
     .references(() => jobsTable.id, { onDelete: "cascade" }),
   videoObjectPath: text("video_object_path").notNull(),
+  // Lower-bitrate fast-start rendition used only for in-browser playback.
+  // Downloads always use videoObjectPath so the master remains untouched.
+  previewObjectPath: text("preview_object_path"),
   thumbnailObjectPath: text("thumbnail_object_path"),
   title: text("title"),
   durationSeconds: real("duration_seconds"),

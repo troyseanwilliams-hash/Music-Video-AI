@@ -16,7 +16,7 @@ import { analyzeAudioBuffer, type AudioAnalysis, type AudioSection } from "./aud
 import { generateClip, downloadClip, pollPixazoRequestUntilComplete, getActiveProvider, PROVIDER_API_FAILURE, PROVIDER_TERMINAL_FAILURE, PROVIDER_OUT_OF_CREDITS, PROVIDER_POLL_TIMEOUT, PROVIDER_POLL_ABORTED, PROVIDER_MEDIA_TERMINAL } from "./videoApis.js";
 import { generateNarrativeImage, downloadGeneratedImage, IMAGE_API_FAILURE, IMAGE_POLL_TIMEOUT } from "./imageApis.js";
 import { generateLipsync, lipsyncAvailable } from "./lipsync.js";
-import { stitchVideoClips, extractVideoThumbnail } from "./videoStitcher.js";
+import { stitchVideoClips, extractVideoThumbnail, createWebPreview } from "./videoStitcher.js";
 import { stitchEditorTimeline } from "./editorStitcher.js";
 import { resolveMontageSequence, resolveStrictMontageSequence } from "./montageSequence.js";
 import { assertStrictUniqueMedia, perceptualFingerprint } from "./mediaUniqueness.js";
@@ -34,15 +34,40 @@ import {
   resolveSceneConcurrency,
   runBoundedScenes,
 } from "./clipGenerationScheduler.js";
+import {
+  INFRASTRUCTURE_RETRY,
+  isTransientInfrastructureError,
+  recoverableInfrastructureError,
+} from "./infrastructureRetry.js";
 
 const execAsync = promisify(exec);
 const MAX_RETRIES = 3;
+const MAX_INFRASTRUCTURE_RETRIES = 24;
 const POLL_INTERVAL_MS = 5000;
 const NO_CHARGE_CLIP_READ_DELAYS_MS = [2_000, 5_000, 10_000, 20_000] as const;
 
 const storageService = new ObjectStorageService();
 const activeClaimTokens = new Map<string, Date>();
 type JobRow = typeof jobsTable.$inferSelect;
+
+async function createAndUploadWebPreview(
+  videoBuffer: Buffer,
+  videoId: string,
+  durationSeconds: number,
+): Promise<string | null> {
+  try {
+    const previewBuffer = await createWebPreview(videoBuffer, durationSeconds);
+    const path = await storageService.uploadVideoPreviewBuffer(previewBuffer, videoId);
+    logger.info(
+      { videoId, masterBytes: videoBuffer.length, previewBytes: previewBuffer.length },
+      "Web preview rendition stored",
+    );
+    return path;
+  } catch (err) {
+    logger.warn({ err, videoId }, "Web preview rendition failed; preserving completed master");
+    return null;
+  }
+}
 
 async function readClipWithNoChargeRetry(
   job: JobRow,
@@ -592,6 +617,9 @@ async function prepareNarrativeImagesStage(job: JobRow): Promise<Record<string, 
         }
       } catch (error) {
         if (error instanceof Error && error.message.includes(OWNERSHIP_LOST)) throw error;
+        if (isTransientInfrastructureError(error)) {
+          throw recoverableInfrastructureError(error);
+        }
         const status: ImageGenerationFailure["status"] =
           uncertain[shot.index] || intents[shot.index] ? "uncertain"
             : pending[shot.index] ? "pending"
@@ -634,7 +662,14 @@ async function prepareNarrativeImages(job: JobRow): Promise<Record<string, strin
     return await prepareNarrativeImagesStage(job);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    if (detail.includes(OWNERSHIP_LOST) || detail.includes(IMAGE_API_FAILURE)) throw error;
+    if (
+      detail.includes(OWNERSHIP_LOST)
+      || detail.includes(IMAGE_API_FAILURE)
+      || detail.includes(INFRASTRUCTURE_RETRY)
+    ) throw error;
+    if (isTransientInfrastructureError(error)) {
+      throw recoverableInfrastructureError(error);
+    }
     logger.error({ err: error, jobId: job.id }, "Source-image foundation stage failed");
     throw new Error(`${IMAGE_API_FAILURE} The source-image pack could not be safely completed.`);
   }
@@ -2681,6 +2716,50 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
     return;
   }
 
+  if (errMsg.includes(INFRASTRUCTURE_RETRY)) {
+    const retryAfter = Date.now() + 60_000;
+    const requeued = await db.execute<{ id: string }>(sql`
+      UPDATE jobs SET
+        status = 'queued',
+        claimed_at = NULL,
+        error_message = 'A temporary service interruption occurred. Your saved work is safe and will resume automatically.',
+        manifest = COALESCE(manifest, '{}'::jsonb) || jsonb_build_object(
+          'retryAfter', ${retryAfter}::bigint,
+          'infrastructureRetryCount',
+            COALESCE((manifest->>'infrastructureRetryCount')::integer, 0) + 1,
+          'finalizeWithPartial', false
+        ),
+        updated_at = NOW()
+      WHERE id = ${job.id}
+        AND status IN ('analyzing', 'generating', 'stitching')
+        AND claimed_at = ${job.claimedAt}
+        AND COALESCE((manifest->>'infrastructureRetryCount')::integer, 0)
+          < ${MAX_INFRASTRUCTURE_RETRIES}
+      RETURNING id
+    `);
+    if (requeued.rows.length > 0) {
+      logger.warn(
+        { jobId: job.id, retryAfter },
+        "Temporary infrastructure interruption requeued at no charge",
+      );
+      await notifyJobUpdate(job.id);
+      return;
+    }
+
+    const terminalErrorMessage =
+      "Repeated service interruptions prevented this render from resuming safely. Credits for unfinished work were returned.";
+    const settlement = await settleImageFirstReservation(job.id, job.userId, {
+      expectedClaimedAt: job.claimedAt,
+      terminalErrorMessage,
+    });
+    if (!settlement.ownershipMatched) {
+      logger.info({ jobId: job.id }, "Infrastructure retry result ignored after ownership changed");
+      return;
+    }
+    void notifyAdminRenderFailed(job, "Infrastructure recovery limit reached.");
+    return;
+  }
+
   logger.error({ err, jobId: job.id, retryCount: job.retryCount }, "Job failed");
 
   // Pixazo Lip Sync requests may be billable at submission. Never auto-retry
@@ -3137,9 +3216,10 @@ async function processEditorJob(job: JobRow): Promise<void> {
     await updateJobStatus(job.id, { progressPercent: 88 });
 
     const videoId = randomUUID();
-    const [videoObjectPath, thumbnailObjectPath] = await Promise.all([
+    const [videoObjectPath, thumbnailObjectPath, previewObjectPath] = await Promise.all([
       storageService.uploadVideoBuffer(result.videoBuffer, videoId),
       storageService.uploadThumbnailBuffer(result.thumbnailBuffer, videoId),
+      createAndUploadWebPreview(result.videoBuffer, videoId, result.durationSeconds),
     ]);
 
     await db.insert(videosTable).values({
@@ -3147,6 +3227,7 @@ async function processEditorJob(job: JobRow): Promise<void> {
       userId: job.userId,
       jobId: job.id,
       videoObjectPath,
+      previewObjectPath,
       thumbnailObjectPath,
       title: job.prompt?.trim() || "Studio export",
       durationSeconds: result.durationSeconds,
@@ -3338,9 +3419,10 @@ async function processRemixJob(job: JobRow): Promise<void> {
     await updateJobStatus(job.id, { progressPercent: 90 });
 
     const newVideoId = randomUUID();
-    const [videoObjectPath, thumbnailObjectPath] = await Promise.all([
+    const [videoObjectPath, thumbnailObjectPath, previewObjectPath] = await Promise.all([
       storageService.uploadVideoBuffer(videoBuffer, newVideoId),
       storageService.uploadThumbnailBuffer(thumbnailBuffer, newVideoId),
+      createAndUploadWebPreview(videoBuffer, newVideoId, totalDuration),
     ]);
 
     // Persist the remixed clip set (new bytes for regenerated clips, copies for
@@ -3375,6 +3457,7 @@ async function processRemixJob(job: JobRow): Promise<void> {
       userId: job.userId,
       jobId: job.id,
       videoObjectPath,
+      previewObjectPath,
       thumbnailObjectPath,
       title: original.title ? `Remix — ${original.title}`.slice(0, 100) : "Remix",
       durationSeconds: totalDuration,
@@ -3523,9 +3606,10 @@ async function processRunwayLipSyncJob(job: JobRow): Promise<void> {
     await updateJobStatus(job.id, { progressPercent: 90 });
 
     const videoId = randomUUID();
-    const [videoObjectPath, thumbnailObjectPath] = await Promise.all([
+    const [videoObjectPath, thumbnailObjectPath, previewObjectPath] = await Promise.all([
       storageService.uploadVideoBuffer(videoBuffer, videoId),
       storageService.uploadThumbnailBuffer(thumbnailBuffer, videoId),
+      createAndUploadWebPreview(videoBuffer, videoId, durationSeconds),
     ]);
 
     await db.transaction(async (tx) => {
@@ -3546,6 +3630,7 @@ async function processRunwayLipSyncJob(job: JobRow): Promise<void> {
         userId: job.userId,
         jobId: job.id,
         videoObjectPath,
+        previewObjectPath,
         thumbnailObjectPath,
         title: meta.publicLipSync
           ? `${meta.sourceVideoTitle?.trim() || "Video"} — lip sync`.slice(0, 120)
@@ -3724,9 +3809,10 @@ async function processJob(job: JobRow): Promise<void> {
     const videoId = randomUUID();
     logger.info({ jobId: job.id, videoId }, "Uploading video and thumbnail");
 
-    const [videoObjectPath, thumbnailObjectPath] = await Promise.all([
+    const [videoObjectPath, thumbnailObjectPath, previewObjectPath] = await Promise.all([
       storageService.uploadVideoBuffer(videoBuffer, videoId),
       storageService.uploadThumbnailBuffer(thumbnailBuffer, videoId),
+      createAndUploadWebPreview(videoBuffer, videoId, outputDuration),
     ]);
 
     // Persist individual clips so the user can remix (regenerate) any one of
@@ -3745,6 +3831,7 @@ async function processJob(job: JobRow): Promise<void> {
         userId: job.userId,
         jobId: job.id,
         videoObjectPath,
+        previewObjectPath,
         thumbnailObjectPath,
         title: job.prompt ? job.prompt.slice(0, 100) : "Generated Video",
         durationSeconds: outputDuration,

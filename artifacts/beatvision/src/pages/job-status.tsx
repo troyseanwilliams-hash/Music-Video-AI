@@ -1439,7 +1439,7 @@ export default function JobStatus() {
               animate={{ opacity: 1, scale: 1 }}
               className="mx-auto w-full max-w-3xl overflow-hidden rounded-2xl border border-primary/30 bg-black shadow-2xl shadow-primary/10"
             >
-              <VideoPlayer jobId={job.id} videoId={job.videoId} videoUrl={job.videoUrl} />
+              <VideoPlayer jobId={job.id} videoId={job.videoId} />
               <DownloadBar jobId={job.id} prompt={job.prompt} />
 
             </motion.div>
@@ -1705,16 +1705,15 @@ function DownloadBar({ jobId, prompt }: { jobId: string; prompt?: string | null 
   );
 }
 
-function VideoPlayer({ jobId, videoId, videoUrl: initialVideoUrl }: { jobId: string; videoId: string; videoUrl?: string }) {
-  const [videoUrl, setVideoUrl] = useState<string | null>(initialVideoUrl ?? null);
+function VideoPlayer({ jobId, videoId }: { jobId: string; videoId: string }) {
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [errored, setErrored] = useState(false);
   const posterSrc = `/api/storage/objects/thumbnails/${videoId}.jpg`;
   const fallbackHref = `/api/jobs/${jobId}/video`;
 
   useEffect(() => {
-    if (initialVideoUrl) return;
     let cancelled = false;
-    fetch(`/api/jobs/${jobId}/video-url`)
+    fetch(`/api/jobs/${jobId}/video-preview-url`)
       .then((r) => {
         if (!r.ok) throw new Error(`${r.status}`);
         return r.json() as Promise<{ url: string }>;
@@ -1726,7 +1725,7 @@ function VideoPlayer({ jobId, videoId, videoUrl: initialVideoUrl }: { jobId: str
         if (!cancelled) setErrored(true);
       });
     return () => { cancelled = true; };
-  }, [jobId, initialVideoUrl]);
+  }, [jobId]);
 
   if (errored) {
     return (
@@ -1754,6 +1753,8 @@ function VideoPlayer({ jobId, videoId, videoUrl: initialVideoUrl }: { jobId: str
         src={videoUrl}
         poster={posterSrc}
         controls
+        preload="metadata"
+        playsInline
         className="w-full h-full object-contain"
         onError={() => setErrored(true)}
       />

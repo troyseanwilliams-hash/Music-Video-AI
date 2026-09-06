@@ -35,6 +35,11 @@ export type ImageFirstSettlementAmounts = {
   spentVideoScenes: number;
 };
 
+type ImageFirstSettlementOptions = {
+  expectedClaimedAt?: Date | string | null;
+  terminalErrorMessage?: string;
+};
+
 export function imageFirstRetryReservation(meta: {
   imageFirstVersion?: number;
   refunded?: boolean;
@@ -138,18 +143,45 @@ export function calculateImageFirstSettlement(
 export async function settleImageFirstReservation(
   jobId: string,
   userId: string,
-): Promise<{ handled: boolean } & ImageFirstSettlementAmounts> {
+  options: ImageFirstSettlementOptions = {},
+): Promise<{ handled: boolean; ownershipMatched: boolean } & ImageFirstSettlementAmounts> {
   return db.transaction(async (tx) => {
     const [row] = await tx
-      .select({ manifest: jobsTable.manifest })
+      .select({
+        manifest: jobsTable.manifest,
+        status: jobsTable.status,
+        claimedAt: jobsTable.claimedAt,
+      })
       .from(jobsTable)
       .where(eq(jobsTable.id, jobId))
       .limit(1)
       .for("update");
     const meta = (row?.manifest ?? {}) as ImageFirstBillingMeta;
     const empty = zeroSettlementAmounts();
-    if (meta.imageFirstVersion !== 1) return { handled: false, ...empty };
-    if (meta.refunded) return { handled: true, ...empty };
+    const ownershipRequired = Object.prototype.hasOwnProperty.call(options, "expectedClaimedAt");
+    const expectedClaim = options.expectedClaimedAt
+      ? new Date(options.expectedClaimedAt).getTime()
+      : null;
+    const currentClaim = row?.claimedAt ? new Date(row.claimedAt).getTime() : null;
+    const processing =
+      row?.status === "analyzing" || row?.status === "generating" || row?.status === "stitching";
+    if (ownershipRequired && (!processing || expectedClaim !== currentClaim)) {
+      return { handled: meta.imageFirstVersion === 1, ownershipMatched: false, ...empty };
+    }
+    if (meta.imageFirstVersion !== 1) {
+      return { handled: false, ownershipMatched: true, ...empty };
+    }
+    if (meta.refunded) {
+      if (options.terminalErrorMessage) {
+        await tx.update(jobsTable).set({
+          status: "failed",
+          claimedAt: null,
+          errorMessage: options.terminalErrorMessage,
+          updatedAt: new Date(),
+        }).where(eq(jobsTable.id, jobId));
+      }
+      return { handled: true, ownershipMatched: true, ...empty };
+    }
     const [completed] = await tx
       .select({ count: count() })
       .from(imageAssetsTable)
@@ -185,6 +217,14 @@ export async function settleImageFirstReservation(
       updated_at = NOW()
       WHERE id = ${jobId}
     `);
+    if (options.terminalErrorMessage) {
+      await tx.update(jobsTable).set({
+        status: "failed",
+        claimedAt: null,
+        errorMessage: options.terminalErrorMessage,
+        updatedAt: new Date(),
+      }).where(eq(jobsTable.id, jobId));
+    }
     if (meta.bundledLipSyncChildId && !meta.bundledLipSyncActivated) {
       await tx
         .update(jobsTable)
@@ -195,6 +235,6 @@ export async function settleImageFirstReservation(
         })
         .where(eq(jobsTable.id, meta.bundledLipSyncChildId));
     }
-    return { handled: true, ...amounts };
+    return { handled: true, ownershipMatched: true, ...amounts };
   });
 }

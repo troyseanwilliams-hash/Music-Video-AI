@@ -1275,6 +1275,47 @@ router.get("/jobs/:id/video-url", async (req, res) => {
   res.json({ url });
 });
 
+router.get("/jobs/:id/video-preview-url", async (req, res) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const [job] = await db
+    .select({ videoId: jobsTable.videoId })
+    .from(jobsTable)
+    .where(and(eq(jobsTable.id, req.params.id), eq(jobsTable.userId, req.user.id)))
+    .limit(1);
+  if (!job) {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
+  if (!job.videoId) {
+    res.status(404).json({ error: "Video not ready yet" });
+    return;
+  }
+
+  const [video] = await db
+    .select({
+      originalPath: videosTable.videoObjectPath,
+      previewPath: videosTable.previewObjectPath,
+      deletedAt: videosTable.deletedAt,
+    })
+    .from(videosTable)
+    .where(eq(videosTable.id, job.videoId))
+    .limit(1);
+  if (!video || video.deletedAt) {
+    res.status(404).json({ error: "Video not found" });
+    return;
+  }
+
+  const storageService = new ObjectStorageService();
+  const url = await storageService.getObjectEntitySignedUrl(
+    video.previewPath ?? video.originalPath,
+  );
+  res.json({ url, optimized: Boolean(video.previewPath) });
+});
+
 router.post("/jobs/:id/retry", async (req, res) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: "Unauthorized" });

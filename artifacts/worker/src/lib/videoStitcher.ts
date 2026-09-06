@@ -108,6 +108,44 @@ export async function applyWatermark(
   }
 }
 
+export async function createWebPreview(
+  videoBuffer: Buffer,
+  totalDurationSeconds = 0,
+): Promise<Buffer> {
+  const tmpDir = join(tmpdir(), `bv_preview_${randomUUID()}`);
+  const inPath = join(tmpDir, "master.mp4");
+  const outPath = join(tmpDir, "preview.mp4");
+  try {
+    await mkdir(tmpDir, { recursive: true });
+    await writeFile(inPath, videoBuffer);
+    await runFfmpegWithTimeout(
+      ffmpeg(inPath)
+        .outputOptions([
+          "-map", "0:v:0",
+          "-map", "0:a:0?",
+          "-vf", "scale='min(iw,1280)':-2",
+          "-c:v", "libx264",
+          "-preset", "veryfast",
+          "-b:v", "2200k",
+          "-maxrate", "2800k",
+          "-bufsize", "5600k",
+          "-g", "48",
+          "-keyint_min", "48",
+          "-pix_fmt", "yuv420p",
+          "-threads", "2",
+          "-c:a", "aac",
+          "-b:a", "128k",
+          "-movflags", "+faststart",
+        ])
+        .output(outPath),
+      encodeTimeoutForDuration(totalDurationSeconds),
+    );
+    return await readFile(outPath);
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 async function trimOrLoopClip(
   inputPath: string,
   outputPath: string,

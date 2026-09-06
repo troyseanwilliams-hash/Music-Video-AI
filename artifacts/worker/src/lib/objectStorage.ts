@@ -78,11 +78,13 @@ export class ObjectStorageService {
   // per-clip files. Each delete is independent and best-effort.
   async deleteVideoAssets(video: {
     videoObjectPath?: string | null;
+    previewObjectPath?: string | null;
     thumbnailObjectPath?: string | null;
     clips?: unknown;
   }): Promise<void> {
     const paths: string[] = [];
     if (video.videoObjectPath) paths.push(video.videoObjectPath);
+    if (video.previewObjectPath) paths.push(video.previewObjectPath);
     if (video.thumbnailObjectPath) paths.push(video.thumbnailObjectPath);
     if (Array.isArray(video.clips)) {
       for (const c of video.clips) {
@@ -116,6 +118,19 @@ export class ObjectStorageService {
       resumable: buffer.length > 5 * 1024 * 1024,
     });
     return `/objects/videos/${videoId}.mp4`;
+  }
+
+  async uploadVideoPreviewBuffer(buffer: Buffer, videoId: string): Promise<string> {
+    const privateObjectDir = this.getPrivateObjectDir();
+    const objectEntityPath = `${privateObjectDir}/video-previews/${videoId}.mp4`;
+    const { bucketName, objectName } = parseObjectPath(objectEntityPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+    await file.save(buffer, {
+      contentType: "video/mp4",
+      resumable: buffer.length > 5 * 1024 * 1024,
+    });
+    return `/objects/video-previews/${videoId}.mp4`;
   }
 
   async uploadVideoFromUrl(videoUrl: string, videoId: string): Promise<string> {
