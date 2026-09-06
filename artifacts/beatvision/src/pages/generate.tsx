@@ -1728,7 +1728,7 @@ export default function Generate() {
                 </TabsContent>
 
                 <TabsContent value="narration" className="space-y-4">
-                  <NarrationGenerator onHandoff={handleNarrationHandoff} onCostError={(error) => setErrorDialog({
+                  <NarrationGenerator onHandoff={handleNarrationHandoff} onExit={() => setSourceType(CreateJobRequestAudioSourceType.upload)} onCostError={(error) => setErrorDialog({
                     open: true,
                     title: "Not Enough Credits",
                     message: error.message,
@@ -2824,7 +2824,7 @@ export default function Generate() {
             </TabsContent>
 
             <TabsContent value="narration" className="mt-0">
-              <NarrationGenerator onHandoff={handleNarrationHandoff} onCostError={(error) => setErrorDialog({
+              <NarrationGenerator onHandoff={handleNarrationHandoff} onExit={() => setSourceType(CreateJobRequestAudioSourceType.upload)} onCostError={(error) => setErrorDialog({
                 open: true,
                 title: "Not Enough Credits",
                 message: error.message,

@@ -24,10 +24,11 @@ import {
 
 interface NarrationGeneratorProps {
   onHandoff: (handoff: NarrationResultHandoff, title: string) => void;
+  onExit: () => void;
   onCostError?: (error: any) => void;
 }
 
-export function NarrationGenerator({ onHandoff, onCostError }: NarrationGeneratorProps) {
+export function NarrationGenerator({ onHandoff, onExit, onCostError }: NarrationGeneratorProps) {
   const { toast } = useToast();
   const { isAuthenticated } = useAuth();
 
@@ -422,12 +423,17 @@ export function NarrationGenerator({ onHandoff, onCostError }: NarrationGenerato
             </div>
           )}
           <div className="flex justify-center">
-            <Button variant="ghost" size="sm" onClick={() => {
-              setActiveJobId(null);
-              localStorage.removeItem("bv-active-narration-id");
-            }}>
-              Create New Narration
-            </Button>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <Button variant="ghost" size="sm" onClick={onExit}>
+                Exit Without Video
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => {
+                setActiveJobId(null);
+                localStorage.removeItem("bv-active-narration-id");
+              }}>
+                Create New Narration
+              </Button>
+            </div>
           </div>
         </div>
       </div>
