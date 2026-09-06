@@ -291,6 +291,14 @@ function UserRow({ user, onChanged }: { user: AdminUser; onChanged: () => void }
                       controls
                       preload="metadata"
                       playsInline
+                      onError={(event) => {
+                        const player = event.currentTarget;
+                        if (v.previewObjectPath && player.dataset.masterFallback !== "true") {
+                          player.dataset.masterFallback = "true";
+                          player.src = `/api/storage${v.videoObjectPath}`;
+                          player.load();
+                        }
+                      }}
                       className="w-full aspect-video rounded-md border border-border bg-black"
                     />
                     <div className="mt-1 truncate text-xs text-muted-foreground" title={v.title || v.prompt || ""}>
