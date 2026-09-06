@@ -374,6 +374,34 @@ export class ObjectStorageService {
     return `/objects/teasers/${videoId}/${index}.mp4`;
   }
 
+  async uploadPodcastBuffer(buffer: Buffer, podcastId: string, name: string, contentType: string): Promise<string> {
+    const privateObjectDir = this.getPrivateObjectDir();
+    const objectEntityPath = `${privateObjectDir}/podcasts/${podcastId}/${name}`;
+    const { bucketName, objectName } = parseObjectPath(objectEntityPath);
+    await objectStorageClient.bucket(bucketName).file(objectName).save(buffer, {
+      contentType,
+      resumable: buffer.length > 5 * 1024 * 1024,
+    });
+    return `/objects/podcasts/${podcastId}/${name}`;
+  }
+
+  async downloadObjectToFile(objectPath: string, destination: string): Promise<void> {
+    const file = await this.getObjectEntityFile(objectPath);
+    await file.download({ destination });
+  }
+
+  async uploadPodcastFile(sourcePath: string, podcastId: string, name: string, contentType: string): Promise<string> {
+    const privateObjectDir = this.getPrivateObjectDir();
+    const objectEntityPath = `${privateObjectDir}/podcasts/${podcastId}/${name}`;
+    const { bucketName, objectName } = parseObjectPath(objectEntityPath);
+    await objectStorageClient.bucket(bucketName).upload(sourcePath, {
+      destination: objectName,
+      resumable: true,
+      metadata: { contentType },
+    });
+    return `/objects/podcasts/${podcastId}/${name}`;
+  }
+
   normalizeObjectEntityPath(rawPath: string): string {
     if (!rawPath.startsWith("https://storage.googleapis.com/")) {
       return rawPath;

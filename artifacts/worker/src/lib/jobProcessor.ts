@@ -39,6 +39,7 @@ import {
   isTransientInfrastructureError,
   recoverableInfrastructureError,
 } from "./infrastructureRetry.js";
+import { processPodcastJob } from "./podcastProcessor.js";
 
 const execAsync = promisify(exec);
 const MAX_RETRIES = 3;
@@ -3724,6 +3725,10 @@ async function processRunwayLipSyncJob(job: JobRow): Promise<void> {
 }
 
 async function processJob(job: JobRow): Promise<void> {
+  if (job.jobType === "podcast") {
+    await processPodcastJob(job);
+    return;
+  }
   if (job.jobType === "preview_backfill") {
     try {
       if (!job.videoId) throw new Error("Preview backfill is missing its target video.");

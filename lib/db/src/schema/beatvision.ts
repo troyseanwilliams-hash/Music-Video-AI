@@ -43,6 +43,7 @@ export const jobTypeEnum = pgEnum("job_type", [
   "runway_lipsync",
   "image_pack",
   "preview_backfill",
+  "podcast",
 ]);
 
 export const videoStyleEnum = pgEnum("video_style", [
@@ -139,6 +140,35 @@ export const videosTable = pgTable("videos", {
     .notNull()
     .defaultNow(),
 });
+
+// Podcast jobs intentionally have their own result record: unlike music-video
+// renders they retain a searchable transcript and editorial metadata rather
+// than pretending those fields are part of a generic video.
+export const podcastJobsTable = pgTable("podcast_jobs", {
+  id: text("id").primaryKey(),
+  jobId: text("job_id").notNull().unique().references(() => jobsTable.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  durationSeconds: real("duration_seconds"),
+  transcript: text("transcript"),
+  // AssemblyAI word timings retained for deterministic caption re-renders.
+  transcriptTimings: jsonb("transcript_timings"),
+  providerTranscriptId: text("provider_transcript_id"),
+  // Durable checkpoint: retries resume provider polling or local assembly.
+  processingStage: text("processing_stage").notNull().default("queued"),
+  retryCount: integer("retry_count").notNull().default(0),
+  highlights: jsonb("highlights"),
+  fullVideoPath: text("full_video_path"),
+  previewPath: text("preview_path"),
+  thumbnailPath: text("thumbnail_path"),
+  clipPaths: jsonb("clip_paths"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (table) => ({
+  ownerCreatedIndex: index("podcast_jobs_owner_created_idx").on(table.userId, table.createdAt),
+}));
+
+export type PodcastJob = typeof podcastJobsTable.$inferSelect;
 
 // Reusable AI-generated stills. These are intentionally separate from videos:
 // users can create a visual library first, then arrange the images in Remix Lab

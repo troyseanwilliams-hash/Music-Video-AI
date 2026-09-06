@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useGetDashboardStats, getGetDashboardStatsQueryKey } from "@workspace/api-client-react";
 import {
   Video, LayoutDashboard, Wand2, LogOut, Loader2, ShieldCheck,
-  MessageSquare, Menu, X, Film, CreditCard, Compass, Music2, Settings, Sparkles, Gift, Mic,
+    MessageSquare, Menu, X, Film, CreditCard, Compass, Music2, Settings, Sparkles, Gift, Mic, Podcast,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -42,6 +42,7 @@ export function Navbar() {
     { href: "/editor", label: "Montage", icon: Video },
     { href: "/prompt-studio", label: "Prompt", icon: Sparkles },
     { href: "/soundtracks", label: "Music", icon: Music2 },
+    { href: "/podcast", label: "Podcast", icon: Podcast },
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/gallery", label: "Gallery", icon: Film },
   ];

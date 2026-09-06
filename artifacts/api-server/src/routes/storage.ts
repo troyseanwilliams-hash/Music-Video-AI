@@ -6,8 +6,8 @@ import {
 } from "@workspace/api-zod";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
 import { ObjectPermission } from "../lib/objectAcl.js";
-import { db, imageAssetsTable } from "@workspace/db";
-import { and, eq, isNull, or } from "drizzle-orm";
+import { db, imageAssetsTable, podcastJobsTable } from "@workspace/db";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -159,6 +159,34 @@ router.get("/storage/objects/*path", async (req: Request, res: Response) => {
         ))
         .limit(1);
       if (!asset) {
+        res.status(404).json({ error: "Object not found" });
+        return;
+      }
+    }
+
+    // Podcast renders are always private. Do not redirect these files to a
+    // signed URL before proving the requesting user owns the exact persisted
+    // output path; opaque podcast IDs are not an authorization mechanism.
+    if (wildcardPath.startsWith("podcasts/")) {
+      if (!req.isAuthenticated()) {
+        res.status(404).json({ error: "Object not found" });
+        return;
+      }
+      const objectPath = `/objects/${wildcardPath}`;
+      const [podcast] = await db
+        .select({ id: podcastJobsTable.id })
+        .from(podcastJobsTable)
+        .where(and(
+          eq(podcastJobsTable.userId, req.user.id),
+          or(
+            eq(podcastJobsTable.fullVideoPath, objectPath),
+            eq(podcastJobsTable.previewPath, objectPath),
+            eq(podcastJobsTable.thumbnailPath, objectPath),
+            sql`${podcastJobsTable.clipPaths} @> ${JSON.stringify([objectPath])}::jsonb`,
+          ),
+        ))
+        .limit(1);
+      if (!podcast) {
         res.status(404).json({ error: "Object not found" });
         return;
       }

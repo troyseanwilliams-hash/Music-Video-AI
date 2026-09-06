@@ -46,6 +46,7 @@ import ResetPassword from "@/pages/reset-password";
 import Redeem from "@/pages/redeem";
 import Suite from "@/pages/suite";
 import Comparison from "@/pages/comparison";
+import Podcast from "@/pages/podcast";
 
 import TutorialScriptToVideo from "@/pages/tutorial-script-to-video";
 
@@ -102,6 +103,8 @@ function Router() {
           <Route path="/settings" component={Settings} />
           <Route path="/suite" component={Suite} />
           <Route path="/compare" component={Comparison} />
+          <Route path="/podcast" component={Podcast} />
+          <Route path="/podcast/:id" component={Podcast} />
           <Route path="/suno" component={SunoLanding} />
           <Route path="/spotify-canvas" component={CanvasLanding} />
           <Route path="/ai-music-video-generator" component={AiMusicVideoLanding} />

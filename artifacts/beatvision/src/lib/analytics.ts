@@ -35,7 +35,7 @@ export interface AnalyticsEventMap {
   };
   checkout_returned: { outcome: "success" | "cancelled" };
   creation_started: {
-    creation_type: "video" | "image_pack" | "soundtrack";
+    creation_type: "video" | "image_pack" | "soundtrack" | "podcast";
     has_audio?: boolean;
     has_lyrics?: boolean;
     duration_seconds?: number;
@@ -43,10 +43,10 @@ export interface AnalyticsEventMap {
     soundtrack_type?: "instrumental" | "vocals";
   };
   creation_accepted: {
-    creation_type: "video" | "image_pack" | "soundtrack";
+    creation_type: "video" | "image_pack" | "soundtrack" | "podcast";
   };
   creation_completed: {
-    creation_type: "video" | "image_pack" | "soundtrack" | "montage";
+    creation_type: "video" | "image_pack" | "soundtrack" | "montage" | "podcast";
   };
   export_started: {
     export_type: "montage";
@@ -56,7 +56,7 @@ export interface AnalyticsEventMap {
   };
   export_accepted: { export_type: "montage" };
   export_completed: { export_type: "montage" };
-  export_downloaded: { export_type: "video" | "soundtrack" };
+  export_downloaded: { export_type: "video" | "soundtrack" | "podcast" };
   soundtrack_sent_to_video: { destination: "generate" | "montage" };
 }
 
