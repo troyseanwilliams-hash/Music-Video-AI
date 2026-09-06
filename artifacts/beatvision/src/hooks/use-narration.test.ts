@@ -28,9 +28,10 @@ describe("use-narration logic", () => {
 });
 
 describe("narration cost", () => {
-  it("only charges +4 credits when musicSource is 'generated'", () => {
+  it("does not add a separate ElevenLabs music surcharge", () => {
     const baseCost = narrationCost(100, "none"); // e.g. 3
-    expect(narrationCost(100, "generated")).toBe(baseCost + 4);
+    expect(narrationMusicSurcharge("generated")).toBe(0);
+    expect(narrationCost(100, "generated")).toBe(baseCost);
     expect(narrationCost(100, "soundtrack")).toBe(baseCost);
     expect(narrationCost(100, "upload")).toBe(baseCost);
     expect(narrationCost(100, "suno")).toBe(baseCost);

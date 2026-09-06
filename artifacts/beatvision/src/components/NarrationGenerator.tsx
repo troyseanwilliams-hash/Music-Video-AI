@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -15,6 +16,7 @@ import {
   useEstimateNarration,
   useCreateNarration,
   useNarrationJob,
+  useSaveNarrationToSoundtracks,
   isNarrationGenerating,
   type NarrationResultHandoff,
   type NarrationJob
@@ -69,6 +71,13 @@ export function NarrationGenerator({ onHandoff, onCostError }: NarrationGenerato
 
   const estimateMutation = useEstimateNarration();
   const createMutation = useCreateNarration();
+  const saveToSoundtracksMutation = useSaveNarrationToSoundtracks();
+  const [savedToSoundtracks, setSavedToSoundtracks] = useState(false);
+  const [videoReviewConfirmed, setVideoReviewConfirmed] = useState(false);
+  useEffect(() => {
+    setSavedToSoundtracks(false);
+    setVideoReviewConfirmed(false);
+  }, [activeJobId]);
 
   const [debouncedScript, setDebouncedScript] = useState(script);
   useEffect(() => {
@@ -141,7 +150,7 @@ export function NarrationGenerator({ onHandoff, onCostError }: NarrationGenerato
     }
 
     if (musicSource === "soundtrack" && !soundtrackId) {
-      toast({ title: "Music missing", description: "Please select a soundtrack.", variant: "destructive" });
+      toast({ title: "Music missing", description: "Please select music.", variant: "destructive" });
       return;
     }
 
@@ -179,9 +188,37 @@ export function NarrationGenerator({ onHandoff, onCostError }: NarrationGenerato
   };
 
   const handleHandoff = () => {
+    if (!videoReviewConfirmed) {
+      toast({
+        title: "Review the narration first",
+        description: "Listen to the completed audio and confirm it is ready before continuing to video setup.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (job?.result?.handoff) {
       onHandoff(job.result.handoff, "AI Narration");
     }
+  };
+
+  const handleAudioOnly = () => {
+    if (!job?.id) return;
+    saveToSoundtracksMutation.mutate(job.id, {
+      onSuccess: () => {
+        setSavedToSoundtracks(true);
+        toast({
+          title: "Saved to My Music",
+          description: "Your narration is now available in My Music.",
+        });
+      },
+      onError: (error) => {
+        toast({
+          title: "Could not save narration",
+          description: error.message,
+          variant: "destructive",
+        });
+      },
+    });
   };
 
   const handleSunoImport = async () => {
@@ -325,25 +362,71 @@ export function NarrationGenerator({ onHandoff, onCostError }: NarrationGenerato
           <CheckCircle2 className="w-6 h-6" />
           <h3 className="text-lg font-medium text-foreground">Narration Ready</h3>
         </div>
+        <p className="text-sm text-muted-foreground">
+          Listen to the completed narration below. When you are satisfied with it, confirm your review before continuing to video setup.
+        </p>
+        <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm">
+          <span className="font-medium text-foreground">
+            Narration audio charged: {job.chargedCost} credit{job.chargedCost === 1 ? "" : "s"}
+          </span>
+          <span className="mt-1 block text-xs text-muted-foreground">
+            Audio Only adds no further charge. Use in Video opens a separate video estimate before any video credits are charged.
+          </span>
+        </div>
         
         <div className="flex flex-col gap-4">
           <audio controls src={job.result?.downloadPath} className="w-full" />
+
+          <div className="flex items-start gap-3 rounded-md border border-border/60 bg-muted/20 p-3">
+            <Checkbox
+              id="confirm-narration-review"
+              checked={videoReviewConfirmed}
+              onCheckedChange={(checked) => setVideoReviewConfirmed(checked === true)}
+            />
+            <Label htmlFor="confirm-narration-review" className="cursor-pointer text-sm leading-5">
+              I reviewed the completed narration and want to use this audio in a video.
+            </Label>
+          </div>
           
-          <div className="flex items-center gap-3 mt-4">
-            <Button onClick={handleHandoff} className="flex-1 font-medium shadow-glow">
-              Use in Video
-            </Button>
-            <Button variant="outline" asChild>
-              <a href={job.result?.downloadPath} download>
+          <div className="grid gap-3 mt-4 sm:grid-cols-2">
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={handleAudioOnly}
+              disabled={saveToSoundtracksMutation.isPending || savedToSoundtracks}
+            >
+              {saveToSoundtracksMutation.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : savedToSoundtracks ? (
+                <CheckCircle2 className="w-4 h-4 mr-2" />
+              ) : (
                 <Download className="w-4 h-4 mr-2" />
-                Download
-              </a>
+              )}
+              {savedToSoundtracks ? "Saved to My Music" : "Audio Only · Save to My Music"}
             </Button>
-            <Button variant="ghost" onClick={() => {
+            <Button
+              onClick={handleHandoff}
+              disabled={!videoReviewConfirmed}
+              className="w-full font-medium shadow-glow"
+            >
+              Continue to Video Setup
+            </Button>
+          </div>
+          {savedToSoundtracks && (
+            <div className="flex justify-center">
+              <Button variant="link" size="sm" asChild>
+                <a href={job.result?.downloadPath} download>
+                  Download Audio File
+                </a>
+              </Button>
+            </div>
+          )}
+          <div className="flex justify-center">
+            <Button variant="ghost" size="sm" onClick={() => {
               setActiveJobId(null);
               localStorage.removeItem("bv-active-narration-id");
             }}>
-              New
+              Create New Narration
             </Button>
           </div>
         </div>
@@ -430,7 +513,7 @@ export function NarrationGenerator({ onHandoff, onCostError }: NarrationGenerato
           <TabsList className="grid grid-cols-5 w-full">
             <TabsTrigger value="none">None</TabsTrigger>
             <TabsTrigger value="generated">Generate</TabsTrigger>
-            <TabsTrigger value="soundtrack">Library</TabsTrigger>
+            <TabsTrigger value="soundtrack">My Music</TabsTrigger>
             <TabsTrigger value="upload">Upload</TabsTrigger>
             <TabsTrigger value="suno">Suno</TabsTrigger>
           </TabsList>
@@ -442,7 +525,7 @@ export function NarrationGenerator({ onHandoff, onCostError }: NarrationGenerato
 
             <TabsContent value="generated" className="space-y-3">
               <div className="bg-primary/5 text-primary text-sm p-3 rounded-md mb-2">
-                Adds an AI-generated music bed (+4 credits)
+                AI-generated music bed included — no separate music charge
               </div>
               <Label>Music Prompt (Optional)</Label>
               <Input
@@ -460,7 +543,7 @@ export function NarrationGenerator({ onHandoff, onCostError }: NarrationGenerato
                     <Music className="w-5 h-5 text-primary shrink-0" />
                     <div className="min-w-0">
                       <p className="font-medium text-sm truncate">{musicTitle}</p>
-                      <p className="text-xs text-muted-foreground">My Library</p>
+                      <p className="text-xs text-muted-foreground">My Music</p>
                     </div>
                   </div>
                   <Button variant="ghost" size="icon" onClick={clearMusicSelection}>
@@ -476,7 +559,7 @@ export function NarrationGenerator({ onHandoff, onCostError }: NarrationGenerato
                     setMusicTitle(t.title);
                   }}>
                     <Button variant="outline" className="shadow-sm">
-                      <Music className="w-4 h-4 mr-2 text-primary" /> Select from Library
+                      <Music className="w-4 h-4 mr-2 text-primary" /> Select from My Music
                     </Button>
                   </SoundtrackPickerDialog>
                 </div>
@@ -561,7 +644,7 @@ export function NarrationGenerator({ onHandoff, onCostError }: NarrationGenerato
 
       <div className="pt-6 border-t flex items-center justify-between">
         <div className="flex flex-col">
-          <span className="text-sm font-medium">Estimated Cost</span>
+          <span className="text-sm font-medium">Narration Audio Estimate</span>
           {script.length < 40 ? (
             <span className="text-sm text-muted-foreground">Enter a valid script</span>
           ) : !isSelectionComplete() ? (
@@ -574,6 +657,9 @@ export function NarrationGenerator({ onHandoff, onCostError }: NarrationGenerato
               <span className="text-sm font-normal text-muted-foreground ml-1">credits</span>
             </span>
           )}
+          <span className="mt-1 max-w-sm text-xs text-muted-foreground">
+            This is the complete audio-only charge. Video credits are estimated separately if you choose Use in Video.
+          </span>
         </div>
         <Button 
           onClick={handleGenerate} 

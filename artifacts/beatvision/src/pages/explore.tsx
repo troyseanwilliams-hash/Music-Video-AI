@@ -336,9 +336,9 @@ export default function Explore() {
   }
 
   useSEO({
-    title: "Explore AI Videos, Images & Soundtracks",
+    title: "Explore AI Videos, Images & Music",
     description:
-      "Discover community-made AI music videos, generated images, and soundtracks. Browse and share creative work made with AIBeatSync.",
+      "Discover community-made AI music videos, generated images, and music. Browse and share creative work made with AIBeatSync.",
     canonical: "/explore",
     jsonLd:
       videos.length > 0
@@ -455,7 +455,7 @@ export default function Explore() {
       <header className="mb-10 text-center">
         <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Explore the community</h1>
         <p className="text-muted-foreground mx-auto mt-3 max-w-2xl">
-          Videos, generated images, and soundtracks made by the AIBeatSync community. Watch, browse, listen, and get inspired.
+          Videos, generated images, and music made by the AIBeatSync community. Watch, browse, listen, and get inspired.
         </p>
       </header>
 
@@ -463,11 +463,11 @@ export default function Explore() {
         <section className="mb-12">
           <div className="mb-4 flex items-center gap-2">
             <Music2 className="h-5 w-5 text-primary" />
-            <h2 className="text-xl font-semibold">Community soundtracks</h2>
+            <h2 className="text-xl font-semibold">Community music</h2>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {soundtracks.map((s) => {
-              const title = encodeURIComponent(s.title || "AI Soundtrack");
+              const title = encodeURIComponent(s.title || "AI-generated music");
               return (
                 <div key={s.id} className="overflow-hidden rounded-xl border border-card-border bg-card shadow-lg transition-all hover:border-primary/50">
                   <div className="h-1 w-full bg-gradient-electric" />
@@ -478,7 +478,7 @@ export default function Explore() {
                           {(s.creatorName || "A").trim().charAt(0).toUpperCase()}
                         </div>
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-medium" title={s.title || "Untitled"}>{s.title || "AI Soundtrack"}</p>
+                          <p className="truncate text-sm font-medium" title={s.title || "Untitled"}>{s.title || "AI-generated music"}</p>
                           <p className="text-xs text-muted-foreground">by {s.creatorName || "a creator"}</p>
                         </div>
                       </div>

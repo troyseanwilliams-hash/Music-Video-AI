@@ -1790,7 +1790,7 @@ export default function Editor() {
 
       <div className="mb-4">
         <TutorialTip id="remixlab" title="Montage Studio basics">
-          Add your clips and photos, add music (upload, Suno, or one of your Soundtracks), then arrange them on the
+          Add your clips and photos, add music (upload, Suno, or from My Music), then arrange them on the
           timeline. To turn a narrated podcast or story into a still-image video, add the full audio, arrange your images in story order,
           and set each image&apos;s hold time to match the narration. Detect the beat to auto-sync photo cuts, set a transition, and export —
           free on trial and for subscribers.
@@ -1839,7 +1839,7 @@ export default function Editor() {
           }}
         >
           <Button variant="outline" data-testid="add-music-from-soundtracks">
-            <Music className="mr-2 h-4 w-4 text-primary" /> Add from Soundtracks
+            <Music className="mr-2 h-4 w-4 text-primary" /> Add from My Music
           </Button>
         </SoundtrackPickerDialog>
       </div>

@@ -503,7 +503,7 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
   const runSync = useCallback(async () => {
     setSyncError(null);
     if (!audioFile && !libObjectPath && !pickedVideo) {
-      setSyncError("Load a song first — upload a file, pick one from your Library, or pick a video — then Auto-sync can read its vocal.");
+      setSyncError("Load a song first — upload a file, pick one from My Music, or pick a video — then Auto-sync can read its vocal.");
       return;
     }
     setSyncing(true);
@@ -754,14 +754,14 @@ export default function LyricSyncStudio({ variant = "admin" }: { variant?: "admi
                   <div className="h-11 w-11 rounded-md bg-primary/10 flex items-center justify-center text-primary">♫</div>
                   <div className="min-w-0">
                     <div className="font-medium truncate">{audioName ?? "No song loaded"}</div>
-                    <div className="text-xs text-muted-foreground">{audioName ? `${fmtClock(duration)} · ready` : "Upload a file or pick from your library"}</div>
+                    <div className="text-xs text-muted-foreground">{audioName ? `${fmtClock(duration)} · ready` : "Upload a file or pick from My Music"}</div>
                   </div>
                   <div className="ml-auto flex items-center gap-2 shrink-0">
                     <VideoPickerDialog onSelect={onPickVideo}>
                       <Button variant="outline" size="sm"><Film className="mr-1.5 h-3.5 w-3.5" /> My Videos</Button>
                     </VideoPickerDialog>
                     <SoundtrackPickerDialog onSelect={onPickLibrary}>
-                      <Button variant="outline" size="sm"><Music2 className="mr-1.5 h-3.5 w-3.5" /> Library</Button>
+                      <Button variant="outline" size="sm"><Music2 className="mr-1.5 h-3.5 w-3.5" /> My Music</Button>
                     </SoundtrackPickerDialog>
                     <Button variant="outline" size="sm" onClick={() => audioFileRef.current?.click()}>
                       <Upload className="mr-1.5 h-3.5 w-3.5" /> {audioName ? "Change" : "Upload"}

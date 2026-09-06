@@ -131,3 +131,25 @@ export function useCreateNarration() {
     },
   });
 }
+
+export function useSaveNarrationToSoundtracks() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/narrations/${id}/save-to-soundtracks`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to save narration to My Music");
+      }
+      return res.json() as Promise<{
+        soundtrack: { id: string; title: string; objectPath: string };
+      }>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["soundtracks"] });
+    },
+  });
+}

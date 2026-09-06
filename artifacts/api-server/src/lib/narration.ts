@@ -4,7 +4,7 @@ const API_BASE = "https://api.elevenlabs.io";
 const MODEL_ID = "eleven_turbo_v2_5";
 export const MIN_SCRIPT_CHARS = 40;
 export const MAX_SCRIPT_CHARS = 39_000;
-export const MUSIC_CREDITS = 4;
+export const MUSIC_CREDITS = 0;
 export const NARRATION_CREDITS_PER_1000 = 3;
 export const NARRATION_MUSIC_SOURCES = ["none", "generated", "soundtrack", "upload", "suno"] as const;
 export type NarrationMusicSource = typeof NARRATION_MUSIC_SOURCES[number];
@@ -17,7 +17,7 @@ export function resolveNarrationMusicSource(input: {
 }
 
 export function narrationMusicSurcharge(source: NarrationMusicSource): number {
-  return source === "generated" ? MUSIC_CREDITS : 0;
+  return MUSIC_CREDITS;
 }
 
 export function narrationUsesExistingMusic(source: NarrationMusicSource): boolean {

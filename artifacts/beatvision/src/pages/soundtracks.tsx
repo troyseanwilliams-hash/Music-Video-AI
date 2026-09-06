@@ -250,7 +250,7 @@ export default function Soundtracks() {
     queryKey: ["soundtracks"],
     queryFn: async (): Promise<Soundtrack[]> => {
       const res = await fetch("/api/music/soundtracks", { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to load soundtracks");
+      if (!res.ok) throw new Error("Failed to load music");
       return (await res.json()).soundtracks;
     },
     enabled: isAuthenticated,
@@ -302,11 +302,11 @@ export default function Soundtracks() {
       queryClient.invalidateQueries({ queryKey: ["soundtracks"] });
       queryClient.invalidateQueries({ queryKey: ["soundtracks", "status"] });
       toast({
-        title: "Soundtrack ready",
+        title: "Music ready",
         description: data.wasFree
           ? withVocals
             ? "Your free vocal song was used."
-            : "Used one of your free Soundtracks."
+            : "Used one of your free music generations."
           : `${data.creditsCharged} credits used.`,
       });
       setTimeout(() => setProgress(0), 900);
@@ -417,12 +417,12 @@ export default function Soundtracks() {
 
   const useInGenerate = (s: Soundtrack) => {
     trackEvent("soundtrack_sent_to_video", { destination: "generate" });
-    const t = encodeURIComponent(s.title || "AI Soundtrack");
+    const t = encodeURIComponent(s.title || "AI-generated music");
     navigate(`/generate?audioObjectPath=${encodeURIComponent(s.objectPath)}&title=${t}`);
   };
   const useInRemix = (s: Soundtrack) => {
     trackEvent("soundtrack_sent_to_video", { destination: "montage" });
-    const t = encodeURIComponent(s.title || "AI Soundtrack");
+    const t = encodeURIComponent(s.title || "AI-generated music");
     navigate(`/editor?audio=${encodeURIComponent(s.url)}&title=${t}`);
   };
   const copyLink = (s: Soundtrack) => {
@@ -439,7 +439,7 @@ export default function Soundtracks() {
     return (
       <div className="container mx-auto px-4 py-16 text-center">
         <Music2 className="h-10 w-10 mx-auto text-muted-foreground mb-4" />
-        <h1 className="text-xl font-semibold mb-2">Soundtracks</h1>
+        <h1 className="text-xl font-semibold mb-2">Music</h1>
         <p className="text-muted-foreground mb-6">Sign in to create full vocal songs or instrumentals from a prompt—use them in videos or download and share your music on its own.</p>
         <Link href="/login"><Button className="bg-gradient-electric text-white border-0">Sign in</Button></Link>
       </div>
@@ -489,7 +489,7 @@ export default function Soundtracks() {
       <div className="mb-8">
         <TutorialTip
           id={withVocals ? "soundtracks-vocals" : "soundtracks"}
-          title={withVocals ? "How vocal songs work" : "How Soundtracks work"}
+          title={withVocals ? "How vocal songs work" : "How Music works"}
         >
           {withVocals ? (
             <>
@@ -501,7 +501,7 @@ export default function Soundtracks() {
           ) : (
             <>
               Describe a vibe (or tap a preset), pick a length, and generate a royalty-free instrumental. It saves to your
-              library automatically — play it, download it, rename it, or drop it straight into a video.
+              My Music automatically — play it, download it, rename it, or drop it straight into a video.
             </>
           )}
         </TutorialTip>
@@ -531,7 +531,7 @@ export default function Soundtracks() {
         <div className="p-6 md:p-8 space-y-12">
           {status && !status.enabled ? (
             <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 p-4 text-sm font-medium">
-              Coming soon. Soundtracks isn't open on your account yet — check back shortly.
+              Coming soon. Music isn't open on your account yet — check back shortly.
             </div>
           ) : (
             <>
@@ -714,8 +714,8 @@ export default function Soundtracks() {
                   ? `Your first vocal song is free. Estimated length: ${formatVocalDuration(estimatedVocalDuration)}.`
                   : `Estimated ${formatVocalDuration(estimatedVocalDuration)} vocal song: ${estimatedVocalCredits} credits.`
                 : status?.admin || (status?.freeRemaining ?? 0) > 0
-                  ? "You are using a free soundtrack generation."
-                  : `Generating this soundtrack will use ≈ ${songCredits(duration)} credits.`}
+                  ? "You are using a free music generation."
+                  : `Generating this music will use ≈ ${songCredits(duration)} credits.`}
             </div>
 
             {gen.isPending || progress > 0 ? (
@@ -766,7 +766,7 @@ export default function Soundtracks() {
                 <p className="mt-0.5 text-sm text-muted-foreground">
                   {gen.error instanceof Error ? gen.error.message : "The music engine had an internal error. Please try again."}
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">No soundtrack credits are charged unless generation succeeds.</p>
+                <p className="mt-1 text-xs text-muted-foreground">No music credits are charged unless generation succeeds.</p>
               </div>
               <Button variant="outline" onClick={() => gen.mutate()} disabled={lyricsBusy}>
                 Try again
@@ -778,7 +778,7 @@ export default function Soundtracks() {
 
       {/* Library */}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold">Your library</h2>
+        <h2 className="text-lg font-semibold">My Music</h2>
         {tracks && tracks.length > 0 && (
           <div className="flex items-center gap-2">
             <input
@@ -806,7 +806,7 @@ export default function Soundtracks() {
           <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-secondary/60">
             <Music2 className="h-5 w-5 text-muted-foreground" />
           </div>
-          <p className="font-medium">Your library will show up here</p>
+          <p className="font-medium">My Music will show up here</p>
           <p className="mt-1 text-sm text-muted-foreground">We couldn't reach it just now. Give it a moment and try again.</p>
           <Button variant="outline" size="sm" className="mt-4" onClick={() => refetch()} disabled={isRefetching}>
             {isRefetching ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : null}
@@ -818,13 +818,13 @@ export default function Soundtracks() {
           <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-primary/10">
             <Music2 className="h-5 w-5 text-primary" />
           </div>
-          <p className="font-medium">No soundtracks yet</p>
+          <p className="font-medium">You don't have any music yet</p>
           <p className="mt-1 text-sm text-muted-foreground">
             Generate your first one above — it'll appear here automatically, ready to play, download, or drop into a video.
           </p>
         </div>
       ) : visibleTracks.length === 0 ? (
-        <div className="py-12 text-center text-sm text-muted-foreground">No soundtracks match “{libSearch}”.</div>
+        <div className="py-12 text-center text-sm text-muted-foreground">No music matches “{libSearch}”.</div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {visibleTracks.map((s) => (
@@ -851,7 +851,7 @@ export default function Soundtracks() {
                       </div>
                     ) : (
                       <h3 className="font-semibold flex items-center gap-1.5">
-                        <span className="truncate">{s.title || "AI Soundtrack"}</span>
+                        <span className="truncate">{s.title || "AI-generated music"}</span>
                         <button onClick={() => { setEditingId(s.id); setEditTitle(s.title || ""); }} className="text-muted-foreground hover:text-primary shrink-0" title="Rename">
                           <Pencil className="h-3 w-3" />
                         </button>
@@ -912,7 +912,7 @@ export default function Soundtracks() {
                         size="sm"
                         variant="ghost"
                         className="h-8"
-                        title="Post this soundtrack anonymously on Explore"
+                        title="Post this music anonymously on Explore"
                         onClick={() =>
                           togglePublic.mutate({
                             id: s.id,
@@ -932,8 +932,8 @@ export default function Soundtracks() {
                         size="sm"
                         variant="ghost"
                         className="h-8 w-8 p-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive ml-auto"
-                        aria-label={`Delete ${s.title || "soundtrack"}`}
-                        title="Delete soundtrack"
+                        aria-label={`Delete ${s.title || "music"}`}
+                        title="Delete music"
                         disabled={del.isPending}
                       >
                         {del.isPending && del.variables === s.id ? (
@@ -945,9 +945,9 @@ export default function Soundtracks() {
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
-                        <AlertDialogTitle>Delete this soundtrack?</AlertDialogTitle>
+                        <AlertDialogTitle>Delete this music?</AlertDialogTitle>
                         <AlertDialogDescription>
-                          “{s.title || "AI Soundtrack"}” will be removed from your library. This action cannot be undone.
+                          “{s.title || "AI-generated music"}” will be removed from My Music. This action cannot be undone.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>

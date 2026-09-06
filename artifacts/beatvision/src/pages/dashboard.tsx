@@ -239,7 +239,7 @@ export default function Dashboard() {
                 <Sparkles className="h-5 w-5 text-primary" /> Welcome to AIBeatSync
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Your 7-day trial includes full Remix Studio access and <strong className="text-foreground">3 free Soundtracks</strong>. Here's how to start:
+                Your 7-day trial includes full Remix Studio access and <strong className="text-foreground">3 free music generations</strong>. Here's how to start:
               </p>
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
                 <Link href="/generate" className="rounded-xl border border-border bg-background/40 p-4 transition-colors hover:border-primary/50">
@@ -249,7 +249,7 @@ export default function Dashboard() {
                 </Link>
                 <Link href="/soundtracks" className="rounded-xl border border-border bg-background/40 p-4 transition-colors hover:border-primary/50">
                   <Music2 className="mb-2 h-5 w-5 text-primary" />
-                  <p className="text-sm font-semibold">Create a Soundtrack</p>
+                  <p className="text-sm font-semibold">Create Music</p>
                   <p className="text-xs text-muted-foreground">Royalty-free instrumentals in seconds.</p>
                 </Link>
                 <Link href="/explore" className="rounded-xl border border-border bg-background/40 p-4 transition-colors hover:border-primary/50">

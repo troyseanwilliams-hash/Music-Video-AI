@@ -33,7 +33,7 @@ export default function SharedSoundtrack() {
       ) : error || !data ? (
         <div className="text-center py-16">
           <Music2 className="h-10 w-10 mx-auto text-muted-foreground mb-4" />
-          <p className="text-muted-foreground">This soundtrack isn't available.</p>
+          <p className="text-muted-foreground">This music isn't available.</p>
         </div>
       ) : (
         <Card className="bg-card/50 border-card-border overflow-hidden">
@@ -44,7 +44,7 @@ export default function SharedSoundtrack() {
                 <Music2 className="h-5 w-5 text-primary" />
               </div>
               <div className="min-w-0">
-                <h1 className="font-semibold truncate">{data.title || "AI Soundtrack"}</h1>
+                <h1 className="font-semibold truncate">{data.title || "AI-generated music"}</h1>
                 <p className="text-xs text-muted-foreground">Shared from AIBeatSync</p>
               </div>
             </div>

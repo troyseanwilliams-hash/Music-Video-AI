@@ -57,7 +57,7 @@ export default function Home() {
               </h1>
 
               <p className="text-lg md:text-2xl text-white/60 mb-12 max-w-3xl mx-auto font-light leading-relaxed">
-                Write the soundtrack, turn a script into narrated audio, create a podcast release, generate the visuals, sync lyrics, and edit the final cut—all from one site and one shared credit balance.
+                Write the music, turn a script into narrated audio, create a podcast release, generate the visuals, sync lyrics, and edit the final cut—all from one site and one shared credit balance.
               </p>
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-5 w-full sm:w-auto">
@@ -82,7 +82,7 @@ export default function Home() {
                 className="mt-16 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-white/40"
               >
                 <Link href="/soundtracks" className="hover:text-white transition-colors flex items-center gap-1.5">
-                  <Music className="h-3.5 w-3.5" /> Generate Soundtracks
+                  <Music className="h-3.5 w-3.5" /> Generate Music
                 </Link>
                 <span>&middot;</span>
                 <Link href="/generate" className="hover:text-white transition-colors flex items-center gap-1.5">
@@ -119,7 +119,7 @@ export default function Home() {
                 </p>
                 <div className="flex items-start gap-4 text-sm font-medium text-white/80 p-5 rounded-2xl bg-white/5 border border-white/10">
                   <CreditCard className="h-6 w-6 text-primary shrink-0" />
-                  <p className="leading-relaxed">Your single credit balance powers soundtracks, narration, images, premium video rendering, and release-ready exports.</p>
+                  <p className="leading-relaxed">Your single credit balance powers music, narration, images, premium video rendering, and release-ready exports.</p>
                 </div>
               </div>
               
@@ -360,7 +360,7 @@ export default function Home() {
                   </div>
                   <div>
                      <h4 className="text-white font-semibold mb-2">Narration & Music Beds</h4>
-                     <p className="text-sm text-white/50 leading-relaxed">Turn a script into narration, then use generated music, your library, an upload, a Suno track, or no music.</p>
+                     <p className="text-sm text-white/50 leading-relaxed">Turn a script into narration, then use generated music, My Music, an upload, a Suno track, or no music.</p>
                   </div>
                 </div>
               </div>

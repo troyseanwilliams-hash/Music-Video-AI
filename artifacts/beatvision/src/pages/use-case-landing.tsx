@@ -155,10 +155,10 @@ export function InstrumentalLanding() {
     ctaLabel: "Generate a beat", ctaHref: "/soundtracks",
     steps: [
       { icon: Music2, title: "Describe the vibe", body: "Type a mood or genre and the AI composes an original instrumental." },
-      { icon: Disc3, title: "Loop or reuse", body: "Loop it to any length, save it to your library, or drop it into a video." },
+      { icon: Disc3, title: "Loop or reuse", body: "Loop it to any length, save it to My Music, or drop it into a video." },
       { icon: Film, title: "Turn it into a video", body: "One click sends your beat into the video generator for a full music video." },
     ],
-    seo: "AIBeatSync's soundtrack generator creates original, royalty-free instrumental music from a text description — free tracks included on every plan. Use the beats in your videos, streams, and social content, then turn any track into a cinematic AI music video in the same place.",
+    seo: "AIBeatSync's music generator creates original, royalty-free instrumental music from a text description — free tracks included on every plan. Use the beats in your videos, streams, and social content, then turn any track into a cinematic AI music video in the same place.",
   }} />;
 }
 
@@ -247,7 +247,7 @@ export function CapcutAlternativeLanding() {
       { icon: Scissors, title: "Trim, arrange, transition", body: "Cut, reorder, add music and smooth crossfades — no learning curve." },
       { icon: Film, title: "Export everywhere", body: "One click gives you vertical TikTok/Reels/Shorts cuts and a shareable video." },
     ],
-    seo: "AIBeatSync's Montage Studio is a lightweight, AI-powered alternative to CapCut for slideshows, music videos, and social content. Timeline editing, music, smooth transitions, and one-click TikTok/Reels/Shorts exports — plus AI video and soundtrack generation built in. Free to start.",
+    seo: "AIBeatSync's Montage Studio is a lightweight, AI-powered alternative to CapCut for slideshows, music videos, and social content. Timeline editing, music, smooth transitions, and one-click TikTok/Reels/Shorts exports — plus AI video and music generation built in. Free to start.",
   }} />;
 }
 

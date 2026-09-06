@@ -611,7 +611,7 @@ function AdminMusicPanel() {
       if (!res.ok) throw new Error(data.error || "Generation failed");
       return data as { url: string; provider: string; hasVocals: boolean; objectPath: string; loopedToSeconds?: number | null };
     },
-    onSuccess: (data) => { setResult(data); toast({ title: "Soundtrack generated", description: "Saved to your library." }); },
+    onSuccess: (data) => { setResult(data); toast({ title: "Music generated", description: "Saved to My Music." }); },
     onError: (err: Error) => toast({ title: "Failed", description: err.message, variant: "destructive" }),
   });
 
@@ -636,7 +636,7 @@ function AdminMusicPanel() {
             <Music2 className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <CardTitle className="text-lg leading-tight">Soundtracks</CardTitle>
+            <CardTitle className="text-lg leading-tight">Music</CardTitle>
             <div className="flex items-center gap-1.5 mt-0.5">
               <Badge variant="outline" className="text-[10px]">Beta · Admin</Badge>
               <span className={`inline-flex items-center gap-1 text-[10px] ${isSim ? "text-amber-400" : "text-emerald-400"}`}>
@@ -647,7 +647,7 @@ function AdminMusicPanel() {
           </div>
         </div>
         <CardDescription className="mt-2">
-          Generate a royalty-free soundtrack, then drop it straight into a Remix or AI video. Subscribers get a batch of free Soundtracks every month (Starter 25 · Pro 100 · Studio 300); extra tracks cost credits.
+          Generate royalty-free music, then drop it straight into a Remix or AI video. Subscribers get a batch of free music generations every month (Starter 25 · Pro 100 · Studio 300); extra tracks cost credits.
         </CardDescription>
       </CardHeader>
 
@@ -759,15 +759,15 @@ function AdminMusicPanel() {
           <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/[0.06] p-4 space-y-3">
             <div className="text-sm font-semibold flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-              Your soundtrack is ready
+              Your music is ready
               {result.loopedToSeconds ? <Badge variant="outline" className="text-[10px]">Looped to {result.loopedToSeconds}s</Badge> : null}
               <span className="text-[11px] font-normal text-muted-foreground ml-auto">
-                Saved to your <Link href="/soundtracks" className="text-primary hover:underline">library</Link>
+                Saved to <Link href="/soundtracks" className="text-primary hover:underline">My Music</Link>
               </span>
             </div>
             <audio src={result.url} controls className="w-full" />
             {(() => {
-              const title = prompt.trim().split(/\s+/).slice(0, 4).join(" ") || "AI Soundtrack";
+              const title = prompt.trim().split(/\s+/).slice(0, 4).join(" ") || "AI-generated music";
               return (
                 <div className="flex flex-wrap items-center gap-2">
                   <Button size="sm" onClick={() => navigate(`/editor?audio=${encodeURIComponent(result.url)}&title=${encodeURIComponent(title)}`)} data-testid="song-to-remix">

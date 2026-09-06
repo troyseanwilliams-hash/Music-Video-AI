@@ -188,7 +188,7 @@ router.post("/prompt/video-scenes", async (req: Request, res: Response) => {
     }
     if (audioObjectPath && !verifiedAnalysis) {
       res.status(422).json({
-        error: "Audio analysis must be current for the selected soundtrack. Analyze it again before planning.",
+        error: "Audio analysis must be current for the selected music. Analyze it again before planning.",
         code: "AUDIO_ANALYSIS_REQUIRED",
       });
       return;

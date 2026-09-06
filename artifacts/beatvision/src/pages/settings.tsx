@@ -217,7 +217,7 @@ export default function Settings() {
           <div className="mt-4 flex items-center justify-between gap-4 border-t border-border/40 pt-4">
             <div>
               <p className="text-sm font-medium">Show tutorial tips</p>
-              <p className="text-xs text-muted-foreground">Helpful hints on the Generate, Remix, and Soundtracks pages.</p>
+              <p className="text-xs text-muted-foreground">Helpful hints on the Generate, Remix, and Music pages.</p>
             </div>
             <Switch
               checked={tipsOn}

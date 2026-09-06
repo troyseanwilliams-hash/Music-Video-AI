@@ -22,10 +22,10 @@ describe("AIBeatSync narration contract", () => {
     expect(narrationCost(MAX_SCRIPT_CHARS)).toBe(117);
   });
 
-  it("mirrors the proven four-credit optional music surcharge", () => {
-    expect(narrationCost(40, true)).toBe(7);
-    expect(narrationCost(1_001, true)).toBe(10);
-    expect(narrationCost(40, "generated")).toBe(7);
+  it("includes ElevenLabs music in the narration price without a separate surcharge", () => {
+    expect(narrationCost(40, true)).toBe(3);
+    expect(narrationCost(1_001, true)).toBe(6);
+    expect(narrationCost(40, "generated")).toBe(3);
     expect(narrationCost(40, "soundtrack")).toBe(3);
     expect(narrationCost(40, "upload")).toBe(3);
     expect(narrationCost(40, "suno")).toBe(3);

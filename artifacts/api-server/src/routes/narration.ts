@@ -71,11 +71,11 @@ export async function resolveMusic(userId: string, input: z.infer<typeof bodySch
       isNull(soundtracksTable.deletedAt),
       selector,
     )).limit(1);
-    if (!track) throw new MusicInputError("Soundtrack not found.");
+    if (!track) throw new MusicInputError("Music not found.");
     objectPath = track.objectPath;
     title = track.title ?? undefined;
     if (!/\.(?:mp3|wav|m4a|ogg|aac|flac)$/i.test(objectPath)) {
-      throw new MusicInputError("Soundtrack is not a valid audio file.");
+      throw new MusicInputError("Music is not a valid audio file.");
     }
   } else {
     objectPath = input.musicObjectPath ?? "";
@@ -295,6 +295,66 @@ router.get("/narrations/:id", async (req, res) => {
   )).limit(1);
   if (!job) return void res.status(404).json({ error: "Narration not found" });
   res.json({ narration: view(job) });
+});
+
+router.post("/narrations/:id/save-to-soundtracks", async (req, res) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: "Unauthorized" });
+  const soundtrackId = `narration:${req.params.id}`;
+  const saved = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`${req.user!.id}:${soundtrackId}`}))`);
+    const [job] = await tx.select().from(jobsTable).where(and(
+      eq(jobsTable.id, req.params.id),
+      eq(jobsTable.userId, req.user!.id),
+      eq(jobsTable.jobType, "narration"),
+      eq(jobsTable.status, "ready"),
+    )).limit(1);
+    if (!job?.audioObjectPath) return null;
+
+    const audioAnalysis = job.audioAnalysis && typeof job.audioAnalysis === "object"
+      ? job.audioAnalysis as Record<string, unknown>
+      : {};
+    const manifest = job.manifest && typeof job.manifest === "object"
+      ? job.manifest as Record<string, unknown>
+      : {};
+    const scriptTitle = typeof manifest.script === "string"
+      ? manifest.script.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().split(" ").slice(0, 8).join(" ")
+      : "";
+    const duration = Number(audioAnalysis.durationSeconds);
+    const filename = job.audioObjectPath.split("/").pop() ?? "";
+    const ext = filename.includes(".") ? filename.split(".").pop()!.toLowerCase() : "mp3";
+    const values = {
+      userId: req.user!.id,
+      title: scriptTitle ? `Narration: ${scriptTitle}`.slice(0, 200) : "AI Narration",
+      prompt: "Narration audio",
+      lyrics: null,
+      hasVocals: true,
+      objectPath: job.audioObjectPath,
+      ext,
+      durationSeconds: Number.isFinite(duration) ? Math.max(1, Math.round(duration)) : null,
+      provider: "narration",
+      isPublic: false,
+      shareToken: null,
+      deletedAt: null,
+    };
+    const [existing] = await tx.select({ id: soundtracksTable.id })
+      .from(soundtracksTable)
+      .where(eq(soundtracksTable.id, soundtrackId))
+      .limit(1);
+    if (existing) {
+      await tx.update(soundtracksTable).set(values).where(and(
+        eq(soundtracksTable.id, soundtrackId),
+        eq(soundtracksTable.userId, req.user!.id),
+      ));
+    } else {
+      await tx.insert(soundtracksTable).values({ id: soundtrackId, ...values });
+    }
+    return {
+      soundtrack: { id: soundtrackId, title: values.title, objectPath: values.objectPath },
+      alreadySaved: Boolean(existing),
+    };
+  });
+  if (!saved) return void res.status(404).json({ error: "Narration audio is not ready." });
+  res.json(saved);
 });
 
 router.get("/narrations/:id/download", async (req, res) => {

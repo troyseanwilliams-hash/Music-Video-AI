@@ -225,7 +225,7 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
         freeRemaining = allowance - used - 1;
       } else if ((credits?.creditsRemaining ?? 0) < cost) {
         res.status(402).json({
-          error: `You've used all ${allowance} free Soundtracks this month. Extra tracks cost ${cost} credits but you have ${credits?.creditsRemaining ?? 0}.`,
+          error: `You've used all ${allowance} free music generations this month. Extra tracks cost ${cost} credits but you have ${credits?.creditsRemaining ?? 0}.`,
           code: "INSUFFICIENT_CREDITS",
           creditsRequired: cost,
           creditsRemaining: credits?.creditsRemaining ?? 0,
@@ -245,7 +245,7 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
         freeRemaining = NEW_USER_FREE_SOUNDTRACKS - used - 1;
       } else {
         res.status(403).json({
-          error: `You've used your ${NEW_USER_FREE_SOUNDTRACKS} free Soundtracks. Subscribe to get more every month.`,
+          error: `You've used your ${NEW_USER_FREE_SOUNDTRACKS} free music generations. Subscribe to get more every month.`,
           code: "SUBSCRIPTION_REQUIRED",
         });
         return;
@@ -304,7 +304,7 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
     // Persist to the user's Soundtracks library (play/download/reuse/share).
     // Non-fatal: if this fails (e.g. the table isn't migrated yet), the user
     // still gets their generated track back rather than losing the generation.
-    const title = parsed.data.prompt.trim().split(/\s+/).slice(0, 5).join(" ") || "AI Soundtrack";
+    const title = parsed.data.prompt.trim().split(/\s+/).slice(0, 5).join(" ") || "AI Music";
     let savedToLibrary = true;
     try {
       await db.insert(soundtracksTable).values({

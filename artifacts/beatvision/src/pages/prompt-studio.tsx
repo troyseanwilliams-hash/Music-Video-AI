@@ -358,7 +358,7 @@ export default function PromptStudio() {
       <div className="container mx-auto px-4 py-20 max-w-md text-center">
         <Sparkles className="mx-auto h-10 w-10 text-primary mb-4" />
         <h1 className="text-2xl font-bold mb-2">Prompt</h1>
-        <p className="text-muted-foreground mb-6">Sign in to build polished prompts for your videos and soundtracks.</p>
+        <p className="text-muted-foreground mb-6">Sign in to build polished prompts for your videos and music.</p>
         <Link href="/login"><Button size="lg" className="bg-gradient-electric text-white border-0">Sign in</Button></Link>
       </div>
     );
@@ -374,14 +374,14 @@ export default function PromptStudio() {
           Prompt
         </h1>
         <p className="text-muted-foreground mt-2 text-sm sm:text-base max-w-xl mx-auto">
-          Describe what you want in plain words — we'll turn it into a ready-to-use prompt. The soundtrack and video
+          Describe what you want in plain words — we'll turn it into a ready-to-use prompt. The music and video
           scene builders are free; writing full lyrics costs {LYRICS_BUILD_COST} credits.
         </p>
       </div>
 
       <Tabs defaultValue="audio" className="w-full">
         <TabsList className="grid h-auto w-full grid-cols-3">
-          <TabsTrigger value="audio"><Music2 className="mr-1.5 h-4 w-4" /> Soundtrack</TabsTrigger>
+          <TabsTrigger value="audio"><Music2 className="mr-1.5 h-4 w-4" /> Music</TabsTrigger>
           <TabsTrigger value="video"><Film className="mr-1.5 h-4 w-4" /> Video</TabsTrigger>
           <TabsTrigger value="lyrics"><FileText className="mr-1.5 h-4 w-4" /> Lyrics</TabsTrigger>
         </TabsList>
@@ -414,7 +414,7 @@ export default function PromptStudio() {
               <div className="flex flex-wrap gap-2 pt-1">
                 <CopyButton text={audioRes.prompt} />
                 <Button size="sm" onClick={() => setLocation(`/soundtracks?prompt=${encodeURIComponent(audioRes.prompt)}`)}>
-                  Use in Soundtracks <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                  Use in Music <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                 </Button>
               </div>
             </div>
@@ -466,7 +466,7 @@ export default function PromptStudio() {
               <div className="flex flex-wrap gap-2">
                 <SoundtrackPickerDialog onSelect={analyzePlanningAudio}>
                   <Button type="button" variant="outline" size="sm" disabled={planningAudioBusy}>
-                    <Music2 className="mr-1.5 h-3.5 w-3.5" /> Choose soundtrack
+                    <Music2 className="mr-1.5 h-3.5 w-3.5" /> Choose Music
                   </Button>
                 </SoundtrackPickerDialog>
                 <Button type="button" variant="outline" size="sm" disabled={planningAudioBusy} onClick={() => planningAudioInputRef.current?.click()}>
@@ -805,7 +805,7 @@ export default function PromptStudio() {
                     )
                   }
                 >
-                  Export to Soundtracks <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                  Save to My Music <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                 </Button>
               </div>
             </div>

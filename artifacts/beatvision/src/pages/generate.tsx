@@ -1778,7 +1778,8 @@ export default function Generate() {
                 <Button variant="outline" onClick={() => setGuidedStep(0)}>Back</Button>
                 <Button onClick={() => setGuidedStep(2)} disabled={
                   (sourceType === CreateJobRequestAudioSourceType.upload && !objectPath) ||
-                  (sourceType === CreateJobRequestAudioSourceType.suno && !sunoResolved)
+                  (sourceType === CreateJobRequestAudioSourceType.suno && !sunoResolved) ||
+                  sourceType === "narration"
                 }>
                   Next step
                 </Button>
@@ -1856,7 +1857,7 @@ export default function Generate() {
             </>
           ) : (
             <>
-              Add audio (upload, Suno link, or one of your Soundtracks), describe the look, pick your engine — <strong>Runway</strong> (premium)
+              Add audio (upload, Suno link, or from My Music), describe the look, pick your engine — <strong>Runway</strong> (premium)
               or <strong>Kling</strong> (value) — and a length. For a spoken narrative or podcast, create a still image pack, then use Montage Studio
               to place those images against your full audio and set each image&apos;s hold time to follow your timeline.
               <Link href="/tutorial/script-to-video" className="ml-1 underline text-primary hover:text-primary/80">Learn how</Link>. We charge credits only when it succeeds.
@@ -2440,7 +2441,7 @@ export default function Generate() {
                 }}
               >
                 <Button type="button" variant="outline" size="sm">
-                  <Music className="mr-1.5 h-4 w-4 text-primary" /> Use one of your Soundtracks
+                  <Music className="mr-1.5 h-4 w-4 text-primary" /> Add from My Music
                 </Button>
               </SoundtrackPickerDialog>
             </div>
@@ -2880,7 +2881,7 @@ export default function Generate() {
             <TabsContent value={CreateJobRequestAudioSourceType.none} className="mt-0">
               <TutorialTip id="no-audio" title="Score it later — most AI video generators can't do this">
                 Render your visuals now with no soundtrack, then add the perfect track once you've found
-                it — your own upload, a Suno link, or a generated Soundtrack — right in the Editor's Remix
+                it — your own upload, a Suno link, or AI-generated music — right in the Editor's Remix
                 Lab. No need to have a song picked out before you start creating.
               </TutorialTip>
               <div className="mt-3 flex items-start gap-3 rounded-xl border border-border/60 bg-background/30 p-4">
@@ -2889,7 +2890,7 @@ export default function Generate() {
                   <p className="text-sm font-medium">Silent video — add music later</p>
                   <p className="text-sm text-muted-foreground">
                     Renders your visuals with no soundtrack. Once it's ready, open it in the Editor
-                    (Montage Studio) to add a track — your own upload, a Suno link, or a Soundtrack.
+                    (Montage Studio) to add a track — your own upload, a Suno link, or music from My Music.
                   </p>
                   <p className="text-sm text-muted-foreground pt-1">
                     Need exact words on screen — a title card or a CTA? Don't type them into the prompt

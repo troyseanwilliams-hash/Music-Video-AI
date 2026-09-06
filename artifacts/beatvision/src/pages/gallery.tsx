@@ -137,7 +137,7 @@ export default function Gallery() {
       const response = await fetch("/api/music/soundtracks", {
         credentials: "include",
       });
-      if (!response.ok) throw new Error("Failed to load soundtracks");
+      if (!response.ok) throw new Error("Failed to load music");
       const payload = await response.json() as { soundtracks?: GallerySoundtrack[] };
       return Array.isArray(payload.soundtracks) ? payload.soundtracks : [];
     },
@@ -162,7 +162,7 @@ export default function Gallery() {
     })
     .sort((a, b) => {
       if (trackSort === "name") {
-        return (a.title || "AI Soundtrack").localeCompare(b.title || "AI Soundtrack");
+        return (a.title || "AI-generated music").localeCompare(b.title || "AI-generated music");
       }
       const aTime = new Date(a.createdAt).getTime();
       const bTime = new Date(b.createdAt).getTime();
@@ -329,14 +329,14 @@ export default function Gallery() {
   }
 
   function useTrackInGenerate(track: GallerySoundtrack) {
-    const title = encodeURIComponent(track.title || "AI Soundtrack");
+    const title = encodeURIComponent(track.title || "AI-generated music");
     setLocation(
       `/generate?audioObjectPath=${encodeURIComponent(track.objectPath)}&title=${title}`,
     );
   }
 
   function useTrackInRemix(track: GallerySoundtrack) {
-    const title = encodeURIComponent(track.title || "AI Soundtrack");
+    const title = encodeURIComponent(track.title || "AI-generated music");
     setLocation(`/editor?audio=${encodeURIComponent(track.url)}&title=${title}`);
   }
 
@@ -407,7 +407,7 @@ export default function Gallery() {
               ? "All your generated AI music videos."
               : galleryView === "images"
                 ? "Every saved image you have generated, ready for Montage Studio."
-                : "Your saved AI soundtracks, ready to play or use in a project."}
+                : "Your saved AI music, ready to play or use in a project."}
           </p>
         </div>
 
@@ -456,7 +456,7 @@ export default function Gallery() {
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          <Music2 className="h-4 w-4" /> Music
+          <Music2 className="h-4 w-4" /> My Music
         </button>
       </div>
 
@@ -988,11 +988,11 @@ export default function Gallery() {
             <Music2 className="h-12 w-12 sm:h-16 sm:w-16 text-muted-foreground mx-auto mb-4 sm:mb-6 opacity-20" />
             <h3 className="text-xl font-medium mb-2">No music tracks yet</h3>
             <p className="text-muted-foreground mb-8 max-w-md mx-auto">
-              Generate a soundtrack and it will appear here automatically, ready to play or add to a project.
+              Generate music and it will appear here automatically, ready to play or add to a project.
             </p>
             <Link href="/soundtracks">
               <Button size="lg" className="bg-gradient-electric text-white shadow-glow">
-                Create a soundtrack
+                Create Music
               </Button>
             </Link>
           </div>
@@ -1037,7 +1037,7 @@ export default function Gallery() {
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {visibleSoundtracks.map((track, index) => {
-                const title = track.title || "AI Soundtrack";
+                const title = track.title || "AI-generated music";
                 const fileName = `${title.replace(/[^\w-]+/g, "_")}.${track.ext || "mp3"}`;
                 const duration = track.loopedToSeconds || track.durationSeconds;
                 return (

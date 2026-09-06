@@ -87,7 +87,7 @@ export const DAILY_CONTENT: DailyItem[] = [
   { type: "tip", text: "Upload a reference image — album art, a mood board, anything — and the AI keeps your video's look on-brand from the first frame." },
   { type: "tip", text: "Choose from 8 distinct cinematic visual styles when generating with AI, from documentary grit to ethereal fantasy." },
   { type: "tip", text: "Montage Studio exports are always 1080p and watermark-free, even on a free account." },
-  { type: "tip", text: "Soundtracks has 14 genre presets — from Lofi chill to Afrobeats — to jumpstart your next instrumental." },
+  { type: "tip", text: "Music has 14 genre presets — from Lofi chill to Afrobeats — to jumpstart your next instrumental." },
   { type: "tip", text: "You can preview your Montage Studio timeline live before exporting, so there are no surprises in the final render." },
   { type: "tip", text: "Low on credits? The $5 starter pack gets you 250 credits — the cheapest way to try the AI Generator." },
   { type: "tip", text: "Montage Studio uploads have automatic retry protection, so a dropped connection won't leave you stuck on a spinner." },

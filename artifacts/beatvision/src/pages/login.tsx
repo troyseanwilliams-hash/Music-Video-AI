@@ -20,7 +20,7 @@ const features = [
   },
   {
     icon: Headphones,
-    title: "AI Soundtracks",
+    title: "AI Music",
     description: "Generate royalty-free instrumental music to score your videos",
   },
   {
@@ -89,7 +89,7 @@ export default function Login() {
               <span className="bg-gradient-electric bg-clip-text text-transparent">Cinematic visuals.</span>
             </h2>
             <p className="text-muted-foreground text-lg leading-relaxed max-w-sm">
-              Upload any track — or generate a royalty-free soundtrack — and let our AI turn it into a perfectly
+              Upload any track — or generate royalty-free music — and let our AI turn it into a perfectly
               beat-synced music video in minutes.
             </p>
           </div>

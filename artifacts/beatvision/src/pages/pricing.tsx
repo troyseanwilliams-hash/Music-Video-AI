@@ -390,7 +390,7 @@ export default function Pricing() {
             {
               icon: Music2,
               title: "Music",
-              description: "Unlimited access to royalty-free AI Soundtracks, limited only by the credits in your tier.",
+              description: "Unlimited access to royalty-free AI music, limited only by the credits in your tier.",
             },
             {
               icon: ImageIcon,
@@ -536,7 +536,7 @@ export default function Pricing() {
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                     <span>
-                      <strong>Unlimited AI Soundtracks</strong>{" "}
+                      <strong>Unlimited AI Music</strong>{" "}
                       <span className="text-muted-foreground">
                         — instrumental songs use 5–10 credits by length; songs with lyrics use 18 credits per generated minute
                       </span>
@@ -547,7 +547,7 @@ export default function Pricing() {
                     <span>
                       <strong>AI Narration</strong>{" "}
                       <span className="text-muted-foreground">
-                        — 3 credits per started 1,000 script characters, 3-credit minimum; a generated music bed adds 4 credits
+                        — 3 credits per started 1,000 script characters, 3-credit minimum; an AI-generated music bed is included
                       </span>
                     </span>
                   </li>
@@ -556,7 +556,7 @@ export default function Pricing() {
                     <span>
                       <strong>Use your own background music at no extra music-generation charge</strong>{" "}
                       <span className="text-muted-foreground">
-                        — choose an AIBeatSync soundtrack, upload audio, import a Suno song, or use voice only
+                        — choose music from AIBeatSync, upload audio, import a Suno song, or use voice only
                       </span>
                     </span>
                   </li>
