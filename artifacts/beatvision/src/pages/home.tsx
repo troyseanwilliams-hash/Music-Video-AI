@@ -11,11 +11,13 @@ import {
   Clapperboard,
   Share2,
   Wand2,
-  Maximize,
-  VideoOff,
   Mic2,
   Eye,
-  CheckCircle2
+  CheckCircle2,
+  Layers,
+  Wallet,
+  Activity,
+  CreditCard
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { AuroraBackground } from "@/components/AuroraBackground";
@@ -50,25 +52,25 @@ export default function Home() {
               </div>
 
               <h1 className="text-5xl sm:text-6xl md:text-8xl font-extrabold tracking-tighter mb-8 leading-[1.1]">
-                One track. <br className="hidden sm:block" />
-                One <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent">complete release.</span>
+                One workspace. <br className="hidden sm:block" />
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent">Complete release.</span>
               </h1>
 
               <p className="text-lg md:text-2xl text-white/60 mb-12 max-w-3xl mx-auto font-light leading-relaxed">
-                Most tools generate a random clip. AIBeatSync gives you the director's chair. Generate visuals, approve every frame before animation, and finish your cut in <span className="text-white font-medium">Montage Studio</span>.
+                Stop juggling disconnected creative tools. Generate premium video with <span className="text-white font-medium">Kling</span> and <span className="text-white font-medium">Runway</span>, sync your lyrics, and edit the final cut—all powered by one shared credit balance.
               </p>
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-5 w-full sm:w-auto">
-                <Link href="/generate" onClick={() => trackCTA("hero", "open_generate_video", "Create my music video")}>
+                <Link href="/pricing" onClick={() => trackCTA("hero", "view_pricing", "See shared balance plans")}>
                   <Button size="lg" className="w-full sm:w-auto text-lg h-14 px-8 bg-white text-black hover:bg-white/90 shadow-[0_0_40px_rgba(255,255,255,0.2)] border-0 transition-all group rounded-full">
-                    <Wand2 className="mr-2 h-5 w-5 transition-transform group-hover:rotate-12" />
-                    Create my music video
+                    <Wallet className="mr-2 h-5 w-5" />
+                    View unified plans
                   </Button>
                 </Link>
-                <Link href="/editor" onClick={() => trackCTA("hero", "open_montage_studio", "Open Montage Studio — free")}>
+                <Link href="/generate" onClick={() => trackCTA("hero", "open_generate_video", "Start generating")}>
                   <Button size="lg" variant="outline" className="w-full sm:w-auto text-lg h-14 px-8 border-white/10 bg-white/5 hover:bg-white/10 hover:text-white backdrop-blur-md transition-all group rounded-full text-white/90">
-                    <Scissors className="mr-2 h-5 w-5 transition-transform group-hover:-rotate-12" />
-                    Open Montage Studio — free
+                    <Wand2 className="mr-2 h-5 w-5 transition-transform group-hover:rotate-12" />
+                    Start generating
                   </Button>
                 </Link>
               </div>
@@ -95,47 +97,53 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Workflow Section */}
-        <section className="py-24 relative z-10 border-b border-white/5 bg-black">
+        {/* The Stack Replacement */}
+        <section className="py-20 relative z-10 border-b border-white/5 bg-black">
           <div className="container px-4 md:px-6 mx-auto max-w-6xl">
-            <div className="text-center mb-20">
-              <h2 className="text-3xl md:text-5xl font-extrabold tracking-tight mb-6">
-                The complete journey. <span className="text-white/40">In one place.</span>
-              </h2>
-              <p className="text-lg text-white/60 max-w-2xl mx-auto">
-                No switching between five different apps. AIBeatSync connects the entire music video pipeline from the first beat to the final social export.
-              </p>
-            </div>
-
-            <div className="grid md:grid-cols-4 gap-6">
-              {[
-                { icon: Music, title: "1. The Track", desc: "Upload your song, paste a link, or generate an original vocal track or instrumental in seconds." },
-                { icon: Eye, title: "2. The Storyboard", desc: "Describe your vision and generate the base images. You control the aesthetic." },
-                { icon: CheckCircle2, title: "3. The Approval", desc: "Review and approve every frame. Nothing animates until you're completely satisfied." },
-                { icon: Scissors, title: "4. The Final Cut", desc: "Bring the renders into Montage Studio. Trim, sync, and export in crisp 1080p." }
-              ].map((step, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, margin: "-100px" }}
-                  transition={{ duration: 0.5, delay: i * 0.1 }}
-                  className="bg-white/[0.02] border border-white/5 rounded-3xl p-8 hover:bg-white/[0.04] transition-colors relative group overflow-hidden"
-                >
-                  <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                  <div className="h-12 w-12 rounded-2xl bg-white/10 flex items-center justify-center mb-6 border border-white/10 relative z-10 group-hover:scale-110 transition-transform">
-                    <step.icon className="h-6 w-6 text-white" />
-                  </div>
-                  <h3 className="text-xl font-bold mb-3 text-white relative z-10">{step.title}</h3>
-                  <p className="text-white/50 leading-relaxed relative z-10">{step.desc}</p>
-                </motion.div>
-              ))}
+            <div className="grid lg:grid-cols-12 gap-12 items-center">
+              <div className="lg:col-span-5">
+                <h2 className="text-3xl md:text-5xl font-extrabold tracking-tight mb-6">
+                  One starting plan. <br />
+                  <span className="text-white/40">Shared balance.</span>
+                </h2>
+                <p className="text-lg text-white/60 leading-relaxed mb-8">
+                  Music releases used to require a patchwork of subscriptions: an audio generator, an image AI, a video engine, and a separate editor. AIBeatSync replaces them all.
+                </p>
+                <div className="flex items-start gap-4 text-sm font-medium text-white/80 p-5 rounded-2xl bg-white/5 border border-white/10">
+                  <CreditCard className="h-6 w-6 text-primary shrink-0" />
+                  <p className="leading-relaxed">Your single credit balance powers audio generation, premium video rendering, and karaoke syncing.</p>
+                </div>
+              </div>
+              
+              <div className="lg:col-span-7 grid sm:grid-cols-2 gap-4">
+                {[
+                  { title: "Premium Video", desc: "Kling & Runway generation.", icon: Clapperboard, color: "text-accent", bg: "bg-accent/10", border: "border-accent/20" },
+                  { title: "Audio & Vocals", desc: "Generate tracks & instrumentals.", icon: Music, color: "text-primary", bg: "bg-primary/10", border: "border-primary/20" },
+                  { title: "Visual Control", desc: "Storyboard before animating.", icon: Eye, color: "text-pink-400", bg: "bg-pink-500/10", border: "border-pink-500/20" },
+                  { title: "Timeline Editor", desc: "Trim and export up to 4K.", icon: Scissors, color: "text-white", bg: "bg-white/10", border: "border-white/20" }
+                ].map((item, i) => (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, y: 15 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.4, delay: i * 0.1 }}
+                    className="bg-[#07070A] border border-white/10 rounded-3xl p-6 hover:border-white/20 transition-colors shadow-xl"
+                  >
+                    <div className={`h-12 w-12 rounded-2xl ${item.bg} border ${item.border} flex items-center justify-center mb-5`}>
+                      <item.icon className={`h-6 w-6 ${item.color}`} />
+                    </div>
+                    <h3 className="text-xl font-bold text-white mb-2">{item.title}</h3>
+                    <p className="text-white/50 text-sm leading-relaxed">{item.desc}</p>
+                  </motion.div>
+                ))}
+              </div>
             </div>
           </div>
         </section>
 
         {/* Differentiator: Visual Approval */}
-        <section className="py-24 relative overflow-hidden bg-[#050505]">
+        <section className="py-24 relative overflow-hidden bg-[#030303]">
           <div className="absolute top-1/2 left-0 -translate-y-1/2 w-[600px] h-[600px] bg-primary/10 rounded-full blur-[150px] pointer-events-none" />
 
           <div className="container px-4 md:px-6 mx-auto max-w-6xl relative z-10">
@@ -147,14 +155,14 @@ export default function Home() {
                 transition={{ duration: 0.6 }}
               >
                 <div className="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-sm font-medium text-primary mb-6">
-                  <Lock className="mr-2 h-4 w-4" /> Keep control at the gate
+                  <Lock className="mr-2 h-4 w-4" /> Save your credits
                 </div>
                 <h2 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-6 leading-tight">
                   Visual approval <br />
                   <span className="text-white/40">before animation.</span>
                 </h2>
                 <p className="text-lg text-white/60 mb-8 leading-relaxed">
-                  Blindly generating video is a waste of credits and time. We pause the process so you can review the storyboard. Approve the images, regenerate the ones that miss the mark, and animate only when the vision is perfect.
+                  Blindly generating video wastes your balance. We pause the process so you can review the storyboard. Approve the images, regenerate the ones that miss the mark, and animate only when the vision is perfect.
                 </p>
 
                 <ul className="space-y-4 mb-10">
@@ -192,7 +200,7 @@ export default function Home() {
                   <div className="rounded-xl border border-white/10 bg-[#07070a] shadow-xl overflow-hidden md:transform md:-rotate-2 md:hover:rotate-0 transition-transform duration-500">
                     <div className="flex items-center justify-between gap-2 border-b border-white/10 bg-white/5 px-3 sm:px-4 py-3">
                       <span className="text-xs sm:text-sm font-semibold whitespace-nowrap">1. Visual Blueprint</span>
-                      <span className="rounded-full bg-primary/20 px-2 py-0.5 text-[10px] text-primary">Pending Approval</span>
+                      <span className="rounded-full bg-primary/20 px-2 py-0.5 text-[10px] text-primary uppercase tracking-wider">Pending Approval</span>
                     </div>
                     <img src="/narrative-gen-preview.png" alt="Storyboard preview" className="w-full h-[150px] sm:h-[180px] md:h-[190px] object-cover object-top opacity-80 hover:opacity-100 transition-opacity" />
                   </div>
@@ -200,7 +208,7 @@ export default function Home() {
                   <div className="rounded-xl border border-white/10 bg-[#07070a] shadow-xl overflow-hidden md:transform md:translate-x-8 md:rotate-1 md:hover:rotate-0 transition-transform duration-500 md:max-w-[calc(100%-2rem)]">
                      <div className="flex items-center justify-between gap-2 border-b border-white/10 bg-white/5 px-3 sm:px-4 py-3">
                       <span className="text-xs sm:text-sm font-semibold whitespace-nowrap">2. Final Render</span>
-                      <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[10px] text-accent">Processing</span>
+                      <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[10px] text-accent uppercase tracking-wider">Processing</span>
                     </div>
                     <img src="/narrative-gen-processing.png" alt="Render processing" className="w-full h-[150px] sm:h-[180px] md:h-[190px] object-cover object-top opacity-80 hover:opacity-100 transition-opacity" />
                   </div>
@@ -210,16 +218,58 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Kling Vertical Showcase */}
+        {/* Premium Models Showcase */}
         <section className="py-24 border-y border-white/5 bg-black">
-          <div className="container px-4 md:px-6 mx-auto max-w-5xl">
-            <div className="grid md:grid-cols-2 gap-16 items-center">
+          <div className="container px-4 md:px-6 mx-auto max-w-6xl">
+            <div className="grid lg:grid-cols-2 gap-16 items-center">
+              
               <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
+                initial={{ opacity: 0, x: -20 }}
+                whileInView={{ opacity: 1, x: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.6 }}
-                className="order-2 md:order-1 mx-auto w-full max-w-[320px]"
+              >
+                <div className="mb-6 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-semibold text-white/80">
+                  <Layers className="h-4 w-4 text-accent" />
+                  Premium Engine Access
+                </div>
+                <h2 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-6">
+                  Kling & Runway. <br />
+                  <span className="text-white/40">Honestly priced.</span>
+                </h2>
+                <p className="text-lg text-white/60 mb-8 leading-relaxed">
+                  Use premium generative video models inside the same workflow as your music, storyboard, lyrics, and final edit. Your credit cost is shown before you generate.
+                </p>
+                
+                <div className="space-y-4 mb-8">
+                  <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-5 flex items-start gap-4">
+                    <Sparkles className="h-6 w-6 text-accent shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-white font-bold mb-1">Kling Engine</h4>
+                      <p className="text-sm text-white/60">Cinematic motion built for narrative scenes, performances, and character-led storytelling.</p>
+                    </div>
+                  </div>
+                  <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-5 flex items-start gap-4">
+                    <Activity className="h-6 w-6 text-primary shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-white font-bold mb-1">Runway</h4>
+                      <p className="text-sm text-white/60">A premium generation option for dynamic sequences, stylized motion, and visual experimentation.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 text-xs text-white/40 bg-white/5 p-4 rounded-xl border border-white/10">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  <p>Model availability can vary. AIBeatSync shows the credit cost before generation and keeps the rest of your release workflow in one place.</p>
+                </div>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6 }}
+                className="relative mx-auto w-full max-w-[360px] lg:max-w-none lg:w-[400px]"
               >
                 <div className="relative overflow-hidden rounded-[2.5rem] border border-white/10 bg-[#050505] shadow-[0_0_60px_rgba(255,255,255,0.05)] aspect-[9/16] ring-1 ring-white/5">
                   <video
@@ -233,34 +283,13 @@ export default function Home() {
                     controls
                     preload="metadata"
                   />
+                  <div className="absolute top-6 right-6 bg-black/60 backdrop-blur-md border border-white/10 rounded-full px-3 py-1.5 flex items-center gap-2 shadow-xl">
+                    <div className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+                    <span className="text-[10px] font-bold tracking-wider text-white uppercase">Rendered in Kling</span>
+                  </div>
                 </div>
               </motion.div>
 
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.6 }}
-                className="order-1 md:order-2"
-              >
-                <div className="mb-6 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-semibold text-white/80">
-                  <Sparkles className="h-4 w-4 text-accent" />
-                  Powered by Kling Engine
-                </div>
-                <h2 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-6">
-                  Pure cinema. <br />
-                  <span className="text-white/40">Zero cameras.</span>
-                </h2>
-                <p className="text-lg text-white/60 mb-8 leading-relaxed">
-                  This 45-second vertical film was generated by AIBeatSync with the Kling engine and an AI-composed soundtrack. No footage, no complex editing software — just a track and a prompt.
-                </p>
-                <Link href="/generate" onClick={() => trackCTA("showcase", "open_generate_video", "Create your own")}>
-                  <Button size="lg" className="h-14 px-8 bg-white text-black hover:bg-white/90 rounded-full font-semibold transition-all hover:scale-105">
-                    <Play className="mr-2 h-5 w-5" />
-                    Create your own
-                  </Button>
-                </Link>
-              </motion.div>
             </div>
           </div>
         </section>
@@ -270,47 +299,92 @@ export default function Home() {
           <div className="container px-4 md:px-6 mx-auto max-w-6xl">
             <div className="text-center mb-16">
               <h2 className="text-3xl md:text-5xl font-extrabold tracking-tight mb-6">
-                The details one-trick tools <span className="text-white/40">can't match.</span>
+                Everything you need to <span className="text-white/40">finish the track.</span>
               </h2>
               <p className="text-lg text-white/60 max-w-2xl mx-auto">
-                Everything you need to turn a raw idea into a polished release.
+                No jumping between tabs. Every tool is integrated into one seamless workflow.
               </p>
             </div>
 
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {[
-                { icon: Lock, title: "Character Lock", body: "Lock a face or look from a reference image so the same character carries across every clip — no shape-shifting." },
-                { icon: Clapperboard, title: "Gen Preview", body: "Generate images first and pause before animation. Review every scene, then approve the video." },
-                { icon: Share2, title: "Release Kit", body: "One click turns your finished video into a full set of social exports — vertical, square, and Spotify Canvas." },
-                { icon: Mic2, title: "Karaoke Lyric Videos", body: "Type or paste your lyrics and we burn glowing, beat-synced karaoke captions right into the video." },
-                { icon: Wand2, title: "Prompt Studio", body: "Describe a vibe in plain words and get a polished video prompt or full, original lyrics in seconds." },
-                { icon: Maximize, title: "Up to 4K & 10 Minutes", body: "Go beyond quick clips: render crisp 4K and full-length videos up to ten minutes for premium releases." },
-                { icon: VideoOff, title: "Score It Later", body: "Render visuals with no soundtrack, then add the perfect track later in Montage Studio." },
-                { icon: Music, title: "Royalty-Free Soundtracks", body: "Generate original instrumentals you fully own and drop them straight into your video timeline." },
-                { icon: Scissors, title: "Montage Studio", body: "A built-in editor to trim, transition, and finalize your masterpiece without ever leaving the platform." }
-              ].map((f, i) => (
-                <motion.div
-                  key={f.title}
-                  initial={{ opacity: 0, y: 15 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, margin: "-50px" }}
-                  transition={{ duration: 0.4, delay: (i % 3) * 0.1 }}
-                  className="rounded-3xl border border-white/5 bg-white/[0.02] p-8 hover:bg-white/[0.04] transition-colors group"
-                >
-                  <div className="h-12 w-12 rounded-2xl bg-white/5 flex items-center justify-center mb-6 group-hover:bg-primary/20 transition-colors">
-                    <f.icon className="h-6 w-6 text-white group-hover:text-primary transition-colors" />
+            <div className="grid gap-8 md:grid-cols-3">
+              {/* Group 1: Control */}
+              <div className="bg-white/[0.02] border border-white/5 rounded-3xl p-8 hover:bg-white/[0.04] transition-colors">
+                <div className="flex items-center gap-4 border-b border-white/10 pb-6 mb-6">
+                  <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20">
+                    <Lock className="h-6 w-6 text-primary" />
                   </div>
-                  <h3 className="text-xl font-bold mb-3 text-white">{f.title}</h3>
-                  <p className="text-white/50 leading-relaxed">{f.body}</p>
-                </motion.div>
-              ))}
+                  <h3 className="text-xl font-bold text-white">Precision Control</h3>
+                </div>
+                <div className="space-y-6">
+                  <div>
+                    <h4 className="text-white font-semibold mb-2">Visual Approval</h4>
+                    <p className="text-sm text-white/50 leading-relaxed">Review foundation images before animating to guarantee your aesthetic and save credits.</p>
+                  </div>
+                  <div>
+                    <h4 className="text-white font-semibold mb-2">Character Lock</h4>
+                    <p className="text-sm text-white/50 leading-relaxed">Lock a face or look from a reference image so characters remain consistent across clips.</p>
+                  </div>
+                  <div>
+                    <h4 className="text-white font-semibold mb-2">Prompt Studio</h4>
+                    <p className="text-sm text-white/50 leading-relaxed">Describe a vibe in plain words and get a polished video prompt instantly.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Group 2: Audio & Lyrics */}
+              <div className="bg-white/[0.02] border border-white/5 rounded-3xl p-8 hover:bg-white/[0.04] transition-colors">
+                <div className="flex items-center gap-4 border-b border-white/10 pb-6 mb-6">
+                  <div className="h-12 w-12 rounded-2xl bg-accent/10 flex items-center justify-center border border-accent/20">
+                    <Music className="h-6 w-6 text-accent" />
+                  </div>
+                  <h3 className="text-xl font-bold text-white">Audio & Lyrics</h3>
+                </div>
+                <div className="space-y-6">
+                  <div>
+                    <h4 className="text-white font-semibold mb-2">Auto-Sync Karaoke</h4>
+                    <p className="text-sm text-white/50 leading-relaxed">Burn glowing, beat-synced captions directly into your video automatically.</p>
+                  </div>
+                  <div>
+                    <h4 className="text-white font-semibold mb-2">Royalty-Free Tracks</h4>
+                    <p className="text-sm text-white/50 leading-relaxed">Generate original instrumentals you fully own and drop them straight into your timeline.</p>
+                  </div>
+                  <div>
+                    <h4 className="text-white font-semibold mb-2">Score It Later</h4>
+                    <p className="text-sm text-white/50 leading-relaxed">Render visuals with no soundtrack, then add the perfect audio later in the editor.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Group 3: Post-Production */}
+              <div className="bg-white/[0.02] border border-white/5 rounded-3xl p-8 hover:bg-white/[0.04] transition-colors">
+                <div className="flex items-center gap-4 border-b border-white/10 pb-6 mb-6">
+                  <div className="h-12 w-12 rounded-2xl bg-pink-500/10 flex items-center justify-center border border-pink-500/20">
+                    <Scissors className="h-6 w-6 text-pink-400" />
+                  </div>
+                  <h3 className="text-xl font-bold text-white">Post-Production</h3>
+                </div>
+                <div className="space-y-6">
+                  <div>
+                    <h4 className="text-white font-semibold mb-2">Montage Studio</h4>
+                    <p className="text-sm text-white/50 leading-relaxed">A built-in timeline editor to trim, transition, and finalize your masterpiece.</p>
+                  </div>
+                  <div>
+                    <h4 className="text-white font-semibold mb-2">Up to 4K Quality</h4>
+                    <p className="text-sm text-white/50 leading-relaxed">Go beyond quick clips: render crisp 4K and full-length videos up to ten minutes.</p>
+                  </div>
+                  <div>
+                    <h4 className="text-white font-semibold mb-2">Release Kit</h4>
+                    <p className="text-sm text-white/50 leading-relaxed">One click turns your finished video into vertical, square, and widescreen social exports.</p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </section>
 
         {/* Karaoke Spotlight */}
         <section className="py-24 border-t border-white/5 relative overflow-hidden bg-black">
-          <div className="absolute inset-0 bg-gradient-to-br from-pink-500/10 via-transparent to-primary/10 pointer-events-none" />
+          <div className="absolute inset-0 bg-gradient-to-br from-pink-500/10 via-transparent to-primary/10 pointer-events-none z-0" />
           <div className="container px-4 md:px-6 mx-auto max-w-6xl relative z-10">
             <div className="grid md:grid-cols-2 gap-16 items-center">
               <motion.div
@@ -363,7 +437,7 @@ export default function Home() {
                 className="relative rounded-3xl border border-white/10 bg-black overflow-hidden shadow-2xl aspect-video ring-1 ring-white/5"
               >
                 <div className="absolute inset-0 bg-gradient-to-br from-primary/30 via-purple-900/50 to-pink-500/30" />
-                <div className="absolute inset-0 flex flex-col items-center justify-end pb-12 px-8 text-center gap-3">
+                <div className="absolute inset-0 flex flex-col items-center justify-end pb-12 px-8 text-center gap-3 z-10">
                   <p className="text-white/40 text-lg md:text-xl font-semibold">city lights are calling out my name</p>
                   <p className="text-white text-3xl md:text-4xl font-extrabold tracking-tight drop-shadow-[0_0_20px_rgba(236,72,153,0.9)]">
                     tonight we're singing in the rain
@@ -387,14 +461,14 @@ export default function Home() {
               Join the independent artists using AIBeatSync to direct and publish high-fidelity music videos.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-5">
-              <Link href="/editor" onClick={() => trackCTA("footer", "open_montage_studio", "Open Montage Studio")}>
+              <Link href="/pricing" onClick={() => trackCTA("footer", "view_pricing", "View pricing plans")}>
                 <Button size="lg" className="w-full sm:w-auto text-lg h-14 px-10 bg-white text-black hover:bg-white/90 rounded-full font-semibold">
-                  Open Montage Studio
+                  View pricing plans
                 </Button>
               </Link>
-              <Link href="/generate" onClick={() => trackCTA("footer", "open_generate_video", "Generate Video")}>
+              <Link href="/editor" onClick={() => trackCTA("footer", "open_montage_studio", "Open Montage Studio")}>
                 <Button size="lg" variant="outline" className="w-full sm:w-auto text-lg h-14 px-10 border-white/20 hover:bg-white/10 rounded-full bg-transparent text-white">
-                  Generate Video
+                  Open Montage Studio
                 </Button>
               </Link>
             </div>
