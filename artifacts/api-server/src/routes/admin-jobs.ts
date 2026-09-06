@@ -772,6 +772,84 @@ router.post("/admin/jobs/:id/force-fail", async (req, res) => {
   res.json(updated);
 });
 
+// Restart a stalled active recovery from its persisted accepted request. This
+// changes ownership only: it does not clear saved media, submit provider work,
+// refund credits, or reserve credits again.
+router.post("/admin/jobs/:id/resume-recovery", async (req, res) => {
+  if (!req.isAuthenticated() || !isAdmin(req.user.email)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const { id } = req.params;
+  const outcome = await db.transaction(async (tx) => {
+    const [job] = await tx
+      .select()
+      .from(jobsTable)
+      .where(eq(jobsTable.id, id))
+      .limit(1)
+      .for("update");
+
+    if (!job) return { kind: "missing" as const };
+    if (!["analyzing", "generating", "stitching"].includes(job.status)) {
+      return { kind: "not_active" as const, status: job.status };
+    }
+
+    const meta = metaOf(job.manifest);
+    const savedRequestCount =
+      Object.keys(meta.pendingRequests ?? {}).length +
+      Object.keys(meta.pendingImageRequests ?? {}).length;
+    const hasUncertainSubmission =
+      Object.keys(meta.submissionIntents ?? {}).length > 0 ||
+      Object.keys(meta.uncertainSubmissions ?? {}).length > 0 ||
+      Object.keys(meta.imageSubmissionIntents ?? {}).length > 0 ||
+      Object.keys(meta.uncertainImageSubmissions ?? {}).length > 0;
+    if (savedRequestCount === 0 || hasUncertainSubmission) {
+      return { kind: "unsafe" as const };
+    }
+
+    const [updated] = await tx
+      .update(jobsTable)
+      .set({
+        status: "queued",
+        errorMessage: null,
+        retryCount: 0,
+        claimedAt: null,
+        manifest: sql`COALESCE(${jobsTable.manifest}, '{}'::jsonb) - 'retryAfter'`,
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(jobsTable.id, id),
+        inArray(jobsTable.status, ["analyzing", "generating", "stitching"]),
+      ))
+      .returning();
+
+    if (!updated) return { kind: "not_active" as const, status: job.status };
+    return { kind: "ok" as const, job: updated, savedRequestCount };
+  });
+
+  if (outcome.kind === "missing") {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
+  if (outcome.kind === "not_active") {
+    res.status(400).json({ error: `Only active jobs can be resumed (currently ${outcome.status})` });
+    return;
+  }
+  if (outcome.kind === "unsafe") {
+    res.status(409).json({
+      error: "This job does not have a safely accepted request that can be resumed.",
+    });
+    return;
+  }
+
+  req.log.info(
+    { jobId: id, savedRequestCount: outcome.savedRequestCount },
+    "Admin restarted active job from saved accepted request",
+  );
+  res.json({ job: outcome.job, savedRequestCount: outcome.savedRequestCount });
+});
+
 router.post("/admin/jobs/:id/reject", async (req, res) => {
   if (!req.isAuthenticated() || !isAdmin(req.user.email)) {
     res.status(403).json({ error: "Forbidden" });

@@ -54,3 +54,4 @@
 - [Production JSON object counts](production-json-object-counts.md) — production SQL lacks jsonb_object_length; count jsonb_object_keys rows instead.
 - [Orval upgrade compatibility](orval-upgrade-compatibility.md) — patched Orval releases need an explicit Zod 3 target and deterministic barrel cleanup in this workspace.
 - [PostgreSQL idle-client errors](postgres-idle-client-errors.md) — always handle pg-pool idle-client error events; database restarts otherwise crash workers and strand active renders.
+- [Recovery preflight writes](recovery-preflight-writes.md) — retained-media recovery must skip unchanged progress writes so database degradation cannot delay accepted-output collection.

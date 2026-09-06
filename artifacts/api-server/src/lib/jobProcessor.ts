@@ -606,11 +606,14 @@ async function prepareNarrativeImagesStage(job: JobRow): Promise<Record<string, 
         logger.warn({ err: error, jobId: job.id, scene: shot.index, status }, "Source image failed; continuing batch");
       }
     }
-    reportedProgress = Math.max(
+    const nextReportedProgress = Math.max(
       reportedProgress,
       5 + Math.round(((position + 1) / shots.length) * 23),
     );
-    await updateJobStatus(job.id, { progressPercent: reportedProgress });
+    if (nextReportedProgress > reportedProgress) {
+      reportedProgress = nextReportedProgress;
+      await updateJobStatus(job.id, { progressPercent: reportedProgress });
+    }
   }
   await persistNarrativeImages(job.id, paths);
   const latestMeta = await readAiMeta(job.id);
@@ -2264,6 +2267,10 @@ async function generateClips(
     //    only GET status checks to its saved URL, never a duplicate paid POST.
     if (pending[i]) {
       try {
+        logger.info(
+          { jobId: job.id, clip: i },
+          "Resuming accepted scene request (no new spend)",
+        );
         const mediaUrl = await pollPixazoRequestUntilComplete(
           pending[i]!,
           () => assertJobOwned(job),
