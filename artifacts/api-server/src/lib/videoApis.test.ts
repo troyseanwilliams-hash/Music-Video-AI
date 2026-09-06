@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  downloadClip,
   generateClip,
   pollPixazoRequestUntilComplete,
   PROVIDER_API_FAILURE,
+  PROVIDER_MEDIA_TERMINAL,
+  PROVIDER_POLL_ABORTED,
   PROVIDER_TERMINAL_FAILURE,
   PROVIDER_POLL_TIMEOUT,
   resolveClipProviderChain,
@@ -356,7 +359,7 @@ describe("resolveClipProviderChain", () => {
     await assertion;
   });
 
-  it("preserves a saved request through authentication failures", async () => {
+  it("stops polling a saved request on a terminal authentication failure", async () => {
     vi.useFakeTimers();
     vi.stubEnv("PIXAZO_API_KEY", "test-key");
     const fetchMock = vi.fn().mockResolvedValue(
@@ -367,10 +370,62 @@ describe("resolveClipProviderChain", () => {
     const result = pollPixazoRequestUntilComplete(
       "https://gateway.pixazo.ai/v2/requests/status/auth-failure",
     );
-    const assertion = expect(result).rejects.toThrow(PROVIDER_POLL_TIMEOUT);
-    await vi.advanceTimersByTimeAsync(180 * 5_000);
+    const assertion = expect(result).rejects.toThrow(PROVIDER_API_FAILURE);
+    await vi.advanceTimersByTimeAsync(5_000);
 
     await assertion;
-    expect(fetchMock).toHaveBeenCalledTimes(180);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("continues polling the same request through transient HTTP failures", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("PIXAZO_API_KEY", "test-key");
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response("busy", { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        status: "COMPLETED",
+        output: { media_url: ["https://cdn.example.com/recovered.mp4"] },
+      }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = pollPixazoRequestUntilComplete(
+      "https://gateway.pixazo.ai/v2/requests/status/transient",
+    );
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await expect(result).resolves.toBe("https://cdn.example.com/recovered.mp4");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops saved-request polling immediately after ownership is lost", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("PIXAZO_API_KEY", "test-key");
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: "RUNNING" }), { status: 200 }),
+    );
+    const assertContinue = vi.fn()
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("job no longer owned by this worker"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = pollPixazoRequestUntilComplete(
+      "https://gateway.pixazo.ai/v2/requests/status/ownership",
+      assertContinue,
+    );
+    const assertion = expect(result).rejects.toThrow(PROVIDER_POLL_ABORTED);
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    await assertion;
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("classifies terminal saved-media access failures without retrying a submission", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("forbidden", { status: 403 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(downloadClip("https://cdn.example.com/saved.mp4"))
+      .rejects.toThrow(PROVIDER_MEDIA_TERMINAL);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

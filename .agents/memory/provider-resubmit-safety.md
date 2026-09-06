@@ -21,6 +21,12 @@ Persisted clip object paths are authoritative recovery state and must never be d
 
 **How to apply:** Preserve the indexed clip path and stop before any provider POST. Surface the affected index for explicit repair or recovery; apply this rule to both strict and legacy jobs.
 
+Transient reads of saved clips and accepted-request media should retry automatically at no charge under the current ownership fence.
+
+**Why:** A completed scene was stored successfully, but one temporary object read failure ended the whole job and required manual recovery even though no new paid submission was needed.
+
+**How to apply:** Retry only GET/download operations with bounded backoff, check ownership before and after poll delays, preserve request and object paths, stop immediately on ownership loss, and never classify terminal 4xx access failures as transient.
+
 An explicit admin retry may replace a terminally rejected request, but it must be a per-scene transition.
 
 **Why:** Clearing the entire pending map after one rejected scene can duplicate other accepted requests. Validating the retry after reserving credits can charge a customer even when the retry is rejected.

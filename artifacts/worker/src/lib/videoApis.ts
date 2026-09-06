@@ -35,6 +35,8 @@ export interface ClipRequest {
     fromProvider: string;
     toProvider: string;
   }) => void | Promise<void>;
+  /** Read-only poll guard used to stop immediately when the caller loses job ownership. */
+  assertContinue?: () => void | Promise<void>;
 }
 
 export interface ClipResult {
@@ -301,6 +303,8 @@ export const PROVIDER_API_FAILURE = "[PROVIDER_FAILURE]";
 export const PROVIDER_TERMINAL_FAILURE = "[PROVIDER_TERMINAL_FAILURE]";
 export const PROVIDER_POLL_TIMEOUT = "[PROVIDER_POLL_TIMEOUT]";
 export const PROVIDER_SUBMISSION_UNCERTAIN = "[PROVIDER_SUBMISSION_UNCERTAIN]";
+export const PROVIDER_POLL_ABORTED = "[PROVIDER_POLL_ABORTED]";
+export const PROVIDER_MEDIA_TERMINAL = "[PROVIDER_MEDIA_TERMINAL]";
 const PROVIDER_POLL_ATTEMPTS = 180;
 // Marker appended when the failure was the provider running out of tokens /
 // credits (Pixazo 402, quota exceeded, insufficient balance, …).
@@ -309,7 +313,10 @@ export const PROVIDER_OUT_OF_CREDITS = "[PROVIDER_OUT_OF_CREDITS]";
 // Poll an already accepted gateway request without submitting anything. Keeping
 // this separate from submission makes a restart/deploy recovery unambiguously
 // free: the only network calls here are GETs to the persisted poll URL.
-export async function pollPixazoRequestUntilComplete(pollUrl: string): Promise<string> {
+export async function pollPixazoRequestUntilComplete(
+  pollUrl: string,
+  assertContinue?: () => void | Promise<void>,
+): Promise<string> {
   const isRunway = pollUrl.startsWith(`${RUNWAY_BASE}/tasks/`);
   const key = isRunway ? process.env.RUNWAY_API_KEY : process.env.PIXAZO_API_KEY;
   if (!key) {
@@ -317,7 +324,19 @@ export async function pollPixazoRequestUntilComplete(pollUrl: string): Promise<s
   }
 
   for (let attempt = 0; attempt < PROVIDER_POLL_ATTEMPTS; attempt++) {
+    try {
+      await assertContinue?.();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(`${PROVIDER_POLL_ABORTED} ${detail}`);
+    }
     await delay(5_000);
+    try {
+      await assertContinue?.();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(`${PROVIDER_POLL_ABORTED} ${detail}`);
+    }
     let pollRes: Response;
     try {
       pollRes = await fetch(pollUrl, {
@@ -337,6 +356,11 @@ export async function pollPixazoRequestUntilComplete(pollUrl: string): Promise<s
       if (pollRes.status === 404 || pollRes.status === 410) {
         throw new Error(
           `${PROVIDER_API_FAILURE} ${PROVIDER_TERMINAL_FAILURE} Saved AI scene request was rejected (HTTP ${pollRes.status}).`,
+        );
+      }
+      if (pollRes.status >= 400 && pollRes.status < 500 && ![408, 425, 429].includes(pollRes.status)) {
+        throw new Error(
+          `${PROVIDER_API_FAILURE} Saved AI scene request could not be accessed (HTTP ${pollRes.status}).`,
         );
       }
       continue;
@@ -483,7 +507,7 @@ async function generateWithRunway(req: ClipRequest): Promise<string> {
       `${PROVIDER_API_FAILURE} ${PROVIDER_SUBMISSION_UNCERTAIN} The AI service accepted the scene request, but its recovery state could not be saved.`,
     );
   }
-  return pollPixazoRequestUntilComplete(pollUrl);
+  return pollPixazoRequestUntilComplete(pollUrl, req.assertContinue);
 }
 
 // Pixazo (pixazo.ai) — a unified gateway that fronts Kling, Runway, Veo, etc.
@@ -726,7 +750,8 @@ export async function generateClip(req: ClipRequest): Promise<ClipResult | null>
       const message = err instanceof Error ? err.message : String(err);
       if (
         message.includes(PROVIDER_SUBMISSION_UNCERTAIN) ||
-        message.includes(PROVIDER_POLL_TIMEOUT)
+        message.includes(PROVIDER_POLL_TIMEOUT) ||
+        message.includes(PROVIDER_POLL_ABORTED)
       ) {
         throw err;
       }
@@ -788,6 +813,13 @@ export async function checkPixazoRequest(pollUrl: string): Promise<{ state: "com
 
 export async function downloadClip(url: string): Promise<Buffer> {
   const res = await fetch(url, { signal: AbortSignal.timeout(120_000) });
-  if (!res.ok) throw new Error(`Failed to download clip from ${url}: ${res.status}`);
+  if (!res.ok) {
+    if (res.status >= 400 && res.status < 500 && ![404, 408, 425, 429].includes(res.status)) {
+      throw new Error(
+        `${PROVIDER_API_FAILURE} ${PROVIDER_MEDIA_TERMINAL} Saved AI scene media could not be accessed (HTTP ${res.status}).`,
+      );
+    }
+    throw new Error(`Failed to download saved AI scene media: HTTP ${res.status}`);
+  }
   return Buffer.from(await res.arrayBuffer());
 }

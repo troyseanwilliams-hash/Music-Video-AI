@@ -13,7 +13,7 @@ import { logger } from "./logger.js";
 import { notifyRenderReady, notifyRenderFailed, notifyAdminRenderFailed } from "./renderEmail.js";
 import { ObjectStorageService } from "./objectStorage.js";
 import { analyzeAudioBuffer, type AudioAnalysis, type AudioSection } from "./audioAnalysis.js";
-import { generateClip, downloadClip, pollPixazoRequestUntilComplete, getActiveProvider, PROVIDER_API_FAILURE, PROVIDER_TERMINAL_FAILURE, PROVIDER_OUT_OF_CREDITS, PROVIDER_POLL_TIMEOUT } from "./videoApis.js";
+import { generateClip, downloadClip, pollPixazoRequestUntilComplete, getActiveProvider, PROVIDER_API_FAILURE, PROVIDER_TERMINAL_FAILURE, PROVIDER_OUT_OF_CREDITS, PROVIDER_POLL_TIMEOUT, PROVIDER_POLL_ABORTED, PROVIDER_MEDIA_TERMINAL } from "./videoApis.js";
 import { generateNarrativeImage, downloadGeneratedImage, IMAGE_API_FAILURE, IMAGE_POLL_TIMEOUT } from "./imageApis.js";
 import { generateLipsync, lipsyncAvailable } from "./lipsync.js";
 import { stitchVideoClips, extractVideoThumbnail, applyWatermark } from "./videoStitcher.js";
@@ -26,13 +26,39 @@ import {
 } from "./characterAnchor.js";
 import { settleImageFirstReservation } from "./imageFirstSettlement.js";
 import { hasCompleteSavedClipSet } from "./finalizeSavedClips.js";
+import { retryNoChargeOperation } from "./noChargeRetry.js";
 
 const execAsync = promisify(exec);
 const MAX_RETRIES = 3;
 const POLL_INTERVAL_MS = 5000;
+const NO_CHARGE_CLIP_READ_DELAYS_MS = [2_000, 5_000, 10_000, 20_000] as const;
 // "Full" videos are capped at 10 minutes and use one unique source image and
 // clip per 10-second output interval.
 const MAX_FULL_SECONDS = 600;
+
+async function readClipWithNoChargeRetry(
+  job: JobRow,
+  clipIndex: number,
+  source: string,
+  operation: () => Promise<Buffer>,
+): Promise<Buffer> {
+  return retryNoChargeOperation(async () => {
+    await assertJobOwned(job);
+    return operation();
+  }, {
+    delaysMs: NO_CHARGE_CLIP_READ_DELAYS_MS,
+    shouldRetry: (error) => {
+      const detail = error instanceof Error ? error.message : String(error);
+      return !detail.includes(OWNERSHIP_LOST) && !detail.includes(PROVIDER_MEDIA_TERMINAL);
+    },
+    onRetry: (err, nextAttempt, delayMs) => {
+      logger.warn(
+        { jobId: job.id, clip: clipIndex, source, err, nextAttempt, delayMs },
+        "Saved video read failed temporarily — retrying the same output at no charge",
+      );
+    },
+  });
+}
 
 async function extractAudioClip(
   audio: { buffer: Buffer; ext: string },
@@ -2192,8 +2218,10 @@ async function generateClips(
     // 1) Reuse a previously-rendered clip if we have one (salvage on retry).
     if (persisted[i]) {
       try {
-        const url = await storageService.getObjectEntitySignedUrl(persisted[i]!, 3600);
-        const buf = await downloadClip(url);
+        const buf = await readClipWithNoChargeRetry(job, i, persisted[i]!, async () => {
+          const url = await storageService.getObjectEntitySignedUrl(persisted[i]!, 3600);
+          return downloadClip(url);
+        });
         clips[i] = { buffer: buf, targetDuration, prompt, visualIndex };
         if (targetedSceneIndex === i) {
           await persistTargetedSceneClip(
@@ -2207,6 +2235,10 @@ async function generateClips(
         await reportClipComplete(i);
         continue;
       } catch (e) {
+        const detail = e instanceof Error ? e.message : String(e);
+        if (detail.includes(OWNERSHIP_LOST) || detail.includes(PROVIDER_MEDIA_TERMINAL)) {
+          throw e;
+        }
         logger.warn(
           { jobId: job.id, clip: i, objectPath: persisted[i], err: e },
           "Persisted clip unreadable — preserving saved output and stopping before provider submission",
@@ -2221,8 +2253,11 @@ async function generateClips(
     //    only GET status checks to its saved URL, never a duplicate paid POST.
     if (pending[i]) {
       try {
-        const mediaUrl = await pollPixazoRequestUntilComplete(pending[i]!);
-        const buf = await downloadClip(mediaUrl);
+        const mediaUrl = await pollPixazoRequestUntilComplete(
+          pending[i]!,
+          () => assertJobOwned(job),
+        );
+        const buf = await readClipWithNoChargeRetry(job, i, mediaUrl, () => downloadClip(mediaUrl));
         clips[i] = { buffer: buf, targetDuration, prompt, visualIndex };
         try {
           const path = await storageService.uploadClipBuffer(buf, `job-${job.id}`, i);
@@ -2247,6 +2282,9 @@ async function generateClips(
         continue;
       } catch (e) {
         const detail = e instanceof Error ? e.message : String(e);
+        if (detail.includes(OWNERSHIP_LOST) || detail.includes(PROVIDER_POLL_ABORTED)) {
+          throw e;
+        }
         if (detail.includes(PROVIDER_TERMINAL_FAILURE)) {
           if (targetedSceneIndex === i) {
             await persistTargetedRejectedRequest(
@@ -2387,11 +2425,14 @@ async function generateClips(
                 targetedSceneRequestedAt!,
               )
             : undefined,
+          assertContinue: () => assertJobOwned(job),
         });
         if (!result && strictUniqueSources) {
           throw new Error(`${PROVIDER_API_FAILURE}: Strict jobs cannot substitute a simulated clip`);
         }
-        clipBuffer = result ? await downloadClip(result.videoUrl) : await createSimulationClip(clipDuration);
+        clipBuffer = result
+          ? await readClipWithNoChargeRetry(job, i, result.videoUrl, () => downloadClip(result.videoUrl))
+          : await createSimulationClip(clipDuration);
         if (result) {
           logger.info({ jobId: job.id, section: section.label, provider: result.provider }, "AI clip downloaded");
         }
@@ -2400,6 +2441,9 @@ async function generateClips(
         clipErr = e;
         // Content-policy / provider API errors won't fix on retry — fail fast.
         const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes(OWNERSHIP_LOST) || msg.includes(PROVIDER_POLL_ABORTED)) {
+          throw e;
+        }
         if (
           acceptedRequest &&
           pending[i] &&
@@ -2640,7 +2684,11 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
   // A polling deadline is safe to recover ONLY when the already-paid request
   // was durably saved. Requeueing then resumes a GET status check and cannot
   // submit or charge for a second provider request.
-  if (errMsg.includes(IMAGE_POLL_TIMEOUT) || errMsg.includes(PROVIDER_POLL_TIMEOUT)) {
+  if (
+    errMsg.includes(IMAGE_POLL_TIMEOUT)
+    || errMsg.includes(PROVIDER_POLL_TIMEOUT)
+    || errMsg.includes(PROVIDER_POLL_ABORTED)
+  ) {
     const liveMeta = await readAiMeta(job.id);
     const imageTimeout = errMsg.includes(IMAGE_POLL_TIMEOUT);
     const hasPersistedRequest = imageTimeout
@@ -2653,6 +2701,7 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
       const cleanMsg = errMsg
         .replace(IMAGE_POLL_TIMEOUT, "")
         .replace(PROVIDER_POLL_TIMEOUT, "")
+        .replace(PROVIDER_POLL_ABORTED, "")
         .trim();
       const requeued = await db.execute<{ id: string }>(sql`
         UPDATE jobs SET
@@ -2683,6 +2732,7 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
     const cleanMsg = errMsg
       .replace(IMAGE_POLL_TIMEOUT, "")
       .replace(PROVIDER_POLL_TIMEOUT, "")
+      .replace(PROVIDER_POLL_ABORTED, "")
       .trim();
     try {
       await assertJobOwned(job);
@@ -2721,7 +2771,10 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
   // at submission time, so re-queuing only causes additional billing with no
   // guarantee of a different outcome.
   if (errMsg.includes(PROVIDER_API_FAILURE)) {
-    const cleanMsg = errMsg.replace(PROVIDER_API_FAILURE, "").trim();
+    const cleanMsg = errMsg
+      .replace(PROVIDER_API_FAILURE, "")
+      .replace(PROVIDER_MEDIA_TERMINAL, "")
+      .trim();
     logger.warn({ jobId: job.id }, "Permanent failure: AI provider error — not retrying to avoid repeated charges");
     const meta = aiMetaOf(job);
     if (
