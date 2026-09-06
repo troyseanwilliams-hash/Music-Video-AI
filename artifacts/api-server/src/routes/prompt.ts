@@ -11,6 +11,7 @@ import {
   promptProviderAvailable,
 } from "../lib/promptBuilder.js";
 import { generateLyrics, lyricsProviderAvailable } from "../lib/lyricsGen.js";
+import { planShots } from "../lib/shotPlan.js";
 import { db, creditsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -143,6 +144,49 @@ const SceneBuilderBody = z.object({
   hasReferenceImage: z.boolean().optional(),
   mode: z.enum(["montage", "narrative"]).optional(),
 });
+
+const VideoSceneListBody = z.object({
+  story: z.string().trim().min(2).max(MAX_SCENE_SCRIPT_LENGTH),
+  sceneCount: z.number().int().min(2).max(MAX_SCENE_BUILDER_SCENES).default(6),
+  hasReferenceImage: z.boolean().optional(),
+  style: z.string().trim().max(40).optional(),
+});
+
+router.post("/prompt/video-scenes", async (req: Request, res: Response) => {
+  if (!guard(req, res)) return;
+  const parsed = VideoSceneListBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid story." });
+    return;
+  }
+  try {
+    const { story, sceneCount, hasReferenceImage, style } = parsed.data;
+    const plan = planShots({
+      prompt: story,
+      style: style || "cinematic",
+      hasCharacterReference: Boolean(hasReferenceImage),
+      requestedDuration: String(sceneCount * 10),
+      generationMode: "narrative",
+    });
+    const scenes = plan.shots.map((shot, index) => ({
+      number: index + 1,
+      title: shot.label,
+      imagePrompt: shot.prompt,
+    }));
+    res.json({
+      mode: "montage",
+      scenes,
+      script: scenes.map((scene) => `${scene.number}. ${scene.imagePrompt}`).join("\n"),
+      sceneCount: scenes.length,
+      hasReferenceImage: Boolean(hasReferenceImage),
+      source: "generate-planner",
+    });
+  } catch (err) {
+    logger.error({ err }, "Video scene list build failed");
+    res.status(500).json({ error: "Could not build the video scene list." });
+  }
+});
+
 router.post("/prompt/scene-builder", async (req: Request, res: Response) => {
   if (!guard(req, res)) return;
   const parsed = SceneBuilderBody.safeParse(req.body);

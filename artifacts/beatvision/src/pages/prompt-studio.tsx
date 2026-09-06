@@ -192,10 +192,11 @@ export default function PromptStudio() {
     if (story.trim().length < 2) return;
     setSceneBusy(true);
     try {
-      setSceneRes(await postJSON<SceneBuilderResult>("/api/prompt/scene-builder", {
+      setSceneRes(await postJSON<SceneBuilderResult>("/api/prompt/video-scenes", {
         story,
-        mode: "montage",
-        sceneCount: autoSceneCount ? undefined : sceneCount,
+        sceneCount: autoSceneCount
+          ? Math.max(3, Math.min(12, Math.round(story.trim().split(/\s+/).length / 45) || 3))
+          : sceneCount,
         hasReferenceImage,
       }));
     } catch (err) { fail(err); } finally { setSceneBusy(false); }
@@ -520,8 +521,8 @@ export default function PromptStudio() {
                   size="sm"
                   disabled={!sceneScriptValid}
                   onClick={() => {
-                    if (!saveSceneScriptHandoff({ mode: sceneRes.mode, script: sceneScript })) {
-                      fail(new Error("The scene script does not fit the Creative Prompt field."));
+                     if (!saveSceneScriptHandoff({ mode: "narrative", script: story.trim() })) {
+                       fail(new Error("The short story does not fit the Creative Prompt field."));
                       return;
                     }
                     setLocation("/generate");
@@ -535,6 +536,9 @@ export default function PromptStudio() {
                   Every scene needs an image prompt, and the complete numbered script must stay within 12,000 characters.
                 </p>
               )}
+              <p className="text-xs text-muted-foreground">
+                This is a planning preview. Generate will rebuild the final chronological scene list from your original story after the music and duration are known.
+              </p>
             </div>
           )}
         </TabsContent>
