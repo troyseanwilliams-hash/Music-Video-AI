@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildScenePlan,
+  ensureVideoSceneDetailFirst,
   generatedPromptRespectsStoryBeat,
   MAX_SCENE_IMAGE_PROMPT_LENGTH,
   MAX_SCENE_SCRIPT_LENGTH,
@@ -124,6 +125,31 @@ describe("scene builder", () => {
 
     expect(result[0]!.imagePrompt).toContain("A woman pilot checks the aircraft controls");
     expect(result[0]!.imagePrompt).not.toMatch(/\bmale navigator\b/i);
+  });
+});
+
+describe("video prompt ordering", () => {
+  it("puts concrete scene detail before style and camera language", () => {
+    const description = "A woman races across a flooded train platform";
+    const prompt = ensureVideoSceneDetailFirst(
+      description,
+      "Cinematic 35mm style, dramatic blue lighting, handheld camera as she runs.",
+    );
+
+    expect(prompt.startsWith(description)).toBe(true);
+    expect(prompt.indexOf("flooded train platform")).toBeLessThan(
+      prompt.indexOf("Cinematic 35mm style"),
+    );
+  });
+
+  it("does not duplicate scene detail already placed first", () => {
+    const description = "A lighthouse beam sweeps across the storm";
+    const prompt = ensureVideoSceneDetailFirst(
+      description,
+      `${description}. Moody color grade and slow aerial movement.`,
+    );
+
+    expect(prompt.match(/lighthouse beam/gi)).toHaveLength(1);
   });
 });
 

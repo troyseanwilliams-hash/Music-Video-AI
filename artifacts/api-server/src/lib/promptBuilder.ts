@@ -163,16 +163,29 @@ export interface VideoPromptResult {
 const DEFAULT_NEGATIVE = "text, watermark, logo, subtitles, distorted face, extra limbs, extra fingers, low quality, blur, jitter, warping";
 
 const VIDEO_SYSTEM = `You are a cinematographer writing prompts for an AI video generator (Kling / Runway).
-Given a description, write ONE vivid, cinematic, engine-ready shot prompt: subject, action, setting, lighting, lens/camera move, color grade, and film-style descriptors. Keep it under ~90 words, photorealistic-friendly, no lyrics or on-screen text.
+Given a description, write ONE vivid, cinematic, engine-ready shot prompt. Always begin with the concrete scene subject, action, and setting so the essential scene survives prompt truncation. Put lighting, lens/camera movement, color grade, and film-style descriptors afterward. Keep it under ~90 words, photorealistic-friendly, no lyrics or on-screen text.
 Return ONLY valid JSON in exactly this shape:
 {"prompt":"...","negativePrompt":"..."}
 negativePrompt lists things to avoid (artifacts, text, distortions).`;
 
+export function ensureVideoSceneDetailFirst(
+  description: string,
+  generatedPrompt: string,
+): string {
+  const scene = description.trim() || "A lone figure walks through a neon-lit city at night";
+  const generated = generatedPrompt.trim();
+  if (!generated) return scene;
+  if (generated.toLocaleLowerCase().startsWith(scene.toLocaleLowerCase())) {
+    return generated;
+  }
+  return `${scene.replace(/[.!?]+$/, "")}. ${generated}`.slice(0, 1500);
+}
+
 function templateVideo(description: string, style?: string): VideoPromptResult {
   const d = description.trim() || "a lone figure walking through a neon-lit city at night";
-  const s = style ? `${style} style, ` : "";
+  const s = style ? ` ${style} style.` : "";
   return {
-    prompt: `Cinematic shot, ${s}${d}. Volumetric lighting, shallow depth of field, 35mm film grain, moody color grade, slow elegant camera motion, photorealistic.`,
+    prompt: `${d.replace(/[.!?]+$/, "")}. Volumetric lighting, shallow depth of field, slow elegant camera motion, moody color grade, 35mm film grain, photorealistic.${s}`,
     negativePrompt: DEFAULT_NEGATIVE,
     source: "template",
   };
@@ -190,7 +203,7 @@ export async function generateVideoPrompt(
     const parsed = extractJson<Partial<VideoPromptResult>>(out.text);
     if (parsed?.prompt) {
       return {
-        prompt: String(parsed.prompt).slice(0, 1500),
+        prompt: ensureVideoSceneDetailFirst(description, String(parsed.prompt)),
         negativePrompt: String(parsed.negativePrompt ?? DEFAULT_NEGATIVE).slice(0, 400),
         source: out.source,
       };

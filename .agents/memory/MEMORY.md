@@ -36,6 +36,7 @@
 - [Generated character anchors](generated-character-anchors.md) — the earliest durable character image anchors later character scenes only; it is never reused as a scene output.
 - [Image-first partial settlement](image-first-partial-settlement.md) — retained images and accepted scenes stay charged; refund only unfinished work once under a job-row lock.
 - [Complete prompt shortening](complete-prompt-shortening.md) — generated image prompts must end at whole words without ellipses while preserving ordered visual instructions.
+- [Scene-first prompt ordering](scene-first-prompt-ordering.md) — generated media prompts lead with concrete scene detail; style, lighting, and camera language come afterward.
 - [Script approval gate](script-approval-gate.md) — video jobs require explicit approval of the exact script and scene prompts before credit reservation.
 - [Lyrics topic separation](lyrics-topic-separation.md) — lyric writing uses its own required subject brief; never silently substitute the music style prompt.
 - [Customer-safe generation errors](customer-safe-generation-errors.md) — classify failures at the API boundary; expose actionable guidance without provider diagnostics.
