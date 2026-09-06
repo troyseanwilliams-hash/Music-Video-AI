@@ -1621,10 +1621,12 @@ router.delete("/jobs/:id", async (req, res) => {
   const [job] = await db
     .select()
     .from(jobsTable)
-    .where(and(eq(jobsTable.id, jobId), eq(jobsTable.userId, req.user.id)))
+    .where(eq(jobsTable.id, jobId))
     .limit(1);
 
-  if (!job) {
+  const isOwner = job?.userId === req.user.id;
+  const isAdmin = isAdminEmail(req.user.email);
+  if (!job || (!isOwner && !isAdmin)) {
     res.status(404).json({ error: "Job not found" });
     return;
   }
@@ -1648,7 +1650,10 @@ router.delete("/jobs/:id", async (req, res) => {
   // (idempotent — a no-op if the worker already refunded it).
   const refunded = await refundJobReservation(job);
   await db.delete(jobsTable).where(eq(jobsTable.id, jobId));
-  req.log.info({ jobId, userId: req.user.id, refunded }, "User deleted failed job");
+  req.log.info(
+    { jobId, ownerUserId: job.userId, actorUserId: req.user.id, adminDelete: !isOwner, refunded },
+    isOwner ? "User deleted failed job" : "Admin deleted failed job",
+  );
   res.json({ ok: true });
 });
 

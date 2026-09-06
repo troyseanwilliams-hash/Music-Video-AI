@@ -1349,6 +1349,28 @@ export default function AdminPage() {
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
+  const deleteFailedMutation = useMutation({
+    mutationFn: async (jobId: string) => {
+      const res = await fetch(`/api/jobs/${jobId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error ?? "Failed to delete render");
+      return jobId;
+    },
+    onSuccess: () => {
+      toast({ title: "Failed render deleted" });
+      refetchFailedJobs();
+      queryClient.invalidateQueries({ queryKey: ["admin", "jobs"] });
+    },
+    onError: (err: Error) => toast({
+      title: "Could not delete render",
+      description: err.message,
+      variant: "destructive",
+    }),
+  });
+
   // ── Attach provider-rendered clips to a job by URL (rescue stranded clips) ──
   const [attachJobId, setAttachJobId] = useState("");
   const [attachLines, setAttachLines] = useState("");
@@ -1914,9 +1936,9 @@ export default function AdminPage() {
                         </span>
                       </div>
                     </div>
-                    <div className="border-t border-border/50">
+                    <div className="grid grid-cols-2 border-t border-border/50 divide-x divide-border/50">
                       <button
-                        className="w-full flex items-center justify-center gap-2 py-3.5 sm:py-2.5 text-sm font-semibold text-muted-foreground hover:bg-muted/30 active:bg-muted/50 transition-colors disabled:opacity-50"
+                        className="flex items-center justify-center gap-2 py-3.5 sm:py-2.5 text-sm font-semibold text-muted-foreground hover:bg-muted/30 active:bg-muted/50 transition-colors disabled:opacity-50"
                         disabled={retryMutation.isPending}
                         onClick={() => {
                           if (
@@ -1935,6 +1957,26 @@ export default function AdminPage() {
                         {job.freshSceneRequestAvailable && job.terminalSceneIndex != null
                           ? `Create New Request for Scene ${job.terminalSceneIndex + 1}`
                           : "Retry Job"}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid={`delete-failed-admin-${job.id}`}
+                        className="flex items-center justify-center gap-2 py-3.5 sm:py-2.5 text-sm font-semibold text-destructive hover:bg-destructive/10 active:bg-destructive/15 transition-colors disabled:opacity-50"
+                        disabled={deleteFailedMutation.isPending}
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              `Delete this failed render permanently? Its ${job.savedClips} saved clip${job.savedClips === 1 ? "" : "s"} will also be removed, and it cannot be recovered.`,
+                            )
+                          ) {
+                            deleteFailedMutation.mutate(job.id);
+                          }
+                        }}
+                      >
+                        {deleteFailedMutation.isPending && deleteFailedMutation.variables === job.id
+                          ? <Loader2 className="h-4 w-4 animate-spin" />
+                          : <Trash2 className="h-4 w-4" />}
+                        Delete
                       </button>
                     </div>
                   </div>
