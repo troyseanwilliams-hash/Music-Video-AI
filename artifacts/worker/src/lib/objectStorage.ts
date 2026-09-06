@@ -133,6 +133,22 @@ export class ObjectStorageService {
     return `/objects/video-previews/${videoId}.mp4`;
   }
 
+  async downloadObjectBuffer(objectPath: string): Promise<Buffer> {
+    const file = await this.getObjectEntityFile(objectPath);
+    const [buffer] = await file.download();
+    return buffer;
+  }
+
+  async objectExists(objectPath: string): Promise<boolean> {
+    try {
+      await this.getObjectEntityFile(objectPath);
+      return true;
+    } catch (err) {
+      if (err instanceof ObjectNotFoundError) return false;
+      throw err;
+    }
+  }
+
   async uploadVideoFromUrl(videoUrl: string, videoId: string): Promise<string> {
     const res = await fetch(videoUrl, { signal: AbortSignal.timeout(120_000) });
     if (!res.ok) throw new Error(`Failed to download video: HTTP ${res.status}`);

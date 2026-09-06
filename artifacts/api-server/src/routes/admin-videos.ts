@@ -1,7 +1,8 @@
 import { Router } from "express";
+import { randomUUID } from "crypto";
 import { db } from "@workspace/db";
-import { videosTable, usersTable } from "@workspace/db";
-import { eq, desc, isNotNull } from "drizzle-orm";
+import { jobsTable, videosTable, usersTable } from "@workspace/db";
+import { and, eq, desc, inArray, isNotNull, isNull } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 
 function isAdmin(email: string | null | undefined): boolean {
@@ -78,6 +79,123 @@ router.get("/admin/videos/:id/preview-url", async (req, res) => {
   }
 });
 
+router.post("/admin/videos/:id/preview-backfill", async (req, res) => {
+  if (!req.isAuthenticated() || !isAdmin(req.user.email)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const storageService = new ObjectStorageService();
+  const result = await db.transaction(async (tx) => {
+    const [video] = await tx
+      .select()
+      .from(videosTable)
+      .where(eq(videosTable.id, String(req.params.id || "")))
+      .limit(1)
+      .for("update");
+    if (!video) return { status: 404 as const, body: { error: "Video not found" } };
+    if (video.previewObjectPath) {
+      return { status: 200 as const, body: { state: "ready", previewObjectPath: video.previewObjectPath } };
+    }
+    const expectedPreviewPath = `/objects/video-previews/${video.id}.mp4`;
+    if (await storageService.objectExists(expectedPreviewPath)) {
+      await tx
+        .update(videosTable)
+        .set({ previewObjectPath: expectedPreviewPath })
+        .where(eq(videosTable.id, video.id));
+      return {
+        status: 200 as const,
+        body: { state: "ready", previewObjectPath: expectedPreviewPath },
+      };
+    }
+    const [existing] = await tx
+      .select({ id: jobsTable.id, status: jobsTable.status })
+      .from(jobsTable)
+      .where(and(
+        eq(jobsTable.jobType, "preview_backfill"),
+        eq(jobsTable.videoId, video.id),
+        inArray(jobsTable.status, ["queued", "analyzing", "generating", "stitching"]),
+      ))
+      .limit(1);
+    if (existing) {
+      return { status: 202 as const, body: { state: "queued", jobId: existing.id } };
+    }
+    const jobId = randomUUID();
+    await tx.insert(jobsTable).values({
+      id: jobId,
+      userId: video.userId,
+      jobType: "preview_backfill",
+      videoId: video.id,
+      manifest: { operation: "preview_backfill", targetVideoId: video.id },
+      status: "queued",
+      progressPercent: 0,
+    });
+    return { status: 202 as const, body: { state: "queued", jobId } };
+  });
+  res.status(result.status).json(result.body);
+});
+
+router.post("/admin/videos/preview-backfill-all", async (req, res) => {
+  if (!req.isAuthenticated() || !isAdmin(req.user.email)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const candidates = await db
+    .select({ id: videosTable.id })
+    .from(videosTable)
+    .where(and(
+      isNull(videosTable.previewObjectPath),
+      isNull(videosTable.deletedAt),
+    ))
+    .orderBy(desc(videosTable.createdAt))
+    .limit(100);
+
+  let queued = 0;
+  let skipped = 0;
+  for (const candidate of candidates) {
+    const created = await db.transaction(async (tx) => {
+      const [video] = await tx
+        .select({ id: videosTable.id, userId: videosTable.userId })
+        .from(videosTable)
+        .where(and(
+          eq(videosTable.id, candidate.id),
+          isNull(videosTable.previewObjectPath),
+          isNull(videosTable.deletedAt),
+        ))
+        .limit(1)
+        .for("update");
+      if (!video) return false;
+
+      const [existing] = await tx
+        .select({ id: jobsTable.id })
+        .from(jobsTable)
+        .where(and(
+          eq(jobsTable.jobType, "preview_backfill"),
+          eq(jobsTable.videoId, video.id),
+          inArray(jobsTable.status, ["queued", "analyzing", "generating", "stitching"]),
+        ))
+        .limit(1);
+      if (existing) return false;
+
+      await tx.insert(jobsTable).values({
+        id: randomUUID(),
+        userId: video.userId,
+        jobType: "preview_backfill",
+        videoId: video.id,
+        manifest: { operation: "preview_backfill", targetVideoId: video.id },
+        status: "queued",
+        progressPercent: 0,
+      });
+      return true;
+    });
+    if (created) queued++;
+    else skipped++;
+  }
+
+  res.status(202).json({ queued, skipped, scanned: candidates.length });
+});
+
 // ── Permanently delete a video: remove its stored files (MP4, thumbnail, clips)
 // AND its database row. Irreversible. Admin only.
 router.post("/admin/videos/:id/purge", async (req, res) => {
@@ -87,22 +205,28 @@ router.post("/admin/videos/:id/purge", async (req, res) => {
   }
 
   const id = String(req.params.id || "");
-  const [video] = await db
-    .select()
-    .from(videosTable)
-    .where(eq(videosTable.id, id))
-    .limit(1);
+  const storageService = new ObjectStorageService();
+  const purged = await db.transaction(async (tx) => {
+    const [video] = await tx
+      .select()
+      .from(videosTable)
+      .where(eq(videosTable.id, id))
+      .limit(1)
+      .for("update");
+    if (!video) return false;
 
-  if (!video) {
+    // Hold the video-row lock while reading and deleting the complete asset
+    // list. Preview finalization uses the same lock, so neither ordering can
+    // leave a newly attached browser rendition orphaned.
+    await storageService.deleteVideoAssets(video).catch(() => {});
+    await tx.delete(videosTable).where(eq(videosTable.id, id));
+    return true;
+  });
+
+  if (!purged) {
     res.status(404).json({ error: "Video not found" });
     return;
   }
-
-  // Delete the underlying storage assets first (best-effort), then the row so a
-  // storage hiccup never leaves an orphaned DB record pointing at gone files.
-  const storageService = new ObjectStorageService();
-  await storageService.deleteVideoAssets(video).catch(() => {});
-  await db.delete(videosTable).where(eq(videosTable.id, id));
 
   res.json({ success: true, id });
 });

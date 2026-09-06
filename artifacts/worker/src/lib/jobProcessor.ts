@@ -43,6 +43,7 @@ import {
 const execAsync = promisify(exec);
 const MAX_RETRIES = 3;
 const MAX_INFRASTRUCTURE_RETRIES = 24;
+const PREVIEW_TARGET_GONE = "preview backfill target no longer exists";
 const POLL_INTERVAL_MS = 5000;
 const NO_CHARGE_CLIP_READ_DELAYS_MS = [2_000, 5_000, 10_000, 20_000] as const;
 // "Full" videos are capped at 10 minutes and use one unique source image and
@@ -158,6 +159,38 @@ async function createAndUploadWebPreview(
     logger.warn({ err, videoId }, "Web preview rendition failed; preserving completed master");
     return null;
   }
+}
+
+async function finalizePreviewBackfill(
+  job: JobRow,
+  videoId: string,
+  previewObjectPath: string,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [video] = await tx
+      .select({ id: videosTable.id })
+      .from(videosTable)
+      .where(eq(videosTable.id, videoId))
+      .limit(1)
+      .for("update");
+    if (!video) throw new Error(PREVIEW_TARGET_GONE);
+
+    const completed = await tx
+      .update(jobsTable)
+      .set({ status: "ready", progressPercent: 100, claimedAt: null, updatedAt: new Date() })
+      .where(and(
+        eq(jobsTable.id, job.id),
+        eq(jobsTable.claimedAt, job.claimedAt!),
+        eq(jobsTable.jobType, "preview_backfill"),
+      ))
+      .returning({ id: jobsTable.id });
+    if (completed.length === 0) throw new Error(OWNERSHIP_LOST);
+
+    await tx
+      .update(videosTable)
+      .set({ previewObjectPath })
+      .where(and(eq(videosTable.id, videoId), isNull(videosTable.previewObjectPath)));
+  });
 }
 
 const WORKER_ID = process.env.WORKER_ID?.trim() || `${hostname()}-${process.pid}`;
@@ -2745,6 +2778,39 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
     return;
   }
 
+  if (job.jobType === "preview_backfill") {
+    const retryAfter = Date.now() + 60_000;
+    const nextRetry = job.retryCount + 1;
+    if (nextRetry <= MAX_RETRIES) {
+      await db.execute(sql`
+        UPDATE jobs SET
+          status = 'queued',
+          claimed_at = NULL,
+          retry_count = ${nextRetry},
+          error_message = 'Browser preview creation will retry automatically.',
+          manifest = COALESCE(manifest, '{}'::jsonb)
+            || jsonb_build_object('retryAfter', ${retryAfter}::bigint),
+          updated_at = NOW()
+        WHERE id = ${job.id}
+          AND claimed_at = ${job.claimedAt}
+          AND job_type = 'preview_backfill'
+      `);
+      return;
+    }
+    await db.execute(sql`
+      UPDATE jobs SET
+        status = 'failed',
+        claimed_at = NULL,
+        error_message = 'Browser preview creation failed. The full-quality video remains available.',
+        updated_at = NOW()
+      WHERE id = ${job.id}
+        AND claimed_at = ${job.claimedAt}
+        AND job_type = 'preview_backfill'
+    `);
+    void notifyAdminRenderFailed(job, "Browser preview backfill failed.");
+    return;
+  }
+
   if (errMsg.includes(INFRASTRUCTURE_RETRY)) {
     const retryAfter = Date.now() + 60_000;
     const requeued = await db.execute<{ id: string }>(sql`
@@ -3658,6 +3724,57 @@ async function processRunwayLipSyncJob(job: JobRow): Promise<void> {
 }
 
 async function processJob(job: JobRow): Promise<void> {
+  if (job.jobType === "preview_backfill") {
+    try {
+      if (!job.videoId) throw new Error("Preview backfill is missing its target video.");
+      const [video] = await db
+        .select()
+        .from(videosTable)
+        .where(eq(videosTable.id, job.videoId))
+        .limit(1);
+      if (!video) throw new Error("The target video no longer exists.");
+      if (video.previewObjectPath) {
+        await updateJobStatus(job.id, { status: "ready", progressPercent: 100 });
+        return;
+      }
+      const expectedPreviewPath = `/objects/video-previews/${video.id}.mp4`;
+      if (await storageService.objectExists(expectedPreviewPath)) {
+        try {
+          await finalizePreviewBackfill(job, video.id, expectedPreviewPath);
+        } catch (err) {
+          if (err instanceof Error && err.message.includes(PREVIEW_TARGET_GONE)) {
+            await storageService.deleteObject(expectedPreviewPath).catch(() => {});
+          }
+          throw err;
+        }
+        return;
+      }
+      await updateJobStatus(job.id, { status: "generating", progressPercent: 10 });
+      const master = await storageService.downloadObjectBuffer(video.videoObjectPath);
+      await assertJobOwned(job);
+      await updateJobStatus(job.id, { progressPercent: 35 });
+      const previewPath = await createAndUploadWebPreview(
+        master,
+        video.id,
+        video.durationSeconds ?? 0,
+      );
+      if (!previewPath) throw new Error("Browser preview encoding failed.");
+      await assertJobOwned(job);
+      try {
+        await finalizePreviewBackfill(job, video.id, previewPath);
+      } catch (err) {
+        if (err instanceof Error && err.message.includes(PREVIEW_TARGET_GONE)) {
+          await storageService.deleteObject(previewPath).catch(() => {});
+        }
+        throw err;
+      }
+      await notifyJobUpdate(job.id);
+      logger.info({ jobId: job.id, videoId: video.id, previewPath }, "Preview backfill completed");
+    } catch (err) {
+      await retryOrFail(job, err);
+    }
+    return;
+  }
   if (job.jobType === "image_pack") {
     await processImagePackJob(job);
     return;

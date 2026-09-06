@@ -153,6 +153,7 @@ function UserRow({ user, onChanged }: { user: AdminUser; onChanged: () => void }
   const [videos, setVideos] = useState<AdminUserVideo[] | null>(null);
   const [loadingVids, setLoadingVids] = useState(false);
   const [blocking, setBlocking] = useState(false);
+  const [backfillingVideoId, setBackfillingVideoId] = useState<string | null>(null);
   const { toast } = useToast();
 
   async function toggleVideos() {
@@ -188,6 +189,38 @@ function UserRow({ user, onChanged }: { user: AdminUser; onChanged: () => void }
       toast({ title: "Could not update block status", variant: "destructive" });
     } finally {
       setBlocking(false);
+    }
+  }
+
+  async function backfillPreview(videoId: string) {
+    setBackfillingVideoId(videoId);
+    try {
+      const res = await fetch(`/api/admin/videos/${videoId}/preview-backfill`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Request failed");
+      const result = (await res.json()) as {
+        state: "ready" | "queued";
+        previewObjectPath?: string;
+      };
+      if (result.state === "ready" && result.previewObjectPath) {
+        setVideos((current) => current?.map((video) =>
+          video.id === videoId
+            ? { ...video, previewObjectPath: result.previewObjectPath! }
+            : video
+        ) ?? null);
+      }
+      toast({
+        title: result.state === "ready" ? "Browser preview ready" : "Browser preview queued",
+        description: result.state === "ready"
+          ? "The optimized player copy is now active."
+          : "The master remains available while the optimized preview is created.",
+      });
+    } catch {
+      toast({ title: "Could not queue browser preview", variant: "destructive" });
+    } finally {
+      setBackfillingVideoId(null);
     }
   }
 
@@ -264,6 +297,22 @@ function UserRow({ user, onChanged }: { user: AdminUser; onChanged: () => void }
                       {v.title || v.prompt || "Untitled"}
                       {v.isPublic ? " · 🌐 public" : ""}
                     </div>
+                    {!v.previewObjectPath && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mt-2 h-7 w-full text-xs"
+                        disabled={backfillingVideoId === v.id}
+                        onClick={() => backfillPreview(v.id)}
+                      >
+                        {backfillingVideoId === v.id ? (
+                          <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                        ) : (
+                          <Play className="mr-1.5 h-3 w-3" />
+                        )}
+                        Create smooth preview
+                      </Button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1542,6 +1591,7 @@ export default function AdminPage() {
 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
+  const [bulkBackfillPending, setBulkBackfillPending] = useState(false);
 
   async function previewDeletedVideo(id: string) {
     setPreviewLoadingId(id);
@@ -1554,6 +1604,28 @@ export default function AdminPage() {
       toast({ title: "Preview unavailable", description: "The video file may already be gone.", variant: "destructive" });
     } finally {
       setPreviewLoadingId(null);
+    }
+  }
+
+  async function backfillAllPreviews() {
+    setBulkBackfillPending(true);
+    try {
+      const res = await fetch("/api/admin/videos/preview-backfill-all", {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Request failed");
+      const result = (await res.json()) as { queued: number; skipped: number; scanned: number };
+      toast({
+        title: "Older previews queued",
+        description: result.scanned === 0
+          ? "Every active video already has an optimized preview."
+          : `${result.queued} video${result.queued === 1 ? "" : "s"} queued. ${result.skipped} already in progress.`,
+      });
+    } catch {
+      toast({ title: "Could not queue older previews", variant: "destructive" });
+    } finally {
+      setBulkBackfillPending(false);
     }
   }
 
@@ -1721,6 +1793,19 @@ export default function AdminPage() {
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2 w-full sm:w-auto">
+                <Button
+                  variant="outline"
+                  onClick={backfillAllPreviews}
+                  disabled={bulkBackfillPending}
+                  className="whitespace-nowrap"
+                >
+                  {bulkBackfillPending ? (
+                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Play className="mr-1.5 h-4 w-4" />
+                  )}
+                  Smooth older videos
+                </Button>
                 <a
                   href="/api/admin/users/export.csv"
                   className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background/40 px-3 py-2 text-sm font-medium text-muted-foreground hover:text-primary hover:border-primary/50 transition-colors whitespace-nowrap"
@@ -2116,9 +2201,9 @@ export default function AdminPage() {
           <CardHeader>
             <CardTitle className="text-lg">Deleted Files</CardTitle>
             <CardDescription>
-              Videos users have deleted. They're hidden from users but stay on the site until purged
-              (automatically after 30 days, or manually here). Permanent deletion removes the database
-              record and the underlying files — this cannot be undone.
+              Videos users have removed from their own view. They remain stored unless an administrator
+              explicitly deletes them here. Permanent deletion removes the database record and underlying
+              files and cannot be undone.
             </CardDescription>
           </CardHeader>
           <CardContent>

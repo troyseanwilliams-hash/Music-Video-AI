@@ -270,6 +270,22 @@ export class ObjectStorageService {
     return `/objects/video-previews/${videoId}.mp4`;
   }
 
+  async downloadObjectBuffer(objectPath: string): Promise<Buffer> {
+    const file = await this.getObjectEntityFile(objectPath);
+    const [buffer] = await file.download();
+    return buffer;
+  }
+
+  async objectExists(objectPath: string): Promise<boolean> {
+    try {
+      await this.getObjectEntityFile(objectPath);
+      return true;
+    } catch (err) {
+      if (err instanceof ObjectNotFoundError) return false;
+      throw err;
+    }
+  }
+
   // Persist an AI-generated song so it can feed the generator like an upload.
   async uploadAudioBuffer(buffer: Buffer, songId: string, ext = "mp3", userId?: string): Promise<string> {
     const privateObjectDir = this.getPrivateObjectDir();

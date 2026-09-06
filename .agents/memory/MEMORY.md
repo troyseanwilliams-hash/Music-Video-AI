@@ -56,3 +56,5 @@
 - [PostgreSQL idle-client errors](postgres-idle-client-errors.md) — always handle pg-pool idle-client error events; database restarts otherwise crash workers and strand active renders.
 - [Recovery preflight writes](recovery-preflight-writes.md) — retained-media recovery must skip unchanged progress writes so database degradation cannot delay accepted-output collection.
 - [Infrastructure retry fencing](infrastructure-retry-fencing.md) — transient outages may resume free only behind durable submission fencing; bound retries and atomically fence exhaustion settlement.
+- [Preview backfill deletion locking](preview-backfill-deletion-locking.md) — preview attachment and every permanent video purge must serialize on the same video-row lock.
+- [Member media retention](member-media-retention.md) — never automatically purge videos belonging to current members; permanent deletion is an explicit admin action only.
