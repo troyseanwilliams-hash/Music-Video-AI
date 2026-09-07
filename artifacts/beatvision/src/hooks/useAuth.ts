@@ -29,6 +29,8 @@ export function useAuth() {
     queryFn: fetchCurrentUser,
     retry: false,
     staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: "always",
+    refetchOnReconnect: "always",
   });
 
   const login = useCallback(

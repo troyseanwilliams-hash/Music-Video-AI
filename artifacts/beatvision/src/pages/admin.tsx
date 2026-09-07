@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation, Link } from "wouter";
-import { useAuth } from "@/hooks/useAuth";
+import { AUTH_QUERY_KEY, useAuth } from "@/hooks/useAuth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -49,10 +49,24 @@ interface AdminUserVideo {
   createdAt: string;
 }
 
+class AdminRequestError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "AdminRequestError";
+  }
+}
+
 async function fetchAdminUsers(search: string): Promise<AdminUser[]> {
   const params = search ? `?search=${encodeURIComponent(search)}` : "";
   const res = await fetch(`/api/admin/users${params}`, { credentials: "include" });
-  if (!res.ok) throw new Error("Failed to fetch users");
+  if (!res.ok) {
+    throw new AdminRequestError(
+      res.status === 401 || res.status === 403
+        ? "Your admin session has expired."
+        : "Failed to fetch users",
+      res.status,
+    );
+  }
   const data = await res.json();
   return data.users;
 }
@@ -1318,6 +1332,12 @@ export default function AdminPage() {
     enabled: isAdmin && tab === "users",
     staleTime: 30_000,
   });
+
+  useEffect(() => {
+    if (!(usersError instanceof AdminRequestError) || ![401, 403].includes(usersError.status)) return;
+    queryClient.setQueryData(AUTH_QUERY_KEY, null);
+    setLocation(`/login?redirect=${encodeURIComponent("/admin")}`);
+  }, [usersError, queryClient, setLocation]);
 
   const { data: activeJobsData, isLoading: activeJobsLoading, refetch: refetchActiveJobs } = useQuery<{ jobs: ActiveJob[] }>({
     queryKey: ["admin", "jobs", "active"],
