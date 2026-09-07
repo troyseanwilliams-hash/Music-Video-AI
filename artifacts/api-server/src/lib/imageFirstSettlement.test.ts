@@ -18,12 +18,22 @@ describe("image-first reservation settlement", () => {
     })).toBe(0);
   });
 
-  it("requires a new reservation after video provider work has started", () => {
+  it("reuses the original reservation for saved and accepted video work", () => {
     expect(imageFirstAutomaticRetryCost({
       imageFirstVersion: 1,
       reservedCredits: 1637,
       imageReview: { phase: "approved" },
+      partialClips: { 0: "/objects/clips/job-1/0.mp4" },
       pendingRequests: { 0: { pollUrl: "accepted" } },
+    })).toBe(0);
+  });
+
+  it("does not silently continue after an ambiguous video submission", () => {
+    expect(imageFirstAutomaticRetryCost({
+      imageFirstVersion: 1,
+      reservedCredits: 1637,
+      imageReview: { phase: "approved" },
+      submissionIntents: { 5: { provider: "video" } },
     })).toBe(1637);
   });
 

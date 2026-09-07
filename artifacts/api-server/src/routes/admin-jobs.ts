@@ -1067,6 +1067,114 @@ router.post("/admin/jobs/:id/attach-clips", async (req, res) => {
   res.json({ ok: results.every((r) => r.ok), attached: attachedCount, results });
 });
 
+// Attach clips uploaded directly from the admin browser to private App Storage.
+// Body: { clips: [{ index: number, objectPath: string, name?: string }] }
+router.post("/admin/jobs/:id/attach-uploaded-clips", async (req, res) => {
+  if (!req.isAuthenticated() || !isAdmin(req.user.email)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const jobId = req.params.id;
+  const clipsInput = Array.isArray(req.body?.clips) ? req.body.clips : null;
+  if (!clipsInput || clipsInput.length === 0) {
+    res.status(400).json({ error: "Body must be { clips: [{ index, objectPath }] }" });
+    return;
+  }
+
+  const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, jobId)).limit(1);
+  if (!job) {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
+
+  const storage = new ObjectStorageService();
+  const results: { index: number; ok: boolean; error?: string }[] = [];
+  let attachedCount = 0;
+
+  for (const candidate of clipsInput) {
+    const index = Number(candidate?.index);
+    const objectPath = typeof candidate?.objectPath === "string" ? candidate.objectPath.trim() : "";
+    if (!Number.isInteger(index) || index < 0 || !objectPath) {
+      results.push({ index: Number.isInteger(index) ? index : -1, ok: false, error: "Each clip needs a valid index and uploaded object path" });
+      continue;
+    }
+    if (!objectPath.startsWith(`/objects/uploads/${req.user.id}/`)) {
+      results.push({ index, ok: false, error: "Uploaded clip does not belong to this admin session" });
+      continue;
+    }
+
+    try {
+      const [freshJob] = await db.select().from(jobsTable).where(eq(jobsTable.id, jobId)).limit(1);
+      const meta = metaOf(freshJob?.manifest);
+      const sceneCount = Math.max(0, meta.storyboard?.numClips ?? 0);
+      if (sceneCount > 0 && index >= sceneCount) {
+        throw new Error(`scene index must be between 0 and ${sceneCount - 1}`);
+      }
+      if (Object.prototype.hasOwnProperty.call(meta.partialClips ?? {}, String(index))) {
+        throw new Error("this storyboard scene already has a saved clip");
+      }
+
+      const uploadedFile = await storage.getObjectEntityFile(objectPath);
+      const [buf] = await uploadedFile.download();
+      if (buf.length < 10_000) {
+        throw new Error(`uploaded file is suspiciously small (${buf.length} bytes)`);
+      }
+      const hash = clipContentHash(buf);
+      if (Object.values(meta.attachedClipContentHashes ?? {}).includes(hash)) {
+        throw new Error("the same clip content cannot be attached to multiple storyboard indexes");
+      }
+
+      const path = await storage.uploadClipBuffer(
+        buf,
+        `job-${jobId}-admin-${hash.slice(0, 16)}`,
+        index,
+      );
+      const sourceEntry = JSON.stringify({ [index]: objectPath });
+      const hashEntry = JSON.stringify({ [index]: hash });
+      const pathEntry = JSON.stringify({ [index]: path });
+      const updated = await db.execute<{ id: string }>(sql`
+        UPDATE jobs
+        SET manifest = jsonb_set(
+              jsonb_set(
+                jsonb_set(
+                  COALESCE(manifest, '{}'::jsonb),
+                  '{partialClips}',
+                  COALESCE(manifest->'partialClips', '{}'::jsonb) || ${pathEntry}::jsonb
+                ),
+                '{attachedClipSources}',
+                COALESCE(manifest->'attachedClipSources', '{}'::jsonb) || ${sourceEntry}::jsonb
+              ),
+              '{attachedClipContentHashes}',
+              COALESCE(manifest->'attachedClipContentHashes', '{}'::jsonb) || ${hashEntry}::jsonb
+            ),
+            updated_at = NOW()
+        WHERE id = ${jobId}
+          AND NOT (COALESCE(manifest->'partialClips', '{}'::jsonb) ? ${String(index)})
+          AND NOT EXISTS (
+            SELECT 1 FROM jsonb_each_text(COALESCE(manifest->'attachedClipContentHashes', '{}'::jsonb))
+            WHERE value = ${hash}
+          )
+        RETURNING id
+      `);
+      if (updated.rows.length === 0) {
+        throw new Error("clip attachment conflicted with an existing saved scene");
+      }
+      attachedCount++;
+      results.push({ index, ok: true });
+    } catch (err) {
+      results.push({
+        index,
+        ok: false,
+        error: String(err instanceof Error ? err.message : err).slice(0, 300),
+      });
+    }
+  }
+
+  req.log.info({ jobId, results }, "Admin attached directly uploaded clips to job");
+  res.json({ ok: results.every((result) => result.ok), attached: attachedCount, results });
+});
+
 // Stop a stuck/failing job and finish the video from the clips already saved
 // (manifest.partialClips / reclaimable pendingRequests) with ZERO new provider
 // spend. Sets manifest.finalizeWithPartial and re-queues; generateClips honors

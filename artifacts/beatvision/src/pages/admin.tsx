@@ -12,7 +12,7 @@ import {
   MessageSquare, Users, ChevronDown, ChevronUp,
   CircleDot, Clock, CheckCircle2, XCircle, RotateCcw, AlertTriangle, RefreshCw,
   Film, Ban, Trash2, Play, Music2, Sparkles, Scissors, Download, Mail,
-  BarChart3, TrendingUp, Clock3, MousePointerClick, DollarSign, Share2, Gift, Copy, Mic2,
+  BarChart3, TrendingUp, Clock3, MousePointerClick, DollarSign, Share2, Gift, Copy, Mic2, Upload,
 } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip,
@@ -1477,6 +1477,9 @@ export default function AdminPage() {
   // ── Attach provider-rendered clips to a job by URL (rescue stranded clips) ──
   const [attachJobId, setAttachJobId] = useState("");
   const [attachLines, setAttachLines] = useState("");
+  const [attachFiles, setAttachFiles] = useState<File[]>([]);
+  const [attachStartIndex, setAttachStartIndex] = useState("0");
+  const [attachUploadProgress, setAttachUploadProgress] = useState<string | null>(null);
   const attachMutation = useMutation({
     mutationFn: async () => {
       const jobId = attachJobId.trim();
@@ -1514,8 +1517,105 @@ export default function AdminPage() {
         toast({ title: `Attached ${data.attached} clip${data.attached === 1 ? "" : "s"}`, description: "The job will reuse them on its next run — no re-render cost." });
         setAttachLines("");
       }
+      queryClient.invalidateQueries({ queryKey: ["admin", "jobs", "recoverable"] });
+      refetchFailedJobs();
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const attachFilesMutation = useMutation({
+    mutationFn: async () => {
+      const jobId = attachJobId.trim();
+      if (!jobId) throw new Error("Enter the job ID");
+      if (!attachFiles.length) throw new Error("Select at least one video file");
+      const startIndex = Number(attachStartIndex);
+      if (!Number.isInteger(startIndex) || startIndex < 0) {
+        throw new Error("The first scene index must be zero or greater");
+      }
+
+      const results: { index: number; ok: boolean; error?: string }[] = [];
+      for (let position = 0; position < attachFiles.length; position++) {
+        const file = attachFiles[position]!;
+        const index = startIndex + position;
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 10 * 60_000);
+        try {
+          setAttachUploadProgress(`Uploading ${position + 1} of ${attachFiles.length}: ${file.name}`);
+          const presign = await fetch("/api/storage/uploads/request-url", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: file.name,
+              size: file.size,
+              contentType: file.type || "application/octet-stream",
+            }),
+            signal: controller.signal,
+          });
+          const upload = await presign.json().catch(() => null);
+          if (!presign.ok || !upload?.uploadURL || !upload?.objectPath) {
+            throw new Error(upload?.error ?? `Could not prepare upload (${presign.status})`);
+          }
+          const put = await fetch(upload.uploadURL, {
+            method: "PUT",
+            headers: { "Content-Type": file.type || "application/octet-stream" },
+            body: file,
+            signal: controller.signal,
+          });
+          if (!put.ok) throw new Error(`File upload failed (${put.status})`);
+
+          setAttachUploadProgress(`Attaching ${position + 1} of ${attachFiles.length}: ${file.name}`);
+          const attached = await fetch(`/api/admin/jobs/${jobId}/attach-uploaded-clips`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ clips: [{ index, objectPath: upload.objectPath, name: file.name }] }),
+            signal: controller.signal,
+          });
+          const data = await attached.json().catch(() => null);
+          const result = data?.results?.[0];
+          if (!attached.ok || !result?.ok) {
+            throw new Error(result?.error ?? data?.error ?? `Could not attach file (${attached.status})`);
+          }
+          results.push({ index, ok: true });
+        } catch (error) {
+          const message = (error as Error).name === "AbortError"
+            ? "Upload timed out after 10 minutes"
+            : (error as Error).message;
+          results.push({ index, ok: false, error: message });
+        } finally {
+          window.clearTimeout(timeout);
+        }
+      }
+      return {
+        ok: results.every((result) => result.ok),
+        attached: results.filter((result) => result.ok).length,
+        results,
+      };
+    },
+    onSuccess: (data) => {
+      setAttachUploadProgress(null);
+      const failed = data.results.filter((result) => !result.ok);
+      if (failed.length) {
+        toast({
+          title: `Attached ${data.attached}, ${failed.length} failed`,
+          description: failed.map((failure) => `Scene ${failure.index + 1}: ${failure.error}`).join(" · ").slice(0, 400),
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: `Attached ${data.attached} uploaded clip${data.attached === 1 ? "" : "s"}`,
+          description: "The job will reuse these clips without generating them again.",
+        });
+        setAttachFiles([]);
+      }
+      queryClient.invalidateQueries({ queryKey: ["admin", "jobs", "recoverable"] });
+      refetchFailedJobs();
+    },
+    onError: (error: Error) => {
+      setAttachUploadProgress(null);
+      toast({ title: "Upload failed", description: error.message, variant: "destructive" });
+    },
   });
 
   const finalizeMutation = useMutation({
@@ -2155,6 +2255,50 @@ export default function AdminPage() {
                   placeholder="Job ID (e.g. 03fbda07-6178-4451-a5a1-00ce12da9159)"
                   className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm font-mono placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
                 />
+                <div className="rounded-xl border border-border bg-muted/20 p-3 space-y-3">
+                  <div>
+                    <p className="text-sm font-medium">Upload clips from this device</p>
+                    <p className="text-xs text-muted-foreground">
+                      Files are attached in selection order. For the first five scenes, use starting index 0.
+                    </p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-[140px_1fr]">
+                    <label className="text-xs text-muted-foreground">
+                      Starting scene index
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={attachStartIndex}
+                        onChange={(event) => setAttachStartIndex(event.target.value)}
+                        className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                      />
+                    </label>
+                    <label className="text-xs text-muted-foreground">
+                      Video files
+                      <input
+                        type="file"
+                        multiple
+                        onChange={(event) => setAttachFiles(Array.from(event.target.files ?? []))}
+                        className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-primary-foreground"
+                      />
+                    </label>
+                  </div>
+                  {attachFiles.length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {attachFiles.map((file, index) => `Scene ${Number(attachStartIndex || 0) + index + 1}: ${file.name}`).join(" · ")}
+                    </p>
+                  )}
+                  <button
+                    onClick={() => attachFilesMutation.mutate()}
+                    disabled={attachFilesMutation.isPending || !attachJobId.trim() || attachFiles.length === 0}
+                    className="w-full sm:w-auto flex items-center justify-center gap-2 rounded-xl bg-primary text-primary-foreground px-5 py-3 sm:py-2.5 text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+                  >
+                    {attachFilesMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                    {attachUploadProgress ?? "Upload & attach files"}
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground">Or attach clips from provider download links:</p>
                 <textarea
                   value={attachLines}
                   onChange={(e) => setAttachLines(e.target.value)}

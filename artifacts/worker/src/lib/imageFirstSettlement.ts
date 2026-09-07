@@ -68,9 +68,7 @@ export function imageFirstAutomaticRetryCost(meta: {
   submissionIntents?: Record<string, unknown>;
 }): number {
   const reserved = Math.max(0, meta.reservedCredits ?? 0);
-  const videoWorkStarted = [
-    meta.partialClips,
-    meta.pendingRequests,
+  const unsafeToContinueOriginalReservation = [
     meta.rejectedRequests,
     meta.uncertainSubmissions,
     meta.submissionIntents,
@@ -79,7 +77,7 @@ export function imageFirstAutomaticRetryCost(meta: {
     meta.imageFirstVersion === 1
     && meta.refunded !== true
     && meta.imageReview?.phase === "approved"
-    && !videoWorkStarted;
+    && !unsafeToContinueOriginalReservation;
   return continuingOriginalReservation ? 0 : reserved;
 }
 
