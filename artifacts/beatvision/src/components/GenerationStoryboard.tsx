@@ -66,17 +66,6 @@ export default function GenerationStoryboard({
   const referenceCardRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const latestReferenceIndex = latestStoryboardReferenceIndex(referenceImages);
 
-  useEffect(() => {
-    if (latestReferenceIndex === null) return;
-    referenceCardRefs.current[latestReferenceIndex]?.scrollIntoView({
-      behavior: "smooth",
-      block: "nearest",
-      inline: "center",
-    });
-  }, [latestReferenceIndex]);
-
-  if (shots.length === 0) return null;
-
   const completed = Math.min(completedSet.size, storyboard.numClips);
   const completedReferenceCount = referenceImages ? Object.keys(referenceImages).length : 0;
   const isBuildingReferences =
@@ -85,11 +74,23 @@ export default function GenerationStoryboard({
     && completedReferenceCount < shots.length;
   const clipProgressShot =
     shots.find((shot) => !completedSet.has(shot.index)) ??
-    shots[shots.length - 1]!;
+    shots[shots.length - 1];
   const progressFocusIndex =
     isBuildingReferences && latestReferenceIndex !== null
       ? latestReferenceIndex
-      : clipProgressShot.index;
+      : clipProgressShot?.index ?? null;
+
+  useEffect(() => {
+    if (progressFocusIndex === null) return;
+    referenceCardRefs.current[progressFocusIndex]?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "center",
+    });
+  }, [progressFocusIndex]);
+
+  if (!clipProgressShot || progressFocusIndex === null) return null;
+
   const activeShot =
     shots.find((shot) => shot.index === progressFocusIndex) ??
     clipProgressShot;
@@ -289,7 +290,7 @@ export default function GenerationStoryboard({
           <div className="flex gap-2 overflow-x-auto pb-2" aria-label="Scene reference images">
             {shots.map((shot) => {
               const referenceImage = referenceImages?.[shot.index];
-              const active = shot.index === latestReferenceIndex;
+              const active = shot.index === progressFocusIndex;
               const complete = completedSet.has(shot.index);
               return (
                 <div
