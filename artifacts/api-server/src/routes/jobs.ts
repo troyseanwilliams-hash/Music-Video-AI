@@ -355,9 +355,7 @@ router.post("/jobs/preview-shots", async (req, res) => {
       generationMode: normalizedPreviewMode,
       analysis: verifiedAnalysis as never,
     });
-    const scriptIssue = normalizedPreviewMode === "montage"
-      ? numberedVideoScriptIssue(String(prompt ?? ""), plan.numClips)
-      : null;
+    const scriptIssue = numberedVideoScriptIssue(String(prompt ?? ""), plan.numClips);
     if (scriptIssue) {
       res.status(422).json({
         error: scriptIssue,
@@ -664,9 +662,7 @@ router.post("/jobs", async (req, res) => {
     generationMode: normalizedGenerationMode,
     analysis: verifiedAudioAnalysis as never,
   });
-  const scriptIssue = normalizedGenerationMode === "montage"
-    ? numberedVideoScriptIssue(prompt, plannedStoryboard.numClips)
-    : null;
+  const scriptIssue = numberedVideoScriptIssue(prompt, plannedStoryboard.numClips);
   if (scriptIssue) {
     res.status(422).json({
       error: scriptIssue,

@@ -329,7 +329,7 @@ function sceneCameraDirection(index: number): string {
   return `${framing}, ${viewpoint}`;
 }
 
-const CHARACTER_FOCUS_TERMS = /\b(?:character|person|people|human|woman|man|girl|boy|child|baby|figure|silhouette|singer|musician|performer|dancer|rider|driver|runner|walker|traveler|traveller|protagonist|hero|heroine|artist|actor|actress|model|subject|face|portrait|couple|family|mother|father|friend|soldier|detective|pilot|he|she|they|him|her|them|his|hers|their)\b/i;
+const CHARACTER_FOCUS_TERMS = /\b(?:character|person|people|human|woman|women|man|men|girl|girls|boy|boys|child|children|baby|babies|figure|silhouette|singer|musician|performer|dancer|rider|driver|runner|walker|traveler|traveller|protagonist|hero|heroine|artist|actor|actress|model|subject|face|portrait|couple|family|mother|father|friend|soldier|detective|pilot|he|she|they|him|her|them|his|hers|their)\b/i;
 const ENVIRONMENT_FOCUS_TERMS = /\b(?:landscape|skyline|cityscape|mountain|forest|ocean|sea|river|lake|desert|road|street|building|architecture|room|interior|exterior|station|airport|vehicle|car|train|plane|ship|object|detail|texture|atmosphere|weather|storm|rain|cloud|sunrise|sunset|moon|stars|light|shadow)\b/i;
 const FEMALE_CHARACTER_TERMS = /\b(?:female|woman|women|girl|girls|mother|mothers|daughter|daughters|sister|sisters|wife|wives|heroine|her|hers|she)\b/i;
 const MALE_CHARACTER_TERMS = /\b(?:male|man|men|boy|boys|father|fathers|son|sons|brother|brothers|husband|husbands|hero|him|his|he)\b/i;
@@ -586,7 +586,11 @@ function buildNarrativePrompt(
 ): string {
   const style = input.style ?? "cinematic";
   const styleDesc = STYLE_PROMPTS[style] ?? STYLE_PROMPTS.cinematic!;
-  const characterDesc = isCharacterScene ? characterBible : null;
+  const characterDesc = isCharacterScene
+    ? input.hasCharacterReference
+      ? ATTACHED_CHARACTER_REFERENCE_DIRECTIVE
+      : characterBible
+    : null;
   const resolvedConcept = sceneIndex > 0
     ? concept.replace(/^(?:it|he|she|they)\b/i, "The recurring principal subject")
     : concept;
@@ -690,10 +694,10 @@ export function planShots(input: ShotPlanInput): ShotPlan {
         description: sceneDescription(beat, concept),
         startTime,
         energy: Math.round(section.energy * 100) / 100,
-        // New Narrative Story plans use text-only character continuity. Keeping
-        // this false prevents both uploaded references and generated scene
-        // anchors from becoming image-provider inputs.
-        usesCharacterReference: false,
+        // The first completed character scene becomes the generated identity
+        // anchor when no reference was uploaded. Environment-only scenes remain
+        // independent so the character is not introduced where it was omitted.
+        usesCharacterReference: isCharacterScene,
         prompt: buildNarrativePrompt(
           input,
           mood,

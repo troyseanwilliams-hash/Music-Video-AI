@@ -74,6 +74,54 @@ describe("planShots montage planning", () => {
     expect(plan.shots[0]!.prompt).toMatch(/visual style: cinematic 35mm film/i);
   });
 
+  it("keeps each authored narration image prompt first and anchors later character scenes", () => {
+    const prompt = [
+      "1. Hot summer morning 1966 Adelaide suburban street, three children walking toward a bus stop, modest houses, bright sunlight.",
+      "2. 1960s Australian beach scene, children in swimsuits near a jetty, crowded summer day, soft heat haze.",
+      "3. Children playing on a grassy reserve near the beach with a tall thin man in the background, 1960s clothing, natural light.",
+      "4. Interior of a 1960s Australian bakery, children at the counter buying pies, soft interior light.",
+      "5. Empty afternoon beach and reserve under harsh summer sun, quiet and still atmosphere.",
+      "6. 1960s police and volunteers searching dunes and parkland, serious expressions, documentary style.",
+      "7. Dim police station interior 1966, worried parents at a desk, period details.",
+      "8. Present-day quiet suburban street near the coast, soft late light, sense of time passed.",
+      "9. Wide empty beach at dusk, long shadows, unresolved atmosphere.",
+      "10. Final soft fade on open sand and sky, lingering quiet.",
+    ].join("\n");
+    const plan = planShots({
+      prompt,
+      style: "documentary",
+      requestedDuration: "100",
+      generationMode: "narrative",
+    });
+
+    expect(plan.shots).toHaveLength(10);
+    expect(plan.shots[0]!.prompt).toMatch(
+      /^Hot summer morning 1966 Adelaide suburban street, three children walking toward a bus stop/,
+    );
+    expect(plan.shots[1]!.prompt).toMatch(
+      /^1960s Australian beach scene, children in swimsuits near a jetty/,
+    );
+    expect(plan.shots[3]!.prompt).toMatch(
+      /^Interior of a 1960s Australian bakery, children at the counter buying pies/,
+    );
+    expect(plan.shots[0]!.prompt.indexOf("Hot summer morning"))
+      .toBeLessThan(plan.shots[0]!.prompt.indexOf("recurring character bible"));
+    expect(plan.shots[0]!.prompt.indexOf("recurring character bible"))
+      .toBeLessThan(plan.shots[0]!.prompt.indexOf("Visual style"));
+    expect(plan.shots.map((shot) => shot.usesCharacterReference)).toEqual([
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
+  });
+
   it("rejects malformed or count-mismatched numbered video scripts", () => {
     expect(numberedVideoScriptIssue([
       "1. Opening shot.",
@@ -340,12 +388,12 @@ describe("planShots narrative planning", () => {
     expect(characterShots.every((shot) =>
       shot.prompt.includes("same female principal character identity")
     )).toBe(true);
-    expect(plan.shots.every((shot) => shot.usesCharacterReference === false)).toBe(true);
+    expect(characterShots.every((shot) => shot.usesCharacterReference === true)).toBe(true);
     expect(plan.shots.find((shot) => shot.description.includes("empty hallway"))?.prompt)
       .not.toContain("recurring character bible");
   });
 
-  it("ignores uploaded reference-image conditioning in Narrative Story", () => {
+  it("uses an uploaded reference only for character scenes in Narrative Story", () => {
     const plan = planShots({
       prompt: "A detective enters a hotel. The detective questions the clerk.",
       hasCharacterReference: true,
@@ -353,9 +401,9 @@ describe("planShots narrative planning", () => {
       requestedDuration: "20",
     });
 
-    expect(plan.shots.every((shot) => shot.usesCharacterReference === false)).toBe(true);
-    expect(plan.shots.every((shot) => !shot.prompt.includes("attached reference image"))).toBe(true);
-    expect(plan.shots.every((shot) => shot.prompt.includes("recurring character bible"))).toBe(true);
+    expect(plan.shots.every((shot) => shot.usesCharacterReference === true)).toBe(true);
+    expect(plan.shots.every((shot) => shot.prompt.includes("attached reference image"))).toBe(true);
+    expect(plan.shots.every((shot) => !shot.prompt.includes("recurring character bible"))).toBe(true);
   });
 
   it("keeps generated image prompts concise and text-led without an attached character image", () => {
@@ -368,11 +416,11 @@ describe("planShots narrative planning", () => {
     });
 
     expect(plan.shots.every((shot) => shot.prompt.length <= 600)).toBe(true);
-    expect(plan.shots.every((shot) => shot.usesCharacterReference === false)).toBe(true);
-    expect(plan.shots.every((shot) => !shot.prompt.includes("attached reference image"))).toBe(true);
+    expect(plan.shots.every((shot) => shot.usesCharacterReference === true)).toBe(true);
+    expect(plan.shots.every((shot) => shot.prompt.includes("attached reference image"))).toBe(true);
   });
 
-  it("replaces a named subject with a text description even when a reference was submitted", () => {
+  it("replaces a named subject and uses the submitted reference for relevant scenes", () => {
     const plan = planShots({
       prompt: "Amelia Earhart prepares her aircraft. Amelia Earhart takes flight over the ocean. The empty runway waits at dusk.",
       hasCharacterReference: true,
@@ -380,10 +428,8 @@ describe("planShots narrative planning", () => {
       requestedDuration: "30",
     });
 
-    expect(plan.shots[0]).toMatchObject({ usesCharacterReference: false });
-    expect(plan.shots[0]!.prompt).not.toContain("attached reference image");
-    expect(plan.shots[0]!.prompt).toContain("recurring character bible");
-    expect(plan.shots[0]!.prompt).toContain("never invent, substitute, or redesign the principal character");
+    expect(plan.shots[0]).toMatchObject({ usesCharacterReference: true });
+    expect(plan.shots[0]!.prompt).toContain("attached reference image");
     expect(plan.shots[0]!.prompt).not.toMatch(/Amelia Earhart/i);
     expect(plan.shots[0]!.description).not.toMatch(/Amelia Earhart/i);
     expect(plan.shots[2]).toMatchObject({ usesCharacterReference: false });
@@ -416,7 +462,12 @@ describe("planShots narrative planning", () => {
       .not.toContain("recurring character bible");
     expect(plan.shots.find((shot) => shot.description.includes("sunrise fills the city skyline"))?.prompt)
       .not.toContain("recurring character bible");
-    expect(plan.shots.every((shot) => shot.usesCharacterReference === false)).toBe(true);
+    expect(plan.shots.find((shot) => shot.description.includes("woman steps off a train")))
+      .toMatchObject({ usesCharacterReference: true });
+    expect(plan.shots.find((shot) => shot.description.includes("empty train station")))
+      .toMatchObject({ usesCharacterReference: false });
+    expect(plan.shots.find((shot) => shot.description.includes("sunrise fills the city skyline")))
+      .toMatchObject({ usesCharacterReference: false });
   });
 
   it("does not apply a character reference to generic narrative beats", () => {
