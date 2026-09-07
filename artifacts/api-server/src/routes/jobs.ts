@@ -38,6 +38,7 @@ import {
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { perceptualFingerprint } from "../lib/mediaUniqueness.js";
 import { MAX_LYRICS_LENGTH } from "../lib/lyricLimits.js";
+import { resolveNewJobVideoProvider } from "../lib/videoProviderSelection.js";
 import { verifyAudioAnalysisReceipt } from "../lib/audioAnalysisReceipt.js";
 import { toCustomerJobView } from "../lib/customerJobView.js";
 import { settleImageFirstReservation } from "../lib/imageFirstSettlement.js";
@@ -652,7 +653,7 @@ router.post("/jobs", async (req, res) => {
   )?.durationSeconds;
   // Kling (via Pixazo) is cheaper than Runway, so the charge scales with the
   // chosen engine. Only "kling" is offered as an alternative for now.
-  const engine = String(aiProvider ?? "").toLowerCase() === "kling" ? "kling" : "runway";
+  const engine = resolveNewJobVideoProvider(aiProvider);
   const plannedStoryboard = planShots({
     prompt,
     style,

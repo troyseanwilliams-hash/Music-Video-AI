@@ -6,6 +6,7 @@ import { sql } from "drizzle-orm";
 export type ResourceKey =
   | "runway_submission"
   | "gateway_video_submission"
+  | "kling_direct_submission"
   | "other_video_submission"
   | "elevenlabs_submission"
   | "elevenlabs"
@@ -18,6 +19,7 @@ export type ResourceKey =
 const definitions: Record<ResourceKey, { env: string; fallback: number; maximum: number }> = {
   runway_submission: { env: "RUNWAY_SUBMISSION_CONCURRENCY", fallback: 2, maximum: 20 },
   gateway_video_submission: { env: "GATEWAY_VIDEO_SUBMISSION_CONCURRENCY", fallback: 2, maximum: 20 },
+  kling_direct_submission: { env: "KLING_DIRECT_SUBMISSION_CONCURRENCY", fallback: 2, maximum: 20 },
   other_video_submission: { env: "OTHER_VIDEO_SUBMISSION_CONCURRENCY", fallback: 2, maximum: 20 },
   elevenlabs_submission: { env: "ELEVENLABS_SUBMISSION_CONCURRENCY", fallback: 2, maximum: 20 },
   elevenlabs: { env: "ELEVENLABS_CONCURRENCY", fallback: 2, maximum: 20 },

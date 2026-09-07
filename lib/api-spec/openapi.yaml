@@ -1743,7 +1743,7 @@ components:
           description: Processing flow used for this job, such as editor_render for a Remix Lab export or image_pack for a reusable still set
         aiProvider:
           type: [string, 'null']
-          enum: [runway, kling, luma, null]
+          enum: [runway, kling, kling_direct, luma, null]
         resolution:
           type: [string, 'null']
           enum: ['720p', '1080p', '4k', null]

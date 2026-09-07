@@ -65,3 +65,4 @@
 - [Narration gallery handoff](narration-gallery-handoff.md) — video handoff must save narration to My Music first; one editable title follows the audio into video setup.
 - [Audio analysis presentation](audio-analysis-presentation.md) — track analysis should power video timing quietly; demonstrate beat matching visually instead of selling a standalone profile.
 - [Database enum rollout](database-enum-rollout.md) — a TypeScript enum declaration does not update the live dev enum; add the value in development so Publish can detect and promote it.
+- [Direct Kling cutover](direct-kling-cutover.md) — keep gateway and direct providers distinct; stop new submissions without stranding accepted direct tasks.

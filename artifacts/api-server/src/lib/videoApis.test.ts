@@ -6,8 +6,10 @@ import {
   PROVIDER_API_FAILURE,
   PROVIDER_MEDIA_TERMINAL,
   PROVIDER_POLL_ABORTED,
+  PROVIDER_SUBMISSION_UNCERTAIN,
   PROVIDER_TERMINAL_FAILURE,
   PROVIDER_POLL_TIMEOUT,
+  klingDirectAvailable,
   resolveClipProviderChain,
 } from "./videoApis.js";
 
@@ -37,6 +39,122 @@ describe("resolveClipProviderChain", () => {
     expect(
       resolveClipProviderChain({ provider: "runway", providerOnly: true }),
     ).toEqual(["runway"]);
+  });
+
+  it("keeps direct Kling unavailable unless its exact opt-in and both credentials are present", () => {
+    vi.stubEnv("KLING_DIRECT_ENABLED", "true");
+    vi.stubEnv("KLING_DIRECT_ACCESS_KEY", "access");
+    vi.stubEnv("KLING_DIRECT_SECRET_KEY", "");
+    expect(klingDirectAvailable()).toBe(false);
+    expect(resolveClipProviderChain({ provider: "kling_direct", providerOnly: true })).toEqual([]);
+
+    vi.stubEnv("KLING_DIRECT_SECRET_KEY", "secret");
+    expect(klingDirectAvailable()).toBe(true);
+    expect(resolveClipProviderChain({ provider: "kling_direct", providerOnly: true })).toEqual(["kling_direct"]);
+  });
+
+  it("submits and polls a direct Kling task without changing gateway Kling", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("KLING_DIRECT_ENABLED", "true");
+    vi.stubEnv("KLING_DIRECT_ACCESS_KEY", "access");
+    vi.stubEnv("KLING_DIRECT_SECRET_KEY", "secret");
+    vi.stubEnv("KLING_DIRECT_API_BASE", "https://kling.test");
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, data: { id: "task-1", status: "submitted" } }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, data: [{ id: "task-1", status: "succeeded", outputs: [{ type: "video", url: "https://cdn.example.com/direct.mp4" }] }] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = generateClip({ prompt: "cinematic rain", durationSeconds: 5, imageUrl: "https://img.example.com/frame.jpg", provider: "kling_direct", providerOnly: true, onSubmit });
+    await vi.advanceTimersByTimeAsync(5_000);
+    await expect(result).resolves.toEqual({ videoUrl: "https://cdn.example.com/direct.mp4", provider: "kling_direct" });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://kling.test/image-to-video/kling-3.0");
+    expect(JSON.parse(fetchMock.mock.calls[0]?.[1].body)).toEqual({
+      contents: [
+        { type: "prompt", text: "cinematic rain" },
+        { type: "first_frame", url: "https://img.example.com/frame.jpg" },
+      ],
+      settings: {
+        resolution: "720p",
+        duration: 5,
+        audio: "off",
+        multi_shot: false,
+      },
+      options: {
+        watermark_info: { enabled: false },
+      },
+    });
+    expect(onSubmit).toHaveBeenCalledWith({ provider: "kling_direct", requestId: "task-1", pollUrl: "https://kling.test/tasks?task_ids=task-1" });
+    expect(fetchMock.mock.calls[1]?.[1].headers.Authorization).toMatch(/^Bearer /);
+  });
+
+  it("records a direct Kling 5xx submission as uncertain and does not fall back", async () => {
+    vi.stubEnv("KLING_DIRECT_ENABLED", "true");
+    vi.stubEnv("KLING_DIRECT_ACCESS_KEY", "access");
+    vi.stubEnv("KLING_DIRECT_SECRET_KEY", "secret");
+    const onUncertainSubmission = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("busy", { status: 503 })));
+    await expect(generateClip({ prompt: "rain", durationSeconds: 5, provider: "kling_direct", providerOnly: true, onUncertainSubmission })).rejects.toThrow(PROVIDER_SUBMISSION_UNCERTAIN);
+    expect(onUncertainSubmission).toHaveBeenCalledWith({ provider: "kling_direct", status: 503, reason: "AI service returned HTTP 503" });
+  });
+
+  it("keeps a failed direct Kling task terminal", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("KLING_DIRECT_ENABLED", "true");
+    vi.stubEnv("KLING_DIRECT_ACCESS_KEY", "access");
+    vi.stubEnv("KLING_DIRECT_SECRET_KEY", "secret");
+    vi.stubEnv("KLING_DIRECT_API_BASE", "https://kling.test");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      code: 0,
+      data: [{ id: "task-1", status: "failed", message: "rejected", outputs: [] }],
+    }), { status: 200 })));
+    const result = pollPixazoRequestUntilComplete("https://kling.test/tasks?task_ids=task-1");
+    const assertion = expect(result).rejects.toThrow(PROVIDER_TERMINAL_FAILURE);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await assertion;
+  });
+
+  it("continues polling an accepted direct task when new direct submissions are disabled", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("KLING_DIRECT_ENABLED", "false");
+    vi.stubEnv("KLING_DIRECT_ACCESS_KEY", "access");
+    vi.stubEnv("KLING_DIRECT_SECRET_KEY", "secret");
+    vi.stubEnv("KLING_DIRECT_API_BASE", "https://new-base.example.com");
+    vi.stubEnv("KLING_DIRECT_POLL_HOSTS", "old-base.example.com");
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      code: 0,
+      data: [{
+        id: "task-1",
+        status: "succeed",
+        outputs: [{ type: "video", url: "https://cdn.example.com/recovered-direct.mp4" }],
+      }],
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = pollPixazoRequestUntilComplete(
+      "https://old-base.example.com/tasks?task_ids=task-1",
+    );
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    await expect(result).resolves.toBe("https://cdn.example.com/recovered-direct.mp4");
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "https://old-base.example.com/tasks?task_ids=task-1",
+    );
+    expect(fetchMock.mock.calls[0]?.[1].headers.Authorization).toMatch(/^Bearer /);
+  });
+
+  it("does not send direct credentials to an unapproved task host", async () => {
+    vi.stubEnv("KLING_DIRECT_ENABLED", "false");
+    vi.stubEnv("KLING_DIRECT_ACCESS_KEY", "access");
+    vi.stubEnv("KLING_DIRECT_SECRET_KEY", "secret");
+    vi.stubEnv("PIXAZO_API_KEY", "");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      pollPixazoRequestUntilComplete("https://attacker.example.com/tasks?task_ids=task-1"),
+    ).rejects.toThrow("not configured");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("adds the explicitly authorized terminal fallback to a provider-only request", () => {

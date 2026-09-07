@@ -22,7 +22,7 @@ const RUNWAY_USD_PER_SECOND = 0.14; // Freeway: $1.40 per 10s clip
 // Standard Kling via the Pixazo gateway = ~$0.07/s (the cheaper "value" engine).
 const KLING_USD_PER_SECOND = 0.07;
 function usdPerSecondFor(provider?: string | null): number {
-  return (provider ?? "").toLowerCase() === "kling" ? KLING_USD_PER_SECOND : RUNWAY_USD_PER_SECOND;
+  return ["kling", "kling_direct"].includes((provider ?? "").toLowerCase()) ? KLING_USD_PER_SECOND : RUNWAY_USD_PER_SECOND;
 }
 // Dollar value of one credit, set below the cheapest plan's rate (Studio:
 // $79 / 5,000 = $0.0158/credit) so the margin holds on every plan.
@@ -126,7 +126,7 @@ function markupFor(
   if (getClipPlan(requestedDuration, songDurationSec, generationMode).numClips <= 1) {
     return SHORT_MARKUP;
   }
-  return (provider ?? "").toLowerCase() === "kling" ? KLING_LONG_MARKUP : LONG_MARKUP;
+  return ["kling", "kling_direct"].includes((provider ?? "").toLowerCase()) ? KLING_LONG_MARKUP : LONG_MARKUP;
 }
 
 // Resolution surcharge. 720p is the base rate; higher resolutions cost

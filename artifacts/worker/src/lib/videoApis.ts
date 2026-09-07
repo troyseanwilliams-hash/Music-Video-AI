@@ -1,5 +1,6 @@
 import { sanitizeGeneratedMediaPrompt } from "./promptSafety.js";
 import { withResourceLease } from "@workspace/db";
+import { createHmac } from "node:crypto";
 export interface ClipRequest {
   prompt: string;
   durationSeconds: number;
@@ -45,7 +46,7 @@ export interface ClipResult {
   provider: string;
 }
 
-type Provider = "runway" | "luma" | "kling" | "pixazo";
+type Provider = "runway" | "luma" | "kling" | "kling_direct" | "pixazo";
 const PIXAZO_SUBMIT_TIMEOUT_MS = 90_000;
 const RUNWAY_VIDEO_MODEL = "gen4.5";
 
@@ -53,9 +54,60 @@ function providerAvailable(p: Provider): boolean {
   if (p === "luma") return !!process.env.LUMA_API_KEY;
   // Only Kling runs through the Pixazo gateway.
   if (p === "kling") return !!process.env.PIXAZO_API_KEY;
+  if (p === "kling_direct") return klingDirectAvailable();
   if (p === "pixazo") return false;
   if (p === "runway") return !!process.env.RUNWAY_API_KEY;
   return false;
+}
+
+/** Direct Kling is deliberately opt-in: credentials alone never enable it. */
+export function klingDirectAvailable(): boolean {
+  return process.env.KLING_DIRECT_ENABLED === "true"
+    && klingDirectCredentialsAvailable();
+}
+
+function klingDirectCredentialsAvailable(): boolean {
+  return !!process.env.KLING_DIRECT_ACCESS_KEY?.trim()
+    && !!process.env.KLING_DIRECT_SECRET_KEY?.trim();
+}
+
+function isKlingDirectPollUrl(pollUrl: string): boolean {
+  try {
+    const url = new URL(pollUrl);
+    const configuredHost = new URL(klingDirectBase()).hostname.toLowerCase();
+    const historicalHosts = (process.env.KLING_DIRECT_POLL_HOSTS ?? "")
+      .split(",")
+      .map((host) => host.trim().toLowerCase())
+      .filter(Boolean);
+    const host = url.hostname.toLowerCase();
+    const allowedHost =
+      host === configuredHost
+      || host === "klingai.com"
+      || host.endsWith(".klingai.com")
+      || historicalHosts.includes(host);
+    return url.protocol === "https:"
+      && allowedHost
+      && url.pathname.endsWith("/tasks")
+      && url.searchParams.has("task_ids");
+  } catch {
+    return false;
+  }
+}
+
+function klingDirectBase(): string {
+  return (process.env.KLING_DIRECT_API_BASE?.trim() || "https://api-singapore.klingai.com").replace(/\/+$/, "");
+}
+
+function klingDirectToken(): string {
+  const accessKey = process.env.KLING_DIRECT_ACCESS_KEY?.trim();
+  const secretKey = process.env.KLING_DIRECT_SECRET_KEY?.trim();
+  if (!accessKey || !secretKey) throw new Error(`${PROVIDER_API_FAILURE} AI video generation is not configured.`);
+  const now = Math.floor(Date.now() / 1000);
+  const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
+  const header = encode({ alg: "HS256", typ: "JWT" });
+  const payload = encode({ iss: accessKey, exp: now + 30 * 60, nbf: now - 5 });
+  const signature = createHmac("sha256", secretKey).update(`${header}.${payload}`).digest("base64url");
+  return `${header}.${payload}.${signature}`;
 }
 
 // Kling model slug on Pixazo. 720p/1080p use the standard model (~$0.07/s,
@@ -99,6 +151,7 @@ export function getActiveProvider(hint?: string | null): string {
   const h = hint?.toLowerCase() as Provider | undefined;
   if (h === "runway" && providerAvailable("runway")) return "runway";
   if (h === "kling" && process.env.PIXAZO_API_KEY) return "kling";
+  if (h === "kling_direct" && klingDirectAvailable()) return "kling_direct";
   if (h === "luma" && process.env.LUMA_API_KEY) return "luma";
   return getProvider() ?? "simulation";
 }
@@ -319,8 +372,9 @@ export async function pollPixazoRequestUntilComplete(
   assertContinue?: () => void | Promise<void>,
 ): Promise<string> {
   const isRunway = pollUrl.startsWith(`${RUNWAY_BASE}/tasks/`);
-  const key = isRunway ? process.env.RUNWAY_API_KEY : process.env.PIXAZO_API_KEY;
-  if (!key) {
+  const isKlingDirect = isKlingDirectPollUrl(pollUrl);
+  const key = isRunway ? process.env.RUNWAY_API_KEY : isKlingDirect ? undefined : process.env.PIXAZO_API_KEY;
+  if ((!isKlingDirect && !key) || (isKlingDirect && !klingDirectCredentialsAvailable())) {
     throw new Error(`${PROVIDER_API_FAILURE} AI video generation is not configured.`);
   }
 
@@ -343,6 +397,8 @@ export async function pollPixazoRequestUntilComplete(
       pollRes = await fetch(pollUrl, {
         headers: isRunway
           ? { Authorization: `Bearer ${key}`, "X-Runway-Version": RUNWAY_VERSION }
+          : isKlingDirect
+            ? { Authorization: `Bearer ${klingDirectToken()}` }
           : { "Ocp-Apim-Subscription-Key": key },
         signal: AbortSignal.timeout(15_000),
       });
@@ -378,6 +434,23 @@ export async function pollPixazoRequestUntilComplete(
       // accepted request is durable, so continue checking that same request.
       continue;
     }
+    if (isKlingDirect) {
+      const direct = result as typeof result & {
+        code?: unknown;
+        data?: Array<{ status?: unknown; message?: unknown; outputs?: Array<{ type?: unknown; url?: unknown }> }>;
+      };
+      const task = Array.isArray(direct.data) ? direct.data[0] : undefined;
+      const status = typeof task?.status === "string" ? task.status.toLowerCase() : "";
+      const videoUrl = task?.outputs?.find((output) => output.type === "video" && typeof output.url === "string")?.url;
+      if ((status === "succeed" || status === "succeeded") && typeof videoUrl === "string") {
+        return videoUrl;
+      }
+      if (status === "failed") {
+        const message = typeof task?.message === "string" ? task.message : "unknown error";
+        throw new Error(`${PROVIDER_API_FAILURE} ${PROVIDER_TERMINAL_FAILURE} AI scene FAILED: ${message}`);
+      }
+      continue;
+    }
     const output = result.output as unknown;
     const mediaUrl = isRunway
       ? (Array.isArray(output) && typeof output[0] === "string" ? output[0] : undefined)
@@ -392,6 +465,75 @@ export async function pollPixazoRequestUntilComplete(
     }
   }
   throw new Error(`${PROVIDER_POLL_TIMEOUT} AI scene polling timed out after 15 minutes`);
+}
+
+async function generateWithKlingDirect(req: ClipRequest): Promise<string> {
+  if (!klingDirectAvailable()) throw new Error(`${PROVIDER_API_FAILURE} AI video generation is not configured.`);
+  const base = klingDirectBase();
+  const endpoint = `${base}/${req.imageUrl ? "image-to-video" : "text-to-video"}/kling-3.0`;
+  const resolution = (req.resolution ?? "720p").toLowerCase();
+  const prompt = sanitizeGeneratedMediaPrompt(req.prompt).prompt.slice(0, 2500);
+  const body = {
+    contents: [
+      { type: "prompt", text: prompt },
+      ...(req.imageUrl ? [{ type: "first_frame", url: req.imageUrl }] : []),
+    ],
+    settings: {
+      resolution: resolution === "2160p" ? "4k" : resolution,
+      duration: req.durationSeconds <= 5 ? 5 : 10,
+      audio: "off",
+      multi_shot: false,
+      ...(!req.imageUrl ? { aspect_ratio: req.aspectRatio ?? "16:9" } : {}),
+    },
+    options: {
+      watermark_info: { enabled: false },
+    },
+  };
+  let submit: Response;
+  try {
+    submit = await withResourceLease("kling_direct_submission", (lease) => fetch(endpoint, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${klingDirectToken()}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.any([AbortSignal.timeout(PIXAZO_SUBMIT_TIMEOUT_MS), lease.signal]),
+    }));
+  } catch (error) {
+    await req.onUncertainSubmission?.({ provider: "kling_direct", reason: `Submission transport error: ${String(error)}`.slice(0, 240) });
+    throw new Error(`${PROVIDER_API_FAILURE} ${PROVIDER_SUBMISSION_UNCERTAIN} The AI service did not confirm the scene request.`);
+  }
+  let text: string;
+  try {
+    text = await submit.text();
+  } catch (error) {
+    await req.onUncertainSubmission?.({ provider: "kling_direct", status: submit.status, reason: `Could not read submission response: ${String(error)}`.slice(0, 240) });
+    throw new Error(`${PROVIDER_API_FAILURE} ${PROVIDER_SUBMISSION_UNCERTAIN} The AI service response could not be verified.`);
+  }
+  if (!submit.ok) {
+    if (submit.status >= 500) {
+      await req.onUncertainSubmission?.({ provider: "kling_direct", status: submit.status, reason: `AI service returned HTTP ${submit.status}` });
+      throw new Error(`${PROVIDER_API_FAILURE} ${PROVIDER_SUBMISSION_UNCERTAIN} Service temporarily unavailable. No automatic retry was attempted to prevent duplicate charges. Please try again later.`);
+    }
+    throw new Error(`${PROVIDER_API_FAILURE} AI service ${submit.status}: ${text.slice(0, 200)}`);
+  }
+  let id = "";
+  try {
+    const response = JSON.parse(text) as { code?: unknown; data?: { id?: unknown } };
+    if (response.code === 0 && typeof response.data?.id === "string") id = response.data.id.trim();
+  } catch {
+    // A successful but unreadable response is ambiguous after a paid POST.
+  }
+  if (!id) {
+    await req.onUncertainSubmission?.({ provider: "kling_direct", status: submit.status, reason: "AI service returned an unreadable success response" });
+    throw new Error(`${PROVIDER_API_FAILURE} ${PROVIDER_SUBMISSION_UNCERTAIN} The AI service response could not be verified.`);
+  }
+  const pollUrl = `${base}/tasks?task_ids=${encodeURIComponent(id)}`;
+  try {
+    await req.onSubmit?.({ provider: "kling_direct", requestId: id, pollUrl });
+  } catch {
+    await req.onUncertainSubmission?.({ provider: "kling_direct", activityId: id.slice(0, 120), reason: "Accepted scene request could not be saved for recovery" });
+    throw new Error(`${PROVIDER_API_FAILURE} ${PROVIDER_SUBMISSION_UNCERTAIN} The AI service accepted the scene request, but its recovery state could not be saved.`);
+  }
+  return pollPixazoRequestUntilComplete(pollUrl, req.assertContinue);
 }
 
 function runwayRatio(aspectRatio: string | undefined, hasImage: boolean): string {
@@ -700,6 +842,8 @@ async function callProvider(provider: Provider, req: ClipRequest): Promise<strin
     case "kling":
       // Kling runs through the Pixazo gateway; the model tier tracks resolution.
       return generateWithPixazo(req, klingModel(req.resolution));
+    case "kling_direct":
+      return generateWithKlingDirect(req);
     case "pixazo":
       return generateWithPixazo(req);
   }
