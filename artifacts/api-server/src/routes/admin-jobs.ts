@@ -20,6 +20,7 @@ import {
 } from "../lib/duplicateImageRetry.js";
 import { canResumeDuplicateClipJob } from "../lib/duplicateClipRetry.js";
 import { imageFirstRetryReservation } from "../lib/imageFirstSettlement.js";
+import { canResumeFailedSavedOutputRecovery } from "../lib/infrastructureRetry.js";
 
 // Billing/salvage state AI jobs stash in the manifest jsonb.
 type AiJobMeta = {
@@ -264,6 +265,8 @@ router.get("/admin/jobs/failed", async (req, res) => {
       ...job,
       plannedScenes: meta.storyboard?.numClips ?? null,
       savedClips: Object.keys(meta.partialClips ?? {}).length,
+      savedOutputRecoveryAvailable:
+        canResumeFailedSavedOutputRecovery(meta.storyboard?.numClips ?? 0, meta),
       terminalSceneIndex: validSceneIndex,
       freshSceneRequestAvailable:
         validSceneIndex !== null &&
@@ -817,11 +820,17 @@ router.post("/admin/jobs/:id/resume-recovery", async (req, res) => {
       .for("update");
 
     if (!job) return { kind: "missing" as const };
-    if (!["analyzing", "generating", "stitching"].includes(job.status)) {
+    const activeStatuses = ["analyzing", "generating", "stitching"] as const;
+    const isActiveRecovery = activeStatuses.includes(job.status as typeof activeStatuses[number]);
+    const meta = metaOf(job.manifest);
+    const failedSavedOutputRecovery =
+      job.status === "failed" &&
+      job.jobType === "ai" &&
+      canResumeFailedSavedOutputRecovery(meta.storyboard?.numClips ?? 0, meta);
+    if (!isActiveRecovery && !failedSavedOutputRecovery) {
       return { kind: "not_active" as const, status: job.status };
     }
 
-    const meta = metaOf(job.manifest);
     const savedRequestCount =
       Object.keys(meta.pendingRequests ?? {}).length +
       Object.keys(meta.pendingImageRequests ?? {}).length;
@@ -830,7 +839,21 @@ router.post("/admin/jobs/:id/resume-recovery", async (req, res) => {
       Object.keys(meta.uncertainSubmissions ?? {}).length > 0 ||
       Object.keys(meta.imageSubmissionIntents ?? {}).length > 0 ||
       Object.keys(meta.uncertainImageSubmissions ?? {}).length > 0;
-    if (savedRequestCount === 0 || hasUncertainSubmission) {
+    const validPendingClipRequests = Object.values(meta.pendingRequests ?? {})
+      .every((url) => typeof url === "string" && /^https:\/\//i.test(url));
+    const validPendingImageRequests = Object.values(meta.pendingImageRequests ?? {})
+      .every((request) =>
+        request !== null &&
+        typeof request === "object" &&
+        typeof (request as { pollUrl?: unknown }).pollUrl === "string" &&
+        /^https:\/\//i.test((request as { pollUrl: string }).pollUrl)
+      );
+    if (
+      savedRequestCount === 0 ||
+      hasUncertainSubmission ||
+      !validPendingClipRequests ||
+      !validPendingImageRequests
+    ) {
       return { kind: "unsafe" as const };
     }
 
@@ -841,17 +864,31 @@ router.post("/admin/jobs/:id/resume-recovery", async (req, res) => {
         errorMessage: null,
         retryCount: 0,
         claimedAt: null,
-        manifest: sql`COALESCE(${jobsTable.manifest}, '{}'::jsonb) - 'retryAfter'`,
+        manifest: sql`jsonb_set(
+          COALESCE(${jobsTable.manifest}, '{}'::jsonb) - 'retryAfter',
+          '{finalizeWithPartial}',
+          'false'::jsonb
+        )`,
         updatedAt: new Date(),
       })
       .where(and(
         eq(jobsTable.id, id),
-        inArray(jobsTable.status, ["analyzing", "generating", "stitching"]),
+        inArray(
+          jobsTable.status,
+          failedSavedOutputRecovery
+            ? ["failed"]
+            : ["analyzing", "generating", "stitching"],
+        ),
       ))
       .returning();
 
     if (!updated) return { kind: "not_active" as const, status: job.status };
-    return { kind: "ok" as const, job: updated, savedRequestCount };
+    return {
+      kind: "ok" as const,
+      job: updated,
+      savedRequestCount,
+      failedSavedOutputRecovery,
+    };
   });
 
   if (outcome.kind === "missing") {
@@ -859,7 +896,9 @@ router.post("/admin/jobs/:id/resume-recovery", async (req, res) => {
     return;
   }
   if (outcome.kind === "not_active") {
-    res.status(400).json({ error: `Only active jobs can be resumed (currently ${outcome.status})` });
+    res.status(400).json({
+      error: `Only active jobs or fully covered saved-output failures can be resumed (currently ${outcome.status})`,
+    });
     return;
   }
   if (outcome.kind === "unsafe") {
@@ -871,9 +910,15 @@ router.post("/admin/jobs/:id/resume-recovery", async (req, res) => {
 
   req.log.info(
     { jobId: id, savedRequestCount: outcome.savedRequestCount },
-    "Admin restarted active job from saved accepted request",
+    outcome.failedSavedOutputRecovery
+      ? "Admin restarted failed job from complete saved-output coverage"
+      : "Admin restarted active job from saved accepted request",
   );
-  res.json({ job: outcome.job, savedRequestCount: outcome.savedRequestCount });
+  res.json({
+    job: outcome.job,
+    savedRequestCount: outcome.savedRequestCount,
+    failedSavedOutputRecovery: outcome.failedSavedOutputRecovery,
+  });
 });
 
 router.post("/admin/jobs/:id/reject", async (req, res) => {

@@ -8,7 +8,7 @@ import { and, eq } from "drizzle-orm";
 import { db, jobsTable, podcastJobsTable } from "@workspace/db";
 import { withResourceLease } from "@workspace/db";
 import { ObjectStorageService } from "./objectStorage.js";
-import { notifyRenderReady } from "./renderEmail.js";
+import { notifyAdminRenderFailed, notifyRenderReady } from "./renderEmail.js";
 import { isTransientInfrastructureError, recoverableInfrastructureError } from "./infrastructureRetry.js";
 import { buildTimedSrt, ffprobeHasVideoStream, podcastRenderArgs, selectPodcastHighlights } from "./podcastCaptions.js";
 
@@ -169,6 +169,12 @@ export async function processPodcastJob(job: typeof jobsTable.$inferSelect): Pro
     const retry = !uncertain && isTransientInfrastructureError(error) && podcast.retryCount < 3;
     await updatePodcastOwned(job, podcast.id, { retryCount: podcast.retryCount + (retry ? 1 : 0), processingStage: uncertain ? "submission_uncertain" : retry ? "retrying" : "failed" });
     await updateJobOwned(job, { status: retry ? "queued" : "failed", claimedAt: null, errorMessage: uncertain ? "Transcription may have been submitted, but confirmation was interrupted. We stopped safely to avoid duplicate charges; please contact support." : retry ? "A temporary service interruption occurred. Your podcast will resume automatically." : customerError(error) });
+    if (!retry) {
+      void notifyAdminRenderFailed(
+        job,
+        error instanceof Error ? error.message : "Podcast processing failed.",
+      );
+    }
     throw error;
   } finally { await rm(dir, { recursive: true, force: true }); }
 }

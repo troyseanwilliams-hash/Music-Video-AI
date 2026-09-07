@@ -16,6 +16,7 @@ import {
   type NarrationMusicSource,
 } from "./narration.js";
 import { ObjectStorageService } from "./objectStorage.js";
+import { notifyAdminRenderFailed } from "./renderEmail.js";
 
 const execFileAsync = promisify(execFile);
 const storage = new ObjectStorageService();
@@ -195,6 +196,10 @@ export async function processNarrationJob(job: Job): Promise<void> {
       manifest: { ...meta, stage: uncertain ? "submission_uncertain" : "failed" } as unknown as Record<string, unknown>,
     });
     await refundNarrationOnce(job.id);
+    void notifyAdminRenderFailed(
+      job,
+      error instanceof Error ? error.message : "Narration processing failed.",
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

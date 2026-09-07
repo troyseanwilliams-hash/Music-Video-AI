@@ -1,17 +1,17 @@
 // Render-finished user notifications (roadmap #6).
 //
-// Emails the job owner when a render completes or permanently fails. Uses the
-// Resend REST API via fetch (no SDK dependency, so this file works unchanged
-// in both artifacts/api-server and artifacts/worker — keep the copies
-// identical). Respects the user's notify_on_complete preference. Fire-and-
-// forget: email failures never affect job processing.
+// Emails the job owner only when a render completes. Permanent failures alert
+// ADMIN_EMAIL instead. Uses the Resend REST API via fetch (no SDK dependency,
+// so this file works unchanged in both artifacts/api-server and
+// artifacts/worker — keep the copies identical). Respects the user's
+// notify_on_complete preference. Fire-and-forget: email failures never affect
+// job processing.
 
 import { db, jobsTable, usersTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { logger } from "./logger.js";
 import {
   renderReadyEmailHtml,
-  renderFailedEmailHtml,
   adminEmailHtml,
   detailRow,
   escapeHtml,
@@ -161,9 +161,9 @@ export async function notifyAdminRenderFailed(job: RenderEmailJob, reason: strin
       adminEmail,
       `⚠️ Render failed — needs a fix (${job.id.slice(0, 8)})`,
       adminEmailHtml({
-        heading: "A render failed — credits were NOT refunded",
+        heading: "A render failed",
         intro:
-          "This job needs your attention. Try recovering it (re-run failed clips / finalize from partial clips) before deciding whether to refund the user manually.",
+          "This job needs your attention. Review its saved progress, recovery state, and credit settlement before taking action.",
         rows:
           detailRow("Job ID", escapeHtml(job.id), { mono: true }) +
           detailRow("User", escapeHtml(userEmail ?? "unknown")) +
@@ -179,43 +179,12 @@ export async function notifyAdminRenderFailed(job: RenderEmailJob, reason: strin
   }
 }
 
-export function shouldSuppressCustomerFailureEmail(reason: string): boolean {
-  return /Strict source image inspection failed/i.test(reason);
+export function shouldSuppressCustomerFailureEmail(_reason: string): boolean {
+  return true;
 }
 
-/** Emails the job owner that their render permanently failed. Never throws. */
+/** Legacy failure entry point. Failures alert admins only; customers get completion emails. */
 export async function notifyRenderFailed(job: RenderEmailJob, reason: string): Promise<void> {
-  if (shouldSuppressCustomerFailureEmail(reason)) {
-    logger.info(
-      { jobId: job.id },
-      "Customer failure email suppressed while source-image recovery is available",
-    );
-    return;
-  }
-  try {
-    const [user] = await db
-      .select({ email: usersTable.email, notifyOnComplete: usersTable.notifyOnComplete })
-      .from(usersTable)
-      .where(eq(usersTable.id, job.userId))
-      .limit(1);
-    if (!user?.email || user.notifyOnComplete === false) return;
-
-    const title = job.prompt?.slice(0, 80) || "Your video";
-    const unsub = unsubscribeUrl(APP_URL, job.userId);
-    await sendViaResend(
-      user.email,
-      "Your render didn't finish",
-      renderFailedEmailHtml({
-        title,
-        reason: "We couldn't complete this generation. We're working on the issue.",
-        jobUrl: `${APP_URL}/jobs/${job.id}`,
-        supportUrl: `${APP_URL}/support`,
-        unsubscribeUrl: unsub,
-      }),
-      unsubscribeHeaders(unsub),
-    );
-    logger.info({ jobId: job.id }, "Render-failed email sent");
-  } catch (err) {
-    logger.error({ err, jobId: job.id }, "Failed to send render-failed email (non-fatal)");
-  }
+  logger.info({ jobId: job.id }, "Customer render-failure email suppressed by policy");
+  await notifyAdminRenderFailed(job, reason);
 }

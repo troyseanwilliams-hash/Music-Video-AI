@@ -10,7 +10,7 @@ import { writeFile, unlink } from "fs/promises";
 import { join } from "path";
 import { hostname, tmpdir } from "os";
 import { logger } from "./logger.js";
-import { notifyRenderReady, notifyRenderFailed, notifyAdminRenderFailed } from "./renderEmail.js";
+import { notifyRenderReady, notifyAdminRenderFailed } from "./renderEmail.js";
 import { ObjectStorageService } from "./objectStorage.js";
 import { analyzeAudioBuffer, type AudioAnalysis, type AudioSection } from "./audioAnalysis.js";
 import { generateClip, downloadClip, pollPixazoRequestUntilComplete, getActiveProvider, PROVIDER_API_FAILURE, PROVIDER_TERMINAL_FAILURE, PROVIDER_OUT_OF_CREDITS, PROVIDER_POLL_TIMEOUT, PROVIDER_POLL_ABORTED, PROVIDER_MEDIA_TERMINAL } from "./videoApis.js";
@@ -36,8 +36,11 @@ import {
 } from "./clipGenerationScheduler.js";
 import {
   INFRASTRUCTURE_RETRY,
+  MAX_NO_CHARGE_POLL_RECOVERIES,
   isTransientInfrastructureError,
+  planNoChargePollRecovery,
   recoverableInfrastructureError,
+  savedOutputsCoverEveryScene,
 } from "./infrastructureRetry.js";
 import { processPodcastJob } from "./podcastProcessor.js";
 import { processNarrationJob } from "./narrationProcessor.js";
@@ -327,6 +330,8 @@ type AiJobMeta = {
   pendingRequests?: Record<string, string>; // clip index -> provider poll URL (submitted, not yet downloaded)
   rejectedRequests?: Record<string, RejectedClipRequest>; // terminal provider rejection; admin may authorize one fresh submission
   uncertainSubmissions?: Record<string, UncertainSubmission>; // clip index -> ambiguous submit outcome requiring explicit acknowledgement
+  providerPollRecoveryCount?: number; // bounded GET-only recovery attempts; never authorizes a new provider POST
+  imagePollRecoveryCount?: number; // bounded GET-only image recovery attempts; never authorizes a new provider POST
   submissionIntents?: Record<string, ClipSubmissionIntent>; // written before POST; unresolved entries block automatic resubmission
   targetedSceneRecovery?: {
     sceneIndex: number;
@@ -1060,6 +1065,7 @@ async function processImagePackJob(job: JobRow): Promise<void> {
       status: "failed",
       errorMessage: "This image pack has an invalid image count. Any reservation was returned.",
     });
+    void notifyAdminRenderFailed(job, "Image pack has an invalid image count.");
     return;
   }
   try {
@@ -1172,28 +1178,24 @@ async function processImagePackJob(job: JobRow): Promise<void> {
     if (detail.includes(IMAGE_POLL_TIMEOUT)) {
       const liveMeta = await readAiMeta(job.id);
       const hasPersistedRequest = Object.keys(liveMeta.pendingImageRequests ?? {}).length > 0;
-      const nextRetry = (job.retryCount ?? 0) + 1;
-      if (hasPersistedRequest && nextRetry < MAX_RETRIES) {
-        const requeued = await db.execute<{ id: string }>(sql`
-          UPDATE jobs SET
-            status = 'queued', claimed_at = NULL, retry_count = ${nextRetry},
-            error_message = 'Image polling timed out. Safely resuming the saved request without another submission or charge.',
-            manifest = COALESCE(manifest, '{}'::jsonb) || jsonb_build_object(
-              'retryAfter', ${(Date.now() + Math.pow(2, nextRetry) * 60_000)}::bigint
-            ),
-            updated_at = NOW()
-          WHERE id = ${job.id}
-            AND status = 'generating'
-            AND claimed_at = ${job.claimedAt}
-          RETURNING id
-        `);
-        if (requeued.rows.length > 0) {
+      const pollRecovery = planNoChargePollRecovery(liveMeta, true);
+      if (hasPersistedRequest && pollRecovery.canRetry) {
+        const delayMs = Math.min(Math.pow(2, pollRecovery.nextCount) * 60_000, 5 * 60_000);
+        const requeued = await requeueSavedPollAtNoCharge(
+          job.id,
+          job.claimedAt,
+          "image",
+          `Image polling timed out. Safely resuming the saved request at no charge (${pollRecovery.nextCount}/${MAX_NO_CHARGE_POLL_RECOVERIES}).`,
+          Date.now() + delayMs,
+        );
+        if (requeued) {
           await notifyJobUpdate(job.id);
-          logger.info({ jobId: job.id, nextRetry }, "Image pack polling timeout safely requeued");
+          logger.info(
+            { jobId: job.id, nextRecoveryCount: requeued.recovery_count },
+            "Image pack polling timeout safely requeued",
+          );
+          return;
         }
-        // A zero-row update means this runner lost ownership or the job was
-        // canceled/reclaimed. Never fall through and refund/overwrite it.
-        return;
       }
     }
     const terminal = await db.execute<{ id: string }>(sql`
@@ -1219,6 +1221,7 @@ async function processImagePackJob(job: JobRow): Promise<void> {
       errorMessage: `${cleanDetail || "Image generation could not finish."} ${refunded > 0 ? "Credits for images that were not created were returned." : ""}`.trim(),
     });
     logger.error({ err, jobId: job.id, refunded }, "Image pack failed");
+    void notifyAdminRenderFailed(job, cleanDetail || "Image pack generation failed.");
   }
 }
 
@@ -1314,6 +1317,81 @@ async function readAiMeta(jobId: string): Promise<AiJobMeta> {
     .where(eq(jobsTable.id, jobId))
     .limit(1);
   return row?.manifest && typeof row.manifest === "object" ? (row.manifest as AiJobMeta) : {};
+}
+
+async function requeueSavedPollAtNoCharge(
+  jobId: string,
+  claimedAt: Date | string | null,
+  kind: "provider" | "image",
+  message: string,
+  retryAfter: number,
+): Promise<{ id: string; recovery_count: number } | null> {
+  if (!claimedAt) return null;
+  const countKey = kind === "image" ? "imagePollRecoveryCount" : "providerPollRecoveryCount";
+  const validPendingRequest = kind === "image"
+    ? sql`EXISTS (
+        SELECT 1
+        FROM jsonb_each(COALESCE(manifest->'pendingImageRequests', '{}'::jsonb)) AS pending(scene, request)
+      ) AND NOT EXISTS (
+        SELECT 1
+        FROM jsonb_each(COALESCE(manifest->'pendingImageRequests', '{}'::jsonb)) AS pending(scene, request)
+        WHERE NOT (
+          jsonb_typeof(request) = 'object'
+          AND btrim(COALESCE(request->>'pollUrl', '')) ~ '^https://'
+        )
+      )`
+    : sql`EXISTS (
+        SELECT 1
+        FROM jsonb_each_text(COALESCE(manifest->'pendingRequests', '{}'::jsonb)) AS pending(scene, poll_url)
+      ) AND NOT EXISTS (
+        SELECT 1
+        FROM jsonb_each_text(COALESCE(manifest->'pendingRequests', '{}'::jsonb)) AS pending(scene, poll_url)
+        WHERE NOT (btrim(poll_url) ~ '^https://')
+      )`;
+  const priorCount = sql`CASE
+    WHEN manifest->>${countKey} IS NULL THEN 0
+    WHEN manifest->>${countKey} ~ '^[0-9]{1,8}$'
+      THEN (manifest->>${countKey})::int
+    ELSE ${MAX_NO_CHARGE_POLL_RECOVERIES}
+  END`;
+  const result = await db.execute<{ id: string; recovery_count: number }>(sql`
+    UPDATE jobs
+    SET status = 'queued',
+        claimed_at = NULL,
+        error_message = ${message},
+        manifest = jsonb_set(
+          COALESCE(manifest, '{}'::jsonb) || jsonb_build_object(
+            'retryAfter', ${retryAfter}::bigint,
+            'finalizeWithPartial', false
+          ),
+          ARRAY[${countKey}]::text[],
+          to_jsonb((${priorCount}) + 1),
+          true
+        ),
+        updated_at = NOW()
+    WHERE id = ${jobId}
+      AND status IN ('analyzing', 'generating', 'stitching')
+      AND claimed_at = ${claimedAt}
+      AND (${priorCount}) < ${MAX_NO_CHARGE_POLL_RECOVERIES}
+      AND ${validPendingRequest}
+      AND NOT EXISTS (
+        SELECT 1 FROM jsonb_object_keys(COALESCE(manifest->'submissionIntents', '{}'::jsonb))
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM jsonb_object_keys(COALESCE(manifest->'uncertainSubmissions', '{}'::jsonb))
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM jsonb_object_keys(COALESCE(manifest->'rejectedRequests', '{}'::jsonb))
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM jsonb_object_keys(COALESCE(manifest->'imageSubmissionIntents', '{}'::jsonb))
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM jsonb_object_keys(COALESCE(manifest->'uncertainImageSubmissions', '{}'::jsonb))
+      )
+    RETURNING id, (manifest->>${countKey})::int AS recovery_count
+  `);
+  return result.rows[0] ?? null;
 }
 
 async function writeAiMeta(jobId: string, meta: AiJobMeta): Promise<void> {
@@ -2173,13 +2251,32 @@ async function generateClips(
   for (let i = 0; i < maxClips; i++) {
     sections.push(strictUniqueSources ? baseSections[i]! : baseSections[i % baseSections.length]!);
   }
-  await validateStrictSourceFoundation(
-    job,
-    maxClips,
-    clipDurationSec,
-    targetOutputDuration(requestedDur, analysis.durationSeconds),
-    preparedImages,
+  // Read salvage state before strict source validation. If every scene already
+  // has either a stored clip or an accepted HTTPS poll handle, this run cannot
+  // reach a new provider POST, so damaged legacy source images must not block
+  // collection and stitching of already-paid outputs.
+  const clipMeta = aiMetaOf(job);
+  const persisted: Record<string, string> = { ...(clipMeta.partialClips ?? {}) };
+  const pending: Record<string, string> = { ...(clipMeta.pendingRequests ?? {}) };
+  const isSavedOutputOnlyRecovery = savedOutputsCoverEveryScene(
+    sections.length,
+    persisted,
+    pending,
   );
+  if (!isSavedOutputOnlyRecovery) {
+    await validateStrictSourceFoundation(
+      job,
+      maxClips,
+      clipDurationSec,
+      targetOutputDuration(requestedDur, analysis.durationSeconds),
+      preparedImages,
+    );
+  } else {
+    logger.info(
+      { jobId: job.id },
+      "Skipping source-image validation because every scene has a saved clip or accepted request",
+    );
+  }
 
   const refImageUrl = await loadReferenceImageUrl(job);
 
@@ -2188,11 +2285,8 @@ async function generateClips(
   // Salvage: any clips rendered on a previous attempt are persisted in the job
   // manifest. Reuse them instead of paying to regenerate — a retry only re-runs
   // the clips that actually failed.
-  const clipMeta = aiMetaOf(job);
-  const persisted: Record<string, string> = { ...(clipMeta.partialClips ?? {}) };
   // Requests that were submitted (and paid for) on a previous attempt but whose
   // results were never downloaded — check the provider before regenerating.
-  const pending: Record<string, string> = { ...(clipMeta.pendingRequests ?? {}) };
   const submissionIntents = clipMeta.submissionIntents ?? {};
   const uncertainSubmissions = clipMeta.uncertainSubmissions ?? {};
   const targetedSceneIndex = clipMeta.targetedSceneRecovery?.sceneIndex;
@@ -2856,7 +2950,7 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
       errorMessage:
         "Your prompt was rejected by the AI provider's content policy. Please edit your prompt and try again.",
     });
-    void notifyRenderFailed(job, "The AI provider's content policy rejected the prompt.");
+    void notifyAdminRenderFailed(job, "The AI provider's content policy rejected the prompt.");
     return;
   }
 
@@ -2873,39 +2967,30 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
     const hasPersistedRequest = imageTimeout
       ? Object.keys(liveMeta.pendingImageRequests ?? {}).length > 0
       : Object.keys(liveMeta.pendingRequests ?? {}).length > 0;
-    const nextRetry = (job.retryCount ?? 0) + 1;
-    if (hasPersistedRequest && nextRetry < MAX_RETRIES) {
-      const delayMs = Math.pow(2, nextRetry) * 60_000;
+    const pollRecovery = planNoChargePollRecovery(liveMeta, imageTimeout);
+    if (hasPersistedRequest && pollRecovery.canRetry) {
+      const delayMs = Math.min(Math.pow(2, pollRecovery.nextCount) * 60_000, 5 * 60_000);
       const retryAfter = Date.now() + delayMs;
       const cleanMsg = errMsg
         .replace(IMAGE_POLL_TIMEOUT, "")
         .replace(PROVIDER_POLL_TIMEOUT, "")
         .replace(PROVIDER_POLL_ABORTED, "")
         .trim();
-      const requeued = await db.execute<{ id: string }>(sql`
-        UPDATE jobs SET
-          status = 'queued',
-          error_message = ${`${cleanMsg} — safely resuming the saved request (${nextRetry}/${MAX_RETRIES})`},
-          retry_count = ${nextRetry},
-          claimed_at = NULL,
-          manifest = COALESCE(manifest, '{}'::jsonb) || jsonb_build_object(
-            'retryAfter', ${retryAfter}::bigint,
-            'finalizeWithPartial', false
-          ),
-          updated_at = NOW()
-        WHERE id = ${job.id}
-          AND status IN ('analyzing', 'generating', 'stitching')
-          AND claimed_at = ${job.claimedAt}
-        RETURNING id
-      `);
-      if (requeued.rows.length > 0) {
+      const requeued = await requeueSavedPollAtNoCharge(
+        job.id,
+        job.claimedAt,
+        imageTimeout ? "image" : "provider",
+        `${cleanMsg} — safely resuming the saved request at no charge (${pollRecovery.nextCount}/${MAX_NO_CHARGE_POLL_RECOVERIES})`,
+        retryAfter,
+      );
+      if (requeued) {
         logger.info(
-          { jobId: job.id, nextRetry, imageTimeout },
+          { jobId: job.id, nextRecoveryCount: requeued.recovery_count, imageTimeout },
           "Polling timeout safely requeued using persisted provider request",
         );
         await notifyJobUpdate(job.id);
+        return;
       }
-      return;
     }
 
     const cleanMsg = errMsg
@@ -3074,7 +3159,7 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
         );
         await cleanupPartialClips(job.id).catch(() => {});
         await notifyJobUpdate(job.id);
-        void notifyRenderFailed(job, errMsg);
+        void notifyAdminRenderFailed(job, errMsg);
       } else {
         logger.info(
           { jobId: job.id },
@@ -4137,28 +4222,19 @@ async function recoverStaleJobs(): Promise<void> {
       `);
     for (const imagePack of staleImagePacks) {
       const imagePackMeta = aiMetaOf(imagePack);
-      const canResumeSavedRequest =
-        Object.keys(imagePackMeta.pendingImageRequests ?? {}).length > 0 &&
-        Object.keys(imagePackMeta.uncertainImageSubmissions ?? {}).length === 0 &&
-        (imagePack.retryCount ?? 0) < MAX_RETRIES - 1;
-      if (canResumeSavedRequest) {
-        const requeued = await db.execute<{ id: string }>(sql`
-          UPDATE jobs
-          SET status = 'queued', claimed_at = NULL,
-              retry_count = retry_count + 1,
-              error_message = 'Image polling timed out. Safely resuming the saved request without another submission or charge.',
-              manifest = COALESCE(manifest, '{}'::jsonb) || jsonb_build_object(
-                'retryAfter', ${(Date.now() + 60_000)}::bigint
-              ),
-              updated_at = NOW()
-          WHERE id = ${imagePack.id}
-            AND status IN ('analyzing', 'generating', 'stitching')
-            AND job_type = 'image_pack'
-            AND claimed_at = ${imagePack.claimedAt}
-            AND ${staleWindow}
-          RETURNING id
-        `);
-        if (requeued.rows.length > 0) {
+      const pollRecovery = planNoChargePollRecovery(imagePackMeta, true);
+      if (
+        Object.keys(imagePackMeta.pendingImageRequests ?? {}).length > 0
+        && pollRecovery.canRetry
+      ) {
+        const requeued = await requeueSavedPollAtNoCharge(
+          imagePack.id,
+          imagePack.claimedAt,
+          "image",
+          `Image polling timed out. Safely resuming the saved request at no charge (${pollRecovery.nextCount}/${MAX_NO_CHARGE_POLL_RECOVERIES}).`,
+          Date.now() + 60_000,
+        );
+        if (requeued) {
           logger.info({ jobId: imagePack.id }, "Watchdog resumed image pack from saved request");
           await notifyJobUpdate(imagePack.id);
           continue;
@@ -4181,15 +4257,49 @@ async function recoverStaleJobs(): Promise<void> {
         await updateJobStatus(imagePack.id, {
           errorMessage: `Image pack stopped without a confirmed provider result. ${refunded > 0 ? "Credits for images that were not created were returned." : ""}`.trim(),
         });
+        void notifyAdminRenderFailed(imagePack, "Image pack stopped without a confirmed provider result.");
         await notifyJobUpdate(imagePack.id);
       }
     }
 
-    // Image-first jobs are safe to resume when either every planned source
-    // image already exists or a paid image/video request has a persisted poll
-    // handle. In both cases recovery only reuses saved work or performs a GET;
-    // it must not charge the reservation again. An uncertain submission with
-    // no durable request id remains a hard stop.
+    const staleImageFirstPollJobs = await db
+      .select()
+      .from(jobsTable)
+      .where(sql`
+        status IN ('analyzing', 'generating', 'stitching')
+        AND manifest->>'imageFirstVersion' = '1'
+        AND ${staleWindow}
+        ${notInFlight}
+        AND (
+          EXISTS (
+            SELECT 1 FROM jsonb_object_keys(COALESCE(manifest->'pendingImageRequests', '{}'::jsonb))
+          )
+          OR EXISTS (
+            SELECT 1 FROM jsonb_object_keys(COALESCE(manifest->'pendingRequests', '{}'::jsonb))
+          )
+        )
+      `);
+    for (const candidate of staleImageFirstPollJobs) {
+      const meta = aiMetaOf(candidate);
+      const imageTimeout = Object.keys(meta.pendingImageRequests ?? {}).length > 0;
+      const pollRecovery = planNoChargePollRecovery(meta, imageTimeout);
+      if (!pollRecovery.canRetry) continue;
+      const requeued = await requeueSavedPollAtNoCharge(
+        candidate.id,
+        candidate.claimedAt,
+        imageTimeout ? "image" : "provider",
+        `A saved image or scene request timed out. Resuming it at no charge (${pollRecovery.nextCount}/${MAX_NO_CHARGE_POLL_RECOVERIES}).`,
+        Date.now() + 60_000,
+      );
+      if (requeued) {
+        logger.info({ jobId: candidate.id }, "Watchdog resumed stale image-first saved request");
+        await notifyJobUpdate(candidate.id);
+      }
+    }
+
+    // A request-free image-first job is safe to resume once every planned
+    // source image exists. This path performs only assembly or fresh,
+    // reservation-backed scene work and does not consume a polling recovery.
     const safeImageFirstRecovery = sql`(
       NOT EXISTS (
         SELECT 1 FROM jsonb_object_keys(
@@ -4211,30 +4321,25 @@ async function recoverStaleJobs(): Promise<void> {
           COALESCE(manifest->'submissionIntents', '{}'::jsonb)
         )
       )
-      AND (
-        (
-          jsonb_array_length(COALESCE(manifest->'storyboard'->'shots', '[]'::jsonb)) > 0
-          AND (
-            SELECT COUNT(*) FROM image_assets
-            WHERE image_assets.job_id = jobs.id
-          ) >= jsonb_array_length(COALESCE(manifest->'storyboard'->'shots', '[]'::jsonb))
-        )
-        OR EXISTS (
-          SELECT 1 FROM jsonb_object_keys(
-            COALESCE(manifest->'pendingImageRequests', '{}'::jsonb)
-          )
-        )
-        OR EXISTS (
-          SELECT 1 FROM jsonb_object_keys(
-            COALESCE(manifest->'pendingRequests', '{}'::jsonb)
-          )
+      AND NOT EXISTS (
+        SELECT 1 FROM jsonb_object_keys(
+          COALESCE(manifest->'pendingImageRequests', '{}'::jsonb)
         )
       )
+      AND NOT EXISTS (
+        SELECT 1 FROM jsonb_object_keys(
+          COALESCE(manifest->'pendingRequests', '{}'::jsonb)
+        )
+      )
+      AND jsonb_array_length(COALESCE(manifest->'storyboard'->'shots', '[]'::jsonb)) > 0
+      AND (
+        SELECT COUNT(*) FROM image_assets
+        WHERE image_assets.job_id = jobs.id
+      ) >= jsonb_array_length(COALESCE(manifest->'storyboard'->'shots', '[]'::jsonb))
     )`;
     const recoveredImageFirstJobs = await db.execute<{ id: string }>(sql`
       UPDATE jobs
       SET status = 'queued', claimed_at = NULL,
-          retry_count = retry_count + 1,
           error_message = 'A saved image or scene request timed out. Resuming it without a new provider submission or credit charge.',
           manifest = COALESCE(manifest, '{}'::jsonb) || jsonb_build_object(
             'retryAfter', ${(Date.now() + 60_000)}::bigint,
@@ -4274,6 +4379,10 @@ async function recoverStaleJobs(): Promise<void> {
     `);
     for (const row of staleImageFirstJobs.rows) {
       await refundReservation(row.id, row.user_id, "stale-image-foundation");
+      void notifyAdminRenderFailed(
+        { id: row.id, userId: row.user_id },
+        "Source-image recovery stopped without a safe resumable request.",
+      );
       await notifyJobUpdate(row.id);
     }
 
@@ -4287,14 +4396,56 @@ async function recoverStaleJobs(): Promise<void> {
       WHERE status IN ('analyzing', 'generating', 'stitching')
         AND job_type <> 'image_pack'
         AND COALESCE(manifest->>'imageFirstVersion', '') <> '1'
+        AND claimed_at IS NOT NULL
         AND ${staleWindow}
-        AND retry_count < ${MAX_RETRIES - 1}
+        AND (
+          retry_count < ${MAX_RETRIES - 1}
+          OR EXISTS (
+            SELECT 1 FROM jsonb_object_keys(COALESCE(manifest->'pendingRequests', '{}'::jsonb))
+          )
+        )
         ${notInFlight}
     `);
     const recovered: string[] = [];
     for (const row of staleCandidates.rows) {
       const meta =
         row.manifest && typeof row.manifest === "object" ? (row.manifest as AiJobMeta) : {};
+      if (Object.keys(meta.pendingRequests ?? {}).length > 0) {
+        const pollRecovery = planNoChargePollRecovery(meta, false);
+        const requeued = pollRecovery.canRetry
+          ? await requeueSavedPollAtNoCharge(
+              row.id,
+              row.claimed_at,
+              "provider",
+              `Scene polling timed out. Safely resuming the saved request at no charge (${pollRecovery.nextCount}/${MAX_NO_CHARGE_POLL_RECOVERIES}).`,
+              Date.now() + 60_000,
+            )
+          : null;
+        if (requeued) {
+          recovered.push(row.id);
+          continue;
+        }
+        const stopped = await db.execute<{ id: string }>(sql`
+          UPDATE jobs
+          SET status = 'failed', claimed_at = NULL,
+              error_message = 'The saved scene request could not be resumed safely. Credits for unfinished work were returned.',
+              updated_at = NOW()
+          WHERE id = ${row.id}
+            AND status IN ('analyzing', 'generating', 'stitching')
+            AND claimed_at = ${row.claimed_at}
+            AND ${staleWindow}
+          RETURNING id
+        `);
+        if (stopped.rows.length > 0) {
+          await refundReservation(row.id, row.user_id, "saved-poll-recovery-stopped");
+          void notifyAdminRenderFailed(
+            { id: row.id, userId: row.user_id },
+            "Saved scene polling could not be resumed safely.",
+          );
+          await notifyJobUpdate(row.id);
+        }
+        continue;
+      }
       // Finalize-only runs never call the provider — watchdog recovery of one
       // must be free. Bundles are also reserved exactly once at creation, so a
       // watchdog recovery must never debit the combined total again.
@@ -4373,6 +4524,10 @@ async function recoverStaleJobs(): Promise<void> {
             { jobId: row.id, userId: row.user_id, retryCost },
             "Stale job failed permanently — insufficient credits for recovery retry",
           );
+          void notifyAdminRenderFailed(
+            { id: row.id, userId: row.user_id },
+            "Stale render recovery could not reserve the required retry credits.",
+          );
           await notifyJobUpdate(row.id);
         }
       }
@@ -4417,6 +4572,10 @@ async function recoverStaleJobs(): Promise<void> {
             "bundled-source-watchdog-retries-exhausted",
           );
         }
+        void notifyAdminRenderFailed(
+          { id: row.id, userId: row.user_id },
+          "Render recovery reached its retry limit.",
+        );
         await notifyJobUpdate(row.id);
       }
     }

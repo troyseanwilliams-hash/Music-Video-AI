@@ -205,30 +205,6 @@ function notifyFooter(anyAppUrl: string, unsubUrl?: string): string {
   return `<a href="${href}" style="color:#7c3aed;text-decoration:none">Unsubscribe from these notifications</a> — one click, no login needed. Questions? Just reply. — The AIBeatSync team`;
 }
 
-/** "Your render didn't finish" — honest, calm, with a support-ticket path. */
-export function renderFailedEmailHtml(p: { title: string; reason: string; jobUrl: string; supportUrl: string; unsubscribeUrl?: string }): string {
-  const title = escapeHtml(p.title);
-  const reason = escapeHtml(p.reason.slice(0, 200));
-  return emailShell(
-    `
-      <h1 style="font-size:22px;margin:0 0 12px">Your render didn't finish 😕</h1>
-      <p style="font-size:15px;line-height:1.6;color:#333;margin:0 0 16px">
-        We hit a problem while rendering <strong>“${title}”</strong> and couldn't complete it.
-      </p>
-      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 16px;font-size:14px;color:#991b1b;line-height:1.5">
-        ${reason}
-      </div>
-      ${ctaButton(p.supportUrl, "Create a support ticket →")}
-      <p style="font-size:14px;line-height:1.6;color:#555;margin:0">
-        <strong>Please don't retry and spend more credits</strong> — create a support ticket instead
-        and we'll fix the job or make it right. You can also review the job
-        <a href="${p.jobUrl}" style="color:#7c3aed;text-decoration:none;font-weight:600">here</a>.
-      </p>
-    `,
-    { footerNote: notifyFooter(p.jobUrl, p.unsubscribeUrl) },
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Admin emails (same shell, table-first content)
 // ---------------------------------------------------------------------------

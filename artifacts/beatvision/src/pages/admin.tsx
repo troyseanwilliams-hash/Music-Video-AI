@@ -527,6 +527,7 @@ interface FailedJob extends PendingJob {
   retryCount: number | null;
   plannedScenes: number | null;
   savedClips: number;
+  savedOutputRecoveryAvailable: boolean;
   terminalSceneIndex: number | null;
   freshSceneRequestAvailable: boolean;
   updatedAt: string;
@@ -1412,6 +1413,7 @@ export default function AdminPage() {
         description: "Saved work and accepted requests were preserved. No new request or charge was created.",
       });
       refetchActiveJobs();
+      refetchFailedJobs();
     },
     onError: (err: Error) => toast({
       title: "Could not restart recovery",
@@ -2196,8 +2198,16 @@ export default function AdminPage() {
                     <div className="grid grid-cols-2 border-t border-border/50 divide-x divide-border/50">
                       <button
                         className="flex items-center justify-center gap-2 py-3.5 sm:py-2.5 text-sm font-semibold text-muted-foreground hover:bg-muted/30 active:bg-muted/50 transition-colors disabled:opacity-50"
-                        disabled={retryMutation.isPending}
+                        disabled={retryMutation.isPending || resumeRecoveryMutation.isPending}
                         onClick={() => {
+                          if (job.savedOutputRecoveryAvailable) {
+                            if (window.confirm(
+                              "Resume this render using only its stored clips and accepted scene request? No new provider request or credit charge will be created.",
+                            )) {
+                              resumeRecoveryMutation.mutate(job.id);
+                            }
+                            return;
+                          }
                           if (
                             job.freshSceneRequestAvailable &&
                             job.terminalSceneIndex != null &&
@@ -2211,7 +2221,9 @@ export default function AdminPage() {
                         }}
                       >
                         <RotateCcw className="h-4 w-4" />
-                        {job.freshSceneRequestAvailable && job.terminalSceneIndex != null
+                        {job.savedOutputRecoveryAvailable
+                          ? "Resume Saved Scene"
+                          : job.freshSceneRequestAvailable && job.terminalSceneIndex != null
                           ? `Create New Request for Scene ${job.terminalSceneIndex + 1}`
                           : "Retry Job"}
                       </button>
