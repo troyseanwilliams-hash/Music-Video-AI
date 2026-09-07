@@ -6,6 +6,7 @@ import type { AuthUser } from "@workspace/api-zod";
 
 export const SESSION_COOKIE = "sid";
 export const SESSION_TTL = 7 * 24 * 60 * 60 * 1000;
+const SESSION_REFRESH_WINDOW = SESSION_TTL / 2;
 
 export interface SessionData {
   user: AuthUser;
@@ -27,9 +28,20 @@ export async function getSession(sid: string): Promise<SessionData | null> {
     .from(sessionsTable)
     .where(eq(sessionsTable.sid, sid));
 
-  if (!row || row.expire < new Date()) {
+  const now = Date.now();
+  if (!row || row.expire.getTime() < now) {
     if (row) await deleteSession(sid);
     return null;
+  }
+
+  // Keep active users signed in without writing on every request. A session
+  // that is used during the final half of its lifetime gets a fresh seven-day
+  // window; abandoned sessions still expire normally.
+  if (row.expire.getTime() - now < SESSION_REFRESH_WINDOW) {
+    await db
+      .update(sessionsTable)
+      .set({ expire: new Date(now + SESSION_TTL) })
+      .where(eq(sessionsTable.sid, sid));
   }
 
   return row.sess as unknown as SessionData;
