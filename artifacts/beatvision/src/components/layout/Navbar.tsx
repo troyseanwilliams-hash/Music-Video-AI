@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useGetDashboardStats, getGetDashboardStatsQueryKey } from "@workspace/api-client-react";
 import {
   Video, LayoutDashboard, Wand2, LogOut, Loader2, ShieldCheck,
-    MessageSquare, Menu, X, Film, CreditCard, Compass, Music2, Settings, Sparkles, Gift, Mic, Podcast,
+    MessageSquare, Menu, X, Film, CreditCard, Compass, Music2, Settings, Sparkles, Gift, Podcast,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -92,15 +92,6 @@ export function Navbar() {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Always visible — icon-only on mobile, icon+label from sm: up — so it's never dropped from the right nav on small screens. */}
-            <Link
-              href="/generate"
-              className="hidden sm:flex items-center gap-1.5 rounded-full border border-border/50 bg-secondary/40 px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
-              aria-label="Create narrated videos in AIBeatSync"
-            >
-              <Mic className="h-3.5 w-3.5" aria-hidden="true" />
-              <span className="hidden sm:inline">Narrated Videos</span>
-            </Link>
             {isAuthenticated && processingCount > 0 && (
               <Link
                 href="/dashboard"
