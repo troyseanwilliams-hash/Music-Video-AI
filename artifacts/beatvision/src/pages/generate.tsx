@@ -1693,11 +1693,12 @@ export default function Generate() {
 
           {guidedStep === 1 && (
             <div className="space-y-6">
-              <h3 className="text-lg font-semibold">Add your audio track</h3>
+              <h3 className="text-lg font-semibold">Add your audio or narration</h3>
 
-              <Tabs value={sourceType} onValueChange={(v) => setSourceType(v as CreateJobRequestAudioSourceType)}>
-                <TabsList className="mb-4">
+              <Tabs value={sourceType} onValueChange={(v) => setSourceType(v as CreateJobRequestAudioSourceType | "narration")}>
+                <TabsList className="mb-4 grid w-full grid-cols-2 sm:grid-cols-4">
                   <TabsTrigger value={CreateJobRequestAudioSourceType.upload} className="flex gap-2"><Upload className="h-4 w-4"/> Upload</TabsTrigger>
+                  <TabsTrigger value="narration" className="flex gap-2"><Mic className="h-4 w-4"/> Narration</TabsTrigger>
                   <TabsTrigger value={CreateJobRequestAudioSourceType.suno} className="flex gap-2"><MonitorPlay className="h-4 w-4 text-[#1DB954]"/> Suno Link</TabsTrigger>
                   <TabsTrigger value={CreateJobRequestAudioSourceType.none} className="flex gap-2"><VideoOff className="h-4 w-4"/> Silent</TabsTrigger>
                 </TabsList>
