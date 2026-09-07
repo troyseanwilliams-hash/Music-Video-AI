@@ -772,6 +772,32 @@ router.post("/admin/jobs/:id/force-fail", async (req, res) => {
   res.json(updated);
 });
 
+// Remove queued preview-backfill jobs that have exhausted their retry budget.
+// These jobs are free and only create browser previews for already-completed
+// videos; never delete a claimed or in-progress job through this cleanup path.
+router.post("/admin/jobs/preview-backfills/cleanup", async (req, res) => {
+  if (!req.isAuthenticated() || !isAdmin(req.user.email)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const removed = await db
+    .delete(jobsTable)
+    .where(and(
+      eq(jobsTable.jobType, "preview_backfill"),
+      eq(jobsTable.status, "queued"),
+      sql`${jobsTable.claimedAt} IS NULL`,
+      sql`${jobsTable.retryCount} >= 3`,
+    ))
+    .returning({ id: jobsTable.id });
+
+  req.log.warn(
+    { removedCount: removed.length },
+    "Admin removed exhausted queued preview-backfill jobs",
+  );
+  res.json({ ok: true, removedCount: removed.length, removedJobIds: removed.map((job) => job.id) });
+});
+
 // Restart a stalled active recovery from its persisted accepted request. This
 // changes ownership only: it does not clear saved media, submit provider work,
 // refund credits, or reserve credits again.
