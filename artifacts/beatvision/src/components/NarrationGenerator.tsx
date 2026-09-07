@@ -88,6 +88,8 @@ export function NarrationGenerator({ onHandoff, onExit, onCostError }: Narration
   }, [activeJobId]);
 
   const [debouncedScript, setDebouncedScript] = useState(script);
+  const scriptLength = script.trim().length;
+  const debouncedScriptLength = debouncedScript.trim().length;
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedScript(script), 500);
     return () => clearTimeout(timer);
@@ -101,7 +103,7 @@ export function NarrationGenerator({ onHandoff, onExit, onCostError }: Narration
   };
 
   useEffect(() => {
-    if (debouncedScript.length >= 40) {
+    if (debouncedScriptLength >= 40) {
       if (isSelectionComplete()) {
         estimateMutation.mutate({
           script: debouncedScript,
@@ -118,7 +120,7 @@ export function NarrationGenerator({ onHandoff, onExit, onCostError }: Narration
     } else {
       estimateMutation.reset();
     }
-  }, [debouncedScript, voiceId, musicSource, musicPrompt, soundtrackId, musicObjectPath, musicTitle]);
+  }, [debouncedScript, debouncedScriptLength, voiceId, musicSource, musicPrompt, soundtrackId, musicObjectPath, musicTitle]);
 
 
   const [playingPreview, setPlayingPreview] = useState<string | null>(null);
@@ -152,7 +154,7 @@ export function NarrationGenerator({ onHandoff, onExit, onCostError }: Narration
   }, []);
 
   const handleGenerate = () => {
-    if (script.length < 40) {
+    if (scriptLength < 40) {
       toast({ title: "Script too short", description: "Please enter at least 40 characters.", variant: "destructive" });
       return;
     }
@@ -536,8 +538,14 @@ export function NarrationGenerator({ onHandoff, onExit, onCostError }: Narration
           className="min-h-[120px] resize-y"
           maxLength={39000}
         />
-        {script.length > 0 && script.length < 40 && (
-          <p className="text-xs text-destructive">Script must be at least 40 characters.</p>
+        {scriptLength < 40 ? (
+          <p className="text-xs text-muted-foreground">
+            {scriptLength === 0
+              ? "A minimum of 40 characters is needed to generate narration."
+              : `${40 - scriptLength} more character${40 - scriptLength === 1 ? "" : "s"} needed to continue.`}
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">Your script is ready for narration.</p>
         )}
       </div>
 
@@ -709,8 +717,10 @@ export function NarrationGenerator({ onHandoff, onExit, onCostError }: Narration
       <div className="pt-6 border-t flex items-center justify-between">
         <div className="flex flex-col">
           <span className="text-sm font-medium">Narration Audio Estimate</span>
-          {script.length < 40 ? (
-            <span className="text-sm text-muted-foreground">Enter a valid script</span>
+          {scriptLength < 40 ? (
+            <span className="text-sm text-muted-foreground">
+              {scriptLength === 0 ? "Waiting for your script" : `${40 - scriptLength} more character${40 - scriptLength === 1 ? "" : "s"} needed`}
+            </span>
           ) : !isSelectionComplete() ? (
             <span className="text-sm text-muted-foreground">Select an audio track</span>
           ) : estimateMutation.isError ? (
@@ -727,7 +737,7 @@ export function NarrationGenerator({ onHandoff, onExit, onCostError }: Narration
         </div>
         <Button 
           onClick={handleGenerate} 
-          disabled={script.length < 40 || createMutation.isPending || !isSelectionComplete() || estimateMutation.isPending || estimateMutation.isError}
+          disabled={scriptLength < 40 || createMutation.isPending || !isSelectionComplete() || estimateMutation.isPending || estimateMutation.isError}
           className="min-w-[120px] shadow-glow"
         >
           {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Generate Narration"}
