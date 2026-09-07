@@ -17,7 +17,8 @@ import {
   Layers,
   Wallet,
   Activity,
-  CreditCard
+  CreditCard,
+  AudioWaveform
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { AuroraBackground } from "@/components/AuroraBackground";
@@ -296,6 +297,43 @@ export default function Home() {
                   <div className="absolute top-6 right-6 bg-black/60 backdrop-blur-md border border-white/10 rounded-full px-3 py-1.5 flex items-center gap-2 shadow-xl">
                     <div className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
                     <span className="text-[10px] font-bold tracking-wider text-white uppercase">Rendered in Kling</span>
+                  </div>
+                  <div className="absolute inset-x-4 bottom-4 rounded-2xl border border-white/15 bg-black/65 p-3 backdrop-blur-xl shadow-2xl">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/20 text-primary">
+                          <AudioWaveform className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-[11px] font-semibold text-white">Beat-matched music video</p>
+                          <p className="text-[9px] uppercase tracking-[0.18em] text-white/45">Live audio direction</p>
+                        </div>
+                      </div>
+                      <span className="shrink-0 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-1 text-[9px] font-semibold uppercase tracking-wider text-emerald-300">
+                        Synced
+                      </span>
+                    </div>
+                    <div className="mt-3 flex items-end gap-3">
+                      <div className="flex h-8 flex-1 items-end gap-0.5 overflow-hidden">
+                        {[38, 62, 48, 78, 55, 92, 66, 44, 72, 58, 84, 49, 68, 96, 60, 76, 45, 88, 56, 72].map((height, index) => (
+                          <motion.div
+                            key={index}
+                            className="min-w-[3px] flex-1 rounded-full bg-gradient-to-t from-primary to-accent"
+                            initial={{ height: `${Math.max(22, height - 14)}%` }}
+                            animate={{ height: [`${Math.max(22, height - 14)}%`, `${height}%`, `${Math.max(22, height - 8)}%`] }}
+                            transition={{ duration: 1.2 + (index % 4) * 0.15, repeat: Infinity, repeatType: "reverse", ease: "easeInOut", delay: index * 0.03 }}
+                          />
+                        ))}
+                      </div>
+                      <div className="flex shrink-0 items-baseline gap-1 text-right">
+                        <span className="font-mono text-lg font-bold text-white">128</span>
+                        <span className="text-[9px] uppercase tracking-wider text-white/45">BPM</span>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-[9px] text-white/55">
+                      <span>Scene cuts follow the track’s energy</span>
+                      <span className="font-medium text-white/75">92% energy</span>
+                    </div>
                   </div>
                 </div>
               </motion.div>

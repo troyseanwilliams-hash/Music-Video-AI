@@ -1552,57 +1552,6 @@ export default function JobStatus() {
           <ReferEarnCard />
         )}
 
-        {/* ── Audio analysis ── */}
-        {analysis && !noAudioJob && (
-          <div className="max-w-md">
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base font-semibold flex items-center gap-2">
-                    <Music className="h-4 w-4 text-primary" /> Audio Profile
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <dl className="space-y-4">
-                    <div>
-                      <dt className="text-sm text-muted-foreground">BPM / Tempo</dt>
-                      <dd className="text-2xl font-bold font-mono">{analysis.bpm?.toString() ?? "N/A"}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-sm text-muted-foreground">Musical Key</dt>
-                      <dd className="text-lg font-medium">{analysis.key?.toString() ?? "N/A"}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-sm text-muted-foreground">Detected Mood</dt>
-                      <dd className="text-lg font-medium capitalize">{analysis.mood?.toString() ?? "N/A"}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-sm text-muted-foreground">Duration</dt>
-                      <dd className="text-lg font-medium font-mono">
-                        {analysis.durationSeconds
-                          ? `${Math.floor(Number(analysis.durationSeconds) / 60)}:${(Number(analysis.durationSeconds) % 60).toFixed(2).padStart(5, "0")}`
-                          : "N/A"}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-sm text-muted-foreground mb-1">Energy Level</dt>
-                      <dd className="flex items-center gap-2">
-                        <div className="relative flex-1 h-2 rounded-full bg-secondary/60 overflow-hidden">
-                          <div
-                            className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-primary to-accent"
-                            style={{ width: `${Math.round(Number(analysis.energy ?? 0) * 100)}%` }}
-                          />
-                        </div>
-                        <span className="text-sm font-medium w-8 text-right tabular-nums">
-                          {Math.round(Number(analysis.energy ?? 0) * 100)}%
-                        </span>
-                      </dd>
-                    </div>
-                  </dl>
-                </CardContent>
-              </Card>
-          </div>
-        )}
-
       </div>
     </div>
   );
