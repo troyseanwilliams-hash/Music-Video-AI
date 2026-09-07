@@ -56,6 +56,11 @@ class AdminRequestError extends Error {
   }
 }
 
+function extractJobId(value: string): string {
+  return value.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i)?.[0]
+    ?? value.trim();
+}
+
 async function fetchAdminUsers(search: string): Promise<AdminUser[]> {
   const params = search ? `?search=${encodeURIComponent(search)}` : "";
   const res = await fetch(`/api/admin/users${params}`, { credentials: "include" });
@@ -1482,7 +1487,7 @@ export default function AdminPage() {
   const [attachUploadProgress, setAttachUploadProgress] = useState<string | null>(null);
   const attachMutation = useMutation({
     mutationFn: async () => {
-      const jobId = attachJobId.trim();
+      const jobId = extractJobId(attachJobId);
       if (!jobId) throw new Error("Enter the job ID");
       // Each line: "<index> <url>" — also accepts "index: url" or "index,url".
       const clips = attachLines
@@ -1525,7 +1530,7 @@ export default function AdminPage() {
 
   const attachFilesMutation = useMutation({
     mutationFn: async () => {
-      const jobId = attachJobId.trim();
+      const jobId = extractJobId(attachJobId);
       if (!jobId) throw new Error("Enter the job ID");
       if (!attachFiles.length) throw new Error("Select at least one video file");
       const startIndex = Number(attachStartIndex);
@@ -1620,7 +1625,7 @@ export default function AdminPage() {
 
   const finalizeMutation = useMutation({
     mutationFn: async () => {
-      const jobId = attachJobId.trim();
+      const jobId = extractJobId(attachJobId);
       if (!jobId) throw new Error("Enter the job ID");
       const res = await fetch(`/api/admin/jobs/${jobId}/finalize-partial`, {
         method: "POST",
@@ -1642,7 +1647,7 @@ export default function AdminPage() {
 
   const courtesy30SceneMutation = useMutation({
     mutationFn: async () => {
-      const jobId = attachJobId.trim();
+      const jobId = extractJobId(attachJobId);
       if (!jobId) throw new Error("Enter the job ID");
       const res = await fetch(`/api/admin/jobs/${jobId}/courtesy-30-scene`, {
         method: "POST",
@@ -1666,7 +1671,7 @@ export default function AdminPage() {
 
   const notifyOnCompleteMutation = useMutation({
     mutationFn: async () => {
-      const jobId = attachJobId.trim();
+      const jobId = extractJobId(attachJobId);
       if (!jobId) throw new Error("Enter the job ID");
       const res = await fetch(`/api/admin/jobs/${jobId}/notify-on-complete`, {
         method: "POST",
