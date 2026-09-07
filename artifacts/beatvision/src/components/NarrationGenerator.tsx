@@ -33,6 +33,7 @@ export function NarrationGenerator({ onHandoff, onExit, onCostError }: Narration
   const { isAuthenticated } = useAuth();
 
   const [script, setScript] = useState("");
+  const [narrationTitle, setNarrationTitle] = useState("");
   const [voiceId, setVoiceId] = useState<string>("");
 
   // Music State
@@ -69,6 +70,12 @@ export function NarrationGenerator({ onHandoff, onExit, onCostError }: Narration
 
   const { data: jobData, error: jobError, isLoading: jobLoading } = useNarrationJob(activeJobId);
   const job = jobData?.narration;
+
+  useEffect(() => {
+    if (job?.title) {
+      setNarrationTitle((current) => current || job.title);
+    }
+  }, [job?.id, job?.title]);
 
   const estimateMutation = useEstimateNarration();
   const createMutation = useCreateNarration();
@@ -164,6 +171,7 @@ export function NarrationGenerator({ onHandoff, onExit, onCostError }: Narration
     createMutation.mutate(
       {
         script,
+        title: narrationTitle.trim() || undefined,
         voiceId,
         musicSource,
         musicPrompt: musicSource === "generated" ? musicPrompt : undefined,
@@ -197,14 +205,31 @@ export function NarrationGenerator({ onHandoff, onExit, onCostError }: Narration
       });
       return;
     }
-    if (job?.result?.handoff) {
-      onHandoff(job.result.handoff, "AI Narration");
-    }
+    if (!job?.result?.handoff) return;
+    const title = narrationTitle.trim() || job.title || "AI Narration";
+    saveToSoundtracksMutation.mutate({ id: job.id, title }, {
+      onSuccess: () => {
+        setSavedToSoundtracks(true);
+        toast({
+          title: "Saved to My Music",
+          description: `"${title}" was saved before opening video setup.`,
+        });
+        onHandoff(job.result!.handoff, title);
+      },
+      onError: (error) => {
+        toast({
+          title: "Could not save narration",
+          description: `${error.message} Video setup was not opened so your narration is not lost.`,
+          variant: "destructive",
+        });
+      },
+    });
   };
 
   const handleAudioOnly = () => {
     if (!job?.id) return;
-    saveToSoundtracksMutation.mutate(job.id, {
+    const title = narrationTitle.trim() || job.title || "AI Narration";
+    saveToSoundtracksMutation.mutate({ id: job.id, title }, {
       onSuccess: () => {
         setSavedToSoundtracks(true);
         toast({
@@ -376,6 +401,22 @@ export function NarrationGenerator({ onHandoff, onExit, onCostError }: Narration
         </div>
         
         <div className="flex flex-col gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="completed-narration-title">Narration title</Label>
+            <Input
+              id="completed-narration-title"
+              value={narrationTitle}
+              onChange={(event) => {
+                setNarrationTitle(event.target.value);
+                setSavedToSoundtracks(false);
+              }}
+              maxLength={120}
+              placeholder="Give this narration a title"
+            />
+            <p className="text-xs text-muted-foreground">
+              You can edit this title before saving or continuing to video setup.
+            </p>
+          </div>
           <audio controls src={job.result?.downloadPath} className="w-full" />
 
           <div className="flex items-start gap-3 rounded-md border border-border/60 bg-muted/20 p-3">
@@ -407,10 +448,13 @@ export function NarrationGenerator({ onHandoff, onExit, onCostError }: Narration
             </Button>
             <Button
               onClick={handleHandoff}
-              disabled={!videoReviewConfirmed}
+              disabled={!videoReviewConfirmed || saveToSoundtracksMutation.isPending}
               className="w-full font-medium shadow-glow"
             >
-              Continue to Video Setup
+              {saveToSoundtracksMutation.isPending && (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              )}
+              Save & Continue to Video Setup
             </Button>
           </div>
           {savedToSoundtracks && (
@@ -429,6 +473,7 @@ export function NarrationGenerator({ onHandoff, onExit, onCostError }: Narration
               </Button>
               <Button variant="ghost" size="sm" onClick={() => {
                 setActiveJobId(null);
+                setNarrationTitle("");
                 localStorage.removeItem("bv-active-narration-id");
               }}>
                 Create New Narration
@@ -463,6 +508,19 @@ export function NarrationGenerator({ onHandoff, onExit, onCostError }: Narration
 
   return (
     <div className="space-y-6 bg-card border rounded-lg p-6">
+      <div className="space-y-2">
+        <Label htmlFor="narration-title" className="text-base">Narration title</Label>
+        <Input
+          id="narration-title"
+          value={narrationTitle}
+          onChange={(event) => setNarrationTitle(event.target.value)}
+          placeholder="e.g. The Adelaide Summer Mystery"
+          maxLength={120}
+        />
+        <p className="text-xs text-muted-foreground">
+          This is how the narration will appear in My Music and video setup.
+        </p>
+      </div>
       <div className="space-y-3">
         <div className="flex justify-between items-center">
           <Label htmlFor="script" className="text-base">Script</Label>

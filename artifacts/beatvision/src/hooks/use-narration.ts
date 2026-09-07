@@ -21,6 +21,7 @@ export type NarrationResultHandoff = {
 
 export type NarrationJob = {
   id: string;
+  title: string;
   status: string;
   progressPercent: number;
   error?: string | null;
@@ -81,6 +82,7 @@ export function useNarrationJob(id: string | null) {
 
 export type EstimateNarrationParams = {
   script: string;
+  title?: string;
   voiceId?: string;
   musicSource?: "none" | "generated" | "soundtrack" | "upload" | "suno";
   musicPrompt?: string;
@@ -135,10 +137,12 @@ export function useCreateNarration() {
 export function useSaveNarrationToSoundtracks() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async ({ id, title }: { id: string; title: string }) => {
       const res = await fetch(`/api/narrations/${id}/save-to-soundtracks`, {
         method: "POST",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));

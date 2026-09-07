@@ -24,6 +24,7 @@ const router = Router();
 const storage = new ObjectStorageService();
 const bodySchema = z.object({
   script: z.string().trim().min(MIN_SCRIPT_CHARS).max(MAX_SCRIPT_CHARS),
+  title: z.string().trim().max(120).optional(),
   voiceId: z.string().trim().max(100).optional(),
   includeMusic: z.boolean().optional(),
   musicSource: z.enum(NARRATION_MUSIC_SOURCES).optional(),
@@ -105,6 +106,17 @@ function admin(email: string | null | undefined): boolean {
   return Boolean(email && process.env.ADMIN_EMAIL && email.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase());
 }
 
+function narrationTitle(title: unknown, script: unknown): string {
+  const requested = typeof title === "string"
+    ? title.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 120)
+    : "";
+  if (requested) return requested;
+  const scriptTitle = typeof script === "string"
+    ? script.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().split(" ").slice(0, 8).join(" ")
+    : "";
+  return scriptTitle ? `Narration: ${scriptTitle}`.slice(0, 120) : "AI Narration";
+}
+
 function view(job: typeof jobsTable.$inferSelect) {
   const meta = job.manifest && typeof job.manifest === "object"
     ? job.manifest as Record<string, unknown>
@@ -118,6 +130,7 @@ function view(job: typeof jobsTable.$inferSelect) {
     estimatedCost: Number(meta.estimatedCost ?? charged),
     chargedCost: charged,
     refunded: meta.refunded === true,
+    title: narrationTitle(meta.title, meta.script),
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
     ...(job.status === "ready" && job.audioObjectPath ? {
@@ -257,6 +270,7 @@ router.post("/narrations", async (req, res) => {
       progressPercent: 0,
       manifest: {
         script: parsed.data.script,
+        title: narrationTitle(parsed.data.title, parsed.data.script),
         voiceId: parsed.data.voiceId ?? defaultNarrationVoiceId(),
         musicSource: music.source,
         musicPrompt: parsed.data.musicPrompt,
@@ -316,15 +330,13 @@ router.post("/narrations/:id/save-to-soundtracks", async (req, res) => {
     const manifest = job.manifest && typeof job.manifest === "object"
       ? job.manifest as Record<string, unknown>
       : {};
-    const scriptTitle = typeof manifest.script === "string"
-      ? manifest.script.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().split(" ").slice(0, 8).join(" ")
-      : "";
+    const title = narrationTitle(req.body?.title || manifest.title, manifest.script);
     const duration = Number(audioAnalysis.durationSeconds);
     const filename = job.audioObjectPath.split("/").pop() ?? "";
     const ext = filename.includes(".") ? filename.split(".").pop()!.toLowerCase() : "mp3";
     const values = {
       userId: req.user!.id,
-      title: scriptTitle ? `Narration: ${scriptTitle}`.slice(0, 200) : "AI Narration",
+      title,
       prompt: "Narration audio",
       lyrics: null,
       hasVocals: true,
