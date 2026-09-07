@@ -461,18 +461,6 @@ export default function JobStatus() {
     job.jobType === "ai_video";
   const manifest = job.manifest ?? {};
   const imageFirstVideoJob = isGenerateJob && manifest.imageFirstVersion === 1;
-  const canRetryWithRetainedImages =
-    isFailed
-    && imageFirstVideoJob
-    && manifest.refunded === true
-    && Number(manifest.imageFirstRefundedCredits ?? 0) > 0
-    && manifest.bundledLipSyncEnabled !== true
-    && (
-      /duplicate source image content at positions \d+ and \d+/i.test(job.errorMessage ?? "")
-      || /strict source image inspection failed/i.test(job.errorMessage ?? "")
-    );
-  const hasUnreadableSourceFailure =
-    /strict source image inspection failed/i.test(job.errorMessage ?? "");
   const storyboard = manifest.storyboard;
   const bundledLipSyncChildId =
     typeof manifest.bundledLipSyncChildId === "string"
@@ -528,6 +516,30 @@ export default function JobStatus() {
   }).imageReview;
   const isReviewingImages = imageFirstVideoJob && imageReview?.phase === "awaiting_approval";
   const reviewScenes = Object.values(imageReview?.scenes ?? {}).sort((a, b) => a.index - b.index);
+  const hasCompleteRetainedImageSet =
+    reviewScenes.length > 0
+    && reviewScenes.every((scene) =>
+      Boolean(scene.canonicalPath)
+      && (scene.status === undefined || scene.status === "ready")
+    );
+  const hasSpecialRetainedImageFailure =
+    /duplicate source image content at positions \d+ and \d+|strict source image inspection failed/i.test(
+      job.errorMessage ?? "",
+    );
+  const canRetryWithRetainedImages =
+    isFailed
+    && imageFirstVideoJob
+    && manifest.bundledLipSyncEnabled !== true
+    && (
+      (manifest.refunded !== true && hasCompleteRetainedImageSet)
+      || (
+        manifest.refunded === true
+        && Number(manifest.imageFirstRefundedCredits ?? 0) > 0
+        && (hasCompleteRetainedImageSet || hasSpecialRetainedImageFailure)
+      )
+    );
+  const hasUnreadableSourceFailure =
+    /strict source image inspection failed/i.test(job.errorMessage ?? "");
   const pendingReviewIndexes = new Set(
     Object.values(imageReview?.pendingReplacements ?? {}).map((pending) => pending.index),
   );
@@ -1384,7 +1396,7 @@ export default function JobStatus() {
                             )}
                             {hasUnreadableSourceFailure
                               ? "Inspect and replace image"
-                              : "Retry with retained images"}
+                              : "Resume with saved images"}
                           </Button>
                         )}
                         <Button variant="outline" onClick={() => setLocation("/generate")}>

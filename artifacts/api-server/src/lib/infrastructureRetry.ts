@@ -1,7 +1,7 @@
 export const INFRASTRUCTURE_RETRY = "[INFRASTRUCTURE_RETRY]";
 
 const TRANSIENT_INFRASTRUCTURE_PATTERN =
-  /connection terminated|connection timeout|database.*(?:timeout|unavailable)|ECONNRESET|ETIMEDOUT|EPIPE|ENETUNREACH|EAI_AGAIN|socket hang up|TimeoutError|operation was aborted due to timeout|service unavailable|bad gateway/i;
+  /connection terminated|connection timeout|database.*(?:timeout|unavailable)|Failed query:\s*update\s+"jobs"\s+set\s+"progress_percent"|ECONNRESET|ETIMEDOUT|EPIPE|ENETUNREACH|EAI_AGAIN|socket hang up|TimeoutError|operation was aborted due to timeout|service unavailable|bad gateway/i;
 
 export function isTransientInfrastructureError(error: unknown): boolean {
   let current: unknown = error;

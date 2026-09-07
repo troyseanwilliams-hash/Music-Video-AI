@@ -24,6 +24,8 @@ type ImageFirstBillingMeta = {
   uncertainSubmissions?: Record<string, unknown>;
   pendingImageRequests?: Record<string, unknown>;
   uncertainImageSubmissions?: Record<string, unknown>;
+  submissionIntents?: Record<string, unknown>;
+  imageReview?: { phase?: string };
 };
 
 export type ImageFirstSettlementAmounts = {
@@ -52,6 +54,33 @@ export function imageFirstRetryReservation(meta: {
     reserved,
     Math.max(0, meta.imageFirstRefundedCredits ?? reserved),
   );
+}
+
+export function imageFirstAutomaticRetryCost(meta: {
+  imageFirstVersion?: number;
+  reservedCredits?: number;
+  refunded?: boolean;
+  imageReview?: { phase?: string };
+  partialClips?: Record<string, unknown>;
+  pendingRequests?: Record<string, unknown>;
+  rejectedRequests?: Record<string, unknown>;
+  uncertainSubmissions?: Record<string, unknown>;
+  submissionIntents?: Record<string, unknown>;
+}): number {
+  const reserved = Math.max(0, meta.reservedCredits ?? 0);
+  const videoWorkStarted = [
+    meta.partialClips,
+    meta.pendingRequests,
+    meta.rejectedRequests,
+    meta.uncertainSubmissions,
+    meta.submissionIntents,
+  ].some((entries) => entries && Object.keys(entries).length > 0);
+  const continuingOriginalReservation =
+    meta.imageFirstVersion === 1
+    && meta.refunded !== true
+    && meta.imageReview?.phase === "approved"
+    && !videoWorkStarted;
+  return continuingOriginalReservation ? 0 : reserved;
 }
 
 function zeroSettlementAmounts(): ImageFirstSettlementAmounts {

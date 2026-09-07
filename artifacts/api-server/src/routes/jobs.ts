@@ -1506,6 +1506,80 @@ router.post("/jobs/:id/retry", async (req, res) => {
     });
     return;
   }
+  const retainedReviewScenes = Object.values(retryMeta.imageReview?.scenes ?? {});
+  const canReopenSettledRetainedImages =
+    job.status === "failed"
+    && job.jobType === "ai"
+    && retryMeta.imageFirstVersion === 1
+    && retryMeta.refunded === true
+    && Number(retryMeta.imageFirstRefundedCredits ?? 0) > 0
+    && retryMeta.bundledLipSyncEnabled !== true
+    && retryMeta.imageReview?.phase === "approved"
+    && retainedReviewScenes.length > 0
+    && retainedReviewScenes.every((scene) => scene.canonicalPath && (scene.status === undefined || scene.status === "ready"))
+    && Object.keys(retryMeta.pendingRequests ?? {}).length === 0
+    && Object.keys(retryMeta.uncertainSubmissions ?? {}).length === 0
+    && Object.keys(retryMeta.rejectedRequests ?? {}).length === 0
+    && Object.keys(retryMeta.submissionIntents ?? {}).length === 0;
+  if (canReopenSettledRetainedImages) {
+    const reopened = await db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select()
+        .from(jobsTable)
+        .where(and(eq(jobsTable.id, jobId), eq(jobsTable.userId, req.user.id)))
+        .limit(1)
+        .for("update");
+      const meta = locked?.manifest && typeof locked.manifest === "object"
+        ? (locked.manifest as AiJobMeta)
+        : {};
+      const review = meta.imageReview;
+      const scenes = Object.values(review?.scenes ?? {});
+      if (
+        !locked
+        || locked.status !== "failed"
+        || meta.refunded !== true
+        || review?.phase !== "approved"
+        || scenes.length === 0
+        || !scenes.every((scene) => scene.canonicalPath && (scene.status === undefined || scene.status === "ready"))
+      ) return null;
+      const { approvedRevision: _approvedRevision, ...reviewWithoutApproval } = review;
+      const resumeCredits = Math.max(0, meta.imageFirstRefundedCredits ?? 0);
+      const [updated] = await tx
+        .update(jobsTable)
+        .set({
+          status: "pending_approval",
+          claimedAt: null,
+          retryCount: 0,
+          errorMessage: null,
+          manifest: sql`jsonb_set(
+            jsonb_set(
+              COALESCE(${jobsTable.manifest}, '{}'::jsonb),
+              '{imageReview}',
+              ${JSON.stringify({ ...reviewWithoutApproval, phase: "awaiting_approval" })}::jsonb
+            ),
+            '{resumeReservationRequired}',
+            to_jsonb(${resumeCredits}::int)
+          )`,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(jobsTable.id, jobId), eq(jobsTable.status, "failed")))
+        .returning();
+      return updated ? { job: updated, resumeCredits } : null;
+    });
+    if (!reopened) {
+      res.status(409).json({
+        error: "This job changed before its retained images could be reopened.",
+        code: "RETAINED_IMAGE_RETRY_UNAVAILABLE",
+      });
+      return;
+    }
+    res.json({
+      ...toCustomerJobView(reopened.job),
+      resumeCreditsRequired: reopened.resumeCredits,
+      retainedImagesReopened: true,
+    });
+    return;
+  }
   const canResumeLegacyDuplicateJob =
     job.status === "failed"
     && job.jobType === "ai"

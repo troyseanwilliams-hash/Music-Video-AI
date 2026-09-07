@@ -24,7 +24,7 @@ import {
   resolveCharacterReferencePath,
   selectGeneratedCharacterAnchorPath,
 } from "./characterAnchor.js";
-import { settleImageFirstReservation } from "./imageFirstSettlement.js";
+import { imageFirstAutomaticRetryCost, settleImageFirstReservation } from "./imageFirstSettlement.js";
 import { hasCompleteSavedClipSet } from "./finalizeSavedClips.js";
 import { retryNoChargeOperation } from "./noChargeRetry.js";
 import {
@@ -2811,7 +2811,7 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
     return;
   }
 
-  if (errMsg.includes(INFRASTRUCTURE_RETRY)) {
+  if (errMsg.includes(INFRASTRUCTURE_RETRY) || isTransientInfrastructureError(err)) {
     const retryAfter = Date.now() + 60_000;
     const requeued = await db.execute<{ id: string }>(sql`
       UPDATE jobs SET
@@ -3030,7 +3030,9 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
       (savedClipCount > 0 && /ffmpeg|stitch|video processing/i.test(errMsg));
     const pendingBundle =
       liveMeta.bundledLipSyncEnabled === true && liveMeta.bundledLipSyncActivated !== true;
-    const retryCost = assemblyOnlyRetry || pendingBundle ? 0 : (liveMeta.reservedCredits ?? 0);
+    const retryCost = assemblyOnlyRetry || pendingBundle
+      ? 0
+      : imageFirstAutomaticRetryCost(liveMeta);
     const delayMs = Math.pow(2, nextRetry) * 60_000;
     const retryAfter = Date.now() + delayMs;
     const retryManifestPatch = JSON.stringify({
@@ -4307,7 +4309,7 @@ async function recoverStaleTimeoutJobs(): Promise<void> {
       const retryCost =
         meta.finalizeWithPartial === true || pendingBundle
           ? 0
-          : (meta.reservedCredits ?? 0);
+          : imageFirstAutomaticRetryCost(meta);
       const requeued = await db.execute<{ id: string }>(sql`
         WITH target AS (
           SELECT id FROM jobs

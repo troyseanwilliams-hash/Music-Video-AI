@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   calculateImageFirstSettlement,
+  imageFirstAutomaticRetryCost,
   imageFirstRetryReservation,
 } from "./imageFirstSettlement.js";
 
@@ -9,6 +10,23 @@ const storyboard = {
 };
 
 describe("image-first reservation settlement", () => {
+  it("does not charge again when retained images failed before any video request", () => {
+    expect(imageFirstAutomaticRetryCost({
+      imageFirstVersion: 1,
+      reservedCredits: 1637,
+      imageReview: { phase: "approved" },
+    })).toBe(0);
+  });
+
+  it("requires a new reservation after video provider work has started", () => {
+    expect(imageFirstAutomaticRetryCost({
+      imageFirstVersion: 1,
+      reservedCredits: 1637,
+      imageReview: { phase: "approved" },
+      pendingRequests: { 0: { pollUrl: "accepted" } },
+    })).toBe(1637);
+  });
+
   it("keeps completed source images charged and refunds unfinished work", () => {
     expect(calculateImageFirstSettlement({
       imageFirstVersion: 1,
