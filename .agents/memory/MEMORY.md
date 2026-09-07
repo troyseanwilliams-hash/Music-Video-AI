@@ -62,3 +62,4 @@
 - [Member media retention](member-media-retention.md) — never automatically purge videos belonging to current members; permanent deletion is an explicit admin action only.
 - [Music-aware prompt handoff](music-aware-prompt-handoff.md) — exact prompt plans require receipt-verified audio; preserve edits as numbered input, then revalidate in Generate before charging.
 - [Narration credit authority](narration-credit-authority.md) — AIBeatSync narration mirrors AIPodSync’s core workflow but charges only AIBeatSync credits.
+- [Database enum rollout](database-enum-rollout.md) — a TypeScript enum declaration does not update the live dev enum; add the value in development so Publish can detect and promote it.
