@@ -855,9 +855,9 @@ type RecoverReport = {
   };
 };
 
-// Bulk-recover videos whose clips finished on Pixazo after the server stopped
-// polling. Dry-run report first, then a single click re-queues the recoverable
-// jobs (worker reclaims finished renders for free, regenerates only the rest).
+// Bulk-recover videos whose clips finished after the server stopped polling.
+// Dry-run report first, then route saved-output-only jobs through the zero-charge
+// recovery endpoint and other protected failures through individual retry.
 function RecoverStrandedPanel() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -886,9 +886,22 @@ function RecoverStrandedPanel() {
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Recovery failed");
+      const savedOutputIds = Array.isArray(d.savedOutputRecoveryIds)
+        ? d.savedOutputRecoveryIds.filter((id: unknown): id is string => typeof id === "string")
+        : [];
       const protectedIds = Array.isArray(d.requiresIndividualRetryIds)
         ? d.requiresIndividualRetryIds.filter((id: unknown): id is string => typeof id === "string")
         : [];
+      for (const jobId of savedOutputIds) {
+        const resumeRes = await fetch(`/api/admin/jobs/${jobId}/resume-recovery`, {
+          method: "POST",
+          credentials: "include",
+        });
+        const resumeData = await resumeRes.json().catch(() => null);
+        if (!resumeRes.ok) {
+          throw new Error(resumeData?.error ?? `Saved-output recovery failed for ${jobId.slice(0, 8)}`);
+        }
+      }
       for (const jobId of protectedIds) {
         const retryRes = await fetch(`/api/admin/jobs/${jobId}/retry`, {
           method: "POST",
@@ -900,16 +913,19 @@ function RecoverStrandedPanel() {
         }
       }
       return {
-        requeued: Number(d.requeued ?? 0) + protectedIds.length,
+        requeued: Number(d.requeued ?? 0) + savedOutputIds.length + protectedIds.length,
         recharged: Number(d.recharged ?? 0),
         scanned: Number(d.scanned ?? 0),
+        savedOutputRecoveries: savedOutputIds.length,
         protectedRetries: protectedIds.length,
       };
     },
     onSuccess: (d) => {
       toast({
         title: `Re-queued ${d.requeued} job${d.requeued === 1 ? "" : "s"}`,
-        description: d.protectedRetries
+        description: d.savedOutputRecoveries
+          ? `${d.savedOutputRecoveries} fully covered job${d.savedOutputRecoveries === 1 ? " was" : "s were"} resumed from stored clips and accepted requests with no new charge.`
+          : d.protectedRetries
           ? `${d.protectedRetries} refunded or terminal-scene job${d.protectedRetries === 1 ? " was" : "s were"} routed through protected one-scene recovery.`
           : d.recharged
           ? `${d.recharged} previously-refunded job(s) were re-charged (user receives the video).`

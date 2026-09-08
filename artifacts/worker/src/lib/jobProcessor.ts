@@ -1318,6 +1318,9 @@ async function validateStrictSourceFoundation(
       const buffer = await storageService.downloadObjectBuffer(path!);
       fingerprints.push(await perceptualFingerprint(buffer, "image"));
     } catch (error) {
+      if (isTransientInfrastructureError(error)) {
+        throw recoverableInfrastructureError(error);
+      }
       const detail = error instanceof Error ? error.message : String(error);
       throw new Error(
         `${IMAGE_API_FAILURE}: Strict source image inspection failed at scene ${shot.index + 1}: ${detail}`,
@@ -2337,7 +2340,10 @@ async function generateClips(
   const generationOrder = pendingFirstOrder(baseGenerationOrder, pending);
   const skippedTerminalScenes = new Set<number>();
   const reuseCount = Object.keys(persisted).length;
-  const finalizeOnly = clipMeta.finalizeWithPartial === true;
+  // Complete saved-output coverage is stronger than a stale finalize-only flag:
+  // every scene can be reused or GET-polled, so no provider POST is reachable.
+  const finalizeOnly =
+    clipMeta.finalizeWithPartial === true && !isSavedOutputOnlyRecovery;
 
   logger.info(
     { jobId: job.id, provider, sectionCount: sections.length, clipDurationSec, targetOutputDuration: plan.targetOutputDuration, reuseCount },

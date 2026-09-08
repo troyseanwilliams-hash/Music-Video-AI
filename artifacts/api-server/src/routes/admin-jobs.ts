@@ -1376,15 +1376,26 @@ router.post("/admin/jobs/recover", async (req, res) => {
     return Object.keys(m.partialClips ?? {}).length > 0 || Object.keys(m.pendingRequests ?? {}).length > 0;
   });
 
-  // Refunded jobs and terminal scene failures require the row-locked individual
-  // retry path. It reserves the exact unfinished amount and selects a safe
-  // replacement engine. Bulk requeueing these jobs would repeat the failed
-  // request or charge an inaccurate amount.
+  // Fully covered saved-output jobs must use the row-locked, zero-charge polling
+  // transition. Other refunded or terminal failures still require the protected
+  // individual retry path, which may reserve unfinished work.
+  const savedOutputRecoveryIds = candidates
+    .filter((r) => {
+      const meta = metaOf(r.manifest);
+      return canResumeFailedSavedOutputRecovery(meta.storyboard?.numClips ?? 0, meta);
+    })
+    .map((r) => r.id);
+  const savedOutputRecoverySet = new Set(savedOutputRecoveryIds);
   const requiresIndividualRetryIds = candidates
-    .filter((r) => requiresProtectedAdminRetry(metaOf(r.manifest), r.errorMessage))
+    .filter((r) =>
+      !savedOutputRecoverySet.has(r.id) &&
+      requiresProtectedAdminRetry(metaOf(r.manifest), r.errorMessage)
+    )
     .map((r) => r.id);
   const individualRetrySet = new Set(requiresIndividualRetryIds);
-  const bulkCandidates = candidates.filter((r) => !individualRetrySet.has(r.id));
+  const bulkCandidates = candidates.filter((r) =>
+    !savedOutputRecoverySet.has(r.id) && !individualRetrySet.has(r.id)
+  );
 
   const bulkCandidateIds = bulkCandidates.map((r) => r.id);
   let requeuedIds: string[] = [];
@@ -1403,6 +1414,7 @@ router.post("/admin/jobs/recover", async (req, res) => {
   req.log.info(
     {
       requeued: requeuedIds.length,
+      savedOutputRecoveries: savedOutputRecoveryIds.length,
       requiresIndividualRetry: requiresIndividualRetryIds.length,
       onlyWithSalvage,
       scoped: !!(ids && ids.length),
@@ -1416,6 +1428,7 @@ router.post("/admin/jobs/recover", async (req, res) => {
     recharged: 0,
     scanned: rows.length,
     requeuedIds,
+    savedOutputRecoveryIds,
     requiresIndividualRetryIds,
   });
 });

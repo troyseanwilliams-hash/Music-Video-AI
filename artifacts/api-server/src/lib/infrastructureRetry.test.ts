@@ -14,6 +14,7 @@ describe("infrastructure retry classification", () => {
     new Error("Connection terminated unexpectedly"),
     new Error("Connection terminated due to connection timeout"),
     new Error('Failed query: update "jobs" set "progress_percent" = GREATEST(progress_percent, $1)'),
+    new Error('Failed query: select "status", "claimed_at" from "jobs" where "jobs"."id" = $1 limit $2'),
     new DOMException("The operation was aborted due to timeout", "TimeoutError"),
     Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" }),
   ])("recognizes transient infrastructure failures", (error) => {
