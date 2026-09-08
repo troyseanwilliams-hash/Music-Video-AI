@@ -37,16 +37,6 @@ export interface StitchResult {
   resolvedSequence: number[]; // actual source indexes used after corrupt-clip fallback
 }
 
-function runFfmpeg(cmd: ffmpeg.FfmpegCommand): Promise<void> {
-  return withResourceLease("ffmpeg_heavy", (lease) => new Promise<void>((resolve, reject) => {
-    lease.signal.addEventListener("abort", () => {
-      try { cmd.kill("SIGKILL"); } catch { /* already exited */ }
-      reject(lease.signal.reason);
-    }, { once: true });
-    cmd.on("end", () => resolve()).on("error", (err) => reject(err)).run();
-  }), { ttlMs: 10 * 60_000 });
-}
-
 // A short render should never wait forever, but long caption/watermark encodes
 // legitimately need more than 12 minutes on the production VM. Scale the
 // deadline with output duration while keeping a hard upper bound.
@@ -189,7 +179,7 @@ async function extractThumbnailFromFile(
   timestampSeconds: number,
   outputPath: string,
 ): Promise<void> {
-  await runFfmpeg(
+  await runFfmpegWithTimeout(
     ffmpeg()
       .input(videoPath)
       .inputOptions(["-ss", String(Math.max(0, timestampSeconds))])

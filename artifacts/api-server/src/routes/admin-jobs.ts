@@ -21,6 +21,7 @@ import {
 import { canResumeDuplicateClipJob } from "../lib/duplicateClipRetry.js";
 import { imageFirstRetryReservation } from "../lib/imageFirstSettlement.js";
 import { canResumeFailedSavedOutputRecovery } from "../lib/infrastructureRetry.js";
+import { hasCompleteSavedClipSet } from "../lib/finalizeSavedClips.js";
 
 // Billing/salvage state AI jobs stash in the manifest jsonb.
 type AiJobMeta = {
@@ -71,6 +72,7 @@ type AiJobMeta = {
   uncertainSubmissions?: Record<string, unknown>;
   submissionIntents?: Record<string, unknown>;
   uncertainImageSubmissions?: Record<string, unknown>;
+  completeSavedClipRecovery?: boolean;
   targetedSceneRecovery?: {
     sceneIndex: number;
     assetType: "clip";
@@ -147,16 +149,27 @@ router.get("/admin/jobs/active", async (req, res) => {
   const jobs = rows.map(({ manifest, ...job }) => {
     const meta = metaOf(manifest);
     const storyboard = meta.storyboard;
+    const plannedScenes = storyboard?.numClips ?? 0;
     return {
       ...job,
       generationMode: meta.generationMode ?? storyboard?.generationMode ?? null,
-      plannedScenes: storyboard?.numClips ?? null,
+      plannedScenes: plannedScenes || null,
       clipDurationSec: storyboard?.clipDurationSec ?? null,
       reservedCredits: meta.reservedCredits ?? null,
       savedImages: Object.keys(meta.narrativeImages ?? {}).length,
       savedClips: Object.keys(meta.partialClips ?? {}).length,
       pendingImageRequests: Object.keys(meta.pendingImageRequests ?? {}).length,
       pendingClipRequests: Object.keys(meta.pendingRequests ?? {}).length,
+      completeSavedClipRecoveryAvailable:
+        job.jobType === "ai" &&
+        hasCompleteSavedClipSet(meta.partialClips ?? {}, plannedScenes) &&
+        Object.keys(meta.pendingRequests ?? {}).length === 0 &&
+        Object.keys(meta.pendingImageRequests ?? {}).length === 0 &&
+        Object.keys(meta.imageSubmissionIntents ?? {}).length === 0 &&
+        Object.keys(meta.uncertainImageSubmissions ?? {}).length === 0 &&
+        Object.keys(meta.submissionIntents ?? {}).length === 0 &&
+        Object.keys(meta.uncertainSubmissions ?? {}).length === 0 &&
+        Object.keys(meta.rejectedRequests ?? {}).length === 0,
     };
   });
   res.json({ jobs });
@@ -239,6 +252,7 @@ router.get("/admin/jobs/failed", async (req, res) => {
       requestedDuration: jobsTable.requestedDuration,
       audioSourceType: jobsTable.audioSourceType,
       errorMessage: jobsTable.errorMessage,
+      jobType: jobsTable.jobType,
       retryCount: jobsTable.retryCount,
       manifest: jobsTable.manifest,
       createdAt: jobsTable.createdAt,
@@ -261,11 +275,26 @@ router.get("/admin/jobs/failed", async (req, res) => {
       Boolean(meta.submissionIntents?.[recovery.sceneKey]) ||
       Boolean(meta.uncertainSubmissions?.[recovery.sceneKey])
     );
+    const completeSavedClipRecoveryAvailable =
+      job.jobType === "ai" &&
+      hasCompleteSavedClipSet(
+        meta.partialClips ?? {},
+        meta.storyboard?.numClips ?? 0,
+      ) &&
+      Object.keys(meta.pendingRequests ?? {}).length === 0 &&
+      Object.keys(meta.pendingImageRequests ?? {}).length === 0 &&
+      Object.keys(meta.imageSubmissionIntents ?? {}).length === 0 &&
+      Object.keys(meta.uncertainImageSubmissions ?? {}).length === 0 &&
+      Object.keys(meta.submissionIntents ?? {}).length === 0 &&
+      Object.keys(meta.uncertainSubmissions ?? {}).length === 0 &&
+      Object.keys(meta.rejectedRequests ?? {}).length === 0;
     return {
       ...job,
       plannedScenes: meta.storyboard?.numClips ?? null,
       savedClips: Object.keys(meta.partialClips ?? {}).length,
+      completeSavedClipRecoveryAvailable,
       savedOutputRecoveryAvailable:
+        completeSavedClipRecoveryAvailable ||
         canResumeFailedSavedOutputRecovery(meta.storyboard?.numClips ?? 0, meta),
       terminalSceneIndex: validSceneIndex,
       freshSceneRequestAvailable:
@@ -827,7 +856,16 @@ router.post("/admin/jobs/:id/resume-recovery", async (req, res) => {
       job.status === "failed" &&
       job.jobType === "ai" &&
       canResumeFailedSavedOutputRecovery(meta.storyboard?.numClips ?? 0, meta);
-    if (!isActiveRecovery && !failedSavedOutputRecovery) {
+    const completeSavedClipRecovery =
+      job.jobType === "ai" &&
+      (isActiveRecovery || job.status === "failed") &&
+      Object.keys(meta.pendingRequests ?? {}).length === 0 &&
+      Object.keys(meta.pendingImageRequests ?? {}).length === 0 &&
+      hasCompleteSavedClipSet(
+        meta.partialClips ?? {},
+        meta.storyboard?.numClips ?? 0,
+      );
+    if (!isActiveRecovery && !failedSavedOutputRecovery && !completeSavedClipRecovery) {
       return { kind: "not_active" as const, status: job.status };
     }
 
@@ -849,8 +887,9 @@ router.post("/admin/jobs/:id/resume-recovery", async (req, res) => {
         /^https:\/\//i.test((request as { pollUrl: string }).pollUrl)
       );
     if (
-      savedRequestCount === 0 ||
+      (savedRequestCount === 0 && !completeSavedClipRecovery) ||
       hasUncertainSubmission ||
+      Object.keys(meta.rejectedRequests ?? {}).length > 0 ||
       !validPendingClipRequests ||
       !validPendingImageRequests
     ) {
@@ -865,9 +904,13 @@ router.post("/admin/jobs/:id/resume-recovery", async (req, res) => {
         retryCount: 0,
         claimedAt: null,
         manifest: sql`jsonb_set(
-          COALESCE(${jobsTable.manifest}, '{}'::jsonb) - 'retryAfter',
-          '{finalizeWithPartial}',
-          'false'::jsonb
+          jsonb_set(
+            COALESCE(${jobsTable.manifest}, '{}'::jsonb) - 'retryAfter',
+            '{finalizeWithPartial}',
+            'false'::jsonb
+          ),
+          '{completeSavedClipRecovery}',
+          to_jsonb(${completeSavedClipRecovery}::boolean)
         )`,
         updatedAt: new Date(),
       })
@@ -875,7 +918,7 @@ router.post("/admin/jobs/:id/resume-recovery", async (req, res) => {
         eq(jobsTable.id, id),
         inArray(
           jobsTable.status,
-          failedSavedOutputRecovery
+          failedSavedOutputRecovery || (completeSavedClipRecovery && job.status === "failed")
             ? ["failed"]
             : ["analyzing", "generating", "stitching"],
         ),
@@ -888,6 +931,7 @@ router.post("/admin/jobs/:id/resume-recovery", async (req, res) => {
       job: updated,
       savedRequestCount,
       failedSavedOutputRecovery,
+      completeSavedClipRecovery,
     };
   });
 
@@ -909,8 +953,14 @@ router.post("/admin/jobs/:id/resume-recovery", async (req, res) => {
   }
 
   req.log.info(
-    { jobId: id, savedRequestCount: outcome.savedRequestCount },
-    outcome.failedSavedOutputRecovery
+    {
+      jobId: id,
+      savedRequestCount: outcome.savedRequestCount,
+      completeSavedClipRecovery: outcome.completeSavedClipRecovery,
+    },
+    outcome.completeSavedClipRecovery
+      ? "Admin restarted stitching from a complete saved clip set"
+      : outcome.failedSavedOutputRecovery
       ? "Admin restarted failed job from complete saved-output coverage"
       : "Admin restarted active job from saved accepted request",
   );
@@ -918,6 +968,7 @@ router.post("/admin/jobs/:id/resume-recovery", async (req, res) => {
     job: outcome.job,
     savedRequestCount: outcome.savedRequestCount,
     failedSavedOutputRecovery: outcome.failedSavedOutputRecovery,
+    completeSavedClipRecovery: outcome.completeSavedClipRecovery,
   });
 });
 
@@ -1382,7 +1433,8 @@ router.post("/admin/jobs/recover", async (req, res) => {
   const savedOutputRecoveryIds = candidates
     .filter((r) => {
       const meta = metaOf(r.manifest);
-      return canResumeFailedSavedOutputRecovery(meta.storyboard?.numClips ?? 0, meta);
+      return canResumeFailedSavedOutputRecovery(meta.storyboard?.numClips ?? 0, meta) ||
+        hasCompleteSavedClipSet(meta.partialClips ?? {}, meta.storyboard?.numClips ?? 0);
     })
     .map((r) => r.id);
   const savedOutputRecoverySet = new Set(savedOutputRecoveryIds);

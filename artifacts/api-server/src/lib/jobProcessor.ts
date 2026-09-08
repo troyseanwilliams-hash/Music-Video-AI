@@ -1,4 +1,4 @@
-import { db, runWithResourceLeaseExecutionContext, withResourceLease } from "@workspace/db";
+import { db, getResourceLeaseExecutionContext, runWithResourceLeaseExecutionContext, withResourceLease } from "@workspace/db";
 import { jobsTable, videosTable, creditsTable, imageAssetsTable } from "@workspace/db";
 import type { VideoClipMeta } from "@workspace/db";
 import { eq, and, sql, count, isNull } from "drizzle-orm";
@@ -44,6 +44,11 @@ import {
 } from "./infrastructureRetry.js";
 import { processPodcastJob } from "./podcastProcessor.js";
 import { processNarrationJob } from "./narrationProcessor.js";
+import {
+  ASSEMBLY_DEADLINE_EXCEEDED,
+  createJobRunSupervisor,
+  type JobRunSupervisor,
+} from "./jobRunSupervisor.js";
 
 const execAsync = promisify(exec);
 const MAX_RETRIES = 3;
@@ -60,9 +65,11 @@ async function createAndUploadWebPreview(
   videoBuffer: Buffer,
   videoId: string,
   durationSeconds: number,
+  signal?: AbortSignal,
 ): Promise<string | null> {
   try {
     const previewBuffer = await createWebPreview(videoBuffer, durationSeconds);
+    signal?.throwIfAborted();
     const path = await storageService.uploadVideoPreviewBuffer(previewBuffer, videoId);
     logger.info(
       { videoId, masterBytes: videoBuffer.length, previewBytes: previewBuffer.length },
@@ -70,6 +77,7 @@ async function createAndUploadWebPreview(
     );
     return path;
   } catch (err) {
+    if (signal?.aborted) throw signal.reason;
     logger.warn({ err, videoId }, "Web preview rendition failed; preserving completed master");
     return null;
   }
@@ -342,6 +350,7 @@ type AiJobMeta = {
   }; // explicit admin recovery: this exact storyboard segment must be the next paid request
   retryAfter?: number; // epoch ms — queued job must not be claimed before this
   finalizeWithPartial?: boolean; // admin: stitch whatever clips exist, never call the provider
+  completeSavedClipRecovery?: boolean; // admin: skip image/provider preparation and stitch a complete saved clip set
   storyboard?: {
     generationMode?: "montage" | "narrative";
     numClips?: number;
@@ -2797,15 +2806,18 @@ async function persistClips(
   style: string | null,
   sequence?: number[],
   totalDuration?: number,
+  signal?: AbortSignal,
 ): Promise<VideoClipMeta[]> {
   const round2 = (n: number) => Math.round(n * 100) / 100;
   const objectPaths: string[] = [];
   for (let i = 0; i < clips.length; i++) {
+    signal?.throwIfAborted();
     const c = clips[i]!;
     let objectPath = "";
     try {
       objectPath = await storageService.uploadClipBuffer(c.buffer, videoId, i);
     } catch (err) {
+      if (signal?.aborted) throw signal.reason;
       // Non-fatal: a missing clip just can't be reused by remix (it'll be
       // regenerated). Never fail the whole job over clip persistence.
       logger.warn({ err, videoId, index: i }, "Failed to persist clip for remix (non-fatal)");
@@ -2839,6 +2851,8 @@ async function persistClips(
 }
 
 async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
+  const runSignal = getResourceLeaseExecutionContext()?.signal;
+  if (runSignal?.aborted) err = runSignal.reason;
   const errMsg = err instanceof Error ? err.message : String(err);
 
   // Ownership was lost (stale recovery re-queued the job or another worker
@@ -2846,6 +2860,31 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
   // schedule a retry, just stop quietly.
   if (errMsg.includes(OWNERSHIP_LOST)) {
     logger.warn({ jobId: job.id }, "Aborted run: job ownership lost, leaving job to its new owner");
+    return;
+  }
+
+  if (errMsg.includes(ASSEMBLY_DEADLINE_EXCEEDED)) {
+    const retryAfter = Date.now() + 60_000;
+    const requeued = await db.execute<{ id: string }>(sql`
+      UPDATE jobs SET
+        status = 'queued',
+        claimed_at = NULL,
+        error_message = 'Final assembly took too long. Your saved clips are safe and assembly will retry automatically.',
+        manifest = COALESCE(manifest, '{}'::jsonb) || jsonb_build_object(
+          'retryAfter', ${retryAfter}::bigint,
+          'completeSavedClipRecovery', true,
+          'finalizeWithPartial', false
+        ),
+        updated_at = NOW()
+      WHERE id = ${job.id}
+        AND status = 'stitching'
+        AND claimed_at = ${job.claimedAt}
+      RETURNING id
+    `);
+    if (requeued.rows.length > 0) {
+      logger.warn({ jobId: job.id, retryAfter }, "Assembly deadline requeued saved clips at no charge");
+      await notifyJobUpdate(job.id);
+    }
     return;
   }
 
@@ -3088,6 +3127,7 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
     const liveMeta = await readAiMeta(job.id);
     const savedClipCount = Object.keys(liveMeta.partialClips ?? {}).length;
     const assemblyOnlyRetry =
+      liveMeta.completeSavedClipRecovery === true ||
       liveMeta.finalizeWithPartial === true ||
       (savedClipCount > 0 && /ffmpeg|stitch|video processing/i.test(errMsg));
     const pendingBundle =
@@ -3810,7 +3850,7 @@ async function processRunwayLipSyncJob(job: JobRow): Promise<void> {
   }
 }
 
-async function processJobInner(job: JobRow): Promise<void> {
+async function processJobInner(job: JobRow, supervisor: JobRunSupervisor): Promise<void> {
   if (job.jobType === "narration") {
     await processNarrationJob(job);
     return;
@@ -3933,9 +3973,27 @@ async function processJobInner(job: JobRow): Promise<void> {
       };
     }
 
-    const preparedImages = await prepareNarrativeImages(job);
+    const recoveryMeta = aiMetaOf(job);
+    const completeSavedClipRecovery =
+      recoveryMeta.completeSavedClipRecovery === true &&
+      hasCompleteSavedClipSet(
+        recoveryMeta.partialClips ?? {},
+        recoveryMeta.storyboard?.numClips ?? 0,
+      );
+    if (recoveryMeta.completeSavedClipRecovery === true && !completeSavedClipRecovery) {
+      throw new Error(`${PROVIDER_API_FAILURE}: Saved-clip recovery is incomplete; no provider request was submitted.`);
+    }
+    const preparedImages = completeSavedClipRecovery
+      ? {}
+      : await prepareNarrativeImages(job);
+    if (completeSavedClipRecovery) {
+      logger.info(
+        { jobId: job.id, savedClips: Object.keys(recoveryMeta.partialClips ?? {}).length },
+        "Skipping image preparation for complete saved-clip stitching recovery",
+      );
+    }
     const reviewMeta = await readAiMeta(job.id);
-    if (isAwaitingImageApproval(reviewMeta)) {
+    if (!completeSavedClipRecovery && isAwaitingImageApproval(reviewMeta)) {
       await processImageReviewReplacements(job);
       logger.info({ jobId: job.id }, "Image-first job paused for image approval");
       return;
@@ -3954,7 +4012,10 @@ async function processJobInner(job: JobRow): Promise<void> {
     await updateJobStatus(job.id, { status: "stitching", progressPercent: 75 });
 
     // === STITCHING ===
+    supervisor.startAssemblyDeadline();
+    supervisor.throwIfAborted();
     await materializeLazyBuffers(clips);
+    supervisor.throwIfAborted();
     logger.info({ jobId: job.id, clipCount: clips.length }, "Stitching clips with audio");
 
     const lyricsText = (job as JobRow & { lyricsText?: string | null }).lyricsText ?? undefined;
@@ -4017,53 +4078,53 @@ async function processJobInner(job: JobRow): Promise<void> {
       videoBuffer = await createSimulationClip(10);
       thumbnailBuffer = await extractVideoThumbnail(videoBuffer, 2);
     }
+    supervisor.throwIfAborted();
+    logger.info({ jobId: job.id, clipCount: clips.length }, "Stitching completed");
 
     await updateJobStatus(job.id, { progressPercent: 88 });
+    supervisor.throwIfAborted();
 
     // === STORING ===
     const videoId = randomUUID();
     logger.info({ jobId: job.id, videoId }, "Uploading video and thumbnail");
 
-    const [videoObjectPath, thumbnailObjectPath, previewObjectPath] = await Promise.all([
-      storageService.uploadVideoBuffer(videoBuffer, videoId),
-      storageService.uploadThumbnailBuffer(thumbnailBuffer, videoId),
-      createAndUploadWebPreview(videoBuffer, videoId, outputDuration),
-    ]);
+    supervisor.throwIfAborted();
+    logger.info({ jobId: job.id, videoId }, "Master upload started");
+    const videoObjectPath = await storageService.uploadVideoBuffer(videoBuffer, videoId);
+    logger.info({ jobId: job.id, videoId }, "Master upload completed");
+
+    supervisor.throwIfAborted();
+    logger.info({ jobId: job.id, videoId }, "Thumbnail upload started");
+    const thumbnailObjectPath = await storageService.uploadThumbnailBuffer(thumbnailBuffer, videoId);
+    logger.info({ jobId: job.id, videoId }, "Thumbnail upload completed");
+
+    supervisor.throwIfAborted();
+    logger.info({ jobId: job.id, videoId }, "Preview creation and upload started");
+    const previewObjectPath = await createAndUploadWebPreview(
+      videoBuffer,
+      videoId,
+      outputDuration,
+      supervisor.signal,
+    );
+    logger.info({ jobId: job.id, videoId }, "Preview creation and upload completed");
 
     // Persist individual clips so the user can remix (regenerate) any one of
     // them later without rerunning the whole pipeline.
+    supervisor.throwIfAborted();
+    logger.info({ jobId: job.id, videoId, clipCount: clips.length }, "Clip persistence started");
     const clipMetas = await persistClips(
       videoId,
       clips,
       job.style ?? null,
       resolvedSequence,
       outputDuration,
+      supervisor.signal,
     );
+    supervisor.throwIfAborted();
+    logger.info({ jobId: job.id, videoId, clipCount: clips.length }, "Clip persistence completed");
 
+    supervisor.throwIfAborted();
     const activatedLipSyncChildId = await db.transaction(async (tx) => {
-      await tx.insert(videosTable).values({
-        id: videoId,
-        userId: job.userId,
-        jobId: job.id,
-        videoObjectPath,
-        previewObjectPath,
-        thumbnailObjectPath,
-        title: job.prompt ? job.prompt.slice(0, 100) : "Generated Video",
-        durationSeconds: outputDuration,
-        style: job.style,
-        prompt: job.prompt,
-        clips: clipMetas as unknown as Record<string, unknown>,
-        shareToken: randomUUID().replace(/-/g, "").slice(0, 16),
-        hasAudio: !!audioData,
-      });
-      await tx
-        .update(creditsTable)
-        .set({
-          totalGenerations: sql`total_generations + 1`,
-          updatedAt: new Date(),
-        })
-        .where(eq(creditsTable.userId, job.userId));
-
       const [parentState] = await tx
         .select({
           status: jobsTable.status,
@@ -4080,18 +4141,50 @@ async function processJobInner(job: JobRow): Promise<void> {
           : aiMetaOf(job);
       const ours = job.claimedAt ? new Date(job.claimedAt).getTime() : null;
       const current = parentState?.claimedAt ? new Date(parentState.claimedAt).getTime() : null;
+      const isCompleteSavedClipRecovery =
+        parentMeta.completeSavedClipRecovery === true &&
+        hasCompleteSavedClipSet(
+          parentMeta.partialClips ?? {},
+          parentMeta.storyboard?.numClips ?? 0,
+        );
       if (
         !parentState ||
-        parentState.status === "queued" ||
-        parentState.status === "failed" ||
+        parentState.status !== "stitching" ||
+        ours === null ||
         ours !== current ||
-        parentMeta.refunded
+        (parentMeta.refunded && !isCompleteSavedClipRecovery)
       ) {
         throw new Error(`${OWNERSHIP_LOST} (source finalization fence)`);
+      }
+
+      await tx.insert(videosTable).values({
+        id: videoId,
+        userId: job.userId,
+        jobId: job.id,
+        videoObjectPath,
+        previewObjectPath,
+        thumbnailObjectPath,
+        title: job.prompt ? job.prompt.slice(0, 100) : "Generated Video",
+        durationSeconds: outputDuration,
+        style: job.style,
+        prompt: job.prompt,
+        clips: clipMetas as unknown as Record<string, unknown>,
+        shareToken: randomUUID().replace(/-/g, "").slice(0, 16),
+        hasAudio: !!audioData,
+      });
+      if (!isCompleteSavedClipRecovery) {
+        await tx
+          .update(creditsTable)
+          .set({
+            totalGenerations: sql`total_generations + 1`,
+            updatedAt: new Date(),
+          })
+          .where(eq(creditsTable.userId, job.userId));
       }
       let nextParentMeta = parentMeta;
       let childId: string | null = null;
       if (
+        !isCompleteSavedClipRecovery &&
         parentMeta.bundledLipSyncEnabled &&
         parentMeta.bundledLipSyncChildId &&
         !parentMeta.bundledLipSyncActivated
@@ -4141,7 +4234,8 @@ async function processJobInner(job: JobRow): Promise<void> {
           progressPercent: 100,
           videoId,
           manifest: nextParentMeta as unknown as Record<string, unknown>,
-          ...(shortfallNotice ? { errorMessage: shortfallNotice } : {}),
+          errorMessage: shortfallNotice ?? null,
+          claimedAt: null,
           updatedAt: new Date(),
         })
         .where(eq(jobsTable.id, job.id));
@@ -4167,11 +4261,23 @@ async function processJobInner(job: JobRow): Promise<void> {
 }
 
 async function processJob(job: JobRow): Promise<void> {
-  return runWithResourceLeaseExecutionContext({
-    jobId: job.id,
-    heartbeat: () => assertJobOwned(job),
-    shouldAbort: () => processorState.state === "draining" || processorState.state === "stopped",
-  }, () => processJobInner(job));
+  const supervisor = createJobRunSupervisor({
+    assertOwned: () => assertJobOwned(job),
+    isOwnershipLost: (error) =>
+      error instanceof Error && error.message.includes(OWNERSHIP_LOST),
+    ownershipIntervalMs: 10_000,
+    assemblyDeadlineMs: 60 * 60_000,
+  });
+  try {
+    return await runWithResourceLeaseExecutionContext({
+      jobId: job.id,
+      heartbeat: () => assertJobOwned(job),
+      shouldAbort: () => processorState.state === "draining" || processorState.state === "stopped",
+      signal: supervisor.signal,
+    }, () => processJobInner(job, supervisor));
+  } finally {
+    supervisor.stop();
+  }
 }
 
 // Reset jobs that have been stuck in a non-terminal, non-queued state for
@@ -4458,7 +4564,7 @@ async function recoverStaleJobs(): Promise<void> {
       const pendingBundle =
         meta.bundledLipSyncEnabled === true && meta.bundledLipSyncActivated !== true;
       const retryCost =
-        meta.finalizeWithPartial === true || pendingBundle
+        meta.completeSavedClipRecovery === true || meta.finalizeWithPartial === true || pendingBundle
           ? 0
           : imageFirstAutomaticRetryCost(meta);
       // Charge + re-queue in ONE atomic statement: the target row is locked

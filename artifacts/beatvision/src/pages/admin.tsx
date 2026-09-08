@@ -528,6 +528,7 @@ interface FailedJob extends PendingJob {
   plannedScenes: number | null;
   savedClips: number;
   savedOutputRecoveryAvailable: boolean;
+  completeSavedClipRecoveryAvailable: boolean;
   terminalSceneIndex: number | null;
   freshSceneRequestAvailable: boolean;
   updatedAt: string;
@@ -553,6 +554,7 @@ interface ActiveJob {
   savedClips: number;
   pendingImageRequests: number;
   pendingClipRequests: number;
+  completeSavedClipRecoveryAvailable: boolean;
   retryCount: number | null;
   claimedAt: string | null;
   createdAt: string;
@@ -2106,15 +2108,25 @@ export default function AdminPage() {
                         {job.claimedAt ? ` · Claimed ${new Date(job.claimedAt).toLocaleString()}` : " · Waiting for worker"}
                       </p>
                       <div className="flex flex-wrap gap-2">
-                        {job.pendingClipRequests + job.pendingImageRequests > 0 && job.status !== "queued" && (
+                        {(
+                          job.pendingClipRequests + job.pendingImageRequests > 0 ||
+                          job.completeSavedClipRecoveryAvailable
+                        ) && job.status !== "queued" && (
                           <button
                             type="button"
                             disabled={resumeRecoveryMutation.isPending}
-                            onClick={() => resumeRecoveryMutation.mutate(job.id)}
+                            onClick={() => {
+                              const label = job.completeSavedClipRecoveryAvailable
+                                ? "Restart stitching from all saved clips? The active claim will be replaced without creating provider requests or charging credits."
+                                : "Resume this job from its saved provider request?";
+                              if (window.confirm(label)) {
+                                resumeRecoveryMutation.mutate(job.id);
+                              }
+                            }}
                             className="inline-flex items-center justify-center gap-2 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-200 transition-colors hover:bg-cyan-500/15 disabled:opacity-50"
                           >
                             {resumeRecoveryMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
-                            Resume Now
+                            {job.completeSavedClipRecoveryAvailable ? "Restart Stitching" : "Resume Now"}
                           </button>
                         )}
                         <button
@@ -2218,7 +2230,9 @@ export default function AdminPage() {
                         onClick={() => {
                           if (job.savedOutputRecoveryAvailable) {
                             if (window.confirm(
-                              "Resume this render using only its stored clips and accepted scene request? No new provider request or credit charge will be created.",
+                               job.completeSavedClipRecoveryAvailable
+                                 ? "Restart stitching from all saved clips? No provider request or credit charge will be created."
+                                 : "Resume this render using only its stored clips and accepted scene request? No new provider request or credit charge will be created.",
                             )) {
                               resumeRecoveryMutation.mutate(job.id);
                             }
@@ -2238,7 +2252,9 @@ export default function AdminPage() {
                       >
                         <RotateCcw className="h-4 w-4" />
                         {job.savedOutputRecoveryAvailable
-                          ? "Resume Saved Scene"
+                           ? job.completeSavedClipRecoveryAvailable
+                             ? "Restart Stitching"
+                             : "Resume Saved Scene"
                           : job.freshSceneRequestAvailable && job.terminalSceneIndex != null
                           ? `Create New Request for Scene ${job.terminalSceneIndex + 1}`
                           : "Retry Job"}

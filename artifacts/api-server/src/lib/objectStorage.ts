@@ -1,6 +1,6 @@
 import { Storage, File } from "@google-cloud/storage";
 import { withResourceLease } from "@workspace/db";
-import { Readable } from "stream";
+import { Readable, Writable } from "stream";
 import { createReadStream, createWriteStream } from "fs";
 import { pipeline } from "stream/promises";
 import { randomUUID } from "crypto";
@@ -41,37 +41,70 @@ export class ObjectNotFoundError extends Error {
 }
 
 type GcsWriteOptions = Parameters<File["createWriteStream"]>[0];
+const OBJECT_STORAGE_TRANSFER_TIMEOUT_MS = 15 * 60_000;
+
+function transferError(reason: unknown, fallback: string): Error {
+  return reason instanceof Error ? reason : new Error(typeof reason === "string" ? reason : fallback);
+}
+
+async function runBoundedTransfer(
+  createStreams: () => [Readable, Writable],
+): Promise<void> {
+  const deadline = Date.now() + OBJECT_STORAGE_TRANSFER_TIMEOUT_MS;
+  await withResourceLease("object_storage_transfer", async ({ signal: leaseSignal }) => {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) throw new Error("Object storage transfer deadline exceeded");
+
+    const [source, destination] = createStreams();
+    const controller = new AbortController();
+    const abortTransfer = (reason: unknown, fallback: string) => {
+      const error = transferError(reason, fallback);
+      if (!controller.signal.aborted) controller.abort(error);
+      source.destroy(error);
+      destination.destroy(error);
+    };
+    const onLeaseAbort = () => abortTransfer(leaseSignal.reason, "Object storage transfer lease aborted");
+    const timer = setTimeout(
+      () => abortTransfer(new Error("Object storage transfer deadline exceeded"), "Object storage transfer deadline exceeded"),
+      remainingMs,
+    );
+    timer.unref?.();
+    if (leaseSignal.aborted) onLeaseAbort();
+    else leaseSignal.addEventListener("abort", onLeaseAbort, { once: true });
+
+    try {
+      await pipeline(source, destination, { signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+      leaseSignal.removeEventListener("abort", onLeaseAbort);
+    }
+  }, { waitMs: OBJECT_STORAGE_TRANSFER_TIMEOUT_MS });
+}
 
 async function writeBufferAbortable(file: File, buffer: Buffer, options: GcsWriteOptions): Promise<void> {
-  await withResourceLease("object_storage_transfer", async ({ signal }) => {
-    await pipeline(Readable.from(buffer), file.createWriteStream(options), { signal });
-  });
+  await runBoundedTransfer(() => [Readable.from(buffer), file.createWriteStream(options)]);
 }
 
 async function readBufferAbortable(file: File): Promise<Buffer> {
-  return withResourceLease("object_storage_transfer", async ({ signal }) => {
-    const chunks: Buffer[] = [];
-    const sink = new (await import("stream")).Writable({
+  const chunks: Buffer[] = [];
+  await runBoundedTransfer(() => {
+    const sink = new Writable({
       write(chunk, _encoding, callback) {
         chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
         callback();
       },
     });
-    await pipeline(file.createReadStream(), sink, { signal });
-    return Buffer.concat(chunks);
+    return [file.createReadStream(), sink];
   });
+  return Buffer.concat(chunks);
 }
 
 async function downloadFileAbortable(file: File, destination: string): Promise<void> {
-  await withResourceLease("object_storage_transfer", async ({ signal }) => {
-    await pipeline(file.createReadStream(), createWriteStream(destination), { signal });
-  });
+  await runBoundedTransfer(() => [file.createReadStream(), createWriteStream(destination)]);
 }
 
 async function uploadFileAbortable(file: File, sourcePath: string, options: GcsWriteOptions): Promise<void> {
-  await withResourceLease("object_storage_transfer", async ({ signal }) => {
-    await pipeline(createReadStream(sourcePath), file.createWriteStream(options), { signal });
-  });
+  await runBoundedTransfer(() => [createReadStream(sourcePath), file.createWriteStream(options)]);
 }
 
 export class ObjectStorageService {
@@ -367,9 +400,10 @@ export class ObjectStorageService {
     const objectEntityPath = `${privateObjectDir}/narrative-images/${jobId}/${index}.jpg`;
     const { bucketName, objectName } = parseObjectPath(objectEntityPath);
     const destination = objectStorageClient.bucket(bucketName).file(objectName);
-    await withResourceLease("object_storage_transfer", async ({ signal }) => {
-      await pipeline(source.createReadStream(), destination.createWriteStream({ metadata: { contentType: "image/jpeg" } }), { signal });
-    });
+    await runBoundedTransfer(() => [
+      source.createReadStream(),
+      destination.createWriteStream({ metadata: { contentType: "image/jpeg" } }),
+    ]);
     return `/objects/narrative-images/${jobId}/${index}.jpg`;
   }
 
