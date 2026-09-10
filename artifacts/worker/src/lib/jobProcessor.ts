@@ -784,7 +784,11 @@ async function prepareNarrativeImagesStage(job: JobRow): Promise<Record<string, 
         } satisfies ImageGenerationFailure;
         await persistImageGenerationFailure(job.id, shot.index, failure);
         failures[String(shot.index)] = failure;
-        continue;
+        logger.warn(
+          { jobId: job.id, scene: shot.index },
+          "Source image retry exhausted; stopping sequential image generation",
+        );
+        break;
       }
       const existingRequest = pending[shot.index];
       try {
@@ -796,7 +800,11 @@ async function prepareNarrativeImagesStage(job: JobRow): Promise<Record<string, 
           };
           await persistImageGenerationFailure(job.id, shot.index, failure);
           failures[String(shot.index)] = failure;
-          continue;
+          logger.warn(
+            { jobId: job.id, scene: shot.index },
+            "Source image submission is uncertain; stopping sequential image generation",
+          );
+          break;
         }
         await assertJobOwned(job);
         const referenceImagePath = resolveCharacterReferencePath({
@@ -864,7 +872,11 @@ async function prepareNarrativeImagesStage(job: JobRow): Promise<Record<string, 
         };
         await persistImageGenerationFailure(job.id, shot.index, failure);
         failures[String(shot.index)] = failure;
-        logger.warn({ err: error, jobId: job.id, scene: shot.index, status }, "Source image failed; continuing batch");
+        logger.warn(
+          { err: error, jobId: job.id, scene: shot.index, status },
+          "Source image failed; stopping sequential image generation",
+        );
+        break;
       }
     }
     const nextReportedProgress = Math.max(

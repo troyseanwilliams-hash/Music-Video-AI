@@ -13,11 +13,72 @@ export interface PromptSafetyAssessment {
   reasons: string[];
 }
 
+const LEGACY_REFERENCE_DIRECTIVE_CLAUSES = [
+  "use the same exact character shown in the attached reference image as the single canonical identity",
+  "preserve its gender presentation identity face hair age wardrobe and distinguishing physical details",
+  "do not invent substitute or redesign the character",
+  "keep the same exact character shown in the attached reference image across all referenced scenes including the character's gender presentation",
+];
+
+function normalizeDirectiveWords(value: string): string {
+  return value
+    .toLocaleLowerCase()
+    .replace(/['’]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function stripTruncatedLegacyReferenceDirective(input: string): {
+  prompt: string;
+  changed: boolean;
+} {
+  const styleMatch = /\.\s*Visual style:/i.exec(input);
+  const boundary = styleMatch?.index ?? input.length;
+  const scenePart = input.slice(0, boundary);
+  const candidates = [...scenePart.matchAll(/[,;]\s*(?=(?:use|keep|preserve|do)\b)/gi)];
+
+  for (let index = candidates.length - 1; index >= 0; index--) {
+    const marker = candidates[index]!;
+    const candidate = normalizeDirectiveWords(scenePart.slice(marker.index).replace(/^[,;]\s*/, ""));
+    const isLegacyPrefix = candidate.length > 0 && LEGACY_REFERENCE_DIRECTIVE_CLAUSES.some((clause) => {
+      const normalizedClause = normalizeDirectiveWords(clause);
+      return normalizedClause === candidate || normalizedClause.startsWith(`${candidate} `);
+    });
+    if (isLegacyPrefix) {
+      return {
+        prompt: `${scenePart.slice(0, marker.index).trimEnd()}${input.slice(boundary)}`,
+        changed: true,
+      };
+    }
+  }
+  return { prompt: input, changed: false };
+}
+
 const REWRITES: Array<{
   reason: string;
   pattern: RegExp;
   replacement: string;
 }> = [
+  {
+    reason: "reference-identity-instruction",
+    pattern: /\buse the same exact character shown in the attached reference image as the single canonical identity\b/gi,
+    replacement: "match the principal character to the attached reference image",
+  },
+  {
+    reason: "reference-identity-instruction",
+    pattern: /;\s*preserve its gender presentation, identity, face, hair, age, wardrobe, and distinguishing physical details/gi,
+    replacement: "",
+  },
+  {
+    reason: "reference-identity-instruction",
+    pattern: /;\s*do not invent(?:,\s*substitute)?(?:,\s*or\s+redesign(?:\s+the(?:\s+character)?)?)?/gi,
+    replacement: "",
+  },
+  {
+    reason: "reference-identity-instruction",
+    pattern: /\bkeep the same exact character shown in the attached reference image across all referenced scenes, including the character['’]s gender presentation\b/gi,
+    replacement: "match the principal character to the attached reference image",
+  },
   {
     reason: "minor-contact",
     pattern: /\b(?:nuzzles?|kisses?|caresses?|touches?|cuddles?)\s+(?:the\s+)?(?:baby|infant|toddler|young child|child)(?:['’]s)?(?:\s+(?:hand|face|body))?/gi,
@@ -126,10 +187,12 @@ const BLOCKS: Array<{ reason: string; pattern: RegExp }> = [
 
 export function sanitizeGeneratedMediaPrompt(input: string): SafeMediaPrompt {
   const original = input.replace(/\s+/g, " ").trim();
-  let prompt = original
+  const legacyCleanup = stripTruncatedLegacyReferenceDirective(original);
+  let prompt = legacyCleanup.prompt
     .replace(/^(?:scene direction:\s*){2,}/i, "Scene direction: ")
     .replace(/\b(?:scene direction:\s*){2,}/gi, "scene direction: ");
   const reasons = new Set<string>();
+  if (legacyCleanup.changed) reasons.add("reference-identity-instruction");
 
   for (const rewrite of REWRITES) {
     rewrite.pattern.lastIndex = 0;
@@ -144,7 +207,11 @@ export function sanitizeGeneratedMediaPrompt(input: string): SafeMediaPrompt {
     prompt = `Wholesome supervised family scene. ${prompt}`;
   }
 
-  prompt = prompt.replace(/\s+/g, " ").replace(/\s+([,.;:])/g, "$1").trim();
+  prompt = prompt
+    .replace(/\s*;\s*([,.;:])/g, "$1")
+    .replace(/\s+/g, " ")
+    .replace(/\s+([,.;:])/g, "$1")
+    .trim();
   return { prompt, changed: prompt !== original, reasons: [...reasons] };
 }
 

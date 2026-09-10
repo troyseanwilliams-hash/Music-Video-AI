@@ -361,7 +361,7 @@ const ENVIRONMENT_FOCUS_TERMS = /\b(?:landscape|skyline|cityscape|mountain|fores
 const FEMALE_CHARACTER_TERMS = /\b(?:female|woman|women|girl|girls|mother|mothers|daughter|daughters|sister|sisters|wife|wives|heroine|her|hers|she)\b/i;
 const MALE_CHARACTER_TERMS = /\b(?:male|man|men|boy|boys|father|fathers|son|sons|brother|brothers|husband|husbands|hero|him|his|he)\b/i;
 const ATTACHED_CHARACTER_REFERENCE_DIRECTIVE =
-  "use the same exact character shown in the attached reference image as the single canonical identity; preserve its gender presentation, identity, face, hair, age, wardrobe, and distinguishing physical details; do not invent, substitute, or redesign the character";
+  "match the principal character's recognizable face, hairstyle, and wardrobe to the attached reference image";
 
 export function detectCharacterGender(text: string): "female" | "male" | null {
   const female = FEMALE_CHARACTER_TERMS.test(text);
@@ -375,7 +375,7 @@ function characterGenderContinuity(
   concept: string,
 ): string {
   if (input.hasCharacterReference) {
-    return "keep the same exact character shown in the attached reference image across all referenced scenes, including the character's gender presentation";
+    return "match the principal character's recognizable appearance to the attached reference image";
   }
   const gender = detectCharacterGender(`${input.character ?? ""} ${input.prompt ?? ""} ${concept}`);
   return gender

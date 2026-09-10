@@ -45,6 +45,51 @@ describe("sanitizeGeneratedMediaPrompt", () => {
     expect(sanitizeGeneratedMediaPrompt(once).prompt).toBe(once);
   });
 
+  it("removes legacy identity-lock wording from reference-image prompts", () => {
+    const legacy = "A man crosses a dream ocean, use the same exact character shown in the attached reference image as the single canonical identity; preserve its gender presentation, identity, face, hair, age, wardrobe, and distinguishing physical details; do not invent, substitute, or redesign the character, cinematic lighting.";
+    const result = sanitizeGeneratedMediaPrompt(legacy);
+
+    expect(result.changed).toBe(true);
+    expect(result.reasons).toContain("reference-identity-instruction");
+    expect(result.prompt).toContain("match the principal character to the attached reference image");
+    expect(result.prompt).not.toMatch(/canonical identity|preserve its gender|distinguishing physical details|do not invent|substitute|redesign/i);
+    expect(sanitizeGeneratedMediaPrompt(result.prompt).prompt).toBe(result.prompt);
+  });
+
+  it.each([
+    "A detective enters a bright lobby, match the principal character to the attached reference image; preserve its gender presentation, identity, face, hair, age, wardrobe, and distinguishing. Visual style: cinematic 35mm film.",
+    "A detective enters a bright lobby, match the principal character to the attached reference image; do not invent, substitute, or redesign the. Visual style: cinematic 35mm film.",
+    "A detective enters a bright lobby, use the same exact character shown in the attached reference image as the single canonical. Visual style: cinematic 35mm film.",
+    "A detective enters a bright lobby, keep the same exact character shown in the attached reference image across all referenced scenes, including the. Visual style: cinematic 35mm film.",
+  ])("removes a whole-word-truncated legacy identity directive: %s", (legacy) => {
+    const result = sanitizeGeneratedMediaPrompt(legacy);
+    expect(result.prompt).toContain("A detective enters a bright lobby");
+    expect(result.prompt).toContain("Visual style: cinematic 35mm film");
+    expect(result.prompt).not.toMatch(/canonical|preserve its gender|do not invent|same exact character/i);
+    expect(sanitizeGeneratedMediaPrompt(result.prompt).prompt).toBe(result.prompt);
+  });
+
+  const legacyDirectiveFamilies = [
+    { separator: ", ", directive: "use the same exact character shown in the attached reference image as the single canonical identity" },
+    { separator: "; ", directive: "preserve its gender presentation identity face hair age wardrobe and distinguishing physical details" },
+    { separator: "; ", directive: "do not invent substitute or redesign the character" },
+    { separator: ", ", directive: "keep the same exact character shown in the attached reference image across all referenced scenes including the characters gender presentation" },
+  ];
+
+  it("removes every whole-word truncation of each legacy reference directive", () => {
+    for (const { separator, directive } of legacyDirectiveFamilies) {
+      const words = directive.split(" ");
+      for (let length = 1; length <= words.length; length++) {
+        const truncated = words.slice(0, length).join(" ");
+        const input = `A detective enters a bright lobby${separator}${truncated}. Visual style: cinematic 35mm film.`;
+        const result = sanitizeGeneratedMediaPrompt(input);
+        expect(result.prompt, `${directive} truncated after word ${length}`)
+          .toBe("A detective enters a bright lobby. Visual style: cinematic 35mm film.");
+        expect(sanitizeGeneratedMediaPrompt(result.prompt).prompt).toBe(result.prompt);
+      }
+    }
+  });
+
   it.each([
     ["A person on fire crosses the stage.", "warm-light aura"],
     ["An explosion in her face reveals the chorus.", "confetti"],

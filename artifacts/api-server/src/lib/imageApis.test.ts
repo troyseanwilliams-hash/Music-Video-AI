@@ -35,6 +35,45 @@ describe("generateNarrativeImage recovery", () => {
     expect(prompt).toContain("Do not create a collage, triptych, diptych, grid, contact sheet, split screen, panels, montage, storyboard, or multi-frame composition.");
   });
 
+  it("strips legacy identity-lock wording from the exact submitted prompt", () => {
+    const prompt = singleSceneImagePrompt(
+      "A man on a cloud, use the same exact character shown in the attached reference image as the single canonical identity; preserve its gender presentation, identity, face, hair, age, wardrobe, and distinguishing physical details; do not invent, substitute, or redesign the character.",
+    );
+
+    expect(prompt).toContain("match the principal character to the attached reference image");
+    expect(prompt).not.toMatch(/canonical identity|preserve its gender|distinguishing physical details|do not invent|substitute|redesign/i);
+  });
+
+  it.each([
+    "A detective enters a bright lobby, match the principal character to the attached reference image; preserve its gender presentation, identity, face, hair, age, wardrobe, and distinguishing. Visual style: cinematic 35mm film.",
+    "A detective enters a bright lobby, match the principal character to the attached reference image; do not invent, substitute, or redesign the. Visual style: cinematic 35mm film.",
+  ])("strips truncated legacy identity wording from the exact submitted prompt", (legacy) => {
+    const prompt = singleSceneImagePrompt(legacy);
+    expect(prompt).toContain("A detective enters a bright lobby");
+    expect(prompt).toContain("Visual style: cinematic 35mm film");
+    expect(prompt).not.toMatch(/preserve its gender|do not invent|substitute|redesign/i);
+  });
+
+  it("removes every whole-word truncation of legacy reference directives before submission", () => {
+    const families = [
+      { separator: ", ", directive: "use the same exact character shown in the attached reference image as the single canonical identity" },
+      { separator: "; ", directive: "preserve its gender presentation identity face hair age wardrobe and distinguishing physical details" },
+      { separator: "; ", directive: "do not invent substitute or redesign the character" },
+      { separator: ", ", directive: "keep the same exact character shown in the attached reference image across all referenced scenes including the characters gender presentation" },
+    ];
+
+    for (const { separator, directive } of families) {
+      const words = directive.split(" ");
+      for (let length = 1; length <= words.length; length++) {
+        const legacy = `A detective enters a bright lobby${separator}${words.slice(0, length).join(" ")}. Visual style: cinematic 35mm film.`;
+        const prompt = singleSceneImagePrompt(legacy);
+        expect(prompt, `${directive} truncated after word ${length}`)
+          .toContain("A detective enters a bright lobby. Visual style: cinematic 35mm film.");
+        expect(prompt).not.toContain(`${separator}${words.slice(0, length).join(" ")}. Visual style:`);
+      }
+    }
+  });
+
   it("polls a saved request without submitting another paid image request", async () => {
     vi.useFakeTimers();
     const pollUrl = "https://example.test/image-status/request-1";

@@ -431,6 +431,9 @@ describe("planShots narrative planning", () => {
     expect(plan.shots.every((shot) => shot.usesCharacterReference === true)).toBe(true);
     expect(plan.shots.every((shot) => shot.prompt.includes("attached reference image"))).toBe(true);
     expect(plan.shots.every((shot) => !shot.prompt.includes("recurring character bible"))).toBe(true);
+    expect(plan.shots.every((shot) =>
+      !/canonical identity|preserve its gender|distinguishing physical details|do not invent|substitute|redesign/i.test(shot.prompt)
+    )).toBe(true);
   });
 
   it("keeps generated image prompts concise and text-led without an attached character image", () => {
