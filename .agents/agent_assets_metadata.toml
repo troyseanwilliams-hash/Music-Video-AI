@@ -7,6 +7,8 @@ uri = "file://attached_assets/welcome-email-preview.html"
 type = "text"
 title = "Welcome email preview"
 description = "What new users receive right after signing up — features highlight plus a light AIPodSync mention."
+logical_id = "c9e167b5-77f4-4841-bc33-cb2c66fe4ab8"
+content_type = "text/html"
 
 [[outputs]]
 id = "vBle9ApjgMfgNxG93RWLg"
@@ -14,6 +16,8 @@ uri = "file://previews/user-recovery-email-preview.html"
 type = "text"
 title = "AIBeatSync Customer Recovery Email Preview"
 description = "Preview addressed to ym19810926@icloud.com. This is a draft only; it has not been sent and no account credits were changed."
+logical_id = "e02ac00b-c8f2-4699-ab0f-e91c69ab1cb6"
+content_type = "text/html"
 
 [[outputs]]
 id = "NulyzlFP7-3COElWrtxgR"
@@ -21,6 +25,7 @@ uri = "file://previews/user-recovery-email-preview.png"
 type = "image"
 title = "Updated AIBeatSync Email Preview"
 description = "Draft showing a 2,500-credit refund. Nothing has been sent and no credits were changed."
+logical_id = "1130464f-ed5b-4ff7-93be-aba6fe250c5e"
 
 [[outputs]]
 id = "M8-YQTj3JrhA8NU-V1MIj"
@@ -28,6 +33,7 @@ uri = "file://attached_assets/amelia-earhart-exact-21-scene-prompts.txt"
 type = "text"
 title = "Amelia Earhart — Exact 21-Scene Prompts"
 description = "All 21 exact image-foundation and matching animation prompts, plus verified settings and the 2,291-credit cost breakdown."
+logical_id = "5d60cf4a-1bf6-4a56-be3b-e244f4f87f83"
 
 [[outputs]]
 id = "7AUsM972wEsvF7pxZKxzb"
@@ -35,6 +41,7 @@ uri = "file://attached_assets/amelia-earhart-shortened-exact-20-scene-prompts.tx
 type = "text"
 title = "Amelia Earhart — Shortened Exact 20-Scene Prompts"
 description = "The corrected 20-scene image-foundation and matching animation prompts, source analysis, validation, and verified 2,182-credit total."
+logical_id = "e753f523-dc93-4660-a6e7-3d26642fe7ff"
 
 [[outputs]]
 id = "Azx6Ujd7-55ZjaY8JhH5u"
@@ -42,6 +49,7 @@ uri = "file://attached_assets/amelia-earhart-20-scene-creative-script.txt"
 type = "text"
 title = "Amelia Earhart — Paste-Ready 20-Scene Script"
 description = "A numbered creative script formatted for the updated Generate page: one scene per line, ready to paste after uploading the 194.69-second source."
+logical_id = "30fec78f-3c98-4551-a6dc-9395197f0c20"
 
 [[outputs]]
 id = "AGUfWcV8D7l3ZQ6R-cnHg"
@@ -49,6 +57,7 @@ uri = "file://attached_assets/amelia-earhart-20-scene-narrative-story-script.txt
 type = "text"
 title = "Amelia Earhart — 20-Scene Narrative Story Script"
 description = "A paste-ready chronological story script for Narrative Story mode, validated for the 194.69-second full-track source."
+logical_id = "2bf1f6f5-159a-4280-8ba9-fdd977bf1a7a"
 
 [[outputs]]
 id = "q2VqxMvxjx77d_WDxgSeN"
@@ -56,6 +65,7 @@ uri = "file://exports/aisync-suite.zip"
 type = "unspecified"
 title = "Download AISync Suite ZIP"
 description = "Click this card to download the AISync Suite app archive."
+logical_id = "4cfd6377-caba-402f-b54b-b6198ba5a654"
 
 [[outputs]]
 id = "eV9kF5LH5tWEKbCpe5IEd"
@@ -63,6 +73,7 @@ uri = "file://exports/aisync-suite.tar.gz"
 type = "unspecified"
 title = "Download AISync Suite for Mac"
 description = "Mac-friendly tar.gz archive. Double-click it in Finder to extract, then import the aisync-suite folder into your repository."
+logical_id = "63308c6f-4a21-46ab-8713-782d9b089d03"
 
 [[outputs]]
 id = "m22iKWsYexpK2jLLupxIM"
@@ -70,6 +81,8 @@ uri = "file://email-preview.html"
 type = "text"
 title = "Generate Video campaign email preview"
 description = "Self-contained preview of the one-time announcement email for the newest 100 eligible signups, with the storyboard image embedded at the top."
+logical_id = "6e8e9012-0f26-44aa-b4f2-bccfa1283cb2"
+content_type = "text/html"
 
 [[outputs]]
 id = "5vYTvwyoGF6_jJR-B2G4U"
@@ -77,3 +90,18 @@ uri = "file://artifacts/beatvision/public/generate-video-storyboard.jpg"
 type = "image"
 title = "Storyboard image from the email"
 description = "This is the image placed at the very top of the Generate Video announcement email."
+logical_id = "308ac2ac-ffae-447a-8afa-f7e8d08c5f05"
+
+[[outputs]]
+id = "CNQJx_Cd6XRD10VJwfCIV"
+uri = "file://attached_assets/revised-surrealist-video-prompts.txt"
+type = "text"
+title = "Revised Surrealist Video Prompts"
+description = "Seventeen safety-conscious, character-consistent prompts with a unified surreal cinematic style and coherent scene progression."
+logical_id = "037b1d0c-6da7-42e3-93a7-23a119f77e55"
+content_hash = "sha256:6b70ae0e86e7c115434319c54d70b918a43332114f9bd0854898f95cb99bf7da"
+size = 5120
+mtime_ms = 1789004705571
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:40c49f5e-786c-4e75-b341-440182ee3372/037b1d0c-6da7-42e3-93a7-23a119f77e55/2acbf5ae-a6e6-4ab7-9b81-a57d52f481dc"
+storage_version_token = "1789004709436332"
+content_type = "text/plain"
