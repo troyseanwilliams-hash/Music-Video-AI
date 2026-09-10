@@ -34,6 +34,7 @@ import {
   parseNumberedImagePackScript,
   planImagePackScenes,
 } from "../lib/shotPlan.js";
+import { assessGeneratedMediaPrompt } from "../lib/promptSafety.js";
 
 const router = Router();
 const MAX_IMAGE_PACK_COUNT = 30;
@@ -156,6 +157,24 @@ export function validateApprovedImageScenes(
   });
 }
 
+export function assessImagePackScenes(scenes: ApprovedImageScene[]):
+  | { ok: true; scenes: ApprovedImageScene[] }
+  | { ok: false; index: number; reason: string } {
+  const safeScenes: ApprovedImageScene[] = [];
+  for (const scene of scenes) {
+    const assessment = assessGeneratedMediaPrompt(scene.prompt);
+    if (assessment.status === "blocked") {
+      return {
+        ok: false,
+        index: scene.index,
+        reason: assessment.reason ?? "This content is not supported.",
+      };
+    }
+    safeScenes.push({ ...scene, prompt: assessment.safePrompt });
+  }
+  return { ok: true, scenes: safeScenes };
+}
+
 export function toPersistedImagePackScenes(
   scenes: ApprovedImageScene[],
   referenceImagePath?: string | null,
@@ -198,6 +217,15 @@ router.post("/image-packs", async (req, res) => {
     res.status(400).json({ error: error instanceof Error ? error.message : "Invalid approved image scenes." });
     return;
   }
+  const sceneAssessment = assessImagePackScenes(scenes);
+  if (!sceneAssessment.ok) {
+    res.status(422).json({
+      error: `Scene ${sceneAssessment.index + 1} contains unsupported content. ${sceneAssessment.reason} Edit the scene and try again.`,
+      code: "PROMPT_BLOCKED",
+    });
+    return;
+  }
+  scenes = sceneAssessment.scenes;
   if (referenceImagePath) {
     try {
       await new ObjectStorageService().getObjectEntityFile(referenceImagePath);

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildImagePackPlan,
+  assessImagePackScenes,
   parsePublicImagePagination,
   toPublicImageAsset,
   toPersistedImagePackScenes,
@@ -100,6 +101,22 @@ describe("image-pack pre-charge storyboard approval", () => {
     ];
 
     expect(validateApprovedImageScenes(approved, 2)).toEqual(approved);
+  });
+
+  it("adjusts or blocks exact approved prompts before reservation", () => {
+    const adjusted = assessImagePackScenes([
+      { index: 0, prompt: "A person on fire performs under spotlights." },
+    ]);
+    expect(adjusted).toMatchObject({ ok: true });
+    if (adjusted.ok) expect(adjusted.scenes[0]!.prompt).toContain("warm-light aura");
+
+    expect(assessImagePackScenes([
+      { index: 0, prompt: "Explicit pornography." },
+    ])).toMatchObject({
+      ok: false,
+      index: 0,
+      reason: expect.any(String),
+    });
   });
 
   it("persists supplied reference intent for every provider-consumable scene", () => {

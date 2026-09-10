@@ -6,7 +6,11 @@
 
 import { createHash } from "node:crypto";
 import { shortenCompletePrompt } from "./promptText.js";
-import { sanitizeGeneratedMediaPrompt } from "./promptSafety.js";
+import {
+  assessGeneratedMediaPrompt,
+  sanitizeGeneratedMediaPrompt,
+  type PromptSafetyAssessment,
+} from "./promptSafety.js";
 import {
   containsNamedSubject,
   detectNamedSubject,
@@ -99,6 +103,7 @@ export interface PlannedShot {
   energy: number;
   usesCharacterReference: boolean;
   prompt: string;
+  safety?: PromptSafetyAssessment;
 }
 
 export interface MontageTimelineEntry {
@@ -163,7 +168,21 @@ export function applyApprovedScenePrompts(
 ): ApprovedShotPlanResult {
   const promptLabel = plan.generationMode === "narrative" ? "narrative prompt" : "image prompt";
   const promptLabelPlural = `${promptLabel}s`;
-  if (!approvedPrompts && !submittedFingerprint) return { ok: true, plan };
+  if (!approvedPrompts && !submittedFingerprint) {
+    const blockedIndex = plan.shots.findIndex((shot) =>
+      (shot.safety ?? assessGeneratedMediaPrompt(shot.prompt)).status === "blocked"
+    );
+    if (blockedIndex >= 0) {
+      const assessment = plan.shots[blockedIndex]!.safety
+        ?? assessGeneratedMediaPrompt(plan.shots[blockedIndex]!.prompt);
+      return {
+        ok: false,
+        code: "APPROVED_PROMPT_BLOCKED",
+        error: `${promptLabel.charAt(0).toUpperCase() + promptLabel.slice(1)} ${blockedIndex + 1} contains unsupported content. ${assessment.reason} Edit that scene and review it again.`,
+      };
+    }
+    return { ok: true, plan };
+  }
   if (!approvedPrompts || !submittedFingerprint) {
     return {
       ok: false,
@@ -188,7 +207,7 @@ export function applyApprovedScenePrompts(
 
   const cleaned = approvedPrompts.map((item) => ({
     index: item.index,
-    prompt: sanitizeGeneratedMediaPrompt(item.prompt).prompt,
+    assessment: assessGeneratedMediaPrompt(item.prompt),
   }));
   for (let index = 0; index < cleaned.length; index++) {
     const item = cleaned[index]!;
@@ -199,15 +218,22 @@ export function applyApprovedScenePrompts(
         error: `Reviewed ${promptLabelPlural} must remain in their original scene order.`,
       };
     }
-    if (!item.prompt) {
+    if (!item.assessment.safePrompt && item.assessment.status !== "blocked") {
       return {
         ok: false,
         code: "APPROVED_PROMPTS_EMPTY",
         error: `${promptLabel.charAt(0).toUpperCase() + promptLabel.slice(1)} ${index + 1} is empty.`,
       };
     }
+    if (item.assessment.status === "blocked") {
+      return {
+        ok: false,
+        code: "APPROVED_PROMPT_BLOCKED",
+        error: `${promptLabel.charAt(0).toUpperCase() + promptLabel.slice(1)} ${index + 1} contains unsupported content. ${item.assessment.reason} Edit that scene and review it again.`,
+      };
+    }
   }
-  const normalized = cleaned.map((item) => item.prompt.toLocaleLowerCase());
+  const normalized = cleaned.map((item) => item.assessment.safePrompt.toLocaleLowerCase());
   if (new Set(normalized).size !== normalized.length) {
     return {
       ok: false,
@@ -222,7 +248,8 @@ export function applyApprovedScenePrompts(
       ...plan,
       shots: plan.shots.map((shot, index) => ({
         ...shot,
-        prompt: cleaned[index]!.prompt,
+        prompt: cleaned[index]!.assessment.safePrompt,
+        safety: cleaned[index]!.assessment,
       })),
     },
   };
@@ -688,6 +715,18 @@ export function planShots(input: ShotPlanInput): ShotPlan {
         containsNamedSubject(sourceConcept, namedSubject)
         || sceneConceptIncludesCharacter(sourceConcept);
       const concept = replaceNamedSubjectWithDescription(sourceConcept, namedSubject);
+      const prompt = buildNarrativePrompt(
+        input,
+        mood,
+        concept,
+        beat,
+        index,
+        numClips,
+        isCharacterScene,
+        characterBible,
+      );
+      const promptSafety = assessGeneratedMediaPrompt(prompt);
+      const sourceSafety = assessGeneratedMediaPrompt(sourceConcept);
       return {
         index,
         label: beat,
@@ -698,16 +737,12 @@ export function planShots(input: ShotPlanInput): ShotPlan {
         // anchor when no reference was uploaded. Environment-only scenes remain
         // independent so the character is not introduced where it was omitted.
         usesCharacterReference: isCharacterScene,
-        prompt: buildNarrativePrompt(
-          input,
-          mood,
-          concept,
-          beat,
-          index,
-          numClips,
-          isCharacterScene,
-          characterBible,
-        ),
+        prompt: promptSafety.safePrompt || prompt,
+        safety: promptSafety.status === "clean" && sourceSafety.status === "blocked"
+          ? sourceSafety
+          : promptSafety.status === "clean" && sourceSafety.status === "adjusted"
+            ? { ...sourceSafety, safePrompt: prompt }
+            : promptSafety,
       };
     });
     const timeline = shots.map((shot, index) => {
@@ -747,6 +782,9 @@ export function planShots(input: ShotPlanInput): ShotPlan {
     const concept = input.hasCharacterReference
       ? replaceNamedSubjectWithReference(sourceConcept, namedSubject)
       : replaceNamedSubjectWithDescription(sourceConcept, namedSubject);
+    const prompt = buildPrompt(input, mood, concept, role, i, usesCharacterReference);
+    const promptSafety = assessGeneratedMediaPrompt(prompt);
+    const sourceSafety = assessGeneratedMediaPrompt(sourceConcept);
     shots.push({
       index: i,
       label: role,
@@ -754,7 +792,12 @@ export function planShots(input: ShotPlanInput): ShotPlan {
       startTime: s.startTime,
       energy: Math.round(s.energy * 100) / 100,
       usesCharacterReference,
-      prompt: buildPrompt(input, mood, concept, role, i, usesCharacterReference),
+      prompt: promptSafety.safePrompt || prompt,
+      safety: promptSafety.status === "clean" && sourceSafety.status === "blocked"
+        ? sourceSafety
+        : promptSafety.status === "clean" && sourceSafety.status === "adjusted"
+          ? { ...sourceSafety, safePrompt: prompt }
+          : promptSafety,
     });
   }
   const timeline = buildMontageTimeline(shots, sections, target, clipDurationSec);

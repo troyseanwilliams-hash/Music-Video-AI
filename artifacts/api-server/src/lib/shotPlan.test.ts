@@ -220,6 +220,33 @@ describe("approved scene prompts", () => {
     }
   });
 
+  it("makes safety-adjusted approved prompts authoritative and exposes metadata", () => {
+    const plan = buildPlan();
+    const fingerprint = shotPlanFingerprint(plan);
+    const approved = plan.shots.map((shot) => ({
+      index: shot.index,
+      prompt: shot.index === 0 ? "A person on fire dances on stage." : shot.prompt,
+    }));
+    const result = applyApprovedScenePrompts(plan, approved, fingerprint);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.plan.shots[0]!.prompt).toContain("warm-light aura");
+      expect(result.plan.shots[0]!.safety).toMatchObject({ status: "adjusted" });
+    }
+  });
+
+  it("blocks prohibited approved prompts before they can become authoritative", () => {
+    const plan = buildPlan();
+    const approved = plan.shots.map((shot) => ({
+      index: shot.index,
+      prompt: shot.index === 1 ? "Graphic wound with blood spraying." : shot.prompt,
+    }));
+    expect(applyApprovedScenePrompts(plan, approved, shotPlanFingerprint(plan))).toMatchObject({
+      ok: false,
+      code: "APPROVED_PROMPT_BLOCKED",
+    });
+  });
+
   it("rejects reviewed prompts when the authoritative plan changed", () => {
     const original = buildPlan();
     const changed = planShots({

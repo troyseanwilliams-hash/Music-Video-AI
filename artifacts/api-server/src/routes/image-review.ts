@@ -14,6 +14,7 @@ import {
   assertStrictUniqueMedia,
   perceptualFingerprint,
 } from "../lib/mediaUniqueness.js";
+import { assessGeneratedMediaPrompt } from "../lib/promptSafety.js";
 
 const router = Router();
 const storage = new ObjectStorageService();
@@ -153,6 +154,22 @@ router.post("/jobs/:id/image-review/replacements", async (req, res): Promise<voi
     res.status(400).json({ error: "Each scene can only have one replacement in progress." });
     return;
   }
+  const assessedScenes = parsed.data.scenes.map((scene) => ({
+    ...scene,
+    assessment: assessGeneratedMediaPrompt(scene.prompt),
+  }));
+  const blocked = assessedScenes.find((scene) => scene.assessment.status === "blocked");
+  if (blocked) {
+    res.status(422).json({
+      error: `Scene ${blocked.index + 1} contains unsupported content. ${blocked.assessment.reason} Edit the scene and try again.`,
+      code: "PROMPT_BLOCKED",
+    });
+    return;
+  }
+  const safeScenes = assessedScenes.map(({ assessment, ...scene }) => ({
+    ...scene,
+    prompt: assessment.safePrompt,
+  }));
   const result = await db.transaction(async (tx) => {
     const [job] = await tx.select().from(jobsTable)
       .where(and(eq(jobsTable.id, req.params.id), eq(jobsTable.userId, req.user.id)))
@@ -161,7 +178,7 @@ router.post("/jobs/:id/image-review/replacements", async (req, res): Promise<voi
     if (!job || !review || review.phase !== "awaiting_approval") {
       return { error: "This job is not waiting for image review.", status: 409 as const };
     }
-    for (const scene of parsed.data.scenes) {
+    for (const scene of safeScenes) {
       if (!review.scenes[String(scene.index)]) {
         return { error: `Scene ${scene.index + 1} is not part of this storyboard.`, status: 422 as const };
       }
@@ -185,7 +202,7 @@ router.post("/jobs/:id/image-review/replacements", async (req, res): Promise<voi
     }
     const [credits] = await tx.select().from(creditsTable)
       .where(eq(creditsTable.userId, req.user.id)).limit(1).for("update");
-    const replacementCosts = parsed.data.scenes.map((scene) =>
+    const replacementCosts = safeScenes.map((scene) =>
       imageReviewReplacementCredits(review!.scenes[String(scene.index)]!),
     );
     const total = replacementCosts.reduce((sum, credits) => sum + credits, 0);
@@ -197,7 +214,7 @@ router.post("/jobs/:id/image-review/replacements", async (req, res): Promise<voi
     }
     let subscriptionRemaining = credits.subscriptionCredits;
     const pending: Record<string, ReviewReplacement> = {};
-    for (const [sceneIndex, scene] of parsed.data.scenes.entries()) {
+    for (const [sceneIndex, scene] of safeScenes.entries()) {
       const id = randomUUID();
       const sceneCredits = replacementCosts[sceneIndex]!;
       const subscriptionCredits = Math.min(sceneCredits, subscriptionRemaining);
@@ -234,7 +251,7 @@ router.post("/jobs/:id/image-review/replacements", async (req, res): Promise<voi
       )`,
       updatedAt: new Date(),
     }).where(eq(jobsTable.id, req.params.id));
-    return { total, count: parsed.data.scenes.length };
+    return { total, count: safeScenes.length };
   });
   if ("error" in result) {
     res.status(result.status ?? 409).json({ error: result.error });

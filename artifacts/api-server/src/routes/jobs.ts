@@ -326,6 +326,8 @@ router.post("/jobs/preview-shots", async (req, res) => {
       hasReferenceImage,
       audioAnalysis,
       audioObjectPath,
+      scenePrompts,
+      scenePlanFingerprint,
     } = (req.body ?? {}) as Record<string, unknown>;
     const analysisReceipt = audioAnalysis && typeof audioAnalysis === "object"
       ? (audioAnalysis as Record<string, unknown>).analysisReceipt
@@ -347,7 +349,7 @@ router.post("/jobs/preview-shots", async (req, res) => {
       });
       return;
     }
-    const plan = planShots({
+    const basePlan = planShots({
       prompt: prompt as string | null,
       style: style as string | null,
       character: character as string | null,
@@ -356,18 +358,48 @@ router.post("/jobs/preview-shots", async (req, res) => {
       generationMode: normalizedPreviewMode,
       analysis: verifiedAnalysis as never,
     });
-    const scriptIssue = numberedVideoScriptIssue(String(prompt ?? ""), plan.numClips);
+    const scriptIssue = numberedVideoScriptIssue(String(prompt ?? ""), basePlan.numClips);
     if (scriptIssue) {
       res.status(422).json({
         error: scriptIssue,
         code: "NUMBERED_SCRIPT_SCENE_COUNT_MISMATCH",
-        expectedSceneCount: plan.numClips,
+        expectedSceneCount: basePlan.numClips,
       });
       return;
     }
+    let plan = basePlan;
+    if (scenePrompts !== undefined || scenePlanFingerprint !== undefined) {
+      const parsedScenePrompts = Array.isArray(scenePrompts)
+        ? scenePrompts.map((item) => {
+            const candidate = item && typeof item === "object"
+              ? item as Record<string, unknown>
+              : {};
+            return {
+              index: Number(candidate.index),
+              prompt: String(candidate.prompt ?? ""),
+            };
+          })
+        : null;
+      const checkedPlan = applyApprovedScenePrompts(
+        basePlan,
+        parsedScenePrompts,
+        typeof scenePlanFingerprint === "string" ? scenePlanFingerprint : null,
+      );
+      if (!checkedPlan.ok) {
+        res.status(422).json({
+          error: checkedPlan.error,
+          code: checkedPlan.code,
+        });
+        return;
+      }
+      plan = checkedPlan.plan;
+    }
     res.json({
       ...plan,
-      fingerprint: shotPlanFingerprint(plan),
+      // Edited prompts are checked against the immutable settings-derived plan.
+      // Keep returning that base fingerprint so recheck -> submit does not make
+      // the approved prompts appear stale merely because their text changed.
+      fingerprint: shotPlanFingerprint(basePlan),
     });
   } catch (err) {
     req.log.error({ err }, "Shot preview failed");

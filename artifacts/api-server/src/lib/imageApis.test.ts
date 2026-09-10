@@ -3,8 +3,13 @@ import {
   downloadGeneratedImage,
   generateNarrativeImage,
   IMAGE_API_FAILURE,
+  IMAGE_MODERATION_REJECTION,
   IMAGE_POLL_TIMEOUT,
+  isDefinitiveImageModerationFailure,
+  isImageModerationRejection,
+  shouldRetryImageWithSafetyFallback,
   singleSceneImagePrompt,
+  stricterFamilyFriendlyImagePrompt,
 } from "./imageApis.js";
 
 describe("generateNarrativeImage recovery", () => {
@@ -68,6 +73,45 @@ describe("generateNarrativeImage recovery", () => {
     expect(onUncertainSubmission).toHaveBeenCalledWith(expect.objectContaining({
       reason: expect.stringContaining("connection reset"),
     }));
+  });
+
+  it("does not mark a local prompt rejection as an uncertain submission", async () => {
+    const onUncertainSubmission = vi.fn();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(generateNarrativeImage({
+      prompt: "Explicit pornography involving adults.",
+      onUncertainSubmission,
+    })).rejects.toThrow(IMAGE_API_FAILURE);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(onUncertainSubmission).not.toHaveBeenCalled();
+  });
+
+  it("returns a distinct terminal marker for a definitive moderation rejection", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify({
+          request_id: "request-moderated",
+          polling_url: "https://example.test/image-status/request-moderated",
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: "FAILED", error: "content checker rejected request" }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+    const result = generateNarrativeImage({ prompt: "A harmless surreal stage scene" });
+    const assertion = expect(result).rejects.toSatisfy((error: unknown) =>
+      isImageModerationRejection(error)
+      && error instanceof Error
+      && error.message.includes(IMAGE_MODERATION_REJECTION)
+    );
+    await vi.advanceTimersByTimeAsync(5_000);
+    await assertion;
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("sends the private reference as an image-editing input", async () => {
@@ -231,5 +275,31 @@ describe("generateNarrativeImage recovery", () => {
 
     await expect(downloadGeneratedImage("https://example.test/generated.png"))
       .resolves.toEqual(png);
+  });
+});
+
+describe("image safety retry decisions", () => {
+  it("allows exactly one retry only for a definitive moderation failure", () => {
+    expect(shouldRetryImageWithSafetyFallback({
+      status: "FAILED",
+      detail: "content checker rejected this request",
+      retryAttempted: false,
+    })).toBe(true);
+    expect(shouldRetryImageWithSafetyFallback({
+      status: "FAILED",
+      detail: "content checker rejected this request",
+      retryAttempted: true,
+    })).toBe(false);
+    expect(isDefinitiveImageModerationFailure("FAILED", "generic rendering failure")).toBe(false);
+    expect(isDefinitiveImageModerationFailure(undefined, "safety check")).toBe(false);
+  });
+
+  it("builds a deterministic family-friendly fallback preserving scene intent", () => {
+    const prompt = "A person on fire performs under spotlights.";
+    const first = stricterFamilyFriendlyImagePrompt(prompt);
+    expect(first).toBe(stricterFamilyFriendlyImagePrompt(prompt));
+    expect(first).toContain("performs under spotlights");
+    expect(first).toContain("fully clothed");
+    expect(first).not.toMatch(/person on fire/i);
   });
 });

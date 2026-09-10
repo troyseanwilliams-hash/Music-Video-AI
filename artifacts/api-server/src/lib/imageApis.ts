@@ -4,11 +4,12 @@ import { writeFile, unlink } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { promisify } from "util";
-import { sanitizeGeneratedMediaPrompt } from "./promptSafety.js";
+import { assessGeneratedMediaPrompt } from "./promptSafety.js";
 import { withResourceLease } from "@workspace/db";
 
 export const IMAGE_API_FAILURE = "[IMAGE_API_FAILURE]";
 export const IMAGE_POLL_TIMEOUT = "[IMAGE_POLL_TIMEOUT]";
+export const IMAGE_MODERATION_REJECTION = "[IMAGE_MODERATION_REJECTION]";
 const IMAGE_POLL_ATTEMPTS = 180;
 const execFileAsync = promisify(execFile);
 
@@ -23,6 +24,7 @@ export interface NarrativeImageRequest {
     activityId?: string;
     reason: string;
   }) => void | Promise<void>;
+  onDefinitiveFailure?: () => void | Promise<void>;
 }
 
 function imageSizeForAspectRatio(aspectRatio?: string | null): string {
@@ -49,8 +51,47 @@ export function singleSceneImagePrompt(segmentPrompt: string): string {
     "If the brief mentions other events, show only the single current segment for this request.",
   ].join("\n");
   const maxSegmentLength = Math.max(0, 3000 - outputRule.length - 2);
-  const safePrompt = sanitizeGeneratedMediaPrompt(segmentPrompt).prompt;
+  const assessment = assessGeneratedMediaPrompt(segmentPrompt);
+  if (assessment.status === "blocked") {
+    throw new Error(`${IMAGE_API_FAILURE} This scene contains unsupported content. ${assessment.reason ?? "Edit the scene and try again."}`);
+  }
+  const safePrompt = assessment.safePrompt;
   return [safePrompt.slice(0, maxSegmentLength), outputRule].join("\n\n");
+}
+
+export function isDefinitiveImageModerationFailure(
+  status: string | null | undefined,
+  detail: string | null | undefined,
+): boolean {
+  return /^(?:FAILED|ERROR)$/i.test(status?.trim() ?? "")
+    && /\b(?:content checker|content policy|policy violation|safety checker?|safety rejection|moderation|unsafe content)\b/i
+      .test(detail ?? "");
+}
+
+export function shouldRetryImageWithSafetyFallback(input: {
+  status?: string | null;
+  detail?: string | null;
+  retryAttempted: boolean;
+}): boolean {
+  return !input.retryAttempted
+    && isDefinitiveImageModerationFailure(input.status, input.detail);
+}
+
+export function isImageModerationRejection(error: unknown): boolean {
+  return error instanceof Error && error.message.includes(IMAGE_MODERATION_REJECTION);
+}
+
+export function stricterFamilyFriendlyImagePrompt(prompt: string): string {
+  const assessment = assessGeneratedMediaPrompt(prompt);
+  const intent = (assessment.safePrompt || "an imaginative cinematic scene")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 2200);
+  return [
+    `Family-friendly surreal illustration preserving this scene intent: ${intent}`,
+    "Use symbolic light, color, movement, and dreamlike visual metaphors. Keep the tone gentle and suitable for all ages.",
+    "All people are fully clothed, calm, safe, and clearly unharmed. Environments use intact surfaces, soft shapes, and gentle theatrical lighting.",
+  ].join(" ");
 }
 
 /**
@@ -66,6 +107,9 @@ export async function generateNarrativeImage(req: NarrativeImageRequest): Promis
   if (!pollUrl) {
     const model = process.env.PIXAZO_NARRATIVE_IMAGE_MODEL?.trim() || "flux-2-max";
     const endpoint = `https://gateway.pixazo.ai/${model}/v1/${model}-request`;
+    // Keep local policy rejection outside the transport catch: no request was
+    // attempted, so it must never be persisted as an uncertain submission.
+    const finalPrompt = singleSceneImagePrompt(req.prompt);
     let response: Response;
     try {
       response = await withResourceLease("image_provider_submission", (lease) => fetch(endpoint, {
@@ -76,7 +120,7 @@ export async function generateNarrativeImage(req: NarrativeImageRequest): Promis
           "Ocp-Apim-Subscription-Key": key,
         },
         body: JSON.stringify({
-          prompt: singleSceneImagePrompt(req.prompt),
+          prompt: finalPrompt,
           image_size: imageSizeForAspectRatio(req.aspectRatio),
           input_image: req.referenceImageUrl?.trim() || undefined,
           safety_tolerance: "2",
@@ -110,6 +154,7 @@ export async function generateNarrativeImage(req: NarrativeImageRequest): Promis
         });
         throw new Error(`${IMAGE_API_FAILURE} Service temporarily unavailable.`);
       }
+      await req.onDefinitiveFailure?.();
       throw new Error(`${IMAGE_API_FAILURE} AI image service ${response.status}: ${text.slice(0, 200)}`);
     }
 
@@ -151,6 +196,7 @@ export async function generateNarrativeImage(req: NarrativeImageRequest): Promis
     }
     if (!poll.ok) {
       if (poll.status >= 400 && poll.status < 500 && poll.status !== 429) {
+        await req.onDefinitiveFailure?.();
         throw new Error(`${IMAGE_API_FAILURE} Saved source-image request was rejected (HTTP ${poll.status}).`);
       }
       continue;
@@ -170,6 +216,10 @@ export async function generateNarrativeImage(req: NarrativeImageRequest): Promis
     }
     if (result.status === "COMPLETED" && result.output?.media_url?.[0]) return result.output.media_url[0];
     if (result.status === "FAILED" || result.status === "ERROR") {
+      if (isDefinitiveImageModerationFailure(result.status, result.error)) {
+        throw new Error(`${IMAGE_MODERATION_REJECTION} The scene was rejected by an automated safety check.`);
+      }
+      await req.onDefinitiveFailure?.();
       throw new Error(`${IMAGE_API_FAILURE} AI image generation failed: ${result.error ?? "unknown error"}`);
     }
   }

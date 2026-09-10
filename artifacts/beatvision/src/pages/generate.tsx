@@ -45,6 +45,12 @@ import {
   compactGeneratedImagePromptScript,
   MAX_CREATIVE_PROMPT_LENGTH,
 } from "@/lib/scenePromptScript";
+import {
+  getStoryboardSafetyDisplay,
+  isSafetyRejectionCode,
+  parseStoryboardSafety,
+  type StoryboardSafety,
+} from "@/lib/storyboardSafety";
 
 const NUMBERED_IMAGE_SCENE_LINE =
   /^\s*(?:scene\s+)?(\d{1,2})\s*(?:(?:[.):])\s*|\s+)(?:\(\s*(?:\d+(?:\.\d+)?s?|\d{1,2}:\d{2}(?::\d{2})?)\s*[-–—]\s*(?:\d+(?:\.\d+)?s?|\d{1,2}:\d{2}(?::\d{2})?)\s*\)\s*[:\-]?\s*)?(.+?)\s*$/i;
@@ -236,6 +242,42 @@ function formatDuration(seconds: number | null | undefined): string {
   return `${minutes}:${String(safeSeconds % 60).padStart(2, "0")}`;
 }
 
+function StoryboardSafetyStatus({
+  safety,
+  sceneIndex,
+}: {
+  safety: StoryboardSafety | undefined;
+  sceneIndex: number;
+}) {
+  const status = getStoryboardSafetyDisplay(safety);
+  const ready = safety?.status === "clean";
+  const adjusted = safety?.status === "adjusted";
+  return (
+    <div
+      className={`mt-2 flex items-start gap-1.5 rounded-md border px-2 py-1.5 text-[11px] leading-snug ${
+        ready
+          ? "border-emerald-500/25 bg-emerald-500/[0.07] text-emerald-700 dark:text-emerald-300"
+          : adjusted
+            ? "border-amber-500/25 bg-amber-500/[0.07] text-amber-700 dark:text-amber-300"
+            : "border-destructive/25 bg-destructive/[0.06] text-destructive"
+      }`}
+      role="status"
+      aria-label={`Scene ${sceneIndex + 1} safety status: ${status.label}. ${status.reason}`}
+      data-testid={`status-scene-safety-${sceneIndex}`}
+    >
+      {status.canGenerate ? (
+        <CheckCircle2 className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      ) : (
+        <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      )}
+      <span>
+        <span className="font-semibold">{status.label}</span>
+        <span className="text-current/80"> · {status.reason}</span>
+      </span>
+    </div>
+  );
+}
+
 // estimateCreditCost + provider pricing now live in "@/lib/creditPricing"
 // (imported above) so the generate page and pricing page share one source.
 
@@ -397,6 +439,7 @@ export default function Generate() {
     startTime: number;
     energy: number;
     prompt: string;
+    safety?: StoryboardSafety;
   };
   const [shotPlan, setShotPlan] = useState<{
     shots: PlannedShot[];
@@ -989,6 +1032,12 @@ export default function Generate() {
     !!shotPlan &&
     reviewedShotIndexes.length === shotPlan.shots.length &&
     shotPlan.shots.every((shot) => reviewedShotIndexes.includes(shot.index));
+  const allShotPromptsSafetyReady =
+    !!shotPlan &&
+    shotPlan.shots.length > 0 &&
+    shotPlan.shots.every((shot) => getStoryboardSafetyDisplay(shot.safety).canGenerate);
+  const blockedShotCount = shotPlan?.shots.filter((shot) => shot.safety?.status === "blocked").length ?? 0;
+  const uncheckedShotCount = shotPlan?.shots.filter((shot) => !shot.safety).length ?? 0;
   const compactImagePromptScript = shotPlan
     ? compactGeneratedImagePromptScript(shotPlan.shots)
     : "";
@@ -1001,7 +1050,7 @@ export default function Generate() {
     setShotPlan((current) => current ? {
       ...current,
       shots: current.shots.map((shot) =>
-        shot.index === shotIndex ? { ...shot, prompt: nextPrompt } : shot,
+        shot.index === shotIndex ? { ...shot, prompt: nextPrompt, safety: undefined } : shot,
       ),
     } : current);
     setReviewedShotIndexes((current) => current.filter((index) => index !== shotIndex));
@@ -1031,11 +1080,17 @@ export default function Generate() {
             analyzeAudio.isSuccess && analysisForPath === selectedAudioObjectPath
               ? analyzeAudio.data
               : null,
+          scenePrompts: shotPlan?.shots.map((shot) => ({
+            index: shot.index,
+            prompt: shot.prompt,
+          })),
+          scenePlanFingerprint: shotPlan?.fingerprint,
         }),
       });
       const data = await readApiResponse<{
         error?: string;
-        shots?: PlannedShot[];
+        code?: string;
+        shots?: unknown[];
         numClips?: number;
         timelineSceneCount?: number;
         reuseCount?: number;
@@ -1043,16 +1098,24 @@ export default function Generate() {
         fingerprint?: string;
       }>(response);
       if (!response.ok || !data.shots || !data.fingerprint) {
-        throw new Error(data.error || `Could not build ${generatedPromptLabelPlural}.`);
+        throw new Error(
+          isSafetyRejectionCode(data.code)
+            ? "One or more scene prompts need revision before they can be generated."
+            : data.error || `Could not build ${generatedPromptLabelPlural}.`,
+        );
       }
-      setShotPlan(data as NonNullable<typeof shotPlan>);
+      const shots = data.shots.map((value) => {
+        const shot = value as PlannedShot & { safety?: unknown };
+        return { ...shot, safety: parseStoryboardSafety(shot.safety) };
+      });
+      setShotPlan({ ...data, shots } as NonNullable<typeof shotPlan>);
       setReviewedShotIndexes([]);
       setScriptApproved(false);
     } catch (error) {
-      setShotPlan(null);
       setReviewedShotIndexes([]);
+      setScriptApproved(false);
       toast({
-        title: `${generatedPromptLabel} build failed`,
+        title: shotPlan ? `${generatedPromptLabel} check failed` : `${generatedPromptLabel} build failed`,
         description: error instanceof Error ? error.message : "Please try again.",
         variant: "destructive",
       });
@@ -1074,6 +1137,7 @@ export default function Generate() {
     analyzeAudio.isSuccess,
     analyzeAudio.data,
     analysisForPath,
+    shotPlan,
     toast,
     generatedPromptLabel,
     generatedPromptLabelPlural,
@@ -1265,6 +1329,17 @@ export default function Generate() {
       });
       return;
     }
+    if (!allShotPromptsSafetyReady) {
+      setErrorDialog({
+        open: true,
+        title: "Scene prompts need a safety check",
+        message: blockedShotCount > 0
+          ? "Revise the flagged scene prompts, then rebuild prompts before generating."
+          : "Rebuild prompts to safety-check all edited scene prompts before generating.",
+        code: "SCENE_PROMPT_SAFETY_REQUIRED",
+      });
+      return;
+    }
     if (!scriptApproved) {
       setErrorDialog({
         open: true,
@@ -1374,6 +1449,10 @@ export default function Generate() {
           if (code === "INSUFFICIENT_CREDITS") title = "Not enough credits";
           else if (code === "SUBSCRIPTION_REQUIRED") title = "Subscription required";
           else if (code === "SCRIPT_APPROVAL_REQUIRED") title = "Approve your script";
+          else if (isSafetyRejectionCode(code)) {
+            title = "Scene prompts need revision";
+            message = "Review the flagged scene prompts, revise them, and rebuild prompts before generating.";
+          }
           else if (code === "AUDIO_ANALYSIS_REQUIRED") {
             title = "Audio analysis not ready";
             message = "Audio analysis did not finish. Retry the analysis or choose a specific video duration.";
@@ -3331,6 +3410,9 @@ export default function Generate() {
 
                 {shotPlan && (
                   <div className="space-y-3" data-testid="image-prompt-review-panel">
+                    <p className="text-xs leading-relaxed text-muted-foreground" data-testid="text-storyboard-safety-check">
+                      Scene prompts are safety-checked before rendering. Editing a prompt requires rebuilding it for another check.
+                    </p>
                     <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3">
                       <div className="text-xs">
                         <span className="font-semibold text-foreground">
@@ -3341,6 +3423,23 @@ export default function Generate() {
                         </span>
                       </div>
                       <div className="flex flex-wrap gap-2">
+                        {generationMode === CreateJobRequestGenerationMode.narrative && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void buildScenePrompts()}
+                            disabled={shotPlanLoading || !shotPromptValidation.valid}
+                            data-testid="button-recheck-scene-prompts"
+                          >
+                            {shotPlanLoading ? (
+                              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                            )}
+                            Rebuild & check
+                          </Button>
+                        )}
                         <Button
                           type="button"
                           variant="ghost"
@@ -3380,8 +3479,9 @@ export default function Generate() {
                           type="button"
                           variant="outline"
                           size="sm"
-                          disabled={!shotPromptValidation.valid}
+                           disabled={!shotPromptValidation.valid || !allShotPromptsSafetyReady}
                           onClick={() => setReviewedShotIndexes(shotPlan.shots.map((shot) => shot.index))}
+                           data-testid="button-approve-all-scene-prompts"
                         >
                           <CheckCheck className="mr-1.5 h-3.5 w-3.5" />
                           Approve all {generatedPromptLabelPlural}
@@ -3396,6 +3496,20 @@ export default function Generate() {
                           {shotPromptValidation.hasDuplicates
                             ? "Every scene needs a distinct prompt. Edit the duplicate prompts before approval."
                             : `All ${requiredPromptCount} prompts must be non-empty before approval.`}
+                        </span>
+                      </div>
+                    )}
+                    {shotPromptValidation.valid && !allShotPromptsSafetyReady && (
+                      <div
+                        className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300"
+                        role="status"
+                        data-testid="status-storyboard-safety-required"
+                      >
+                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        <span>
+                          {blockedShotCount > 0
+                            ? `${blockedShotCount} ${blockedShotCount === 1 ? "scene needs" : "scenes need"} revision. Edit the flagged prompts, then rebuild.`
+                            : `${uncheckedShotCount} edited ${uncheckedShotCount === 1 ? "scene needs" : "scenes need"} another safety check. Rebuild prompts to continue.`}
                         </span>
                       </div>
                     )}
@@ -3423,7 +3537,7 @@ export default function Generate() {
                                 variant={reviewed ? "default" : "outline"}
                                 size="sm"
                                 className="h-7 px-2 text-xs"
-                                disabled={!shot.prompt.trim()}
+                                disabled={!shot.prompt.trim() || !getStoryboardSafetyDisplay(shot.safety).canGenerate}
                                 onClick={() => setReviewedShotIndexes((current) =>
                                   reviewed
                                     ? current.filter((index) => index !== shot.index)
@@ -3443,6 +3557,7 @@ export default function Generate() {
                                aria-label={`${generatedPromptLabel} ${shot.index + 1}`}
                               data-testid={`input-scene-image-prompt-${shot.index}`}
                             />
+                             <StoryboardSafetyStatus safety={shot.safety} sceneIndex={shot.index} />
                             {generationMode === CreateJobRequestGenerationMode.montage && (
                               <div className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-secondary/20 p-2">
                                 <div className="flex min-w-0 items-center gap-2">
@@ -4196,7 +4311,8 @@ export default function Generate() {
                 {shotPlan && shotPlan.shots.length > 0 && (
                   <>
                      <p className="mb-2 text-xs leading-relaxed text-muted-foreground">
-                       Edit each {generatedPromptLabel} below before approving. These exact prompts will be sent for generation.
+                        These exact prompts will be sent for generation and are safety-checked before rendering.
+                        Editing one requires rebuilding it for another check.
                      </p>
                     <div className="max-h-64 overflow-y-auto space-y-3 pr-1">
                       {shotPlan.shots.map((s) => (
@@ -4216,6 +4332,7 @@ export default function Generate() {
                              aria-label={`Approval ${generatedPromptLabel} ${s.index + 1}`}
                              data-testid={`input-approval-scene-image-prompt-${s.index}`}
                            />
+                            <StoryboardSafetyStatus safety={s.safety} sceneIndex={s.index} />
                         </div>
                       ))}
                     </div>
@@ -4231,6 +4348,7 @@ export default function Generate() {
               type="checkbox"
               checked={scriptApproved}
               onChange={(event) => setScriptApproved(event.target.checked)}
+              disabled={!allShotPromptsSafetyReady}
               className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-primary"
               data-testid="checkbox-approve-script"
             />
@@ -4276,6 +4394,20 @@ export default function Generate() {
             </span>
           </div>
         )}
+        {!imagePackMode && shotPromptValidation.valid && !allShotPromptsSafetyReady && (
+          <div
+            className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300"
+            role="status"
+            data-testid="status-confirmation-safety-required"
+          >
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              {blockedShotCount > 0
+                ? "Revise the flagged scene prompts, then rebuild prompts before generating."
+                : "Edited scene prompts must be rebuilt and safety-checked before generating."}
+            </span>
+          </div>
+        )}
         <DialogFooter className="flex-col sm:flex-row gap-2 mt-2">
           <Button
             variant="outline"
@@ -4293,6 +4425,7 @@ export default function Generate() {
               (!imagePackMode && (
                 shotPlanLoading ||
                 !shotPromptValidation.valid ||
+                 !allShotPromptsSafetyReady ||
                !scriptApproved
               )) ||
               (imagePackMode && (!isImagePackPlanValid || imagePackPlanLoading))

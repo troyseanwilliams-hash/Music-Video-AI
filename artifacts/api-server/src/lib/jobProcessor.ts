@@ -14,7 +14,14 @@ import { notifyRenderReady, notifyAdminRenderFailed } from "./renderEmail.js";
 import { ObjectStorageService } from "./objectStorage.js";
 import { analyzeAudioBuffer, type AudioAnalysis, type AudioSection } from "./audioAnalysis.js";
 import { generateClip, downloadClip, pollPixazoRequestUntilComplete, getActiveProvider, PROVIDER_API_FAILURE, PROVIDER_TERMINAL_FAILURE, PROVIDER_OUT_OF_CREDITS, PROVIDER_POLL_TIMEOUT, PROVIDER_POLL_ABORTED, PROVIDER_MEDIA_TERMINAL } from "./videoApis.js";
-import { generateNarrativeImage, downloadGeneratedImage, IMAGE_API_FAILURE, IMAGE_POLL_TIMEOUT } from "./imageApis.js";
+import {
+  generateNarrativeImage,
+  downloadGeneratedImage,
+  IMAGE_API_FAILURE,
+  IMAGE_POLL_TIMEOUT,
+  isImageModerationRejection,
+  stricterFamilyFriendlyImagePrompt,
+} from "./imageApis.js";
 import { generateLipsync, lipsyncAvailable } from "./lipsync.js";
 import { stitchVideoClips, extractVideoThumbnail, createWebPreview } from "./videoStitcher.js";
 import { stitchEditorTimeline } from "./editorStitcher.js";
@@ -318,6 +325,13 @@ type ImageGenerationFailure = {
   occurredAt: string;
 };
 
+type ImageSafetyRetry = {
+  authorizedAt: string;
+  reason: string;
+  fallbackPrompt: string;
+  exhaustedAt?: string;
+};
+
 type AiJobMeta = {
   strictUniqueSourcesVersion?: number;
   generationMode?: "montage" | "narrative";
@@ -327,6 +341,7 @@ type AiJobMeta = {
   imageSubmissionIntents?: Record<string, ImageSubmissionIntent>;
   uncertainImageSubmissions?: Record<string, UncertainImageSubmission>;
   imageGenerationFailures?: Record<string, ImageGenerationFailure>;
+  imageSafetyRetries?: Record<string, ImageSafetyRetry>;
   imageFirstVersion?: number;
   imageReview?: ImageReviewState;
   reservedCredits?: number;
@@ -484,6 +499,137 @@ async function persistImageSubmissionIntent(job: JobRow, index: number): Promise
   return result.rows.length > 0;
 }
 
+async function authorizeSingleImageSafetyRetry(
+  job: JobRow,
+  index: number,
+  retryKey: string | number,
+  info: Omit<ImageSafetyRetry, "authorizedAt">,
+): Promise<boolean> {
+  const result = await db.execute<{ id: string }>(sql`
+    UPDATE jobs
+    SET manifest = jsonb_set(
+      jsonb_set(
+        jsonb_set(
+          COALESCE(manifest, '{}'::jsonb),
+          '{pendingImageRequests}',
+          COALESCE(manifest->'pendingImageRequests', '{}'::jsonb) - ${String(index)}
+        ),
+        '{imageSafetyRetries}',
+        COALESCE(manifest->'imageSafetyRetries', '{}'::jsonb)
+          || ${JSON.stringify({
+            [retryKey]: { ...info, authorizedAt: new Date().toISOString() },
+          })}::jsonb
+      ),
+      '{imageSubmissionIntents}',
+      COALESCE(manifest->'imageSubmissionIntents', '{}'::jsonb)
+        || ${JSON.stringify({ [index]: { occurredAt: new Date().toISOString() } })}::jsonb
+    ), updated_at = NOW()
+    WHERE id = ${job.id}
+      AND status = 'generating'
+      AND claimed_at = ${job.claimedAt}
+      AND NOT (COALESCE(manifest->'imageSafetyRetries', '{}'::jsonb) ? ${String(retryKey)})
+    RETURNING id
+  `);
+  return result.rows.length > 0;
+}
+
+async function markImageSafetyRetryExhausted(
+  jobId: string,
+  index: number,
+  retryKey: string | number,
+): Promise<void> {
+  const exhaustedAt = new Date().toISOString();
+  await db.execute(sql`
+    UPDATE jobs
+    SET manifest = jsonb_set(
+      jsonb_set(
+        jsonb_set(
+          jsonb_set(
+            COALESCE(manifest, '{}'::jsonb),
+            '{pendingImageRequests}',
+            COALESCE(manifest->'pendingImageRequests', '{}'::jsonb) - ${String(index)}
+          ),
+          '{uncertainImageSubmissions}',
+          COALESCE(manifest->'uncertainImageSubmissions', '{}'::jsonb) - ${String(index)}
+        ),
+        '{imageSubmissionIntents}',
+        COALESCE(manifest->'imageSubmissionIntents', '{}'::jsonb) - ${String(index)}
+      ),
+      ARRAY['imageSafetyRetries', ${String(retryKey)}, 'exhaustedAt']::text[],
+      ${JSON.stringify(exhaustedAt)}::jsonb,
+      true
+    ), updated_at = NOW()
+    WHERE id = ${jobId}
+      AND COALESCE(manifest->'imageSafetyRetries', '{}'::jsonb) ? ${String(retryKey)}
+  `);
+}
+
+async function generateNarrativeImageWithSafetyRetry(input: {
+  job: JobRow;
+  index: number;
+  retryKey: string | number;
+  prompt: string;
+  aspectRatio?: string | null;
+  referenceImageUrl?: string;
+  existingPollUrl?: string;
+  retryAlreadyAuthorized: boolean;
+}): Promise<string> {
+  const retireDefinitiveAttempt = input.retryAlreadyAuthorized
+    ? () => markImageSafetyRetryExhausted(input.job.id, input.index, input.retryKey)
+    : () => clearImageSubmissionState(input.job.id, input.index);
+  const callbacks = {
+    onSubmit: (info: PendingImageRequest) =>
+      persistPendingImageRequest(input.job.id, input.index, info),
+    onUncertainSubmission: (info: Omit<UncertainImageSubmission, "occurredAt">) =>
+      persistUncertainImageSubmission(input.job.id, input.index, info),
+    onDefinitiveFailure: retireDefinitiveAttempt,
+  };
+  try {
+    return await generateNarrativeImage({
+      prompt: input.prompt,
+      aspectRatio: input.aspectRatio,
+      referenceImageUrl: input.referenceImageUrl,
+      existingPollUrl: input.existingPollUrl,
+      ...callbacks,
+    });
+  } catch (error) {
+    if (!isImageModerationRejection(error)) throw error;
+    if (input.retryAlreadyAuthorized) {
+      // The persisted poll URL is the one and only fallback request and is now
+      // definitively terminal. Retire it so callers do not misclassify it as a
+      // resumable/uncertain request from stale in-memory state.
+      await markImageSafetyRetryExhausted(input.job.id, input.index, input.retryKey);
+      throw error;
+    }
+    const fallbackPrompt = stricterFamilyFriendlyImagePrompt(input.prompt);
+    const authorized = await authorizeSingleImageSafetyRetry(
+      input.job,
+      input.index,
+      input.retryKey,
+      {
+        reason: "The first request was rejected by an automated safety check.",
+        fallbackPrompt,
+      },
+    );
+    if (!authorized) throw error;
+    try {
+      return await generateNarrativeImage({
+        prompt: fallbackPrompt,
+        aspectRatio: input.aspectRatio,
+        referenceImageUrl: input.referenceImageUrl,
+        ...callbacks,
+        onDefinitiveFailure: () =>
+          markImageSafetyRetryExhausted(input.job.id, input.index, input.retryKey),
+      });
+    } catch (fallbackError) {
+      if (isImageModerationRejection(fallbackError)) {
+        await markImageSafetyRetryExhausted(input.job.id, input.index, input.retryKey);
+      }
+      throw fallbackError;
+    }
+  }
+}
+
 async function persistUncertainImageSubmission(
   jobId: string,
   index: number,
@@ -584,6 +730,7 @@ async function prepareNarrativeImagesStage(job: JobRow): Promise<Record<string, 
   const uncertain = liveMeta.uncertainImageSubmissions ?? {};
   const intents = liveMeta.imageSubmissionIntents ?? {};
   const failures = { ...(liveMeta.imageGenerationFailures ?? {}) };
+  const safetyRetries = liveMeta.imageSafetyRetries ?? {};
   for (const asset of stored) paths[asset.assetIndex] = asset.objectPath;
   let generatedCharacterAnchorPath = selectGeneratedCharacterAnchorPath(
     stored,
@@ -606,6 +753,16 @@ async function prepareNarrativeImagesStage(job: JobRow): Promise<Record<string, 
   for (let position = 0; position < shots.length; position++) {
     const shot = shots[position]!;
     if (!paths[shot.index]) {
+      if (safetyRetries[shot.index]?.exhaustedAt) {
+        const failure = {
+          status: "failed",
+          message: "This scene could not be created after a safer retry. Edit the wording or choose another image.",
+          occurredAt: new Date().toISOString(),
+        } satisfies ImageGenerationFailure;
+        await persistImageGenerationFailure(job.id, shot.index, failure);
+        failures[String(shot.index)] = failure;
+        continue;
+      }
       const existingRequest = pending[shot.index];
       try {
         if ((uncertain[shot.index] || intents[shot.index]) && !existingRequest?.pollUrl) {
@@ -633,13 +790,15 @@ async function prepareNarrativeImagesStage(job: JobRow): Promise<Record<string, 
           const intentPersisted = await persistImageSubmissionIntent(job, shot.index);
           if (!intentPersisted) throw new Error(`${OWNERSHIP_LOST} (image submission intent fence)`);
         }
-        const providerUrl = await generateNarrativeImage({
+        const providerUrl = await generateNarrativeImageWithSafetyRetry({
+          job,
+          index: shot.index,
+          retryKey: shot.index,
           prompt: shot.prompt,
           aspectRatio: job.aspectRatio,
           referenceImageUrl,
           existingPollUrl: existingRequest?.pollUrl,
-          onSubmit: (info) => persistPendingImageRequest(job.id, shot.index, info),
-          onUncertainSubmission: (info) => persistUncertainImageSubmission(job.id, shot.index, info),
+          retryAlreadyAuthorized: !!safetyRetries[shot.index],
         });
         await assertJobOwned(job);
         const buffer = await downloadGeneratedImage(providerUrl);
@@ -669,9 +828,14 @@ async function prepareNarrativeImagesStage(job: JobRow): Promise<Record<string, 
         if (isTransientInfrastructureError(error)) {
           throw recoverableInfrastructureError(error);
         }
+        const failureMeta = await readAiMeta(job.id);
         const status: ImageGenerationFailure["status"] =
-          uncertain[shot.index] || intents[shot.index] ? "uncertain"
-            : pending[shot.index] ? "pending"
+          failureMeta.uncertainImageSubmissions?.[shot.index]
+            || (
+              failureMeta.imageSubmissionIntents?.[shot.index]
+              && !failureMeta.pendingImageRequests?.[shot.index]?.pollUrl
+            ) ? "uncertain"
+            : failureMeta.pendingImageRequests?.[shot.index] ? "pending"
               : "failed";
         const failure = {
           status,
@@ -776,20 +940,25 @@ async function processImageReviewReplacements(job: JobRow): Promise<void> {
     const referenceImageUrl = referencePath
       ? await storageService.getObjectEntitySignedUrl(referencePath, 900)
       : undefined;
+    const replacementRetryKey = `replacement:${replacement.id}`;
+    if (submissionMeta.imageSafetyRetries?.[replacementRetryKey]?.exhaustedAt) {
+      throw new Error(`${IMAGE_API_FAILURE} This replacement could not be created after a safer retry.`);
+    }
     if (!existingRequest) {
       const intentPersisted = await persistImageSubmissionIntent(job, replacement.index);
       if (!intentPersisted) {
         throw new Error(`${OWNERSHIP_LOST} (image replacement submission intent fence)`);
       }
     }
-    const providerUrl = await generateNarrativeImage({
+    const providerUrl = await generateNarrativeImageWithSafetyRetry({
+      job,
+      index: replacement.index,
+      retryKey: replacementRetryKey,
       prompt: replacement.prompt,
       aspectRatio: job.aspectRatio,
       referenceImageUrl,
       existingPollUrl: existingRequest?.pollUrl,
-      onSubmit: (info) => persistPendingImageRequest(job.id, replacement.index, info),
-      onUncertainSubmission: (info) =>
-        persistUncertainImageSubmission(job.id, replacement.index, info),
+      retryAlreadyAuthorized: !!submissionMeta.imageSafetyRetries?.[replacementRetryKey],
     });
     await assertJobOwned(job);
     const buffer = await downloadGeneratedImage(providerUrl);
@@ -1098,6 +1267,7 @@ async function processImagePackJob(job: JobRow): Promise<void> {
     const pending = liveMeta.pendingImageRequests ?? {};
     const uncertain = liveMeta.uncertainImageSubmissions ?? {};
     const intents = liveMeta.imageSubmissionIntents ?? {};
+    const safetyRetries = liveMeta.imageSafetyRetries ?? {};
     let generatedCharacterAnchorPath = selectGeneratedCharacterAnchorPath(
       existing,
       scenes,
@@ -1113,6 +1283,9 @@ async function processImagePackJob(job: JobRow): Promise<void> {
       await assertJobOwned(job);
       const scene = sceneByIndex.get(index);
       const existingRequest = pending[index];
+      if (safetyRetries[index]?.exhaustedAt) {
+        throw new Error(`${IMAGE_API_FAILURE} Scene ${index + 1} could not be created after a safer retry.`);
+      }
       if ((uncertain[index] || intents[index]) && !existingRequest?.pollUrl) {
         throw new Error(`${IMAGE_API_FAILURE} An image request has an uncertain submission state.`);
       }
@@ -1141,13 +1314,15 @@ async function processImagePackJob(job: JobRow): Promise<void> {
         const intentPersisted = await persistImageSubmissionIntent(job, index);
         if (!intentPersisted) throw new Error(`${OWNERSHIP_LOST} (image submission intent fence)`);
       }
-      const providerUrl = await generateNarrativeImage({
+      const providerUrl = await generateNarrativeImageWithSafetyRetry({
+        job,
+        index,
+        retryKey: index,
         prompt,
         aspectRatio: imageAspectRatio,
         referenceImageUrl,
         existingPollUrl: existingRequest?.pollUrl,
-        onSubmit: (info) => persistPendingImageRequest(job.id, index, info),
-        onUncertainSubmission: (info) => persistUncertainImageSubmission(job.id, index, info),
+        retryAlreadyAuthorized: !!safetyRetries[index],
       });
       await assertJobOwned(job);
       const buffer = await downloadGeneratedImage(providerUrl);
