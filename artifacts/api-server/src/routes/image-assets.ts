@@ -38,6 +38,10 @@ import { assessGeneratedMediaPrompt } from "../lib/promptSafety.js";
 
 const router = Router();
 const MAX_IMAGE_PACK_COUNT = 30;
+// Keep the image-pack script limit aligned with Generate's creative prompt
+// field. Numbered scripts are intentionally sent intact to the planner so a
+// long script does not collapse into an empty confirmation storyboard.
+export const MAX_IMAGE_PACK_PROMPT_LENGTH = 12_000;
 
 function isAdminEmail(email?: string | null): boolean {
   return !!(
@@ -85,7 +89,7 @@ export function toPublicImageAsset(row: PublicImageRow, liked: boolean) {
 }
 
 const createImagePackBody = z.object({
-  prompt: z.string().trim().min(1).max(1000),
+  prompt: z.string().trim().min(1).max(MAX_IMAGE_PACK_PROMPT_LENGTH),
   style: z.enum([
     "realistic",
     "anime",

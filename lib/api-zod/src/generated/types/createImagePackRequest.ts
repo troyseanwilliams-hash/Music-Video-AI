@@ -13,7 +13,7 @@ export interface CreateImagePackRequest {
   /**
      * Visual direction used for every generated image.
      * @minLength 1
-     * @maxLength 1000
+     * @maxLength 12000
      */
   prompt: string;
   style?: VideoStyle;

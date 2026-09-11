@@ -570,7 +570,7 @@ export const CreateImagePackHeader = zod.object({
   "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
 })
 
-export const createImagePackBodyPromptMax = 1000;
+export const createImagePackBodyPromptMax = 12000;
 
 export const createImagePackBodyImageCountMax = 30;
 
@@ -747,7 +747,7 @@ export const PlanImagePackHeader = zod.object({
   "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
 })
 
-export const planImagePackBodyPromptMax = 1000;
+export const planImagePackBodyPromptMax = 12000;
 
 export const planImagePackBodyImageCountMax = 30;
 

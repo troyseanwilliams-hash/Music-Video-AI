@@ -46,6 +46,12 @@ import {
   MAX_CREATIVE_PROMPT_LENGTH,
 } from "@/lib/scenePromptScript";
 import {
+  MAX_IMAGE_PACK_SCENE_PROMPT_LENGTH,
+  isCurrentImagePackPlanRequest,
+  isImagePackPlanValid as validateImagePackPlan,
+  updateImagePackScenePrompt,
+} from "@/lib/imagePackReview";
+import {
   getStoryboardSafetyDisplay,
   isSafetyRejectionCode,
   parseStoryboardSafety,
@@ -457,6 +463,11 @@ export default function Generate() {
   const createImagePack = useCreateImagePack();
   const [imagePackScenes, setImagePackScenes] = useState<ImagePackScene[] | null>(null);
   const [imagePackPlanLoading, setImagePackPlanLoading] = useState(false);
+  // Planning is asynchronous and the user can change the script, close the
+  // dialog, and immediately open a new review. Never let an older response
+  // replace the current plan (or reopen an empty review) in that case.
+  const imagePackPlanRequestId = useRef(0);
+  const confirmOpenRef = useRef(confirmOpen);
 
   const numberedImageSceneAnalysis = imagePackMode
     ? analyzeNumberedScenes(prompt, 30)
@@ -752,6 +763,11 @@ export default function Generate() {
     : "Full track";
 
   useEffect(() => {
+    confirmOpenRef.current = confirmOpen;
+    if (!confirmOpen) setImagePackPlanLoading(false);
+  }, [confirmOpen]);
+
+  useEffect(() => {
     if (imagePackMode) {
       setImagePackScenes(null);
     }
@@ -762,6 +778,7 @@ export default function Generate() {
     if (!imagePackMode) return;
     if (imagePackScenes) return; // already planned
 
+    const requestId = ++imagePackPlanRequestId.current;
     setImagePackPlanLoading(true);
     planImagePack.mutate(
       {
@@ -775,22 +792,54 @@ export default function Generate() {
       },
       {
         onSuccess: (data) => {
+          if (!isCurrentImagePackPlanRequest(
+            requestId,
+            imagePackPlanRequestId.current,
+            confirmOpenRef.current,
+            imagePackMode,
+          )) {
+            return;
+          }
           setImagePackScenes(data.scenes);
         },
-        onError: () => {
-          const defaultScenes = Array.from({ length: effectiveImagePackCount }).map((_, i) => ({
-            index: i,
-            prompt: "",
-          }));
-          setImagePackScenes(defaultScenes);
+        onError: (error) => {
+          if (!isCurrentImagePackPlanRequest(
+            requestId,
+            imagePackPlanRequestId.current,
+            confirmOpenRef.current,
+            imagePackMode,
+          )) {
+            return;
+          }
+          // Planning errors must never turn into an editable form full of
+          // blank placeholders. Keep the user's source script untouched and
+          // return to it with the actual planning error.
+          setImagePackScenes(null);
+          setConfirmOpen(false);
+          const message =
+            (error as { data?: { error?: string } })?.data?.error
+            ?? (error as { message?: string })?.message
+            ?? "Could not build the image-pack scene plan. Please try again.";
+          toast({
+            title: "Image-pack planning failed",
+            description: message,
+            variant: "destructive",
+          });
         },
         onSettled: () => {
-          setImagePackPlanLoading(false);
+          if (requestId === imagePackPlanRequestId.current) {
+            setImagePackPlanLoading(false);
+          }
         }
       }
     );
+    return () => {
+      if (requestId === imagePackPlanRequestId.current) {
+        imagePackPlanRequestId.current += 1;
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [confirmOpen, imagePackMode, imagePackScenes, prompt, selectedStyle, effectiveImagePackCount, imagePackAspectRatio, refImageObjectPath]);
+  }, [confirmOpen, imagePackMode, imagePackScenes, prompt, selectedStyle, effectiveImagePackCount, imagePackAspectRatio, refImageObjectPath, toast]);
 
   // Quick-start: apply a template's prompt/style/aspect/duration in one click.
   function applyTemplate(t: (typeof TEMPLATES)[number]) {
@@ -1468,13 +1517,19 @@ export default function Generate() {
 
   const isImagePackPlanValid = useMemo(() => {
     if (!imagePackMode) return true;
-    if (!imagePackScenes) return false;
-    if (imagePackScenes.length !== effectiveImagePackCount) return false;
-    const prompts = imagePackScenes.map(s => s.prompt.trim());
-    if (prompts.some(p => p === "")) return false;
-    if (new Set(prompts).size !== prompts.length) return false;
-    return true;
+    return validateImagePackPlan(imagePackScenes, effectiveImagePackCount);
   }, [imagePackMode, imagePackScenes, effectiveImagePackCount]);
+
+  const handleConfirmOpenChange = (open: boolean) => {
+    confirmOpenRef.current = open;
+    if (!open) {
+      // Invalidate a pending planner callback immediately, before React's
+      // state/effect cycle gets a chance to run.
+      imagePackPlanRequestId.current += 1;
+      setImagePackPlanLoading(false);
+    }
+    setConfirmOpen(open);
+  };
 
   const submitImagePack = () => {
     if (
@@ -4130,7 +4185,7 @@ export default function Generate() {
     })()}
 
     {/* ── Confirm Generation Dialog ── */}
-    <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+    <Dialog open={confirmOpen} onOpenChange={handleConfirmOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
             <div className="flex items-center gap-3 mb-1">
@@ -4266,24 +4321,25 @@ export default function Generate() {
                     </div>
                   ) : (
                     <div className="flex flex-col space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                      {imagePackScenes?.map((scene, i) => (
-                         <div key={i} className="flex gap-2 items-start">
+                       {imagePackScenes?.map((scene) => (
+                         <div key={scene.index} className="flex gap-2 items-start">
                            <div className="flex items-center justify-center h-6 w-6 shrink-0 bg-primary/10 text-primary rounded-full text-xs font-semibold mt-1">
-                             {i + 1}
+                             {scene.index + 1}
                            </div>
                            <Textarea
                              value={scene.prompt}
                              onChange={(e) => {
-                               const updated = [...imagePackScenes];
-                               updated[i] = { ...updated[i], prompt: e.target.value };
-                               setImagePackScenes(updated);
+                                setImagePackScenes((current) => current
+                                  ? updateImagePackScenePrompt(current, scene.index, e.target.value)
+                                  : current);
                              }}
+                              maxLength={MAX_IMAGE_PACK_SCENE_PROMPT_LENGTH}
                              className="min-h-16 text-sm bg-background flex-1"
-                             placeholder={`Prompt for scene ${i + 1}`}
-                             data-testid={`input-image-pack-scene-${i}`}
+                              placeholder={`Prompt for scene ${scene.index + 1}`}
+                              data-testid={`input-image-pack-scene-${scene.index}`}
                            />
                          </div>
-                      ))}
+                       ))}
                     </div>
                   )}
                 </div>

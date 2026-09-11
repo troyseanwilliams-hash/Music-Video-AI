@@ -12,7 +12,7 @@ export interface ImagePackPlanRequest {
   /**
      * Visual direction or a consecutively numbered scene script.
      * @minLength 1
-     * @maxLength 1000
+     * @maxLength 12000
      */
   prompt: string;
   style?: VideoStyle;

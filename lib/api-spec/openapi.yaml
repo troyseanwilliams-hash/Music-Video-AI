@@ -1824,7 +1824,7 @@ components:
         prompt:
           type: string
           minLength: 1
-          maxLength: 1000
+          maxLength: 12000
           description: Visual direction used for every generated image.
         style:
           $ref: '#/components/schemas/VideoStyle'
@@ -1857,7 +1857,7 @@ components:
         prompt:
           type: string
           minLength: 1
-          maxLength: 1000
+          maxLength: 12000
           description: Visual direction or a consecutively numbered scene script.
         style:
           $ref: '#/components/schemas/VideoStyle'

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { CreateImagePackBody, PlanImagePackBody } from "@workspace/api-zod";
 import {
   buildImagePackPlan,
   assessImagePackScenes,
+  MAX_IMAGE_PACK_PROMPT_LENGTH,
   parsePublicImagePagination,
   toPublicImageAsset,
   toPersistedImagePackScenes,
@@ -72,6 +74,51 @@ describe("public generated-image pagination", () => {
 });
 
 describe("image-pack pre-charge storyboard approval", () => {
+  it("accepts a long numbered script at the creative-prompt limit and keeps all 15 scenes", () => {
+    const prompt = [
+      "Consistent characters and period-accurate documentary direction. ".repeat(8),
+      ...Array.from({ length: 15 }, (_, index) =>
+        `${index + 1}. Scene ${index + 1}: ${[
+          "The same children remain recognizable with their established clothing and features",
+          "in a carefully composed Adelaide setting with natural light and a restrained camera",
+          "view, preserving the exact chronological order of this numbered script.",
+        ].join(" ")}`,
+      ),
+    ].join("\n");
+
+    expect(prompt.length).toBeGreaterThan(1_000);
+    expect(prompt.length).toBeLessThanOrEqual(MAX_IMAGE_PACK_PROMPT_LENGTH);
+    expect(PlanImagePackBody.safeParse({
+      prompt,
+      imageCount: 15,
+      style: "documentary",
+      aspectRatio: "9:16",
+      referenceImagePath: null,
+    }).success).toBe(true);
+    expect(CreateImagePackBody.safeParse({
+      prompt,
+      imageCount: 15,
+      style: "documentary",
+      aspectRatio: "9:16",
+      referenceImagePath: null,
+    }).success).toBe(true);
+
+    const scenes = buildImagePackPlan({
+      prompt,
+      imageCount: 15,
+      style: "documentary",
+      hasCharacterReference: false,
+    });
+    expect(scenes).toHaveLength(15);
+    expect(scenes.map((scene) => scene.index)).toEqual(Array.from({ length: 15 }, (_, i) => i));
+    expect(scenes.map((scene) => scene.prompt)).toEqual(
+      Array.from({ length: 15 }, (_, index) =>
+        expect.stringContaining(`scene ${index + 1} of 15:`),
+      ),
+    );
+    expect(scenes.every((scene) => scene.prompt.length > 0)).toBe(true);
+  });
+
   it("plans numbered scenes without charging and preserves their normalized order", () => {
     const scenes = buildImagePackPlan({
       prompt: [
