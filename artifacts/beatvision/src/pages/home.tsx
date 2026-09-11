@@ -62,10 +62,10 @@ export default function Home() {
               </p>
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-5 w-full sm:w-auto">
-                <Link href="/pricing" onClick={() => trackCTA("hero", "view_pricing", "See shared balance plans")}>
+                <Link href="/pricing" onClick={() => trackCTA("hero", "view_pricing", "View AIBeatSync plans")}>
                   <Button size="lg" className="w-full sm:w-auto text-lg h-14 px-8 bg-white text-black hover:bg-white/90 shadow-[0_0_40px_rgba(255,255,255,0.2)] border-0 transition-all group rounded-full">
                     <Wallet className="mr-2 h-5 w-5" />
-                    View unified plans
+                    View AIBeatSync plans
                   </Button>
                 </Link>
                 <Link href="/generate" onClick={() => trackCTA("hero", "open_generate_video", "Start generating")}>
