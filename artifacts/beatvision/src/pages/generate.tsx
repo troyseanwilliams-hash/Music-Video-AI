@@ -4322,9 +4322,9 @@ export default function Generate() {
                   ) : (
                     <div className="flex flex-col space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
                        {imagePackScenes?.map((scene) => (
-                         <div key={scene.index} className="flex gap-2 items-start">
+                          <div key={scene.index} className="flex gap-2 items-start">
                            <div className="flex items-center justify-center h-6 w-6 shrink-0 bg-primary/10 text-primary rounded-full text-xs font-semibold mt-1">
-                             {scene.index + 1}
+                              {scene.index + 1}
                            </div>
                            <Textarea
                              value={scene.prompt}
@@ -4339,7 +4339,7 @@ export default function Generate() {
                               data-testid={`input-image-pack-scene-${scene.index}`}
                            />
                          </div>
-                       ))}
+                      ))}
                     </div>
                   )}
                 </div>

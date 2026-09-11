@@ -22,3 +22,9 @@ Every field returned by the analyzer must also exist in the OpenAPI `AudioAnalys
 **How to apply:** When the analyzer response shape changes, update OpenAPI and regenerate clients in the same change; regression-test the signed payload through `CreateJobBody` parsing.
 
 For Full-track renders, an audio-range choice is a preferred Lip Sync segment, not an instruction to trim the main music video. Preserve that start time for the completed-video Lip Sync control, which may change its short clip length and range but must remain inside the finished video.
+
+Montage timelines are additive even with transitions: transition overlap must not subtract from the user-selected timeline or soundtrack. Compensation must not replay moving footage/audio or accumulate a frozen ending. Allocate transition duration on an integer frame grid.
+
+**Why:** Dissolves removed several seconds from completed montages. Independent rounding of fractional-frame transition/body durations can also silently remove the ending when the final output is capped.
+
+**How to apply:** Test both total duration and recognizable final-frame preservation across many clips, including fractional-frame transitions. Derive video trims from the primary visual stream, not a container duration that may include longer audio.

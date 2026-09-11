@@ -320,7 +320,9 @@ export async function stitchVideoClips(input: StitchInput): Promise<StitchResult
             "-threads", "2",
             "-c:a", "aac",
             "-b:a", "192k",
-            "-shortest",
+            // `-t totalDuration` above is the explicit timeline boundary.
+            // `-shortest` would incorrectly end a remix when its source audio
+            // has encoder padding or an early EOF.
             "-movflags", "+faststart",
           ]
         : [
@@ -344,7 +346,8 @@ export async function stitchVideoClips(input: StitchInput): Promise<StitchResult
           "-c:v", "copy",
           "-c:a", "aac",
           "-b:a", "192k",
-          "-shortest",
+          // Keep the visual timeline authoritative when attached audio is
+          // shorter; `-shortest` would cut the video at audio EOF.
           "-movflags", "+faststart",
         ]
         : [

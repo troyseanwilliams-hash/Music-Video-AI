@@ -84,6 +84,68 @@ export function editorMusicTempPaths(dir: string, ext?: string): {
   };
 }
 
+/**
+ * The browser timeline is additive: each segment's configured duration is
+ * part of the requested output, even when the transition renderer overlaps
+ * neighboring frames internally. Keep this calculation separate from the
+ * muxed duration so an xfade cannot silently shorten the user's soundtrack.
+ */
+export function intendedEditorTimelineDuration(
+  segmentDurations: readonly number[],
+): number {
+  return segmentDurations.reduce(
+    (sum, duration) => sum + (Number.isFinite(duration) ? Math.max(0, duration) : 0),
+    0,
+  );
+}
+
+/**
+ * The transition renderer compensates each xfade overlap with a handle at the
+ * same boundary, so its final duration remains the additive timeline.
+ */
+export function crossfadeEditorTimelineDuration(
+  segmentDurations: readonly number[],
+  transitionDurationSec: number,
+): number {
+  // The overlap is paid back at every boundary by the handle ranges below;
+  // transition length changes placement, not the final additive runtime.
+  const validDurations = segmentDurations.filter(
+    (duration) => Number.isFinite(duration) && duration >= 0,
+  );
+  const handle = Number.isFinite(transitionDurationSec)
+    ? Math.max(0, transitionDurationSec)
+    : 0;
+  const bodyDuration = validDurations.reduce(
+    (sum, duration, index) => {
+      const range = compensatedTransitionBodyRange(index, duration, handle);
+      return sum + range.endSec - range.startSec;
+    },
+    0,
+  );
+  return bodyDuration + Math.max(0, validDurations.length - 1) * handle;
+}
+
+/**
+ * Body ranges used by the compensated transition join. The incoming handle
+ * (`durationSec` at every non-first boundary) is consumed by the preceding
+ * transition, while the outgoing handle remains available for the following
+ * transition. This is intentionally exported so duration/placement tests do
+ * not have to spawn ffmpeg.
+ */
+export function compensatedTransitionBodyRange(
+  index: number,
+  durationSec: number,
+  transitionDurationSec: number,
+): { startSec: number; endSec: number } {
+  const handle = Number.isFinite(transitionDurationSec)
+    ? Math.max(0, transitionDurationSec)
+    : 0;
+  return {
+    startSec: index === 0 ? 0 : handle,
+    endSec: Math.max(0, durationSec),
+  };
+}
+
 const SAR = 48000;
 
 // Transitions use a segment-and-concat crossfade (see the join step below):
@@ -170,11 +232,12 @@ function run(args: string[]): Promise<void> {
 // a corrupt file can never hang the render.
 const FFPROBE_TIMEOUT_MS = 60 * 1000;
 
-function probeDuration(file: string): Promise<number> {
+function probeVideoDuration(file: string): Promise<number> {
   return withResourceLease("ffmpeg_light", ({ signal }) => new Promise<number>((resolve) => {
     const p = spawn("ffprobe", [
       "-v", "error",
-      "-show_entries", "format=duration",
+      "-select_streams", "v:0",
+      "-show_entries", "stream=duration",
       "-of", "csv=p=0",
       file,
     ]);
@@ -244,6 +307,7 @@ export async function stitchEditorTimeline(
   try {
     // 1. Normalize each segment to a uniform mp4 (silent audio track guaranteed).
     const parts: string[] = [];
+    const plannedDurations: number[] = [];
     for (let i = 0; i < input.segments.length; i++) {
       const seg = input.segments[i]!;
       const raw = join(dir, `raw_${i}.${seg.ext || (seg.kind === "photo" ? "jpg" : "mp4")}`);
@@ -266,6 +330,7 @@ export async function stitchEditorTimeline(
             "-video_track_timescale", "30000",
             out,
           ]);
+          plannedDurations.push(dur);
         } else {
           const audio = await hasAudio(raw);
           // Optional front/back trim: -ss seeks past the front, -t caps the kept
@@ -281,9 +346,14 @@ export async function stitchEditorTimeline(
           let trimStart = requestedTrimStart;
           let trimEnd = requestedTrimEnd;
           let keepDur: number | null = null;
+          // Always bound the normalized video by its own visual duration. This
+          // replaces `-shortest`: a short source audio stream must not shorten
+          // the video, and an infinite anullsrc for a silent clip must not keep
+          // ffmpeg running forever.
+          const sourceDuration = await probeVideoDuration(raw);
+          if (!(sourceDuration > 0)) throw new Error("Could not determine the source video duration.");
           if (requestedTrimStart > 0 || requestedTrimEnd > 0) {
-            const origDur = await probeDuration(raw);
-            if (!(origDur > 0)) throw new Error("Could not determine the source video duration for trimming.");
+            const origDur = sourceDuration;
             const minimumKept = Math.min(0.3, origDur);
             const maximumTotalTrim = Math.max(0, origDur - minimumKept);
             trimStart = Math.min(requestedTrimStart, maximumTotalTrim);
@@ -303,11 +373,15 @@ export async function stitchEditorTimeline(
             "-refs", "1", "-bf", "0", "-threads", "2",
             "-pix_fmt", "yuv420p", "-r", String(FPS),
             "-c:a", "aac", "-ar", String(SAR), "-ac", "2",
-            "-shortest", "-video_track_timescale", "30000",
+            // Never let a short/primed source audio stream truncate the visual
+            // clip. The source visual duration (or explicit trim below) is the
+            // boundary; audio naturally becomes silent after its own EOF.
+            "-video_track_timescale", "30000",
           );
-          if (keepDur != null) args.push("-t", String(keepDur));
+          args.push("-t", String(keepDur ?? sourceDuration));
           args.push(out);
           await run(args);
+          plannedDurations.push(keepDur ?? sourceDuration);
         }
         parts.push(out);
       } catch (err) {
@@ -346,17 +420,100 @@ export async function stitchEditorTimeline(
       transitionDropReason = `Your timeline has ${parts.length} clips, above the ${TRANSITION_MAX_SEGMENTS}-clip limit for transitions, so it was joined with hard cuts instead.`;
     }
 
-    // Probe durations only if we still intend to transition — needed for the
-    // xfade offsets and for the total-runtime guard below.
+    // Probe primary video durations for frame-aligned boundaries, xfade
+    // offsets, and the total-runtime guard below.
     let durs: number[] = [];
+    let segmentFrameCounts: number[] = [];
+    if (parts.length > 0) {
+      for (const p of parts) durs.push(await probeVideoDuration(p));
+      const plannedTotalFrames = Math.round(
+        intendedEditorTimelineDuration(plannedDurations) * FPS,
+      );
+      const targetFrames = plannedDurations.map((duration) =>
+        Math.max(1, Math.floor(duration * FPS)),
+      );
+      let frameDeficit = plannedTotalFrames - targetFrames.reduce((sum, frames) => sum + frames, 0);
+      const fractionalOrder = plannedDurations
+        .map((duration, index) => ({
+          index,
+          fractional: duration * FPS - Math.floor(duration * FPS),
+        }))
+        .sort((a, b) => b.fractional - a.fractional);
+      for (const { index } of fractionalOrder) {
+        if (frameDeficit <= 0) break;
+        targetFrames[index]!++;
+        frameDeficit--;
+      }
+      segmentFrameCounts = targetFrames;
+
+      // Normalize the transition timeline to whole video frames. Fractional
+      // requested photo durations otherwise round down independently and lose
+      // a frame at many boundaries (e.g. 14 × 8.214s turns 125s into 124.8s).
+      for (let i = 0; i < parts.length; i++) {
+        const targetDuration = targetFrames[i]! / FPS;
+        const currentFrames = Math.max(1, Math.round(durs[i]! * FPS));
+        if (targetFrames[i]! > currentFrames) {
+          const padded = join(dir, `padded_${String(i).padStart(4, "0")}.mp4`);
+          await run([
+            "-y", "-i", parts[i]!,
+            "-filter_complex",
+            `[0:v]tpad=stop_mode=clone:stop_duration=1,setpts=PTS-STARTPTS[v];` +
+              `[0:a]apad,atrim=duration=${targetDuration.toFixed(3)},asetpts=PTS-STARTPTS[a]`,
+            "-map", "[v]", "-map", "[a]",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
+            "-refs", "1", "-bf", "0", "-threads", "2",
+            "-pix_fmt", "yuv420p", "-r", String(FPS),
+            "-c:a", "aac", "-ar", String(SAR), "-ac", "2",
+            "-video_track_timescale", "30000",
+            "-t", targetDuration.toFixed(3),
+            padded,
+          ]);
+          parts[i] = padded;
+        }
+        durs[i] = targetDuration;
+      }
+
+      if (useTransition) {
+        const totalSec = intendedEditorTimelineDuration(durs);
+        // Guard 2 (total runtime): very long timelines fall back to hard cuts.
+        if (totalSec > TRANSITION_MAX_TOTAL_SEC) {
+          useTransition = false;
+          transitionsDisabled = true;
+          transitionDropReason = `Your timeline is over ${Math.round(TRANSITION_MAX_TOTAL_SEC / 60)} minutes, above the length limit for transitions, so it was joined with hard cuts instead.`;
+        }
+      }
+    }
+
+    let transitionDurationSec = 0;
+    let transitionFrameCount = 0;
     if (useTransition) {
-      for (const p of parts) durs.push(await probeDuration(p));
-      const totalSec = durs.reduce((a, b) => a + b, 0);
-      // Guard 2 (total runtime): very long timelines fall back to hard cuts.
-      if (totalSec > TRANSITION_MAX_TOTAL_SEC) {
+      const minDur = Math.min(...durs);
+      const frameDuration = 1 / FPS;
+      const requestedDuration =
+        Number.isFinite(input.transition?.durationSec)
+          ? Math.max(0, input.transition!.durationSec)
+          : 0.5;
+      const maxUsableDuration = minDur - 2 * frameDuration;
+      if (requestedDuration < frameDuration || maxUsableDuration < frameDuration) {
         useTransition = false;
         transitionsDisabled = true;
-        transitionDropReason = `Your timeline is over ${Math.round(TRANSITION_MAX_TOTAL_SEC / 60)} minutes, above the length limit for transitions, so it was joined with hard cuts instead.`;
+        transitionDropReason =
+          `Your timeline has a clip too short for a ${requestedDuration.toFixed(2)}s transition at ${FPS}fps, so it was joined with hard cuts instead.`;
+      } else {
+        const clampedDuration = Math.min(requestedDuration, 2, maxUsableDuration);
+        const transitionFrames = Math.round(clampedDuration * FPS);
+        if (transitionFrames < 1) {
+          useTransition = false;
+          transitionsDisabled = true;
+          transitionDropReason =
+            `Your timeline has a transition shorter than one video frame at ${FPS}fps, so it was joined with hard cuts instead.`;
+        } else {
+          // Quantize once. Body and transition pieces must consume the same
+          // integer frame count or independent rounding loses/gains a frame at
+          // every boundary (for example, 0.35s = 10.5 frames at 30fps).
+          transitionFrameCount = transitionFrames;
+          transitionDurationSec = transitionFrames / FPS;
+        }
       }
     }
 
@@ -385,28 +542,60 @@ export async function stitchEditorTimeline(
         "-video_track_timescale", "30000",
       ];
       const fx = (n: number) => n.toFixed(3);
-      const minDur = Math.min(...durs);
-      // Clamp so even the shortest middle clip keeps a real body (it loses 2·t).
-      const t = Math.max(0.1, Math.min(input.transition?.durationSec || 0.5, 2, (minDur - 0.1) / 2));
+      const t = transitionDurationSec;
       try {
         const pieces: string[] = [];
         for (let i = 0; i < parts.length; i++) {
           const d = durs[i]!;
-          const bstart = i === 0 ? 0 : t;
-          const bend = i === parts.length - 1 ? d : d - t;
-          const blen = bend - bstart;
+          // Keep every real outgoing timestamp in the body. The transition
+          // gets a cloned final visual frame plus silence, so it never rereads
+          // (and repeats) the outgoing motion/audio tail. The incoming head is
+          // consumed by the prior transition (`start=t` below).
+          const bodyRange = compensatedTransitionBodyRange(i, d, t);
+          const bstart = bodyRange.startSec;
+          const bodyFrames = segmentFrameCounts[i]! - (i === 0 ? 0 : transitionFrameCount);
+          const blen = bodyFrames / FPS;
           // Skip a body that would be shorter than a frame or two.
-          if (blen > 0.05) {
+          if (bodyFrames > 0) {
             const body = join(dir, `body_${String(i).padStart(4, "0")}.mp4`);
-            await run(["-y", "-ss", fx(bstart), "-i", parts[i]!, "-t", fx(blen), ...enc, body]);
+            await run([
+              "-y", "-ss", fx(bstart), "-i", parts[i]!, "-t", fx(blen),
+              "-frames:v", String(bodyFrames),
+              ...enc, body,
+            ]);
             pieces.push(body);
           }
           if (i < parts.length - 1) {
-            // Crossfade the last t of clip i with the first t of clip i+1.
+            // Hold the outgoing clip's final visual frame while its audio is
+            // silent. This pays for the xfade overlap without replaying real
+            // outgoing frames or samples.
+            const tailFrame = join(dir, `tail_frame_${String(i).padStart(4, "0")}.jpg`);
+            const handle = join(dir, `handle_${String(i).padStart(4, "0")}.mp4`);
+            await run([
+              // Normalized parts are bounded to their primary video duration,
+              // so sseof targets the actual final video frame without using
+              // the (possibly longer) source audio end.
+              "-y", "-sseof", "-0.100", "-i", parts[i]!,
+              "-frames:v", "1", "-an", "-vf", "format=yuvj420p", tailFrame,
+            ]);
+            await run([
+              "-y",
+              "-loop", "1", "-t", fx(t), "-i", tailFrame,
+              "-f", "lavfi", "-t", fx(t), "-i",
+              `anullsrc=channel_layout=stereo:sample_rate=${SAR}`,
+              "-vf", vf,
+              "-map", "0:v:0", "-map", "1:a:0",
+              "-frames:v", String(transitionFrameCount),
+              ...enc,
+              "-t", fx(t),
+              handle,
+            ]);
+
+            // Crossfade the cloned outgoing handle with the first t of clip i+1.
             const tr = join(dir, `trans_${String(i).padStart(4, "0")}.mp4`);
             await run([
               "-y",
-              "-ss", fx(d - t), "-i", parts[i]!, "-t", fx(t),
+              "-i", handle, "-t", fx(t),
               "-ss", "0", "-i", parts[i + 1]!, "-t", fx(t),
               "-filter_complex",
               // Reset PTS and normalize the timebase on BOTH inputs before the
@@ -422,25 +611,18 @@ export async function stitchEditorTimeline(
               // Re-stamping fps=FPS after the PTS reset restores a real frame
               // rate for xfade to key off. Order matters: fps must come AFTER
               // settb/setpts, not before, or the settb re-invalidates it.
-              // apad+atrim on both audio branches: ffprobe's reported duration
-              // for an AAC track can be a few ms longer than what's actually
-              // decodable (encoder priming/padding), so seeking to
-              // (bodyDuration - t) can leave acrossfade with slightly less
-              // than t seconds of real audio. ffmpeg 4.x tolerated that
-              // shortfall; ffmpeg 7.x's stricter scheduler treats "encoder
-              // received zero frames before EOF" as a hard error, which is
-              // what was silently killing the transition on every export in
-              // production (which runs ffmpeg 7, not the 4.4 this was
-              // originally verified against). Padding with silence first and
-              // trimming to exactly t guarantees acrossfade always gets a
-              // full window regardless of that precision gap.
+              // Unbounded apad followed by atrim guarantees a full audio
+              // window even when AAC priming/padding or a short source leaves
+              // fewer decoded samples than the nominal t seconds.
               `[0:v]settb=AVTB,setpts=PTS-STARTPTS,fps=${FPS}[xv0];` +
                 `[1:v]settb=AVTB,setpts=PTS-STARTPTS,fps=${FPS}[xv1];` +
                 `[xv0][xv1]xfade=transition=${xName}:duration=${fx(t)}:offset=0[v];` +
-                `[0:a]apad=pad_dur=1,atrim=duration=${fx(t)},asetpts=PTS-STARTPTS[xa0];` +
-                `[1:a]apad=pad_dur=1,atrim=duration=${fx(t)},asetpts=PTS-STARTPTS[xa1];` +
+                `[0:a]apad,atrim=duration=${fx(t)},asetpts=PTS-STARTPTS[xa0];` +
+                `[1:a]apad,atrim=duration=${fx(t)},asetpts=PTS-STARTPTS[xa1];` +
                 `[xa0][xa1]acrossfade=d=${fx(t)}[a]`,
-              "-map", "[v]", "-map", "[a]", ...enc, tr,
+              "-map", "[v]", "-map", "[a]",
+              "-frames:v", String(transitionFrameCount),
+              ...enc, tr,
             ]);
             pieces.push(tr);
           }
@@ -464,13 +646,21 @@ export async function stitchEditorTimeline(
     }
 
     let current = joined;
+    // The compensated transition pieces are intentionally additive. Use the
+    // measured normalized segment sum as the final mux boundary as well, which
+    // removes small per-piece timestamp drift without adding a tail frame.
+    const transitionTargetDuration =
+      plannedDurations.length === parts.length
+        ? intendedEditorTimelineDuration(plannedDurations)
+        : null;
 
     // 3. Music. Mixed music can loop to fill the video. Replacement music is
     // always single-play: when it ends, the remaining footage intentionally
     // stays silent instead of repeating the selected track or restoring clip
     // audio. We hard-cap output to the probed video duration.
     if (input.music) {
-      const videoDuration = await probeDuration(current);
+      const videoDuration = transitionTargetDuration ?? await probeVideoDuration(current);
+      if (!(videoDuration > 0)) throw new Error("Could not determine the stitched video duration before adding music.");
       const { inputPath: musicPath, outputPath: withMusic } =
         editorMusicTempPaths(dir, input.music.ext);
       await writeFile(musicPath, input.music.buffer);
@@ -496,7 +686,7 @@ export async function stitchEditorTimeline(
       args.push("-i", musicPath);
       if (input.music.mode === "replace") {
         const replacementFilter = videoDuration > 0
-          ? `[1:a]${musicFilter},apad=pad_dur=${videoDuration.toFixed(3)},atrim=duration=${videoDuration.toFixed(3)},asetpts=PTS-STARTPTS[a]`
+          ? `[1:a]${musicFilter},apad,atrim=duration=${videoDuration.toFixed(3)},asetpts=PTS-STARTPTS[a]`
           : `[1:a]${musicFilter}[a]`;
         args.push("-filter_complex", replacementFilter, "-map", "0:v:0", "-map", "[a]");
       } else {
@@ -509,9 +699,8 @@ export async function stitchEditorTimeline(
         );
       }
       args.push("-c:v", "copy", "-c:a", "aac", "-ar", String(SAR), "-ac", "2");
-      if (videoDuration > 0) args.push("-t", videoDuration.toFixed(3));
-      else args.push("-shortest");
-      args.push(withMusic);
+      args.push("-t", videoDuration.toFixed(3));
+      args.push("-avoid_negative_ts", "make_zero", withMusic);
       await run(args);
       current = withMusic;
     }
@@ -526,13 +715,19 @@ export async function stitchEditorTimeline(
       await run([
         "-y", "-i", current, "-vf", draw,
         "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-refs", "1", "-bf", "0", "-threads", "2", "-pix_fmt", "yuv420p",
-        "-c:a", "copy", "-movflags", "+faststart", wm,
+        "-c:a", "copy",
+        ...(transitionTargetDuration != null ? ["-t", transitionTargetDuration.toFixed(3)] : []),
+         "-avoid_negative_ts", "make_zero", "-movflags", "+faststart", wm,
       ]);
       current = wm;
-    } else if (current === joined && !input.music) {
+    } else if (!input.music) {
       // Ensure +faststart on the final file even with no music/watermark.
       const fast = join(dir, "final.mp4");
-      await run(["-y", "-i", current, "-c", "copy", "-movflags", "+faststart", fast]);
+      await run([
+        "-y", "-i", current,
+        ...(transitionTargetDuration != null ? ["-t", transitionTargetDuration.toFixed(3)] : []),
+        "-c", "copy", "-avoid_negative_ts", "make_zero", "-movflags", "+faststart", fast,
+      ]);
       current = fast;
     }
 
@@ -541,7 +736,7 @@ export async function stitchEditorTimeline(
     // than failing the whole export.
     if (input.lyricsText?.trim()) {
       try {
-        const lyricDuration = await probeDuration(current);
+        const lyricDuration = transitionTargetDuration ?? await probeVideoDuration(current);
         const timedLines = buildTimedLines(input.lyricsText, lyricDuration);
         if (timedLines.length > 0) {
           const assPath = join(dir, "lyrics.ass");
@@ -551,7 +746,9 @@ export async function stitchEditorTimeline(
             "-y", "-i", current,
             "-vf", `subtitles=${assPath.replace(/([\\':])/g, "\\$1")}${fontsDirOpt()}`,
             "-c:v", "libx264", "-preset", "fast", "-crf", "22", "-threads", "2", "-pix_fmt", "yuv420p",
-            "-c:a", "copy", "-movflags", "+faststart", withLyrics,
+            "-c:a", "copy",
+            ...(transitionTargetDuration != null ? ["-t", transitionTargetDuration.toFixed(3)] : []),
+             "-avoid_negative_ts", "make_zero", "-movflags", "+faststart", withLyrics,
           ]);
           current = withLyrics;
         }
@@ -560,8 +757,27 @@ export async function stitchEditorTimeline(
       }
     }
 
+    // Concat-copy pieces can retain a positive encoder-delay PTS (for example,
+    // the first video packet may start at 21 ms). Re-stamp once at the final
+    // additive boundary so the first frame is timestamp zero and the requested
+    // planned duration is not reported one frame short.
+    if (transitionTargetDuration != null) {
+      const normalized = join(dir, "normalized-final.mp4");
+      await run([
+        "-y", "-i", current,
+        "-vf", `fps=${FPS}`,
+        "-af", `apad,atrim=duration=${transitionTargetDuration.toFixed(3)},asetpts=PTS-STARTPTS`,
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
+        "-refs", "1", "-bf", "0", "-threads", "2", "-pix_fmt", "yuv420p",
+        "-r", String(FPS), "-c:a", "aac", "-ar", String(SAR), "-ac", "2",
+        "-t", transitionTargetDuration.toFixed(3),
+        "-avoid_negative_ts", "make_zero", "-movflags", "+faststart", normalized,
+      ]);
+      current = normalized;
+    }
+
     // 5. Thumbnail + read out.
-    const durationSeconds = await probeDuration(current);
+    const durationSeconds = await probeVideoDuration(current);
     const thumbPath = join(dir, "thumb.jpg");
     await run([
       "-y", "-ss", String(Math.max(0, durationSeconds * 0.3)), "-i", current,
