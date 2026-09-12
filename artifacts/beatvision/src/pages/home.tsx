@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { track } from "@/lib/analytics";
+import { useAuth } from "@/hooks/useAuth";
 import {
   ArrowRight,
   Play,
@@ -24,6 +25,7 @@ import { motion } from "framer-motion";
 import { AuroraBackground } from "@/components/AuroraBackground";
 
 export default function Home() {
+  const { isAuthenticated } = useAuth();
   const trackCTA = (location: string, action: string, label: string) => {
     track("cta_click", { location, action, label });
   };
@@ -62,16 +64,20 @@ export default function Home() {
               </p>
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-5 w-full sm:w-auto">
-                <Link href="/pricing" onClick={() => trackCTA("hero", "view_pricing", "View AIBeatSync plans")}>
+                <Link
+                  href={isAuthenticated ? "/generate" : "/register"}
+                  onClick={() => trackCTA("hero", isAuthenticated ? "open_generate_video" : "open_signup", "Create your first music video")}
+                  className="w-full sm:w-auto"
+                >
                   <Button size="lg" className="w-full sm:w-auto text-lg h-14 px-8 bg-white text-black hover:bg-white/90 shadow-[0_0_40px_rgba(255,255,255,0.2)] border-0 transition-all group rounded-full">
-                    <Wallet className="mr-2 h-5 w-5" />
-                    View AIBeatSync plans
+                    <Wand2 className="mr-2 h-5 w-5" />
+                    Create your first music video
                   </Button>
                 </Link>
-                <Link href="/generate" onClick={() => trackCTA("hero", "open_generate_video", "Start generating")}>
+                <Link href="/pricing" onClick={() => trackCTA("hero", "view_pricing", "View AIBeatSync plans")} className="w-full sm:w-auto">
                   <Button size="lg" variant="outline" className="w-full sm:w-auto text-lg h-14 px-8 border-white/10 bg-white/5 hover:bg-white/10 hover:text-white backdrop-blur-md transition-all group rounded-full text-white/90">
-                    <Wand2 className="mr-2 h-5 w-5 transition-transform group-hover:rotate-12" />
-                    Start generating
+                    <Wallet className="mr-2 h-5 w-5" />
+                    View AIBeatSync plans
                   </Button>
                 </Link>
               </div>
