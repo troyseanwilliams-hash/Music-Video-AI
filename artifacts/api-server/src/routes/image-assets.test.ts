@@ -3,6 +3,9 @@ import { CreateImagePackBody, PlanImagePackBody } from "@workspace/api-zod";
 import {
   buildImagePackPlan,
   assessImagePackScenes,
+  canUseGeneratedImageReference,
+  classifyImagePackReferencePath,
+  formatImagePackValidationError,
   MAX_IMAGE_PACK_PROMPT_LENGTH,
   parsePublicImagePagination,
   toPublicImageAsset,
@@ -70,6 +73,55 @@ describe("public generated-image pagination", () => {
     expect(parsePublicImagePagination({ page: "1.5", limit: "12" })).toBeNull();
     expect(parsePublicImagePagination({ page: "1", limit: "12.5" })).toBeNull();
     expect(parsePublicImagePagination({ page: ["1", "2"] })).toBeNull();
+  });
+});
+
+describe("image-pack reference image validation", () => {
+  it("accepts generated gallery paths while preserving owner-scoped uploads", () => {
+    const galleryRequest = {
+      prompt: "A visual prompt",
+      imageCount: 1,
+      referenceImagePath: "/objects/image-packs/job-1/4.jpg",
+    };
+    expect(CreateImagePackBody.safeParse(galleryRequest).success).toBe(true);
+    expect(PlanImagePackBody.safeParse(galleryRequest).success).toBe(true);
+    expect(classifyImagePackReferencePath("/objects/image-packs/job-1/4.jpg")).toBe("gallery");
+    expect(classifyImagePackReferencePath("/objects/narrative-images/job-1/4.jpg")).toBe("gallery");
+    expect(classifyImagePackReferencePath("/objects/uploads/upload-1.jpg")).toBe("upload");
+    expect(classifyImagePackReferencePath("/objects/uploads/user-1/upload-1.jpg")).toBe("upload");
+  });
+
+  it("rejects arbitrary object paths and private or deleted gallery assets", () => {
+    expect(classifyImagePackReferencePath("/objects/videos/private.mp4")).toBeNull();
+    expect(classifyImagePackReferencePath("/objects/image-packs/../private.jpg")).toBeNull();
+
+    expect(canUseGeneratedImageReference({
+      userId: "owner",
+      isPublic: false,
+      deletedAt: null,
+    }, "other-user")).toBe(false);
+    expect(canUseGeneratedImageReference({
+      userId: "owner",
+      isPublic: true,
+      deletedAt: null,
+    }, "other-user")).toBe(true);
+    expect(canUseGeneratedImageReference({
+      userId: "owner",
+      isPublic: true,
+      deletedAt: new Date(),
+    }, "other-user")).toBe(false);
+  });
+
+  it("identifies the invalid request field instead of returning a generic prompt error", () => {
+    const result = CreateImagePackBody.safeParse({
+      prompt: "A visual prompt",
+      imageCount: 31,
+      referenceImagePath: null,
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(formatImagePackValidationError(result.error)).toContain("imageCount");
+    }
   });
 });
 

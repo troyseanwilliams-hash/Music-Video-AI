@@ -420,13 +420,6 @@ export default function Pricing() {
             </div>
           ))}
         </div>
-        <div className="mx-auto mt-5 flex max-w-3xl items-start gap-2 rounded-2xl border border-primary/30 bg-primary/10 px-4 py-3 text-center text-sm sm:items-center sm:justify-center sm:rounded-full">
-          <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary sm:mt-0" />
-          <span>
-            <strong className="text-foreground">New features are included as we grow.</strong>{" "}
-            We keep expanding what your tier can create—no separate feature unlock required.
-          </span>
-        </div>
       </section>
 
       {/* Digital Drift Pro perk — hidden for now */}

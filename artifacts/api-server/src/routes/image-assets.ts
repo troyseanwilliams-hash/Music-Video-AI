@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { randomUUID } from "crypto";
-import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   creditsTable,
@@ -102,13 +102,10 @@ const createImagePackBody = z.object({
   ]).optional(),
   imageCount: z.coerce.number().int().min(1).max(MAX_IMAGE_PACK_COUNT),
   aspectRatio: z.enum(["9:16", "16:9"]).default("9:16"),
-  referenceImagePath: z
-    .string()
-    .trim()
-    .regex(/^\/objects\/uploads\/[^/]+$/)
-    .max(500)
-    .nullable()
-    .optional(),
+  // The path kind and access policy are checked against storage/database below.
+  // Keep this boundary schema limited to the transport shape so generated
+  // gallery paths can reach that authorization check.
+  referenceImagePath: z.string().trim().min(1).max(500).nullable().optional(),
   approvedScenes: z.array(z.object({
     index: z.coerce.number().int().min(0),
     prompt: z.string().trim().min(1).max(1000),
@@ -116,6 +113,130 @@ const createImagePackBody = z.object({
 });
 
 type ApprovedImageScene = { index: number; prompt: string };
+
+type ImagePackReferenceKind = "upload" | "gallery";
+
+type GeneratedImageReference = {
+  userId: string;
+  isPublic: boolean;
+  deletedAt: Date | null;
+};
+
+type ImagePackReferenceValidation =
+  | { ok: true; kind: ImagePackReferenceKind }
+  | { ok: false; status: 400 | 403; code: string; error: string };
+
+/**
+ * Image-pack references are intentionally narrower than arbitrary object
+ * entities. Uploads remain supported, while generated gallery paths must be
+ * backed by an image_assets row so an opaque storage path cannot be used as an
+ * authorization bypass.
+ */
+export function classifyImagePackReferencePath(
+  objectPath: string,
+): ImagePackReferenceKind | null {
+  if (!objectPath.startsWith("/objects/")) return null;
+  const segments = objectPath.slice("/objects/".length).split("/");
+  if (
+    segments.length < 2
+    || segments.some((segment) => !segment || segment === "." || segment === "..")
+  ) {
+    return null;
+  }
+  if (segments[0] === "uploads") return "upload";
+  if (segments[0] === "image-packs" || segments[0] === "narrative-images") return "gallery";
+  return null;
+}
+
+export function canUseGeneratedImageReference(
+  asset: GeneratedImageReference | null | undefined,
+  userId: string,
+): boolean {
+  return Boolean(
+    asset
+    && !asset.deletedAt
+    && (asset.userId === userId || asset.isPublic),
+  );
+}
+
+async function validateImagePackReferencePath(
+  objectPath: string,
+  userId: string,
+): Promise<ImagePackReferenceValidation> {
+  const kind = classifyImagePackReferencePath(objectPath);
+  if (!kind) {
+    return {
+      ok: false,
+      status: 400,
+      code: "INVALID_REFERENCE_IMAGE_PATH",
+      error: "referenceImagePath must point to an uploaded image or an authorized generated gallery image.",
+    };
+  }
+
+  if (kind === "upload") {
+    const segments = objectPath.slice("/objects/".length).split("/");
+    // New uploads are namespaced by user ID. Keep accepting legacy
+    // /objects/uploads/<opaque-id> paths, but do not let a user select another
+    // account's owner-scoped upload.
+    if (segments.length > 2 && segments[1] !== userId) {
+      return {
+        ok: false,
+        status: 403,
+        code: "REFERENCE_IMAGE_FORBIDDEN",
+        error: "You do not have access to the selected uploaded reference image.",
+      };
+    }
+  }
+
+  if (kind === "gallery") {
+    const [asset] = await db
+      .select({
+        userId: imageAssetsTable.userId,
+        isPublic: imageAssetsTable.isPublic,
+        deletedAt: imageAssetsTable.deletedAt,
+      })
+      .from(imageAssetsTable)
+      .where(and(
+        eq(imageAssetsTable.objectPath, objectPath),
+        isNull(imageAssetsTable.deletedAt),
+        or(
+          eq(imageAssetsTable.userId, userId),
+          eq(imageAssetsTable.isPublic, true),
+        ),
+      ))
+      .limit(1);
+    if (!asset || !canUseGeneratedImageReference(asset, userId)) {
+      return {
+        ok: false,
+        status: 403,
+        code: "REFERENCE_IMAGE_FORBIDDEN",
+        error: "You do not have access to the selected generated gallery image.",
+      };
+    }
+  }
+
+  try {
+    await new ObjectStorageService().getObjectEntityFile(objectPath);
+  } catch {
+    return {
+      ok: false,
+      status: 400,
+      code: "REFERENCE_IMAGE_UNAVAILABLE",
+      error: "The selected reference image is no longer available. Upload it again and retry.",
+    };
+  }
+  return { ok: true, kind };
+}
+
+export function formatImagePackValidationError(error: z.ZodError): string {
+  const issues = error.issues.map((issue) => {
+    const field = issue.path.length > 0 ? issue.path.join(".") : "request";
+    return `${field}: ${issue.message}`;
+  });
+  return issues.length > 0
+    ? `Invalid image pack request (${issues.join("; ")}).`
+    : "Invalid image pack request.";
+}
 
 export function buildImagePackPlan(input: {
   prompt: string;
@@ -203,10 +324,16 @@ router.post("/image-packs", async (req, res) => {
   }
 
   const contract = CreateImagePackBody.safeParse(req.body);
-  const parsed = createImagePackBody.safeParse(req.body);
-  if (!contract.success || !parsed.success) {
+  if (!contract.success) {
     res.status(400).json({
-      error: `Provide a visual prompt and choose between 1 and ${MAX_IMAGE_PACK_COUNT} images.`,
+      error: formatImagePackValidationError(contract.error),
+    });
+    return;
+  }
+  const parsed = createImagePackBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      error: formatImagePackValidationError(parsed.error),
     });
     return;
   }
@@ -231,11 +358,11 @@ router.post("/image-packs", async (req, res) => {
   }
   scenes = sceneAssessment.scenes;
   if (referenceImagePath) {
-    try {
-      await new ObjectStorageService().getObjectEntityFile(referenceImagePath);
-    } catch {
-      res.status(400).json({
-        error: "The selected reference image is no longer available. Upload it again and retry.",
+    const referenceValidation = await validateImagePackReferencePath(referenceImagePath, req.user.id);
+    if (!referenceValidation.ok) {
+      res.status(referenceValidation.status).json({
+        error: referenceValidation.error,
+        code: referenceValidation.code,
       });
       return;
     }
@@ -351,20 +478,26 @@ router.post("/image-packs/plan", async (req, res): Promise<void> => {
     return;
   }
   const contract = PlanImagePackBody.safeParse(req.body);
-  const parsed = createImagePackBody.safeParse(req.body);
-  if (!contract.success || !parsed.success) {
+  if (!contract.success) {
     res.status(400).json({
-      error: `Provide a visual prompt and choose between 1 and ${MAX_IMAGE_PACK_COUNT} images.`,
+      error: formatImagePackValidationError(contract.error),
+    });
+    return;
+  }
+  const parsed = createImagePackBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      error: formatImagePackValidationError(parsed.error),
     });
     return;
   }
   const { prompt, style, imageCount, referenceImagePath } = parsed.data;
   if (referenceImagePath) {
-    try {
-      await new ObjectStorageService().getObjectEntityFile(referenceImagePath);
-    } catch {
-      res.status(400).json({
-        error: "The selected reference image is no longer available. Upload it again and retry.",
+    const referenceValidation = await validateImagePackReferencePath(referenceImagePath, req.user.id);
+    if (!referenceValidation.ok) {
+      res.status(referenceValidation.status).json({
+        error: referenceValidation.error,
+        code: referenceValidation.code,
       });
       return;
     }
