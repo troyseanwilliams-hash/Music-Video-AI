@@ -5,7 +5,10 @@ import { pinoHttp } from "pino-http";
 import router from "./routes/index.js";
 import { logger } from "./lib/logger.js";
 import { authMiddleware } from "./middlewares/authMiddleware.js";
-import { WebhookHandlers } from "./lib/webhookHandlers.js";
+import {
+  isInvalidStripeSignatureError,
+  WebhookHandlers,
+} from "./lib/webhookHandlers.js";
 
 const app: Express = express();
 
@@ -51,7 +54,9 @@ app.post(
       res.status(200).json({ received: true });
     } catch (err) {
       logger.error({ err }, "Suite Stripe webhook processing error");
-      res.status(400).json({ error: "Webhook processing error" });
+      res
+        .status(isInvalidStripeSignatureError(err) ? 400 : 500)
+        .json({ error: "Webhook processing error" });
     }
   },
 );
@@ -79,7 +84,9 @@ app.post(
       res.status(200).json({ received: true });
     } catch (err) {
       logger.error({ err }, "Stripe webhook processing error");
-      res.status(400).json({ error: "Webhook processing error" });
+      res
+        .status(isInvalidStripeSignatureError(err) ? 400 : 500)
+        .json({ error: "Webhook processing error" });
     }
   },
 );

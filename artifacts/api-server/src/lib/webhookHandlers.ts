@@ -76,8 +76,6 @@ async function grantCredits(params: {
     return { granted: false, reason: "no credits to grant" };
   }
 
-  await ensureCreditsRow(params.userId);
-
   // Defense-in-depth: pre-check for an existing grant on the same invoice or
   // checkout session even if the stripe_event_id differs (e.g. Stripe fires
   // two distinct events for the same payment).
@@ -104,38 +102,54 @@ async function grantCredits(params: {
   }
 
   try {
-    const [grant] = await db
-      .insert(creditGrantsTable)
-      .values({
-        id: randomUUID(),
-        userId: params.userId,
-        source: params.source,
-        creditsGranted: params.credits,
-        stripeEventId: params.stripeEventId,
-        stripeInvoiceId: params.stripeInvoiceId ?? null,
-        stripeCheckoutSessionId: params.stripeCheckoutSessionId ?? null,
-        stripePriceId: params.stripePriceId ?? null,
-      })
-      .onConflictDoNothing({ target: creditGrantsTable.stripeEventId })
-      .returning();
+    const granted = await db.transaction(async (tx) => {
+      // Keep the marker and balance mutation in one transaction. If the
+      // balance update fails after the marker insert, rollback must remove the
+      // marker so Stripe's redelivery can grant the credits.
+      await tx
+        .insert(creditsTable)
+        .values({ id: randomUUID(), userId: params.userId })
+        .onConflictDoNothing({ target: creditsTable.userId });
 
-    if (!grant) {
+      const [grant] = await tx
+        .insert(creditGrantsTable)
+        .values({
+          id: randomUUID(),
+          userId: params.userId,
+          source: params.source,
+          creditsGranted: params.credits,
+          stripeEventId: params.stripeEventId,
+          stripeInvoiceId: params.stripeInvoiceId ?? null,
+          stripeCheckoutSessionId: params.stripeCheckoutSessionId ?? null,
+          stripePriceId: params.stripePriceId ?? null,
+        })
+        // Any of the event, invoice, or checkout-session uniqueness guards
+        // means this delivery has already been accounted for.
+        .onConflictDoNothing()
+        .returning();
+
+      if (!grant) return false;
+
+      const bucketColumn =
+        params.source === "topup"
+          ? creditsTable.topupCredits
+          : creditsTable.subscriptionCredits;
+
+      await tx
+        .update(creditsTable)
+        .set({
+          creditsRemaining: sql`${creditsTable.creditsRemaining} + ${params.credits}`,
+          [params.source === "topup" ? "topupCredits" : "subscriptionCredits"]:
+            sql`${bucketColumn} + ${params.credits}`,
+        })
+        .where(eq(creditsTable.userId, params.userId));
+
+      return true;
+    });
+
+    if (!granted) {
       return { granted: false, reason: "duplicate event" };
     }
-
-    const bucketColumn =
-      params.source === "topup"
-        ? creditsTable.topupCredits
-        : creditsTable.subscriptionCredits;
-
-    await db
-      .update(creditsTable)
-      .set({
-        creditsRemaining: sql`${creditsTable.creditsRemaining} + ${params.credits}`,
-        [params.source === "topup" ? "topupCredits" : "subscriptionCredits"]:
-          sql`${bucketColumn} + ${params.credits}`,
-      })
-      .where(eq(creditsTable.userId, params.userId));
 
     logger.info(
       {
@@ -150,7 +164,10 @@ async function grantCredits(params: {
     return { granted: true };
   } catch (err) {
     logger.error({ err, params }, "Failed to grant credits");
-    return { granted: false, reason: "error" };
+    // Database failures must reach the webhook route so Stripe retries the
+    // event. Returning a successful no-op here would permanently lose the
+    // entitlement while Stripe believes delivery succeeded.
+    throw err;
   }
 }
 
@@ -183,6 +200,9 @@ async function resetSubscriptionCredits(params: {
 
   try {
     const granted = await db.transaction(async (tx) => {
+      // The grant marker, subscription bucket reset, and user authority
+      // update commit together. A failed balance mutation therefore cannot
+      // leave a marker that suppresses the retry.
       // All invoice grants for a user serialize on the user row. Re-read the
       // authority state only after taking the lock so an older direct invoice
       // cannot race a newer Suite grant and overwrite its balance.
@@ -290,7 +310,9 @@ async function resetSubscriptionCredits(params: {
     return { granted: true };
   } catch (err) {
     logger.error({ err, params }, "Failed to reset subscription credits");
-    return { granted: false, reason: "error" };
+    // A transient database failure is retryable. Do not turn it into a 200
+    // response by converting it into a no-op result.
+    throw err;
   }
 }
 
@@ -454,6 +476,7 @@ export async function handleInvoicePaid(
           { err, subscriptionId, invoiceId: invoice.id },
           "invoice.paid: failed to retrieve subscription for proration-only invoice",
         );
+        throw err;
       }
     }
   }
@@ -475,8 +498,12 @@ export async function handleInvoicePaid(
       const resolvedPrice = await stripe.prices.retrieve(firstPriceId);
       resolvedLookupKey = resolvedPrice.lookup_key ?? null;
       aipodCredits = parseAipodCredits(resolvedPrice.metadata);
-    } catch {
-      // non-fatal
+    } catch (err) {
+      logger.error(
+        { err, invoiceId: invoice.id, priceId: firstPriceId },
+        "invoice.paid: failed to resolve price metadata",
+      );
+      throw err;
     }
   }
 
@@ -738,7 +765,7 @@ export async function handleInvoicePaid(
   });
 }
 
-async function handleCheckoutCompleted(
+export async function handleCheckoutCompleted(
   event: Stripe.Event,
   session: Stripe.Checkout.Session,
   stripeOverride?: Stripe,
@@ -1222,6 +1249,7 @@ export async function replayRecentStripeEvents(
   // Collect ALL events across all types using auto-pagination so that windows
   // with more than 100 events per type are never silently truncated.
   const allEvents: Stripe.Event[] = [];
+  const failedEvents: Array<{ id: string; type: string }> = [];
   for (const type of RELEVANT_EVENT_TYPES) {
     try {
       for await (const event of stripe.events.list({
@@ -1232,9 +1260,16 @@ export async function replayRecentStripeEvents(
         allEvents.push(event);
       }
     } catch (err) {
+      // A listing failure means the replay was incomplete even when every
+      // event that was listed processed successfully. Count it in the
+      // aggregate failure path so startup does not report a false success.
+      failedEvents.push({
+        id: `listing:${type}`,
+        type: `stripe.events.list:${type}`,
+      });
       logger.error(
         { err, eventType: type },
-        "Failed to list Stripe events for replay — skipping this type",
+        "Failed to list Stripe events for replay — this type was not replayed",
       );
     }
   }
@@ -1244,7 +1279,6 @@ export async function replayRecentStripeEvents(
   allEvents.sort((a, b) => a.created - b.created);
 
   let replayed = 0;
-  const failedEvents: Array<{ id: string; type: string }> = [];
 
   for (const event of allEvents) {
     try {
@@ -1424,6 +1458,7 @@ async function handleInvoicePaymentFailed(
     logger.info({ linkId, invoiceId: invoice.id }, "Suite invoice.payment_failed enqueued");
   } catch (err) {
     logger.error({ err, invoiceId: invoice.id }, "Suite: failed to handle invoice.payment_failed");
+    throw err;
   }
 }
 
@@ -1565,7 +1600,62 @@ async function handleChargeRefunded(
     );
   } catch (err) {
     logger.error({ err, chargeId: charge.id }, "Suite: failed to handle charge.refunded");
+    throw err;
   }
+}
+
+type StripeSyncInstance = Awaited<ReturnType<typeof getStripeSync>>;
+
+/**
+ * Verify a webhook with the same managed endpoint secret used by
+ * stripe-replit-sync, but do not process it yet.
+ *
+ * stripe-replit-sync's processWebhook() intentionally combines verification
+ * and database synchronization. `processEvent()` is its public verified-event
+ * API, so use the SDK's own Stripe client and managed-secret lookup to split
+ * those phases for invoice.upcoming previews (which can have no invoice ID).
+ */
+async function constructVerifiedEvent(
+  sync: StripeSyncInstance,
+  payload: Buffer,
+  signature: string,
+): Promise<Stripe.Event> {
+  const accountId = await sync.getAccountId();
+  const result = await sync.postgresClient.query(
+    'SELECT secret FROM "stripe"."_managed_webhooks" WHERE account_id = $1 LIMIT 1',
+    [accountId],
+  );
+  const webhookSecret = result.rows[0]?.secret;
+  if (typeof webhookSecret !== "string" || webhookSecret.length === 0) {
+    throw new Error(
+      "No webhook secret provided. Either create a managed webhook or configure stripeWebhookSecret.",
+    );
+  }
+
+  return sync.stripe.webhooks.constructEventAsync(
+    payload,
+    signature,
+    webhookSecret,
+  );
+}
+
+function isInvoiceUpcomingPreview(event: Stripe.Event): boolean {
+  if (event.type !== "invoice.upcoming") return false;
+  const object = event.data?.object;
+  if (!object || typeof object !== "object") return false;
+  return !("id" in object) || !object.id;
+}
+
+/**
+ * Invalid signatures are client/authentication errors; everything else is an
+ * internal processing failure and must remain retryable by Stripe.
+ */
+export function isInvalidStripeSignatureError(error: unknown): boolean {
+  return (
+    error instanceof Stripe.errors.StripeSignatureVerificationError ||
+    (error instanceof Error &&
+      error.name === "StripeSignatureVerificationError")
+  );
 }
 
 export class WebhookHandlers {
@@ -1642,15 +1732,28 @@ export class WebhookHandlers {
     }
 
     const sync = await getStripeSync();
-    await sync.processWebhook(payload, signature);
 
-    let event: Stripe.Event;
-    try {
-      event = JSON.parse(payload.toString("utf8")) as Stripe.Event;
-    } catch (err) {
-      logger.warn({ err }, "Failed to parse webhook payload for billing logic");
+    // Verify the raw payload before making any decision based on its event
+    // type or object ID. In particular, never let an unsigned JSON preview
+    // bypass signature verification and the sync engine.
+    const event = await constructVerifiedEvent(sync, payload, signature);
+
+    // Stripe sends invoice.upcoming previews without an invoice ID. They are
+    // valid, signed events, but stripe-replit-sync cannot persist them because
+    // its invoices.id column is non-null. They carry no completed payment and
+    // therefore must not enter either sync or billing-grant handling.
+    if (isInvoiceUpcomingPreview(event)) {
+      logger.info(
+        { eventId: event.id, eventType: event.type },
+        "Ignoring signed invoice.upcoming preview without invoice ID",
+      );
       return;
     }
+
+    // The event has already been signature-verified above. Calling the
+    // verified-event API avoids a second parse while retaining the sync
+    // engine's normal idempotent event handling.
+    await sync.processEvent(event);
 
     try {
       switch (event.type) {
@@ -1688,6 +1791,9 @@ export class WebhookHandlers {
         { err, eventType: event.type, eventId: event.id },
         "Billing webhook handler failed",
       );
+      // Stripe must see a 5xx for genuine internal failures so it retries.
+      // The route maps only signature verification failures to 400.
+      throw err;
     }
   }
 }

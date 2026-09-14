@@ -63,6 +63,14 @@ at a different Stripe account, every stored `cus_*` / `sub_*` is invalid on the 
 deleted customer) create a fresh customer on the current account and persist it. billing.ts
 does this via `getOrRepairStripeCustomerId()`, used by both checkout and portal.
 
+## Signed upcoming invoice previews
+
+Treat ID-less upcoming invoices as verified notifications, not persistent invoice records. Preserve signature verification before acknowledging them.
+
+**Why:** Stripe legitimately sends upcoming previews without invoice IDs, while the installed sync SDK attempts to insert them into a table requiring an ID.
+
+**How to apply:** When upgrading the sync SDK, recheck its managed-secret verification and verified-event interfaces; do not replace verification with an untrusted JSON parse.
+
 **How to apply:** Any flow that consumes a persisted Stripe object ID must tolerate
 `resource_missing` after an account switch — repair (recreate) or clear the stale ID rather
 than letting it 500. Old-account subscriptions/credits do NOT migrate automatically.
