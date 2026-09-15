@@ -96,9 +96,6 @@ export default function Home() {
                   <Mic2 className="h-3.5 w-3.5" /> Create Narration
                 </Link>
                 <span>&middot;</span>
-                <Link href="/podcast" className="hover:text-white transition-colors flex items-center gap-1.5">
-                  <Share2 className="h-3.5 w-3.5" /> Podcast Media
-                </Link>
                 <span>&middot;</span>
                 <Link href="/gallery" className="hover:text-white transition-colors flex items-center gap-1.5">
                   <Play className="h-3.5 w-3.5" /> Browse Gallery
