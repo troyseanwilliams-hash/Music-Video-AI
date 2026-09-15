@@ -66,3 +66,4 @@
 - [Audio analysis presentation](audio-analysis-presentation.md) — track analysis should power video timing quietly; demonstrate beat matching visually instead of selling a standalone profile.
 - [Database enum rollout](database-enum-rollout.md) — a TypeScript enum declaration does not update the live dev enum; add the value in development so Publish can detect and promote it.
 - [Direct Kling cutover](direct-kling-cutover.md) — keep gateway and direct providers distinct; stop new submissions without stranding accepted direct tasks.
+- [Signup measurement authority](signup-measurement-authority.md) — server account creation is authoritative; browser delivery gaps must not be mistaken for zero signups.

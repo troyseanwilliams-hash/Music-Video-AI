@@ -49,7 +49,7 @@ export function Footer() {
               <span className="text-lg font-bold tracking-tight">AIBeatSync</span>
             </Link>
             <p className="mt-3 max-w-xs text-sm text-muted-foreground">
-              Create music, narration, podcast media, cinematic videos, captions, and social-ready releases in one studio.
+              Create music, narration, cinematic videos, captions, and social-ready releases in one studio.
             </p>
           </div>
 

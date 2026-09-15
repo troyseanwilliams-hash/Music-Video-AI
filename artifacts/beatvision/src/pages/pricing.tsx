@@ -2,6 +2,17 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { AUTH_QUERY_KEY, useAuth } from "@/hooks/useAuth";
+import { useSEO } from "@/hooks/useSEO";
+import {
+  buildAuthUrl,
+  buildPricingIntent,
+  getAuthIntent,
+  normalizeAuthInterval,
+  normalizeAuthPlan,
+  normalizeTopupIdentifier,
+  type AuthBillingInterval,
+  type AuthPlan,
+} from "@/lib/authIntent";
 import {
   useListBillingPlans,
   useGetBillingSubscription,
@@ -31,7 +42,7 @@ import {
   Mic2,
 } from "lucide-react";
 
-type Interval = "month" | "year";
+type Interval = AuthBillingInterval;
 type PlanPrice = {
   interval: string | null;
   unitAmount: number;
@@ -66,6 +77,15 @@ function getYearlySavings(prices: PlanPrice[]) {
   };
 }
 
+function getTopupIntentIdentifiers(
+  plan: { id: string },
+  price: { id: string; lookupKey: string | null },
+): string[] {
+  return [price.id, price.lookupKey, plan.id]
+    .map((value) => normalizeTopupIdentifier(value))
+    .filter((value): value is string => value !== null);
+}
+
 const TIER_ICONS: Record<string, typeof Zap> = {
   starter: Zap,
   pro: Sparkles,
@@ -78,10 +98,29 @@ export default function Pricing() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const [interval, setInterval] = useState<Interval>("month");
+  const initialIntent = useMemo(() => getAuthIntent(), []);
+  const initialPlan = initialIntent.plan;
+  const [interval, setInterval] = useState<Interval>(
+    initialIntent.interval ?? "month",
+  );
+  const [selectedPlan, setSelectedPlan] = useState<AuthPlan | null>(initialPlan);
+  const [selectedTopupId, setSelectedTopupId] = useState<string | null>(
+    initialIntent.topupId,
+  );
+  const [checkoutReady] = useState(
+    initialIntent.continueCheckout &&
+      Boolean(initialPlan || initialIntent.topupId),
+  );
   const [busyPriceId, setBusyPriceId] = useState<string | null>(null);
   const [portalBusy, setPortalBusy] = useState(false);
   const [redeemBusy, setRedeemBusy] = useState(false);
+
+  useSEO({
+    title: "Pricing",
+    description:
+      "Choose a credit plan for AIBeatSync music, images, narration, AI video, and clean Montage Studio exports.",
+    canonical: "/pricing",
+  });
 
   const { data: plans, isLoading: plansLoading } = useListBillingPlans();
   const { data: subscription } = useGetBillingSubscription({
@@ -153,6 +192,27 @@ export default function Pricing() {
 
   const subscriptions = plans?.subscriptions ?? [];
   const topups = plans?.topups ?? [];
+  const selectedTopup = useMemo(() => {
+    if (!selectedTopupId) return null;
+    for (const plan of topups) {
+      const price = plan.prices[0];
+      if (!price) continue;
+      const identifiers = getTopupIntentIdentifiers(plan, price);
+      if (identifiers.includes(selectedTopupId)) {
+        return {
+          plan,
+          price,
+          identifier: identifiers[0] ?? selectedTopupId,
+        };
+      }
+    }
+    return null;
+  }, [selectedTopupId, topups]);
+  const selectedIntentLabel = selectedPlan
+    ? `${selectedPlan} plan`
+    : selectedTopup
+      ? `${selectedTopup.price.credits.toLocaleString()}-credit pack`
+      : null;
 
   const hasYearly = useMemo(
     () =>
@@ -173,6 +233,7 @@ export default function Pricing() {
     plan: string,
     billingInterval: string,
     purchaseType: "subscription" | "topup",
+    topupIdentifier?: string,
   ) => {
     trackEvent("plan_selected", {
       plan,
@@ -180,9 +241,39 @@ export default function Pricing() {
       purchase_type: purchaseType,
       authenticated: isAuthenticated,
     });
+    const normalizedPlan = normalizeAuthPlan(plan);
+    const normalizedInterval = normalizeAuthInterval(billingInterval);
+    const normalizedTopup = normalizeTopupIdentifier(
+      topupIdentifier ?? (purchaseType === "topup" ? priceId : null),
+    );
+    if (normalizedPlan) {
+      setSelectedPlan(normalizedPlan);
+      setSelectedTopupId(null);
+    }
+    if (normalizedInterval) setInterval(normalizedInterval);
+    if (normalizedTopup) {
+      setSelectedTopupId(normalizedTopup);
+      setSelectedPlan(null);
+    }
     if (!isAuthenticated) {
       track("checkout_intent_logged_out", { priceId });
-      setLocation("/login");
+      setLocation(
+        buildAuthUrl("/register", {
+          plan: purchaseType === "subscription" ? normalizedPlan ?? undefined : undefined,
+          interval: purchaseType === "subscription" ? normalizedInterval ?? undefined : undefined,
+          topupId: purchaseType === "topup" ? normalizedTopup ?? undefined : undefined,
+          referralCode: getAuthIntent().referralCode ?? undefined,
+          returnTo: normalizedPlan || normalizedTopup
+            ? buildPricingIntent(
+                purchaseType === "subscription" ? normalizedPlan : null,
+                purchaseType === "subscription" ? normalizedInterval : null,
+                true,
+                purchaseType === "topup" ? normalizedTopup : undefined,
+              )
+            : "/pricing",
+          continueCheckout: Boolean(normalizedPlan || normalizedTopup),
+        }),
+      );
       return;
     }
     setBusyPriceId(priceId);
@@ -293,18 +384,44 @@ export default function Pricing() {
           Choose your <span className="text-gradient-electric">plan</span>
         </h1>
         <p className="text-base leading-7 text-muted-foreground max-w-xl mx-auto sm:text-lg">
-          Pick the credits that fit your output. Every plan includes music, narration, AI images, narrative video,
-          Podcast Media, Montage Studio, and a free 7-day trial. Plan credits refresh with your billing cycle; top-ups never expire.
+          Pick the credits that fit your output. Plans cover credit-based music, images, narration, and AI video,
+          plus clean Montage Studio exports. Plan credits refresh with your billing cycle; top-ups never expire.
         </p>
         <div className="mx-auto mt-5 flex max-w-md items-start gap-2 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-3 text-left text-sm font-medium sm:inline-flex sm:max-w-none sm:items-center sm:rounded-full sm:py-2">
           <Sparkles className="h-4 w-4 text-primary" />
           <span>
-            Every new account gets a{" "}
-            <strong className="text-foreground">free 7-day trial</strong> with{" "}
-            <strong className="text-foreground">unlimited Montage Studio exports</strong>
-            {" "}— no credit card required
+            New accounts get a{" "}
+            <strong className="text-foreground">
+              7-day trial with zero starting credits, excluding valid referral or promotional grants
+            </strong>
+            {" "}plus <strong className="text-foreground">3 lifetime free instrumentals</strong> and{" "}
+            <strong className="text-foreground">1 lifetime free vocal song</strong>.
           </span>
         </div>
+        <div className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
+          Trial users get unlimited clean Montage exports, 3 free lyric-burn exports, and 3 free Auto-sync
+          aligns. After those 3 aligns, Auto-sync is locked for the rest of the trial. AI video, image, and
+          narration generation uses credits; after the trial, Auto-sync stays locked until you subscribe.
+        </div>
+        {!isAuthenticated && (
+          <div className="mt-5">
+            <Link href="/register">
+              <Button size="lg" className="w-full sm:w-auto">Start your free trial</Button>
+            </Link>
+            <p className="mt-2 text-xs text-muted-foreground">No credit card required to create an account.</p>
+          </div>
+        )}
+        {checkoutReady && selectedIntentLabel && (
+          <div
+            role="status"
+            className="mx-auto mt-4 max-w-xl rounded-xl border border-primary/40 bg-primary/10 px-4 py-3 text-sm"
+            data-testid="pricing-checkout-intent"
+          >
+            Your {selectedIntentLabel} is ready to review. Choose{" "}
+            <strong className="text-foreground">Continue to checkout</strong> below to open secure checkout;
+            you will not be charged automatically.
+          </div>
+        )}
         {isAuthenticated && subscription && (
           <div
             className="mx-auto mt-4 flex max-w-md flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-2xl border border-border/50 bg-secondary/40 px-4 py-3 text-sm sm:inline-flex sm:max-w-none sm:rounded-full sm:py-2"
@@ -390,7 +507,7 @@ export default function Pricing() {
             {
               icon: Music2,
               title: "Music",
-              description: "Unlimited access to royalty-free AI music, limited only by the credits in your tier.",
+              description: "Three lifetime free instrumentals and one lifetime free vocal song; additional songs use credits.",
             },
             {
               icon: ImageIcon,
@@ -404,8 +521,8 @@ export default function Pricing() {
             },
             {
               icon: Mic2,
-              title: "Narration & Podcast Media",
-              description: "Create mixed narration from a script, then turn long-form audio or video into captioned episodes and highlights.",
+              title: "Narration",
+              description: "Create mixed narration from a script with an AI-generated music bed or your own audio.",
             },
           ].map(({ icon: FeatureIcon, title, description }) => (
             <div
@@ -456,16 +573,24 @@ export default function Pricing() {
           const isCurrent =
             subscription?.priceLookupKey &&
             price.lookupKey === subscription.priceLookupKey;
+           const isSelectedIntent =
+             selectedPlan === normalizeAuthPlan(plan.name) &&
+             interval === price.interval;
 
           return (
             <Card
               key={plan.id}
-              className={`relative bg-card/50 border transition-all duration-300 hover:-translate-y-1 ${
+               className={`relative bg-card/50 border transition-all duration-300 hover:-translate-y-1 ${
+                 isSelectedIntent
+                   ? "border-primary ring-2 ring-primary/50 shadow-glow"
+                   : ""
+               } ${
                 plan.popular
                   ? "border-primary/60 shadow-glow md:scale-[1.03]"
                   : "border-card-border hover:border-primary/40 hover:shadow-glow"
               }`}
               data-testid={`card-plan-${plan.name.toLowerCase()}`}
+               data-selected={isSelectedIntent ? "true" : undefined}
             >
               {plan.popular && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-gradient-electric text-xs font-semibold text-white shadow-glow">
@@ -517,21 +642,20 @@ export default function Pricing() {
                       {price.credits.toLocaleString()} credits per{" "}
                       {price.interval === "year" ? "year" : "month"}{" "}
                       <span className="text-muted-foreground">
-                        (~{Math.floor(price.credits / 280)} full videos or{" "}
-                        {Math.floor(price.credits / 50)} × 5s clips)
+                        — AI video, image, and narration generation uses credits
                       </span>
                     </span>
                   </li>
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                    <span>Beat-synced AI music videos</span>
+                    <span>Credit-based beat-synced AI music videos</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                     <span>
-                      <strong>Unlimited AI Music</strong>{" "}
+                      <strong>AI Music</strong>{" "}
                       <span className="text-muted-foreground">
-                        — instrumental songs use 5–10 credits by length; songs with lyrics use 18 credits per generated minute
+                        — 3 lifetime free instrumentals and 1 lifetime free vocal song per account; additional songs use credits
                       </span>
                     </span>
                   </li>
@@ -540,7 +664,7 @@ export default function Pricing() {
                     <span>
                       <strong>AI Narration</strong>{" "}
                       <span className="text-muted-foreground">
-                        — 3 credits per started 1,000 script characters, 3-credit minimum; an AI-generated music bed is included
+                        — requires credits: 3 credits per started 1,000 script characters, 3-credit minimum; an AI-generated music bed is included
                       </span>
                     </span>
                   </li>
@@ -556,15 +680,6 @@ export default function Pricing() {
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                     <span>
-                      <strong>Podcast Media</strong>{" "}
-                      <span className="text-muted-foreground">
-                        — captioned 16:9 episodes, three vertical highlights, titles, descriptions, and downloads
-                      </span>
-                    </span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                    <span>
                       <strong>New: AI Image Generation</strong>{" "}
                       <span className="text-muted-foreground">
                         — {GENERATED_IMAGE_CREDITS_PER_VISUAL} credits per generated image, limited only by your credit balance
@@ -573,14 +688,17 @@ export default function Pricing() {
                   </li>
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                    <span>
-                      <strong>Unlimited</strong> Montage Studio exports — arrange clips, photos &amp; music with
-                      transitions (free plan: 10 exports/month, then 15 credits each)
-                    </span>
+                     <span>
+                       <strong>Unlimited clean</strong> Montage Studio exports during your trial and while
+                       subscribed — expired non-paid accounts get 10 free exports per calendar month, then 15 credits each
+                     </span>
                   </li>
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                    <span>Karaoke lyric sync (LRC &amp; word-level timing)</span>
+                     <span>
+                       3 free trial lyric-burn exports, then the lyric add-on charge; 3 free trial Auto-sync
+                       aligns, then Auto-sync locks for the rest of the trial
+                     </span>
                   </li>
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
@@ -619,13 +737,15 @@ export default function Pricing() {
                   {busyPriceId === price.id ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : null}
-                  {isCurrent
-                    ? "Current plan"
-                    : isAuthenticated
-                      ? price.interval === "year"
-                        ? "Start yearly & save"
-                        : "Subscribe monthly"
-                      : "Sign in to subscribe"}
+                   {isCurrent
+                     ? "Current plan"
+                     : isAuthenticated && checkoutReady && isSelectedIntent
+                       ? "Continue to checkout"
+                       : isAuthenticated
+                         ? price.interval === "year"
+                           ? "Start yearly & save"
+                           : "Subscribe monthly"
+                         : "Create account to continue"}
                 </Button>
               </CardContent>
             </Card>
@@ -651,6 +771,11 @@ export default function Pricing() {
             {topups.map((plan) => {
               const price = plan.prices[0];
               if (!price) return null;
+              const topupIntentIdentifiers = getTopupIntentIdentifiers(plan, price);
+              const topupIdentifier = topupIntentIdentifiers[0] ?? null;
+              const isSelectedTopupIntent =
+                checkoutReady &&
+                topupIntentIdentifiers.includes(selectedTopupId ?? "");
 
               // Face value: $0.02/credit = 2 cents/credit
               const faceValueCents = price.credits * 2;
@@ -663,8 +788,15 @@ export default function Pricing() {
               return (
                 <Card
                   key={plan.id}
-                  className={`relative bg-card/30 border ${plan.popular ? "border-primary/60 shadow-glow" : "border-card-border"}`}
+                  className={`relative bg-card/30 border ${
+                    isSelectedTopupIntent
+                      ? "border-primary ring-2 ring-primary/50 shadow-glow"
+                      : plan.popular
+                        ? "border-primary/60 shadow-glow"
+                        : "border-card-border"
+                  }`}
                   data-testid={`card-topup-${price.credits}`}
+                  data-selected={isSelectedTopupIntent ? "true" : undefined}
                 >
                   {plan.popular && (
                     <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-gradient-electric text-xs font-semibold text-white shadow-glow">
@@ -709,13 +841,18 @@ export default function Pricing() {
                         plan.name.toLowerCase(),
                         price.interval ?? "one_time",
                         "topup",
+                        topupIdentifier ?? undefined,
                       )}
                       data-testid={`button-topup-${price.credits}`}
                     >
                       {busyPriceId === price.id ? (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       ) : null}
-                      Buy now
+                      {isAuthenticated && isSelectedTopupIntent
+                        ? "Continue to checkout"
+                        : isAuthenticated
+                          ? "Buy now"
+                          : "Create account to continue"}
                     </Button>
                   </CardContent>
                 </Card>

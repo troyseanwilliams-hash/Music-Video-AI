@@ -278,7 +278,7 @@ export default function Dashboard() {
                 <Sparkles className="h-5 w-5 text-primary" /> Welcome to AIBeatSync
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Your 7-day trial includes full Remix Studio access and <strong className="text-foreground">3 free music generations</strong>. Here's how to start:
+                Your 7-day registration trial includes <strong className="text-foreground">3 lifetime free instrumentals and 1 free vocal song</strong>. Here's how to start:
               </p>
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
                 <Link href="/generate" className="rounded-xl border border-border bg-background/40 p-4 transition-colors hover:border-primary/50">

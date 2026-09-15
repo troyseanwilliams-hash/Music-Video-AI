@@ -2,7 +2,7 @@ import bcrypt from "bcrypt";
 import crypto from "crypto";
 import { Router, type IRouter, type Request, type Response } from "express";
 import { RegisterUserBody, LoginUserBody, GetCurrentAuthUserResponse } from "@workspace/api-zod";
-import { db, usersTable } from "@workspace/db";
+import { db, analyticsEventsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
 function isAdminEmail(email: string | null | undefined): boolean {
@@ -28,6 +28,12 @@ import { z } from "zod";
 import { Resend } from "resend";
 import { and, gt } from "drizzle-orm";
 import {
+  buildSignupCompletedEvent,
+  buildSignupFailureEvent,
+  getSignupAnonId,
+  type SignupFailureCategory,
+} from "../lib/signupAnalytics.js";
+import {
   clearSession,
   getSessionId,
   createSession,
@@ -51,6 +57,23 @@ function setSessionCookie(res: Response, sid: string) {
   });
 }
 
+/**
+ * Signup measurement is best effort for failed attempts: a failure must not
+ * make the registration endpoint less reliable, while a successful account
+ * always records its completion event inside the account transaction below.
+ */
+async function recordSignupFailure(
+  req: Request,
+  category: SignupFailureCategory,
+  anonId: string | null,
+): Promise<void> {
+  try {
+    await db.insert(analyticsEventsTable).values(buildSignupFailureEvent(category, anonId));
+  } catch (err) {
+    req.log?.warn({ err, category }, "signup failure analytics write failed (ignored)");
+  }
+}
+
 router.get("/auth/user", async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
     res.json(GetCurrentAuthUserResponse.parse({ user: null }));
@@ -65,8 +88,10 @@ router.get("/auth/user", async (req: Request, res: Response) => {
 });
 
 router.post("/auth/register", async (req: Request, res: Response) => {
+  const anonId = getSignupAnonId(req);
   const parsed = RegisterUserBody.safeParse(req.body);
   if (!parsed.success) {
+    await recordSignupFailure(req, "validation", anonId);
     res.status(400).json({ error: "Invalid input: " + parsed.error.issues[0]?.message });
     return;
   }
@@ -81,6 +106,7 @@ router.post("/auth/register", async (req: Request, res: Response) => {
     .limit(1);
 
   if (existing.length > 0) {
+    await recordSignupFailure(req, "duplicate", anonId);
     res.status(409).json({ error: "An account with that email already exists" });
     return;
   }
@@ -97,6 +123,7 @@ router.post("/auth/register", async (req: Request, res: Response) => {
       .limit(maxAccountsPerIp);
     if (priorFromIp.length >= maxAccountsPerIp) {
       req.log.warn({ signupIp, email: normalizedEmail }, "Registration blocked: too many accounts from this IP");
+      await recordSignupFailure(req, "rate_limited", anonId);
       res.status(429).json({
         error:
           "We've reached the limit of free accounts from your network. If you need another account, please contact support.",
@@ -111,21 +138,48 @@ router.post("/auth/register", async (req: Request, res: Response) => {
   const firstName = nameParts[0] ?? name.trim();
   const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : null;
 
-  const [user] = await db
-    .insert(usersTable)
-    .values({
-      id: crypto.randomUUID(),
-      email: normalizedEmail,
-      passwordHash,
-      firstName,
-      lastName,
-      // New users get a 7-day full-access Editor trial.
-      subscriptionStatus: "trial",
-      trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      lastLoginAt: new Date(),
-      signupIp: signupIp || null,
-    })
-    .returning();
+  let user: typeof usersTable.$inferSelect;
+  try {
+    [user] = await db.transaction(async (tx) => {
+      const created = await tx
+        .insert(usersTable)
+        .values({
+          id: crypto.randomUUID(),
+          email: normalizedEmail,
+          passwordHash,
+          firstName,
+          lastName,
+          // New users get a 7-day full-access Editor trial.
+          subscriptionStatus: "trial",
+          trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          lastLoginAt: new Date(),
+          signupIp: signupIp || null,
+        })
+        .returning();
+      const createdUser = created[0];
+      if (!createdUser) {
+        throw new Error("Registration did not create an account");
+      }
+
+      // The event id is derived from this opaque new user id. The primary key
+      // plus onConflictDoNothing makes retries idempotent and this insert is
+      // committed/rolled back with the account itself.
+      await tx
+        .insert(analyticsEventsTable)
+        .values(
+          buildSignupCompletedEvent(createdUser.id, {
+            anonId,
+            source: referralCode ? "referral" : "direct",
+          }),
+        )
+        .onConflictDoNothing();
+
+      return [createdUser];
+    });
+  } catch (err) {
+    await recordSignupFailure(req, "persistence", anonId);
+    throw err;
+  }
 
   req.log.info({ userId: user.id, email: user.email }, "User registered");
 

@@ -1,11 +1,17 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
+import { useSEO } from "@/hooks/useSEO";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Music2, Wand2, Zap, Film, Eye, EyeOff, Headphones } from "lucide-react";
 import { motion } from "framer-motion";
+import {
+  buildAuthUrl,
+  getAuthCrossLinkDestination,
+  getAuthIntent,
+} from "@/lib/authIntent";
 
 const features = [
   {
@@ -38,11 +44,25 @@ const features = [
 export default function Login() {
   const { login, isLoading: isAuthLoading } = useAuth();
   const [location, setLocation] = useLocation();
+  const authLocation =
+    location.includes("?")
+      ? location
+      : typeof window !== "undefined"
+        ? window.location.search
+        : location;
+  const authIntent = getAuthIntent(authLocation);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useSEO({
+    title: "Sign in",
+    description: "Sign in to manage your AIBeatSync projects, credits, and subscription.",
+    canonical: "/login",
+    noindex: true,
+  });
 
   if (isAuthLoading) {
     return (
@@ -58,9 +78,9 @@ export default function Login() {
     setIsSubmitting(true);
     try {
       await login(email, password);
-      const params = new URLSearchParams(location.split("?")[1] ?? "");
-      const from = params.get("from");
-      setLocation(from ? decodeURIComponent(from) : "/dashboard");
+      // Validate both the legacy `from` key and the newer returnTo key before
+      // navigating after sign-in.
+      setLocation(authIntent.returnTo);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -161,7 +181,7 @@ export default function Login() {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -198,15 +218,26 @@ export default function Login() {
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  tabIndex={-1}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  aria-controls="password"
+                  aria-pressed={showPassword}
                 >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" aria-hidden="true" />
+                  ) : (
+                    <Eye className="h-4 w-4" aria-hidden="true" />
+                  )}
                 </button>
               </div>
             </div>
 
             {error && (
-              <p className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
+              <p
+                id="login-error"
+                role="alert"
+                aria-live="assertive"
+                className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2"
+              >
                 {error}
               </p>
             )}
@@ -215,6 +246,7 @@ export default function Login() {
               type="submit"
               size="lg"
               disabled={isSubmitting}
+              aria-describedby={error ? "login-error" : undefined}
               className="w-full h-12 text-base font-semibold bg-gradient-electric text-white shadow-glow hover:opacity-90 transition-opacity border-0"
             >
               {isSubmitting ? (
@@ -227,7 +259,17 @@ export default function Login() {
 
           <p className="text-center text-sm text-muted-foreground mt-6">
             Don't have an account?{" "}
-            <Link href="/register" className="text-primary hover:underline font-medium">
+            <Link
+              href={buildAuthUrl("/register", {
+                returnTo: getAuthCrossLinkDestination(authLocation, authIntent),
+                plan: authIntent.plan ?? undefined,
+                interval: authIntent.interval ?? undefined,
+                topupId: authIntent.topupId ?? undefined,
+                referralCode: authIntent.referralCode ?? undefined,
+                continueCheckout: authIntent.continueCheckout,
+              })}
+              className="text-primary hover:underline font-medium"
+            >
               Create one free
             </Link>
           </p>

@@ -6,6 +6,7 @@
 import { Router } from "express";
 import { randomUUID } from "node:crypto";
 import { db, analyticsEventsTable } from "@workspace/db";
+import { isClientSubmittedSignupEvent } from "../lib/signupAnalytics.js";
 
 const router = Router();
 
@@ -86,7 +87,10 @@ router.post("/analytics/collect", async (req, res) => {
 
     const rows = events.flatMap((e) => {
       const eventType = safeEventType(e.type);
-      if (!eventType) return [];
+      // Account creation is emitted by /auth/register in the same database
+      // transaction as the new user. Never trust a browser event for this
+      // signup outcome names, including from an authenticated browser.
+      if (!eventType || isClientSubmittedSignupEvent(eventType)) return [];
       return [{
         id: randomUUID(),
         anonId: safeAnonId(e.anonId),

@@ -11,6 +11,10 @@ const FIRST_TOUCH_KEY = "bv-first-touch";
 const ENDPOINT = "/api/analytics/collect";
 const FLUSH_MS = 15000;
 
+// Optional attribution context for POST /api/auth/register. This is kept out
+// of the registration body so it is not an authentication/API contract field.
+export const ANALYTICS_ANON_ID_HEADER = "x-analytics-anon-id";
+
 export type AnalyticsValue = string | number | boolean;
 export type AnalyticsData = Record<string, AnalyticsValue>;
 
@@ -121,12 +125,27 @@ export function sanitizeReferrerDomain(value: unknown): string {
 }
 
 function anonId(): string {
-  let id = safeGet(ANON_KEY);
-  if (!id) {
+  let id = safeGet(ANON_KEY)?.trim() ?? null;
+  if (!id || !/^[a-zA-Z0-9-]{1,64}$/.test(id)) {
     id = (crypto?.randomUUID?.() ?? `a-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     safeSet(ANON_KEY, id);
   }
   return id;
+}
+
+/**
+ * Return the bounded opaque visitor id for an auth request. Callers can spread
+ * the result into fetch headers without changing the auth request body:
+ * `{ ...getAnalyticsAttributionHeaders() }`.
+ */
+export function getAnalyticsAnonId(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  return anonId();
+}
+
+export function getAnalyticsAttributionHeaders(): Record<string, string> {
+  const id = getAnalyticsAnonId();
+  return id ? { [ANALYTICS_ANON_ID_HEADER]: id } : {};
 }
 
 // Capture where this visitor came from ONCE (first touch), so later pageviews
@@ -231,6 +250,10 @@ function emit(type: string, meta?: Record<string, unknown>): void {
   if (typeof window === "undefined") return;
   // Keep custom event names compatible with both collectors.
   if (!/^[a-z][a-z0-9_]{0,48}$/.test(type)) return;
+  // Signup outcomes are authoritative only when emitted by auth.ts. Keep this
+  // guard as defense in depth for stale callers while the collector applies
+  // the same rule.
+  if (type === "signup_completed" || type === "signup_failed") return;
   const data = sanitizeAnalyticsData(meta);
   enqueue({ type, path: currentPath ?? window.location.pathname, meta: data });
   try {

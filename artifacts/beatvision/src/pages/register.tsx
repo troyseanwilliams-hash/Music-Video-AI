@@ -1,21 +1,42 @@
 import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { useAuth } from "@/hooks/useAuth";
+import { isAuthTransportError, useAuth } from "@/hooks/useAuth";
+import { useSEO } from "@/hooks/useSEO";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Music2, Eye, EyeOff, CheckCircle2, Gift } from "lucide-react";
 import { motion } from "framer-motion";
-import { trackEvent } from "@/lib/analytics";
+import { track, trackEvent } from "@/lib/analytics";
+import {
+  AUTH_REGISTER_DEFAULT_DESTINATION,
+  buildAuthUrl,
+  getAuthCrossLinkDestination,
+  getAuthIntent,
+} from "@/lib/authIntent";
+
+type SignupValidationCategory =
+  | "name_required"
+  | "name_too_long"
+  | "email_required"
+  | "email_invalid"
+  | "password_mismatch"
+  | "password_too_short";
 
 export default function Register() {
   const { register } = useAuth();
-  const [, setLocation] = useLocation();
-  // Referral code from a ?ref= share link (survives the SPA route).
-  const referralCode = useMemo(() => {
-    const ref = new URLSearchParams(window.location.search).get("ref");
-    return ref ? ref.trim().toUpperCase() : null;
-  }, []);
+  const [location, setLocation] = useLocation();
+  const authLocation =
+    location.includes("?")
+      ? location
+      : typeof window !== "undefined"
+        ? window.location.search
+        : location;
+  const authIntent = useMemo(
+    () => getAuthIntent(authLocation, AUTH_REGISTER_DEFAULT_DESTINATION),
+    [authLocation],
+  );
+  const referralCode = authIntent.referralCode;
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -26,27 +47,67 @@ export default function Register() {
 
   const passwordStrong = password.length >= 8;
 
+  useSEO({
+    title: "Create your account",
+    description:
+      "Start a 7-day AIBeatSync trial with zero starting credits, excluding valid referral or promotional grants, plus three lifetime free instrumentals and one lifetime free vocal song.",
+    canonical: "/register",
+    noindex: true,
+  });
+
+  function validationFailure(
+    category: SignupValidationCategory,
+    message: string,
+  ): void {
+    track("signup_validation_failed", { category });
+    setError(message);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
+    if (!name.trim()) {
+      validationFailure("name_required", "Enter your full name to continue.");
+      return;
+    }
+    if (name.trim().length > 100) {
+      validationFailure("name_too_long", "Your name must be 100 characters or fewer.");
+      return;
+    }
+    if (!email.trim()) {
+      validationFailure("email_required", "Enter your email address to continue.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      validationFailure("email_invalid", "Enter a valid email address.");
+      return;
+    }
     if (password !== confirmPassword) {
-      setError("Passwords don't match");
+      validationFailure("password_mismatch", "Passwords don't match.");
       return;
     }
     if (password.length < 8) {
-      setError("Password must be at least 8 characters");
+      validationFailure("password_too_short", "Password must be at least 8 characters.");
       return;
     }
 
     setIsSubmitting(true);
     trackEvent("signup_started", { has_referral: Boolean(referralCode) });
     try {
-      await register(name, email, password, referralCode ?? undefined);
-      trackEvent("signup_completed", { has_referral: Boolean(referralCode) });
-      setLocation("/generate");
+      await register(name.trim(), email.trim(), password, referralCode ?? undefined);
+      // Account creation is tracked authoritatively by the server. Keep the
+      // selected plan as an explicit next step; never start checkout here.
+      setLocation(authIntent.returnTo);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Registration failed");
+      if (isAuthTransportError(err)) {
+        track("signup_transport_failed", { category: "network" });
+        setError(err.message);
+      } else {
+        // HTTP failures are tracked authoritatively by the server. Do not emit
+        // a second client-side failure event for the same response.
+        setError(err instanceof Error ? err.message : "Registration failed");
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -73,7 +134,9 @@ export default function Register() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold tracking-tight mb-2">Create your account</h1>
           <p className="text-muted-foreground text-sm">
-            Start generating beat-synced music videos for free.
+              Your 7-day trial starts with zero credits, excluding valid referral or
+              promotional grants. You also get three lifetime free instrumentals and one
+              lifetime free vocal song.
           </p>
         </div>
 
@@ -84,7 +147,7 @@ export default function Register() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="name">Full name</Label>
             <Input
@@ -95,6 +158,7 @@ export default function Register() {
               onChange={(e) => setName(e.target.value)}
               required
               autoComplete="name"
+              aria-invalid={Boolean(error && !name.trim())}
               className="h-11"
             />
           </div>
@@ -109,6 +173,7 @@ export default function Register() {
               onChange={(e) => setEmail(e.target.value)}
               required
               autoComplete="email"
+              aria-invalid={Boolean(error && !email.trim())}
               className="h-11"
             />
           </div>
@@ -125,18 +190,25 @@ export default function Register() {
                 required
                 autoComplete="new-password"
                 className="h-11 pr-10"
+                aria-describedby="password-requirement"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                tabIndex={-1}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                aria-controls="password confirmPassword"
+                aria-pressed={showPassword}
               >
-                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                {showPassword ? (
+                  <EyeOff className="h-4 w-4" aria-hidden="true" />
+                ) : (
+                  <Eye className="h-4 w-4" aria-hidden="true" />
+                )}
               </button>
             </div>
             {password.length > 0 && (
-              <div className="flex items-center gap-1.5 text-xs">
+              <div id="password-requirement" className="flex items-center gap-1.5 text-xs">
                 <CheckCircle2 className={`h-3.5 w-3.5 ${passwordStrong ? "text-green-500" : "text-muted-foreground/40"}`} />
                 <span className={passwordStrong ? "text-green-500" : "text-muted-foreground/60"}>
                   At least 8 characters
@@ -156,11 +228,17 @@ export default function Register() {
               required
               autoComplete="new-password"
               className="h-11"
+              aria-label="Confirm password"
             />
           </div>
 
           {error && (
-            <p className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
+            <p
+              id="signup-error"
+              role="alert"
+              aria-live="assertive"
+              className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2"
+            >
               {error}
             </p>
           )}
@@ -169,6 +247,7 @@ export default function Register() {
             type="submit"
             size="lg"
             disabled={isSubmitting}
+            aria-describedby={error ? "signup-error" : undefined}
             className="w-full h-12 text-base font-semibold bg-gradient-electric text-white shadow-glow hover:opacity-90 transition-opacity border-0"
           >
             {isSubmitting ? (
@@ -181,7 +260,17 @@ export default function Register() {
 
         <p className="text-center text-sm text-muted-foreground mt-6">
           Already have an account?{" "}
-          <Link href="/login" className="text-primary hover:underline font-medium">
+          <Link
+            href={buildAuthUrl("/login", {
+              returnTo: getAuthCrossLinkDestination(authLocation, authIntent),
+              plan: authIntent.plan ?? undefined,
+              interval: authIntent.interval ?? undefined,
+              topupId: authIntent.topupId ?? undefined,
+              referralCode,
+              continueCheckout: authIntent.continueCheckout,
+            })}
+            className="text-primary hover:underline font-medium"
+          >
             Sign in
           </Link>
         </p>

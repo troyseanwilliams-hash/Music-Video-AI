@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ANALYTICS_ANON_ID_HEADER } from "../lib/analytics";
 
 export interface AuthUser {
   id: string;
@@ -13,6 +14,39 @@ export interface AuthUser {
 }
 
 export const AUTH_QUERY_KEY = ["auth", "user"] as const;
+
+export const AUTH_TRANSPORT_ERROR = "AuthTransportError";
+
+export class AuthTransportError extends Error {
+  constructor() {
+    super("We couldn't reach the authentication service. Please try again.");
+    this.name = AUTH_TRANSPORT_ERROR;
+  }
+}
+
+export function isAuthTransportError(error: unknown): error is AuthTransportError {
+  return error instanceof AuthTransportError;
+}
+
+export function buildSignupAttributionHeaders(
+  value: unknown,
+): Record<string, string> {
+  if (typeof value !== "string") return {};
+  const anonId = value.trim();
+  return /^[a-zA-Z0-9-]{1,64}$/.test(anonId)
+    ? { [ANALYTICS_ANON_ID_HEADER]: anonId }
+    : {};
+}
+
+function getSignupAnalyticsAnonId(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const value = window.localStorage.getItem("bv-anon")?.trim() ?? "";
+    return /^[a-zA-Z0-9-]{1,64}$/.test(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
 
 async function fetchCurrentUser(): Promise<AuthUser | null> {
   const res = await fetch("/api/auth/user", { credentials: "include" });
@@ -50,12 +84,24 @@ export function useAuth() {
 
   const register = useCallback(
     async (name: string, email: string, password: string, referralCode?: string): Promise<void> => {
-      const res = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ name, email, password, ...(referralCode ? { referralCode } : {}) }),
-      });
+      const anonId = getSignupAnalyticsAnonId();
+      let res: Response;
+      try {
+        res = await fetch("/api/auth/register", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...buildSignupAttributionHeaders(anonId),
+          },
+          credentials: "include",
+          body: JSON.stringify({ name, email, password, ...(referralCode ? { referralCode } : {}) }),
+        });
+      } catch {
+        // HTTP errors are surfaced below for the server's authoritative
+        // signup failure event. Only a request that never received a response
+        // is a client-side transport failure.
+        throw new AuthTransportError();
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Registration failed");
       await queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEY });

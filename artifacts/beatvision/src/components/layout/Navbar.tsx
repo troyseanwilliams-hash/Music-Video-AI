@@ -77,7 +77,7 @@ export function Navbar() {
             </Link>
 
             {/* Flat top bar: all member tools inline; Gallery lives in the account dropdown. */}
-            <nav className="hidden md:flex items-center gap-5">
+            <nav className="hidden lg:flex items-center gap-5">
               {topBarLinks.map((l) => (
                 <Link
                   key={l.href}
@@ -186,9 +186,9 @@ export function Navbar() {
                   </DropdownMenuContent>
                 </DropdownMenu>
 
-                {/* Mobile hamburger — hidden on md+ */}
+                {/* Mobile hamburger — hidden on lg+ */}
                 <button
-                  className="md:hidden flex items-center justify-center h-10 w-10 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  className="lg:hidden flex items-center justify-center h-10 w-10 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   onClick={() => setMobileMenuOpen((v) => !v)}
                   aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
                   aria-expanded={mobileMenuOpen}
@@ -204,7 +204,7 @@ export function Navbar() {
                 <Link href="/login" className="text-sm font-medium text-muted-foreground hover:text-foreground hidden sm:block">
                   Sign in
                 </Link>
-                <Link href="/login">
+                <Link href="/register">
                   <Button className="bg-gradient-electric text-white shadow-glow hover:opacity-90 transition-opacity border-0">
                     <span className="sm:hidden">Start</span>
                     <span className="hidden sm:inline">Get Started</span>
@@ -212,7 +212,7 @@ export function Navbar() {
                 </Link>
                 {/* Mobile hamburger for logged-out visitors — reach Explore/Pricing */}
                 <button
-                  className="md:hidden flex items-center justify-center h-10 w-10 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  className="lg:hidden flex items-center justify-center h-10 w-10 rounded-lg border border-border/50 bg-secondary/40 hover:bg-secondary/70 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   onClick={() => setMobileMenuOpen((v) => !v)}
                   aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
                   aria-expanded={mobileMenuOpen}
@@ -230,7 +230,7 @@ export function Navbar() {
 
       {/* Mobile slide-down nav panel */}
       {mobileMenuOpen && (
-        <div id="mobile-nav-panel" className="md:hidden fixed top-16 inset-x-0 z-40 max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain border-b border-border/50 bg-background/95 backdrop-blur shadow-lg">
+        <div id="mobile-nav-panel" className="lg:hidden fixed top-16 inset-x-0 z-40 max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain border-b border-border/50 bg-background/95 backdrop-blur shadow-lg">
           <nav aria-label="Mobile" className="container mx-auto px-4 py-3 flex flex-col gap-1">
             {navLinks.map(({ href, label, icon: Icon }) => (
               <Link
@@ -258,14 +258,24 @@ export function Navbar() {
 
             {/* Sign-in prompt for logged-out visitors */}
             {!isAuthenticated && (
-              <Link
-                href="/login"
-                onClick={() => setMobileMenuOpen(false)}
-                className="mt-2 pt-2 border-t border-border/40 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
-              >
-                <LogOut className="h-4 w-4 shrink-0 rotate-180" aria-hidden="true" />
-                Sign in
-              </Link>
+              <div className="mt-2 pt-2 border-t border-border/40 flex flex-col gap-1">
+                <Link
+                  href="/login"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+                >
+                  <LogOut className="h-4 w-4 shrink-0 rotate-180" aria-hidden="true" />
+                  Sign in
+                </Link>
+                <Link
+                  href="/register"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white bg-primary hover:bg-primary/90"
+                >
+                  <Wand2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  Get Started
+                </Link>
+              </div>
             )}
           </nav>
         </div>
