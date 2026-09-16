@@ -67,3 +67,4 @@
 - [Database enum rollout](database-enum-rollout.md) — a TypeScript enum declaration does not update the live dev enum; add the value in development so Publish can detect and promote it.
 - [Direct Kling cutover](direct-kling-cutover.md) — keep gateway and direct providers distinct; stop new submissions without stranding accepted direct tasks.
 - [Signup measurement authority](signup-measurement-authority.md) — server account creation is authoritative; browser delivery gaps must not be mistaken for zero signups.
+- [Montage trial entry](montage-trial-entry.md) — trial discovery leads with Montage; Generate is the credit-priced next step, not a newly restricted feature.

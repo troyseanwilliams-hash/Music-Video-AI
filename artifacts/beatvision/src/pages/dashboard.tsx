@@ -6,7 +6,7 @@ import { useGetDashboardStats, getGetDashboardStatsQueryKey } from "@workspace/a
 import { LYRIC_OVERLAY_COST } from "@/lib/creditPricing";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus, Film, CheckCircle2, Clock, AlertCircle, Crown, Play, Coins, Trash2, Zap, Mail, X, Wand2, Music2, Sparkles, Smile, Quote, Lightbulb, type LucideIcon } from "lucide-react";
+import { Loader2, Plus, Film, CheckCircle2, Clock, AlertCircle, Crown, Play, Coins, Trash2, Zap, Mail, X, Wand2, Music2, Sparkles, Smile, Quote, Lightbulb, Scissors, type LucideIcon } from "lucide-react";
 import ReferEarnCard from "@/components/ReferEarnCard";
 import { Switch } from "@/components/ui/switch";
 import { useQuery } from "@tanstack/react-query";
@@ -255,10 +255,10 @@ export default function Dashboard() {
           <p className="text-muted-foreground mt-1">Overview of your generations and credits.</p>
         </div>
         
-        <Link href="/generate">
+        <Link href="/editor">
           <Button className="bg-gradient-electric text-white shadow-glow">
             <Plus className="mr-2 h-4 w-4" />
-            New Generation
+            New Montage
           </Button>
         </Link>
       </div>
@@ -281,20 +281,20 @@ export default function Dashboard() {
                 Your 7-day registration trial includes <strong className="text-foreground">3 lifetime free instrumentals and 1 free vocal song</strong>. Here's how to start:
               </p>
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <Link href="/editor" className="rounded-xl border border-border bg-background/40 p-4 transition-colors hover:border-primary/50">
+                  <Scissors className="mb-2 h-5 w-5 text-primary" />
+                  <p className="text-sm font-semibold">Montage Studio</p>
+                  <p className="text-xs text-muted-foreground">Unlimited clean exports of your uploaded clips & music.</p>
+                </Link>
                 <Link href="/generate" className="rounded-xl border border-border bg-background/40 p-4 transition-colors hover:border-primary/50">
                   <Wand2 className="mb-2 h-5 w-5 text-primary" />
-                  <p className="text-sm font-semibold">Generate a video</p>
-                  <p className="text-xs text-muted-foreground">Turn any song into a beat-synced AI video.</p>
+                  <p className="text-sm font-semibold">Generate AI Video</p>
+                  <p className="text-xs text-muted-foreground">Turn any song into a beat-synced AI video (uses credits).</p>
                 </Link>
                 <Link href="/soundtracks" className="rounded-xl border border-border bg-background/40 p-4 transition-colors hover:border-primary/50">
                   <Music2 className="mb-2 h-5 w-5 text-primary" />
                   <p className="text-sm font-semibold">Create Music</p>
                   <p className="text-xs text-muted-foreground">Royalty-free instrumentals in seconds.</p>
-                </Link>
-                <Link href="/explore" className="rounded-xl border border-border bg-background/40 p-4 transition-colors hover:border-primary/50">
-                  <Film className="mb-2 h-5 w-5 text-primary" />
-                  <p className="text-sm font-semibold">Explore</p>
-                  <p className="text-xs text-muted-foreground">See what the community is making.</p>
                 </Link>
               </div>
             </div>

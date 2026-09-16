@@ -49,6 +49,7 @@ import {
   FolderOpen,
   Pencil,
   Trash2,
+  Wand2,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -1684,19 +1685,30 @@ export default function Editor() {
       </div>
 
       {trialActive && (
-        <Card className="border-primary/30 bg-primary/5 mb-6 p-4 text-sm">
-          Free trial — {trialDaysLeft} day{trialDaysLeft === 1 ? "" : "s"} left. The full Montage Studio is unlocked: 1080p,
-          no watermark, smooth transitions.{" "}
-          {segments.length > 0 &&
-            (estimatedCost > 0 ? (
-              <>This export includes a karaoke lyric burn beyond your trial allowance, so it costs <strong>{estimatedCost} credits</strong>.{" "}</>
-            ) : (
-              <>Exports are <strong>free</strong> while you're on the trial.{" "}</>
-            ))}
-          <button className="text-primary font-medium underline" onClick={() => setLocation("/pricing")}>
-            Subscribe
-          </button>{" "}
-          to keep it after your trial.
+        <Card className="border-primary/30 bg-primary/5 mb-6 p-4 text-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            Free trial — {trialDaysLeft} day{trialDaysLeft === 1 ? "" : "s"} left. The full Montage Studio is unlocked: 1080p,
+            no watermark, smooth transitions.{" "}
+            {segments.length > 0 &&
+              (estimatedCost > 0 ? (
+                <>This export includes a karaoke lyric burn beyond your trial allowance, so it costs <strong>{estimatedCost} credits</strong>.{" "}</>
+              ) : (
+                <>Exports are <strong>free</strong> while you're on the trial.{" "}</>
+              ))}
+            <button className="text-primary font-medium underline" onClick={() => setLocation("/pricing")}>
+              Subscribe
+            </button>{" "}
+            to keep it after your trial.
+          </div>
+          <div className="flex-shrink-0 flex flex-col items-start md:items-end gap-1 border-t md:border-t-0 md:border-l border-primary/20 pt-3 md:pt-0 md:pl-4">
+            <span className="text-xs text-muted-foreground font-medium">Want to generate new AI scenes?</span>
+            <Link href="/generate">
+              <Button size="sm" variant="outline" className="h-8 border-primary/40 text-primary hover:bg-primary/10">
+                <Wand2 className="mr-1.5 h-3.5 w-3.5" /> Explore AI Generation
+              </Button>
+            </Link>
+            <span className="text-[10px] text-muted-foreground">Uses credits</span>
+          </div>
         </Card>
       )}
       {!fullAccess && (

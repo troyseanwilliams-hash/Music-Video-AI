@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Play, Sparkles, Scissors, Lock, Wand2, Music, ArrowRight } from "lucide-react";
 import { trackEvent } from "@/lib/analytics";
+import { buildAuthUrl } from "@/lib/authIntent";
 
 const SAMPLES = ["/sample1.mp4", "/sample2.mp4", "/sample3.mp4"];
 
@@ -56,7 +57,7 @@ export default function SignupTeaser({ variant }: { variant: "generate" | "remix
           <p className="text-lg text-muted-foreground mb-8">{c.sub}</p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">
             <Link
-              href="/register"
+              href={buildAuthUrl("/register", { returnTo: variant === "remix" ? "/editor" : "/generate" })}
               onClick={() => trackEvent("teaser_cta_clicked", { source: variant, destination: "register" })}
             >
               <Button size="lg" className="w-full sm:w-auto h-12 px-8 text-base bg-gradient-electric text-white shadow-glow border-0 hover:opacity-90">
@@ -74,7 +75,7 @@ export default function SignupTeaser({ variant }: { variant: "generate" | "remix
           </div>
           <p className="text-sm text-muted-foreground">
             Already have an account?{" "}
-            <Link href="/login" className="text-primary underline underline-offset-4">Log in</Link>
+            <Link href={buildAuthUrl("/login", { returnTo: variant === "remix" ? "/editor" : "/generate" })} className="text-primary underline underline-offset-4">Log in</Link>
           </p>
         </div>
 
@@ -105,7 +106,7 @@ export default function SignupTeaser({ variant }: { variant: "generate" | "remix
 
         <div className="text-center mt-12">
           <Link
-            href="/register"
+            href={buildAuthUrl("/register", { returnTo: variant === "remix" ? "/editor" : "/generate" })}
             onClick={() => trackEvent("teaser_cta_clicked", { source: variant, destination: "register" })}
           >
             <Button size="lg" className="bg-gradient-electric text-white shadow-glow border-0 hover:opacity-90">

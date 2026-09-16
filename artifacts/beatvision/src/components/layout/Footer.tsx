@@ -5,10 +5,10 @@ const COLUMNS: { title: string; links: { label: string; href: string; external?:
   {
     title: "Create",
     links: [
-      { label: "Generate", href: "/generate" },
+      { label: "Montage Studio", href: "/editor" },
+      { label: "Generate AI Video", href: "/generate" },
       { label: "Create Narration", href: "/generate" },
       { label: "Make Music", href: "/soundtracks" },
-      { label: "Montage Studio", href: "/editor" },
       { label: "Explore", href: "/explore" },
       { label: "Script to Video Tutorial", href: "/tutorial/script-to-video" },
     ],

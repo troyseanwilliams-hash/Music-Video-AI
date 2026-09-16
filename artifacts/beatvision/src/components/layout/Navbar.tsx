@@ -2,6 +2,7 @@ import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAuth } from "@/hooks/useAuth";
+import { buildAuthUrl } from "@/lib/authIntent";
 import { useGetDashboardStats, getGetDashboardStatsQueryKey } from "@workspace/api-client-react";
 import {
   Video, LayoutDashboard, Wand2, LogOut, Loader2, ShieldCheck,
@@ -38,28 +39,31 @@ export function Navbar() {
 
   // Flat top bar links; Gallery sits next to Dashboard.
   const memberLinks = [
-    { href: "/generate", label: "Generate", icon: Wand2 },
     { href: "/editor", label: "Montage", icon: Video },
+    { href: "/generate", label: "Generate", icon: Wand2 },
     { href: "/prompt-studio", label: "Prompt", icon: Sparkles },
     { href: "/soundtracks", label: "Music", icon: Music2 },
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/gallery", label: "Gallery", icon: Film },
   ];
   const publicLinks = [
+    { href: "/editor", label: "Montage", icon: Video },
     { href: "/explore", label: "Explore", icon: Compass },
     { href: "/soundtracks", label: "Music", icon: Music2 },
     { href: "/tutorial/script-to-video", label: "Tutorial", icon: Film },
     { href: "/pricing", label: "Pricing", icon: CreditCard },
   ];
   // Top bar: flat member links + public links.
+  // We want to avoid duplicating "/editor" and "/soundtracks" if they appear in both.
+  // The memberLinks has editor & soundtracks already.
   const topBarLinks = [
     ...(isAuthenticated ? memberLinks : []),
-    ...publicLinks.filter((link) => !isAuthenticated || link.href !== "/soundtracks"),
+    ...publicLinks.filter((link) => !isAuthenticated || (link.href !== "/soundtracks" && link.href !== "/editor")),
   ];
   // Account dropdown + mobile panel: everything.
   const navLinks = [
     ...(isAuthenticated ? memberLinks : []),
-    ...publicLinks.filter((link) => !isAuthenticated || link.href !== "/soundtracks"),
+    ...publicLinks.filter((link) => !isAuthenticated || (link.href !== "/soundtracks" && link.href !== "/editor")),
   ];
 
   return (
@@ -201,10 +205,10 @@ export function Navbar() {
               </>
             ) : (
               <div className="flex items-center gap-3">
-                <Link href="/login" className="text-sm font-medium text-muted-foreground hover:text-foreground hidden sm:block">
+                <Link href={buildAuthUrl("/login", { returnTo: "/editor" })} className="text-sm font-medium text-muted-foreground hover:text-foreground hidden sm:block">
                   Sign in
                 </Link>
-                <Link href="/register">
+                <Link href={buildAuthUrl("/register", { returnTo: "/editor" })}>
                   <Button className="bg-gradient-electric text-white shadow-glow hover:opacity-90 transition-opacity border-0">
                     <span className="sm:hidden">Start</span>
                     <span className="hidden sm:inline">Get Started</span>
@@ -260,7 +264,7 @@ export function Navbar() {
             {!isAuthenticated && (
               <div className="mt-2 pt-2 border-t border-border/40 flex flex-col gap-1">
                 <Link
-                  href="/login"
+                  href={buildAuthUrl("/login", { returnTo: "/editor" })}
                   onClick={() => setMobileMenuOpen(false)}
                   className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
                 >
@@ -268,7 +272,7 @@ export function Navbar() {
                   Sign in
                 </Link>
                 <Link
-                  href="/register"
+                  href={buildAuthUrl("/register", { returnTo: "/editor" })}
                   onClick={() => setMobileMenuOpen(false)}
                   className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white bg-primary hover:bg-primary/90"
                 >

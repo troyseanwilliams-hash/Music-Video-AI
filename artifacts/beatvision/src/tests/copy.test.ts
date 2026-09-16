@@ -22,8 +22,28 @@ describe("Copy verification", () => {
     expect(homeContent.toLowerCase()).not.toContain("you fully own");
   });
 
-  it("preserves exact primary CTA Create your first music video", () => {
+  it("preserves exact primary CTA Start creating in Montage", () => {
     const homeContent = fs.readFileSync(path.join(__dirname, "../pages/home.tsx"), "utf-8");
-    expect(homeContent).toContain("Create your first music video");
+    expect(homeContent).toContain("Start creating in Montage");
+  });
+
+  it("uses proper explicit auth intent via buildAuthUrl for editor and generate", () => {
+    const homeContent = fs.readFileSync(path.join(__dirname, "../pages/home.tsx"), "utf-8");
+    expect(homeContent).toContain('buildAuthUrl("/register", { returnTo: "/editor" })');
+    expect(homeContent).toContain('buildAuthUrl("/register", { returnTo: "/generate" })');
+  });
+
+  it("prioritizes Montage in primary CTAs and public navigation", () => {
+    const navbarContent = fs.readFileSync(path.join(__dirname, "../components/layout/Navbar.tsx"), "utf-8");
+    const footerContent = fs.readFileSync(path.join(__dirname, "../components/layout/Footer.tsx"), "utf-8");
+
+    // Editor should be first in public nav
+    expect(navbarContent).toContain('{ href: "/editor", label: "Montage"');
+
+    // Editor should be first in Create footer section
+    const createIndex = footerContent.indexOf('title: "Create"');
+    const editorIndex = footerContent.indexOf('"/editor"', createIndex);
+    const generateIndex = footerContent.indexOf('"/generate"', createIndex);
+    expect(editorIndex).toBeLessThan(generateIndex);
   });
 });

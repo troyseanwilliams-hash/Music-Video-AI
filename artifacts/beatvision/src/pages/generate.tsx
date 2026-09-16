@@ -120,6 +120,7 @@ import {
   Copy, RotateCcw, CheckCheck, Mic
 } from "lucide-react";
 import { NarrationGenerator } from "@/components/NarrationGenerator";
+import PromptSuggestions from "@/components/PromptSuggestions";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 // Original sample lyrics (safe to ship — written for this app) showing all
@@ -777,6 +778,21 @@ export default function Generate() {
     if (!confirmOpen) return;
     if (!imagePackMode) return;
     if (imagePackScenes) return; // already planned
+    if (prompt.length > MAX_CREATIVE_PROMPT_LENGTH) {
+      setImagePackPlanLoading(false);
+      setImagePackScenes(null);
+      setFieldErrors((current) => ({
+        ...current,
+        prompt: `Shorten your prompt to ${MAX_CREATIVE_PROMPT_LENGTH.toLocaleString()} characters or fewer before reviewing the image pack.`,
+      }));
+      setConfirmOpen(false);
+      toast({
+        title: "Prompt is too long",
+        description: `Shorten your prompt to ${MAX_CREATIVE_PROMPT_LENGTH.toLocaleString()} characters or fewer before reviewing the image pack.`,
+        variant: "destructive",
+      });
+      return;
+    }
 
     const requestId = ++imagePackPlanRequestId.current;
     setImagePackPlanLoading(true);
@@ -1532,6 +1548,14 @@ export default function Generate() {
   };
 
   const submitImagePack = () => {
+    if (prompt.length > MAX_CREATIVE_PROMPT_LENGTH) {
+      setFieldErrors((current) => ({
+        ...current,
+        prompt: `Shorten your prompt to ${MAX_CREATIVE_PROMPT_LENGTH.toLocaleString()} characters or fewer before generating.`,
+      }));
+      setConfirmOpen(false);
+      return;
+    }
     if (
       numberedImageSceneAnalysis.invalid
       ||
@@ -1669,6 +1693,8 @@ export default function Generate() {
 
     if (!prompt.trim()) {
       errors.prompt = "Please describe the visuals you want.";
+    } else if (prompt.length > MAX_CREATIVE_PROMPT_LENGTH) {
+      errors.prompt = `Shorten your prompt to ${MAX_CREATIVE_PROMPT_LENGTH.toLocaleString()} characters or fewer.`;
     }
     if (!imagePackMode && numberedVideoSceneAnalysis.invalid) {
       errors.prompt = "Number every scene consecutively from 1, with one complete scene on each line.";
@@ -3363,6 +3389,18 @@ export default function Generate() {
                  setSubjectReplacementError(null);
                  setFieldErrors((fe) => ({ ...fe, prompt: undefined }));
                }}
+            />
+            <PromptSuggestions
+              mode={imagePackMode ? "image" : "narrative"}
+              imageCount={effectiveImagePackCount}
+              onUseExample={(examplePrompt, numberedSceneCount) => {
+                setPrompt(examplePrompt);
+                if (imagePackMode && numberedSceneCount) {
+                  setImagePackCount(numberedSceneCount);
+                }
+                setFieldErrors((current) => ({ ...current, prompt: undefined }));
+                requestAnimationFrame(() => promptRef.current?.focus());
+              }}
             />
             {!imagePackMode && (
               <div

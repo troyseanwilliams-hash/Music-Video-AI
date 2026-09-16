@@ -2,6 +2,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { track } from "@/lib/analytics";
 import { useAuth } from "@/hooks/useAuth";
+import { buildAuthUrl } from "@/lib/authIntent";
 import {
   ArrowRight,
   Play,
@@ -82,24 +83,27 @@ export default function Home() {
                 </h1>
 
                 <p className="text-base sm:text-lg md:text-xl text-white/60 mb-8 max-w-xl lg:mx-0 font-light leading-relaxed">
-                  Create music videos and short narrated stories. Generate visuals, sync lyrics, and edit the final cut—all from one site and one shared credit balance.
+                  Create music videos and short narrated stories. Start a 7-day free trial for unlimited clean Montage exports using your own uploaded music and clips (no card required). Includes 3 lifetime free instrumentals and 1 free vocal song. <br className="hidden sm:block" /><span className="text-sm text-white/40 mt-2 block">(AI video generation and optional paid lyrics add-ons require credits.)</span>
                 </p>
 
                 <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 w-full sm:w-auto">
                   <Link
-                    href={isAuthenticated ? "/generate" : "/register"}
-                    onClick={() => trackCTA("hero", isAuthenticated ? "open_generate_video" : "open_signup", isAuthenticated ? "Create a music video" : "Create your first music video")}
+                    href={isAuthenticated ? "/editor" : buildAuthUrl("/register", { returnTo: "/editor" })}
+                    onClick={() => trackCTA("hero", "open_editor", "Start creating in Montage")}
                     className="w-full sm:w-auto"
                   >
                     <Button size="lg" className="w-full sm:w-auto text-base sm:text-lg h-12 sm:h-14 px-6 sm:px-8 bg-white text-black hover:bg-white/90 shadow-[0_0_40px_rgba(255,255,255,0.2)] border-0 transition-all group rounded-full">
-                      <Wand2 className="mr-2 h-5 w-5" />
-                      {isAuthenticated ? "Create a music video" : "Create your first music video"}
+                      <Scissors className="mr-2 h-5 w-5" />
+                      Start creating in Montage
                     </Button>
                   </Link>
-                  <Link href="/pricing" onClick={() => trackCTA("hero", "view_pricing", "View Pricing")} className="w-full sm:w-auto">
-                    <Button size="lg" variant="outline" className="w-full sm:w-auto text-base sm:text-lg h-12 sm:h-14 px-6 sm:px-8 border-white/10 bg-white/5 hover:bg-white/10 hover:text-white backdrop-blur-md transition-all group rounded-full text-white/90">
-                      <Wallet className="mr-2 h-5 w-5" />
-                      View Pricing
+                  <Link href={isAuthenticated ? "/generate" : buildAuthUrl("/register", { returnTo: "/generate" })} onClick={() => trackCTA("hero", "open_generate", "Explore AI generation")} className="w-full sm:w-auto">
+                    <Button size="lg" variant="outline" className="w-full sm:w-auto text-base sm:text-lg h-12 sm:h-14 px-6 sm:px-8 border-white/10 bg-white/5 hover:bg-white/10 hover:text-white backdrop-blur-md transition-all group rounded-full text-white/90 flex flex-col justify-center gap-0 leading-tight">
+                      <div className="flex items-center">
+                        <Wand2 className="mr-2 h-4 w-4" />
+                        Explore AI generation
+                      </div>
+                      <span className="text-[10px] text-white/40 font-normal">Pricing & credits apply</span>
                     </Button>
                   </Link>
                 </div>
@@ -244,7 +248,7 @@ export default function Home() {
                   ))}
                 </ul>
 
-                <Link href="/generate" onClick={() => trackCTA("approval_section", "open_generate_video", "Try Narrative Video")}>
+                <Link href={isAuthenticated ? "/generate" : buildAuthUrl("/register", { returnTo: "/generate" })} onClick={() => trackCTA("approval_section", "open_generate_video", "Try Narrative Video")}>
                   <Button className="h-12 px-6 bg-gradient-electric text-white border-0 shadow-glow rounded-full group">
                     Try Narrative Video
                     <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
@@ -452,7 +456,7 @@ export default function Home() {
                   ))}
                 </ul>
                 <div className="flex flex-wrap gap-4">
-                  <Link href="/generate" onClick={() => trackCTA("karaoke", "open_generate_video", "Make a karaoke video")}>
+                  <Link href={isAuthenticated ? "/generate" : buildAuthUrl("/register", { returnTo: "/generate" })} onClick={() => trackCTA("karaoke", "open_generate_video", "Make a karaoke video")}>
                     <Button size="lg" className="h-14 px-8 bg-gradient-to-r from-pink-500 to-primary text-white border-0 shadow-glow rounded-full">
                       <Mic2 className="mr-2 h-5 w-5" /> Make a karaoke video
                     </Button>
@@ -497,14 +501,14 @@ export default function Home() {
               Join creators using AIBeatSync to produce music, narrated stories, cinematic videos, and social-ready releases.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-5">
-              <Link href="/pricing" onClick={() => trackCTA("footer", "view_pricing", "View pricing plans")}>
+              <Link href={isAuthenticated ? "/editor" : buildAuthUrl("/register", { returnTo: "/editor" })} onClick={() => trackCTA("footer", "open_montage_studio", "Open Montage Studio")}>
                 <Button size="lg" className="w-full sm:w-auto text-lg h-14 px-10 bg-white text-black hover:bg-white/90 rounded-full font-semibold">
-                  View pricing plans
+                  Open Montage Studio
                 </Button>
               </Link>
-              <Link href="/editor" onClick={() => trackCTA("footer", "open_montage_studio", "Open Montage Studio")}>
+              <Link href="/pricing" onClick={() => trackCTA("footer", "view_pricing", "View pricing plans")}>
                 <Button size="lg" variant="outline" className="w-full sm:w-auto text-lg h-14 px-10 border-white/20 hover:bg-white/10 rounded-full bg-transparent text-white">
-                  Open Montage Studio
+                  View pricing plans
                 </Button>
               </Link>
             </div>
