@@ -31,11 +31,13 @@ export function PromptSuggestions({ mode, imageCount, onUseExample }: PromptSugg
     ? formatPromptSuggestion(selectedExample, mode, format, imageCount)
     : "";
   const [preview, setPreview] = useState(generatedPreview);
+  const [applied, setApplied] = useState(false);
 
   // A count change should update the generated image summary preview, but
   // never touch the user's actual Creative Prompt draft.
   useEffect(() => {
     setPreview(generatedPreview);
+    setApplied(false);
   }, [generatedPreview]);
 
   if (!selectedExample) return null;
@@ -133,7 +135,10 @@ export function PromptSuggestions({ mode, imageCount, onUseExample }: PromptSugg
 
       <Textarea
         value={preview}
-        onChange={(event) => setPreview(event.target.value)}
+        onChange={(event) => {
+          setPreview(event.target.value);
+          setApplied(false);
+        }}
         maxLength={MAX_CREATIVE_PROMPT_LENGTH}
         className="mt-2 min-h-28 resize-y bg-background/70 text-xs leading-relaxed"
         aria-label={`${selectedExample.title} ${format} preview`}
@@ -171,12 +176,16 @@ export function PromptSuggestions({ mode, imageCount, onUseExample }: PromptSugg
               preview.trim(),
               isImage && format === "numbered" ? numberedValidation?.count : undefined,
             );
+            setApplied(true);
           }}
           data-testid="button-use-prompt-example"
         >
-          Use example
+          {applied ? "Example applied" : "Use example"}
         </Button>
       </div>
+      <p role="status" aria-live="polite" className="mt-2 text-xs text-primary">
+        {applied ? "Example added to Creative Prompt above. Review it, then continue when ready. No credits used." : ""}
+      </p>
     </section>
   );
 }

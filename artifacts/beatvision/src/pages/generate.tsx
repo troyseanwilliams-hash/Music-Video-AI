@@ -3399,7 +3399,17 @@ export default function Generate() {
                   setImagePackCount(numberedSceneCount);
                 }
                 setFieldErrors((current) => ({ ...current, prompt: undefined }));
-                requestAnimationFrame(() => promptRef.current?.focus());
+                setSubjectReplacementError(null);
+                // Keep focus inside the tap gesture for mobile Safari, then
+                // reveal the controlled field after React applies the text.
+                promptRef.current?.focus({ preventScroll: true });
+                requestAnimationFrame(() => {
+                  promptRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+                });
+                toast({
+                  title: "Example applied",
+                  description: "Added to Creative Prompt. Review the text before continuing; no credits used.",
+                });
               }}
             />
             {!imagePackMode && (
