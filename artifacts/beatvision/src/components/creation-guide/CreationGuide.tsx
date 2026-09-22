@@ -70,60 +70,63 @@ export function CreationGuide() {
       <Button 
         onClick={handleOpen}
         aria-label="Help me create"
-        className="fixed bottom-6 right-6 z-50 rounded-full shadow-glow gap-2 px-4 sm:px-5 h-14 bg-gradient-electric text-white border-0 hover:opacity-90 transition-opacity"
+        className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] right-4 sm:bottom-6 sm:right-6 z-50 rounded-full shadow-glow gap-1.5 sm:gap-2 px-3 sm:px-5 h-11 sm:h-14 min-w-[44px] bg-gradient-electric text-white border-0 hover:opacity-90 transition-opacity"
         size="lg"
         data-testid="button-help-create"
       >
-        <Sparkles className="w-5 h-5" />
-        <span className="font-semibold sm:hidden">Help</span>
+        <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+        <span className="font-semibold text-sm sm:hidden">Help</span>
         <span className="hidden sm:inline font-semibold">Help me create</span>
       </Button>
 
       <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-        <DialogContent className="sm:max-w-[600px] max-h-[90dvh] flex flex-col p-0 overflow-hidden" data-testid="dialog-creation-guide">
-          <div className="p-6 pb-2">
+        <DialogContent
+          className="top-auto bottom-0 translate-y-0 sm:top-[50%] sm:bottom-auto sm:-translate-y-1/2 rounded-b-none sm:rounded-xl sm:max-w-[600px] max-h-[90dvh] flex flex-col p-0 overflow-hidden w-full m-0 [&>button]:h-11 [&>button]:w-11 [&>button]:right-2 [&>button]:top-2 [&>button]:flex [&>button]:items-center [&>button]:justify-center [&>button]:bg-background/50 [&>button]:rounded-full [&>button]:backdrop-blur-sm sm:[&>button]:bg-transparent sm:[&>button]:backdrop-blur-none"
+          data-testid="dialog-creation-guide"
+        >
+          <div className="p-4 sm:p-6 pb-2 sm:pb-2 shrink-0 [@media(max-height:500px)]:p-3 [@media(max-height:500px)]:pb-0">
             <DialogHeader>
-              <DialogTitle className="text-2xl font-bold">What would you like to create?</DialogTitle>
-              <DialogDescription className="text-base mt-2">
+              <DialogTitle className="text-xl sm:text-2xl font-bold pr-10 [@media(max-height:500px)]:text-lg">What would you like to create?</DialogTitle>
+              <DialogDescription className="text-sm sm:text-base mt-1.5 sm:mt-2 [@media(max-height:500px)]:sr-only">
                 Choose what you want to make. Start with a guided Montage walkthrough, or explore music, narration, and AI visuals. Using this guide is free.
               </DialogDescription>
             </DialogHeader>
           </div>
 
-          <div className="grid min-h-0 gap-3 p-6 pt-2 overflow-y-auto">
+          <div className="grid min-h-0 gap-3 p-4 pt-2 sm:p-6 sm:pt-2 overflow-y-auto">
             <GoalCard 
               title="Montage Video"
               badge="Recommended"
-              icon={<Film className="w-6 h-6" />}
+              icon={<Film className="w-5 h-5 sm:w-6 sm:h-6" />}
               description="7-day unlimited trial. Bring your own media. Clean edits free. Optional lyric charges."
               onClick={() => handleSelect("montage", "/editor?guide=montage", true)}
               testId="goal-montage"
             />
             <GoalCard 
               title="AI Generated Video"
-              icon={<PlaySquare className="w-6 h-6" />}
+              icon={<PlaySquare className="w-5 h-5 sm:w-6 sm:h-6" />}
               description="Create stunning AI scenes and visuals using credits."
               onClick={() => handleSelect("generate", "/generate", true)}
               testId="goal-generate"
             />
             <GoalCard 
               title="Original Music"
-              icon={<Music className="w-6 h-6" />}
+              icon={<Music className="w-5 h-5 sm:w-6 sm:h-6" />}
               description="Generate custom soundtracks. 3 lifetime instrumentals + 1 vocal included."
               onClick={() => handleSelect("music", "/soundtracks", true)}
               testId="goal-music"
             />
             <GoalCard 
               title="Narrated Story"
-              icon={<BookOpen className="w-6 h-6" />}
+              icon={<BookOpen className="w-5 h-5 sm:w-6 sm:h-6" />}
               description="Generate a narrated story with AI voiceover using credits."
               onClick={() => handleSelect("narration", "/generate?guide=narration", true)}
               testId="goal-narration"
             />
           </div>
 
-          <div className="p-4 border-t bg-muted/30 flex justify-end">
-            <Button variant="ghost" onClick={() => handleOpenChange(false)}>Skip for now</Button>
+          <div className="p-3 sm:p-4 border-t bg-muted/30 flex justify-end pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-4 shrink-0 [@media(max-height:500px)]:py-1">
+            <Button variant="ghost" onClick={() => handleOpenChange(false)} className="min-h-[44px]">Skip for now</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -144,22 +147,22 @@ function GoalCard({ title, badge, icon, description, onClick, testId }: GoalCard
   return (
     <button
       onClick={onClick}
-      className="flex items-start gap-4 p-4 rounded-xl border bg-card text-card-foreground shadow-sm hover:border-primary hover:ring-1 hover:ring-primary transition-all text-left group w-full"
+      className="flex items-start gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl border bg-card text-card-foreground shadow-sm hover:border-primary hover:ring-1 hover:ring-primary transition-all text-left group w-full"
       data-testid={testId}
     >
-      <div className="p-3 bg-primary/10 rounded-lg text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors shrink-0">
+      <div className="p-2 sm:p-3 bg-primary/10 rounded-lg text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors shrink-0 flex items-center justify-center min-w-[40px] min-h-[40px] sm:min-w-[48px] sm:min-h-[48px]">
         {icon}
       </div>
-      <div className="flex-1">
-        <div className="flex items-center gap-2">
-          <h3 className="font-semibold text-lg">{title}</h3>
+      <div className="flex-1 min-w-0">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-0.5 sm:mb-0">
+          <h3 className="font-semibold text-base sm:text-lg">{title}</h3>
           {badge && (
-            <span className="px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+            <span className="px-1.5 py-0.5 rounded text-[10px] sm:text-xs font-medium bg-primary/10 text-primary border border-primary/20 whitespace-nowrap">
               {badge}
             </span>
           )}
         </div>
-        <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{description}</p>
+        <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 sm:mt-1 leading-relaxed">{description}</p>
       </div>
     </button>
   );

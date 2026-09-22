@@ -130,29 +130,47 @@ export function MontageWalkthrough(props: MontageWalkthroughProps) {
 
   return (
     <section
-      className="sticky top-2 z-20 mb-5 rounded-xl border border-primary/40 bg-background/95 p-3 shadow-lg backdrop-blur md:p-4"
+      className="sticky top-[4.5rem] z-20 mb-5 flex flex-col rounded-xl border border-primary/40 bg-background/95 shadow-lg backdrop-blur"
       aria-label="Montage creation walkthrough"
       data-testid="panel-montage-walkthrough"
     >
-      <div className="flex items-center gap-2">
-        <CircleHelp className="h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
-        <p className="min-w-0 flex-1 text-sm font-semibold">
-          Montage walkthrough <span className="font-normal text-muted-foreground">· {activeIndex + 1} of {MONTAGE_GUIDE_STEPS.length}</span>
+      <div className="flex items-center gap-1 sm:gap-2 p-2 sm:p-3 md:p-4 shrink-0">
+        <CircleHelp className="h-4 w-4 sm:h-5 sm:w-5 shrink-0 text-primary hidden sm:block" aria-hidden="true" />
+        <p className="min-w-0 flex-1 text-xs md:text-sm font-semibold truncate pl-1 sm:pl-0">
+          Montage walkthrough <span className="font-normal text-muted-foreground whitespace-nowrap">· {activeIndex + 1} of {MONTAGE_GUIDE_STEPS.length}</span>
         </p>
-        <Button type="button" size="sm" variant="ghost" onClick={() => setCollapsed((value) => !value)} data-testid="button-collapse-montage-walkthrough">
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="h-11 w-11 md:h-9 md:w-auto p-0 md:px-3 shrink-0"
+          onClick={() => setCollapsed((value) => !value)}
+          aria-expanded={!collapsed}
+          data-testid="button-collapse-montage-walkthrough"
+        >
           <ChevronDown className={`h-4 w-4 transition-transform ${collapsed ? "-rotate-90" : ""}`} />
           <span className="sr-only">{collapsed ? "Expand" : "Collapse"} walkthrough</span>
         </Button>
-        <Button type="button" size="sm" variant="ghost" aria-label="Skip walkthrough" onClick={() => persist({ ...progress, status: "skipped" })} data-testid="button-skip-montage-walkthrough">
-          <X className="h-4 w-4 md:mr-1" /><span className="hidden md:inline">Skip</span>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="h-11 px-2 md:h-9 md:px-3 shrink-0 text-muted-foreground hover:text-foreground"
+          aria-label="Skip walkthrough"
+          onClick={() => persist({ ...progress, status: "skipped" })}
+          data-testid="button-skip-montage-walkthrough"
+        >
+          <span className="md:hidden text-xs font-medium">Skip</span>
+          <X className="h-4 w-4 hidden md:block md:mr-1" />
+          <span className="hidden md:inline">Skip</span>
         </Button>
       </div>
       {!collapsed && (
-        <div className="mt-3 md:pl-7">
-          <h2 className="font-semibold">{copy.title}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{copy.body}</p>
+        <div className="px-3 pb-3 md:px-4 md:pb-4 md:pl-11 overflow-y-auto min-h-[100px] max-h-[calc(100dvh-11rem)] md:max-h-none">
+          <h2 className="font-semibold text-sm md:text-base">{copy.title}</h2>
+          <p className="mt-1 text-xs md:text-sm text-muted-foreground">{copy.body}</p>
           {progress.step === "export" && (
-            <p className="mt-2 rounded-md bg-muted/50 px-3 py-2 text-sm font-medium" data-testid="text-montage-guide-cost">
+            <p className="mt-2 rounded-md bg-muted/50 px-2 py-1.5 md:px-3 md:py-2 text-xs md:text-sm font-medium" data-testid="text-montage-guide-cost">
               {props.costSummary} After you accept the export, follow its existing job progress page.
             </p>
           )}
@@ -161,28 +179,30 @@ export function MontageWalkthrough(props: MontageWalkthroughProps) {
               type="button"
               size="sm"
               variant="outline"
-              className="mt-3"
+              className="mt-3 min-h-[44px] w-full md:w-auto whitespace-normal h-auto py-2"
               onClick={props.onAcceptArrangement}
               data-testid="button-accept-current-montage-arrangement"
             >
               Use this order &amp; timing
             </Button>
           )}
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="mt-3 md:mt-4 flex flex-wrap items-center justify-between gap-2">
             <Button
               type="button"
               size="sm"
               variant="outline"
+              className="min-h-[44px] md:min-h-0 flex-1 md:flex-none justify-center whitespace-normal h-auto py-2"
               disabled={activeIndex === 0}
               onClick={() => persist({ ...progress, step: MONTAGE_GUIDE_STEPS[activeIndex - 1]! })}
               data-testid="button-back-montage-walkthrough"
             >
-              <ChevronLeft className="mr-1 h-4 w-4" /> Back
+              <ChevronLeft className="mr-1 h-4 w-4 shrink-0" /> <span>Back</span>
             </Button>
             {progress.step !== "export" && (
               <Button
                 type="button"
                 size="sm"
+                className="min-h-[44px] md:min-h-0 flex-1 md:flex-none justify-center whitespace-normal h-auto py-2"
                 disabled={!canContinue}
                 onClick={() => {
                   const completed = [...new Set([...progress.completed, progress.step])];
@@ -190,8 +210,8 @@ export function MontageWalkthrough(props: MontageWalkthroughProps) {
                 }}
                 data-testid="button-next-montage-walkthrough"
               >
-                {progress.step === "audio" && !props.hasAudio ? "Continue without audio" : "Next"}
-                <ChevronRight className="ml-1 h-4 w-4" />
+                <span>{progress.step === "audio" && !props.hasAudio ? "Continue without audio" : "Next"}</span>
+                <ChevronRight className="ml-1 h-4 w-4 shrink-0" />
               </Button>
             )}
           </div>
