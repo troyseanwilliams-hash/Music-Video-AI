@@ -11,6 +11,7 @@ import { Slider } from "@/components/ui/slider";
 import { SoundtrackPickerDialog } from "@/components/SoundtrackPickerDialog";
 import TopUpRequiredDialog from "@/components/TopUpRequiredDialog";
 import { TutorialTip } from "@/components/TutorialTip";
+import { MontageWalkthrough } from "@/components/creation-guide/MontageWalkthrough";
 import {
   getListVideosQueryKey,
   useGetDashboardStats,
@@ -22,6 +23,7 @@ import { trackEvent } from "@/lib/analytics";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SAMPLE_LYRICS } from "@/lib/sampleLyrics";
 import { MAX_LYRICS_LENGTH } from "@/lib/lyricLimits";
+import { isMontageExportCostKnown, markMontageGuideSubmitted } from "@/lib/montageGuide";
 import {
   Select,
   SelectContent,
@@ -468,6 +470,8 @@ export default function Editor() {
   const [playing, setPlaying] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(-1);
   const [progress, setProgress] = useState(0);
+  const [guideArranged, setGuideArranged] = useState(false);
+  const [guidePreviewPlayed, setGuidePreviewPlayed] = useState(false);
 
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const musicInputRef = useRef<HTMLInputElement>(null);
@@ -491,6 +495,10 @@ export default function Editor() {
 
   useEffect(() => {
     segmentsRef.current = segments;
+    if (segments.length === 0) {
+      setGuideArranged(false);
+      setGuidePreviewPlayed(false);
+    }
   }, [segments]);
 
   // Auto-import a track handed off from a partner site (e.g. Digital Drift):
@@ -904,6 +912,12 @@ export default function Editor() {
     : quota && quota.remaining <= 0
       ? quota.overageCost
       : 0;
+  const exportCostKnown = isMontageExportCostKnown({
+    fullAccess,
+    trialActive,
+    karaokeHasLyrics: karaokeEnabled && !!lyricsText.trim(),
+    quotaLoaded: quota !== null,
+  });
 
   function patchSegment(id: string, patch: Partial<Segment>) {
     setSegments((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
@@ -1038,7 +1052,9 @@ export default function Editor() {
         } catch {
           /* metadata is not ready yet */
         }
-        if (autoplay && playingRef.current) video.play().catch(() => {});
+        if (autoplay && playingRef.current) {
+          video.play().then(() => setGuidePreviewPlayed(true)).catch(() => {});
+        }
       };
       if (video.dataset.url !== seg.localUrl) {
         video.dataset.url = seg.localUrl;
@@ -1124,6 +1140,9 @@ export default function Editor() {
 
   function play() {
     if (segmentsRef.current.length === 0) return;
+    if (segmentsRef.current[idxRef.current < 0 ? 0 : idxRef.current]?.kind === "photo") {
+      setGuidePreviewPlayed(true);
+    }
     if (progress >= 1 - Number.EPSILON) {
       seekPreview(0);
     }
@@ -1139,7 +1158,7 @@ export default function Editor() {
         if (video && (video.currentTime < trim.front || video.currentTime >= trim.front + trim.kept - 0.03)) {
           video.currentTime = trim.front;
         }
-        video?.play().catch(() => {});
+        video?.play().then(() => setGuidePreviewPlayed(true)).catch(() => {});
       }
       else {
         const offset = Math.max(0, Math.min(timelineSegmentDuration(seg!), photoOffsetRef.current));
@@ -1509,12 +1528,21 @@ export default function Editor() {
       next.splice(to, 0, moved!);
       return next;
     });
+    setGuideArranged(true);
   }
 
   async function exportVideo() {
     const ready = segments.filter((s) => s.objectPath);
     if (ready.length === 0) {
       toast({ title: "Add some clips first", variant: "destructive" });
+      return;
+    }
+    if (!exportCostKnown) {
+      toast({
+        title: "Export estimate unavailable",
+        description: "We couldn't confirm your current export allowance. Refresh and try again so you never approve an unknown charge.",
+        variant: "destructive",
+      });
       return;
     }
     // Proactive credit check — show the top-up modal instead of letting the
@@ -1597,6 +1625,7 @@ export default function Editor() {
       }
       const { job } = await res.json();
       trackEvent("export_accepted", { export_type: "montage" });
+      if (user) markMontageGuideSubmitted(user.id);
       setLocation(`/jobs/${job.id}`);
     } catch (err) {
       toast({ title: "Export failed", description: String((err as Error).message), variant: "destructive" });
@@ -1637,6 +1666,8 @@ export default function Editor() {
         .bv-anim-slideup{animation:bvSlideUp var(--bvtd,.5s) ease both}
         .bv-anim-slidedown{animation:bvSlideDown var(--bvtd,.5s) ease both}
         .bv-anim-circleopen{animation:bvCircleOpen var(--bvtd,.5s) ease both}
+        .montage-guide-highlight{outline:3px solid hsl(var(--primary));outline-offset:4px}
+        @media (prefers-reduced-motion:reduce){.montage-guide-highlight{scroll-behavior:auto}}
       `}</style>
 
       <div className="mb-6">
@@ -1734,15 +1765,43 @@ export default function Editor() {
         </Card>
       )}
 
+      {user && (
+        <MontageWalkthrough
+          accountId={user.id}
+          hasAudio={!!music?.objectPath}
+          hasMedia={segments.length > 0 && segments.every((segment) => !!segment.objectPath && !segment.uploading)}
+          arranged={guideArranged}
+          previewPlayed={guidePreviewPlayed}
+          onAcceptArrangement={() => setGuideArranged(true)}
+          costSummary={
+            !exportCostKnown
+              ? "Export estimate unavailable. Export is disabled until your current allowance can be confirmed."
+              : trialActive
+              ? estimatedCost > 0
+                ? `Estimated cost: ${estimatedCost} credits for the lyric add-on.`
+                : `Free during your trial${quota?.trial ? `; ${quota.trial.lyricRemaining} karaoke lyric benefit${quota.trial.lyricRemaining === 1 ? "" : "s"} remaining.` : "."}`
+              : quota && quota.remaining > 0
+                ? `Free export; ${quota.remaining} of ${quota.free} monthly exports remain.`
+                : quota
+                  ? `Estimated cost: ${quota.overageCost} credits.`
+                  : estimatedCost > 0
+                    ? `Estimated cost: ${estimatedCost} credits.`
+                    : "Review the export estimate shown below."
+          }
+        />
+      )}
+
       {/* Preview */}
       <div
         ref={stageRef}
+        data-montage-guide="preview"
         className="border-border relative mb-3 aspect-video w-full overflow-hidden rounded-lg border bg-black"
       >
         <img ref={transPrevRef} alt="" className="absolute inset-0 h-full w-full object-contain" style={{ display: "none", zIndex: 1 }} />
         <video
           ref={videoRef}
           playsInline
+          onPlay={() => setGuidePreviewPlayed(true)}
           onEnded={() => playingRef.current && advance()}
           onTimeUpdate={onVideoTimeUpdate}
           className="absolute inset-0 h-full w-full object-contain"
@@ -1810,7 +1869,7 @@ export default function Editor() {
       </div>
 
       {/* Add media */}
-      <div className="mb-4 flex flex-wrap gap-3">
+      <div className="mb-4 flex flex-wrap gap-3" data-montage-guide="media">
         <input ref={mediaInputRef} type="file" accept="video/*,image/*,audio/*,.mp4,.mov,.webm,.mkv,.avi,.wmv,.m4v,.3gp,.ts,.ogv,.mp3,.wav,.flac,.m4a,.aac,.ogg" multiple hidden onChange={(e) => addMedia(e.target.files)} />
         <Button onClick={() => mediaInputRef.current?.click()}>
           <Upload className="mr-2 h-4 w-4" /> Add media
@@ -1836,7 +1895,7 @@ export default function Editor() {
           <ImageIcon className="mr-2 h-4 w-4 text-primary" /> Generated images
         </Button>
         <input ref={musicInputRef} type="file" accept="audio/*" hidden onChange={(e) => addMusic(e.target.files)} />
-        <Button variant="outline" onClick={() => musicInputRef.current?.click()}>
+        <Button variant="outline" onClick={() => musicInputRef.current?.click()} data-montage-guide="audio">
           <Music className="mr-2 h-4 w-4" /> {music ? "Change music" : "Add music"}
         </Button>
         <Button variant="outline" onClick={addMusicFromLink} data-testid="add-music-from-link">
@@ -2081,7 +2140,7 @@ export default function Editor() {
       </Dialog>
 
       {/* Timeline */}
-      <Card className="mb-6 p-4">
+      <Card className="mb-6 p-4" data-montage-guide="timeline">
         <div className="text-muted-foreground mb-3 text-xs font-medium uppercase tracking-wide">
           Timeline {segments.length > 0 && `· ${totalDuration.toFixed(1)}s`}
         </div>
@@ -2149,6 +2208,7 @@ export default function Editor() {
           const setPhotoDuration = (value: number) => {
             const safeValue = Number.isFinite(value) ? value : 3;
             patchSegment(sel.id, { durationSec: Math.min(600, Math.max(0.5, safeValue)) });
+            setGuideArranged(true);
           };
           return (
             <div className="mt-3 rounded-lg border border-primary/25 bg-primary/[0.04] p-3">
@@ -2207,6 +2267,7 @@ export default function Editor() {
             const f = Math.max(0, Math.min(front, sel.durationSec - 0.3 - back));
             const b = Math.max(0, Math.min(back, sel.durationSec - 0.3 - f));
             patchSegment(sel.id, { trimStart: f, trimEnd: b });
+            setGuideArranged(true);
             if (idxRef.current === previewIndex && videoRef.current) {
               try {
                 videoRef.current.currentTime = f;
@@ -2684,16 +2745,21 @@ export default function Editor() {
       </label>
 
       {/* Export */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3" data-montage-guide="export">
         <Button
           size="lg"
           onClick={exportVideo}
-          disabled={submitting || !!uploadsPending || segments.length === 0 || !acceptedCopyright}
+          disabled={submitting || !!uploadsPending || segments.length === 0 || !acceptedCopyright || !exportCostKnown}
         >
           {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
           Export &amp; render MP4
         </Button>
         {uploadsPending && <span className="text-muted-foreground text-sm">Uploading…</span>}
+        {!uploadsPending && segments.length > 0 && !exportCostKnown && (
+          <span className="text-destructive text-sm" role="status" data-testid="text-export-estimate-unavailable">
+            Export estimate unavailable — refresh to confirm your allowance before exporting.
+          </span>
+        )}
         {!uploadsPending && segments.length > 0 && (trialActive || !fullAccess) && (
           <span className="text-muted-foreground text-sm tabular-nums">
             {trialActive ? (

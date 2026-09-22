@@ -2,7 +2,8 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { AudioWaveformSelector } from "@/components/AudioWaveformSelector";
 import SignupTeaser from "@/components/SignupTeaser";
-import { useLocation, Link } from "wouter";
+import { useLocation, useSearch, Link } from "wouter";
+import { buildAuthUrl } from "@/lib/authIntent";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -323,6 +324,7 @@ const INTENTS = [
 
 export default function Generate() {
   const [, setLocation] = useLocation();
+  const guideSearch = useSearch();
   const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const styleRef = useRef<HTMLDivElement>(null);
 
@@ -521,6 +523,13 @@ export default function Generate() {
 
   // Handoff from the AI Song Generator: /generate?audioObjectPath=<path>&title=<name>
   // preloads that song as the uploaded audio source, ready to generate a video.
+  useEffect(() => {
+    const params = new URLSearchParams(guideSearch);
+    if (params.get("guide") !== "narration" || params.has("audioObjectPath")) return;
+    setSourceType("narration");
+    setGuidedStep(1);
+  }, [guideSearch]);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const op = params.get("audioObjectPath");
@@ -894,7 +903,7 @@ export default function Generate() {
 
   useEffect(() => {
     if (!isAuthLoading && !isAuthenticated) {
-      setLocation("/login");
+      setLocation(buildAuthUrl("/login", { returnTo: `/generate${window.location.search}` }));
     }
   }, [isAuthLoading, isAuthenticated, setLocation]);
 

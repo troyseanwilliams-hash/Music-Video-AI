@@ -52,6 +52,8 @@ import TutorialScriptToVideo from "@/pages/tutorial-script-to-video";
 import { useAuth } from "@/hooks/useAuth";
 import { Loader2 } from "lucide-react";
 
+import { CreationGuide } from "@/components/creation-guide/CreationGuide";
+
 const queryClient = new QueryClient();
 
 function AdminOnly({ children }: { children: ReactNode }) {
@@ -98,6 +100,7 @@ function Router() {
       <AnalyticsTracker />
       <ScrollToTop />
       <Navbar />
+      <CreationGuide />
       <main id="main-content" tabIndex={-1} className="flex-1 flex flex-col outline-none">
         <Switch>
           <Route path="/" component={Home} />
