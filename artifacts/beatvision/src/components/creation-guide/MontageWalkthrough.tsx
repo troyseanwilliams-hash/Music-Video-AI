@@ -174,6 +174,12 @@ export function MontageWalkthrough(props: MontageWalkthroughProps) {
               {props.costSummary} After you accept the export, follow its existing job progress page.
             </p>
           )}
+          {progress.step === "media" && props.hasMedia && (
+            <div className="mt-3 rounded-md border border-border bg-muted/30 p-3 text-xs md:text-sm">
+              <p className="font-semibold mb-1 text-foreground">Animate a photo (Optional)</p>
+              <p className="text-muted-foreground">Want to bring a still image to life? Select any photo you've added or generated, and look for the <span className="font-medium text-foreground">Animate</span> option. Uses credits.</p>
+            </div>
+          )}
           {progress.step === "arrange" && props.hasMedia && !props.arranged && (
             <Button
               type="button"

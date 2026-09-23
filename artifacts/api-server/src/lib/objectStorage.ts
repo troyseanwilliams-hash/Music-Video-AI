@@ -390,6 +390,23 @@ export class ObjectStorageService {
     return `/objects/narrative-images/${jobId}/${index}.jpg`;
   }
 
+  async uploadPhotoAnimationSourceBuffer(
+    buffer: Buffer,
+    jobId: string,
+    contentType: "image/jpeg" | "image/png" | "image/webp",
+  ): Promise<string> {
+    const privateObjectDir = this.getPrivateObjectDir();
+    const extension = contentType === "image/jpeg" ? "jpg" : contentType === "image/png" ? "png" : "webp";
+    const objectEntityPath = `${privateObjectDir}/photo-animation-sources/${jobId}/source.${extension}`;
+    const { bucketName, objectName } = parseObjectPath(objectEntityPath);
+    const file = objectStorageClient.bucket(bucketName).file(objectName);
+    await writeBufferAbortable(file, buffer, {
+      resumable: buffer.length > 5 * 1024 * 1024,
+      metadata: { contentType, cacheControl: "private, max-age=3600" },
+    });
+    return `/objects/photo-animation-sources/${jobId}/source.${extension}`;
+  }
+
   async copyObjectEntityToNarrativeImage(
     sourceObjectPath: string,
     jobId: string,

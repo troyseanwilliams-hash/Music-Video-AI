@@ -4,7 +4,7 @@ generated = []
 [[outputs]]
 id = "APqSsTwcCpUQKj2Bfprtl"
 uri = "file://attached_assets/welcome-email-preview.html"
-type = "text"
+type = "html"
 title = "Welcome email preview"
 description = "What new users receive right after signing up — features highlight plus a light AIPodSync mention."
 logical_id = "c9e167b5-77f4-4841-bc33-cb2c66fe4ab8"
@@ -13,7 +13,7 @@ content_type = "text/html"
 [[outputs]]
 id = "vBle9ApjgMfgNxG93RWLg"
 uri = "file://previews/user-recovery-email-preview.html"
-type = "text"
+type = "html"
 title = "AIBeatSync Customer Recovery Email Preview"
 description = "Preview addressed to ym19810926@icloud.com. This is a draft only; it has not been sent and no account credits were changed."
 logical_id = "e02ac00b-c8f2-4699-ab0f-e91c69ab1cb6"
@@ -78,7 +78,7 @@ logical_id = "63308c6f-4a21-46ab-8713-782d9b089d03"
 [[outputs]]
 id = "m22iKWsYexpK2jLLupxIM"
 uri = "file://email-preview.html"
-type = "text"
+type = "html"
 title = "Generate Video campaign email preview"
 description = "Self-contained preview of the one-time announcement email for the newest 100 eligible signups, with the storyboard image embedded at the top."
 logical_id = "6e8e9012-0f26-44aa-b4f2-bccfa1283cb2"
@@ -105,3 +105,31 @@ mtime_ms = 1789004705571
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:40c49f5e-786c-4e75-b341-440182ee3372/037b1d0c-6da7-42e3-93a7-23a119f77e55/2acbf5ae-a6e6-4ab7-9b81-a57d52f481dc"
 storage_version_token = "1789004709436332"
 content_type = "text/plain"
+
+[[outputs]]
+id = "v2geXkGtSHWPYEw9ZL_Qo"
+uri = "file://artifacts/beatvision/public/photo-animation-demo.mp4"
+type = "video"
+title = "Photo animation demo — 1080p"
+description = "Six-second landscape demonstration, generated from the matching still. Included on the website with a browser-compatible WebM alternative."
+logical_id = "3ed5800b-6a10-4761-b13b-80afdd0224e0"
+content_hash = "sha256:1542b09028024f31ced9ab16093b1410d40a9746cb71dffdd87532eac4be14e1"
+size = 2259864
+mtime_ms = 1790134251693
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:40c49f5e-786c-4e75-b341-440182ee3372/3ed5800b-6a10-4761-b13b-80afdd0224e0/0f2f5ffc-dc02-4579-9227-adaf5c5e49d7"
+storage_version_token = "1790135916683091"
+content_type = "video/mp4"
+
+[[outputs]]
+id = "Fviu7bueaSSvnxmbP6Vvx"
+uri = "file://artifacts/beatvision/public/photo-animation-demo.jpg"
+type = "image"
+title = "Photo animation — matching still"
+description = "The original photo composition presented in a landscape frame for the before-and-after demonstration."
+logical_id = "aa5b53ae-1290-4f3a-b064-f40a325785cc"
+content_hash = "sha256:b67d766a306405a8d1b544c6b5a19ce1fa66ae405bac834e517ab055a21eaa44"
+size = 105788
+mtime_ms = 1790134239584
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:40c49f5e-786c-4e75-b341-440182ee3372/aa5b53ae-1290-4f3a-b064-f40a325785cc/06a950cb-c788-44e9-a9c9-388109f83ab7"
+storage_version_token = "1790135917354813"
+content_type = "image/jpeg"

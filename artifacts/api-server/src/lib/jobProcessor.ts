@@ -384,6 +384,13 @@ type AiJobMeta = {
   bundledLipSyncReservedTopupCredits?: number;
   bundledLipSyncActivated?: boolean;
   selectedSceneSources?: Record<string, { sourceImageAssetId?: string }>;
+  photoAnimation?: {
+    version: 1;
+    approved: true;
+    approvedPrompt: string;
+    sourceObjectPath: string;
+    durationSeconds: 5 | 10;
+  };
 };
 
 function aiMetaOf(job: JobRow): AiJobMeta {
@@ -402,6 +409,18 @@ function generationModeOf(job: JobRow): "montage" | "narrative" {
 function usesGeneratedNarrativeImages(job: JobRow): boolean {
   const meta = aiMetaOf(job);
   return meta.imageFirstVersion === 1 && meta.narrativeVisualSource === "generated_images";
+}
+
+export function approvedPhotoAnimation(job: JobRow): AiJobMeta["photoAnimation"] | null {
+  const feature = aiMetaOf(job).photoAnimation;
+  if (
+    feature?.version !== 1
+    || feature.approved !== true
+    || !feature.approvedPrompt
+    || !feature.sourceObjectPath.startsWith("/objects/")
+    || (feature.durationSeconds !== 5 && feature.durationSeconds !== 10)
+  ) return null;
+  return feature;
 }
 
 function isAwaitingImageApproval(meta: AiJobMeta): boolean {
@@ -882,6 +901,8 @@ async function prepareNarrativeImagesStage(job: JobRow): Promise<Record<string, 
 }
 
 async function prepareNarrativeImages(job: JobRow): Promise<Record<string, string>> {
+  const photoAnimation = approvedPhotoAnimation(job);
+  if (photoAnimation) return { "0": photoAnimation.sourceObjectPath };
   if (!usesGeneratedNarrativeImages(job)) return {};
   try {
     return await prepareNarrativeImagesStage(job);
@@ -2430,6 +2451,13 @@ async function generateClips(
     analysis.durationSeconds,
     generationMode,
   );
+  const photoAnimation = approvedPhotoAnimation(job);
+  if (
+    photoAnimation
+    && (maxClips !== 1 || clipDurationSec !== photoAnimation.durationSeconds)
+  ) {
+    throw new Error(`${PROVIDER_API_FAILURE}: Photo animation plan is not exactly one approved clip`);
+  }
   const storyboardShots = storyboardShotsOf(job);
   if (generationMode === "narrative" && storyboardShots.length !== maxClips) {
     throw new Error(
@@ -2595,7 +2623,9 @@ async function generateClips(
 
     // Build the prompt regardless of provider so it can be persisted as clip
     // metadata (and reused as the basis for a future remix of this clip).
-    const prompt = visualShot?.prompt ?? buildSectionPrompt(job, analysis, section);
+    const prompt = photoAnimation?.approvedPrompt
+      ?? visualShot?.prompt
+      ?? buildSectionPrompt(job, analysis, section);
 
     // 1) Reuse a previously-rendered clip if we have one (salvage on retry).
     if (persisted[i] && !pending[i]) {

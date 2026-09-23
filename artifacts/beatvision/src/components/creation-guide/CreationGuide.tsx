@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { track } from "@/lib/analytics";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { PlaySquare, Film, Music, BookOpen, Sparkles } from "lucide-react";
+import { PlaySquare, Film, Music, BookOpen, Sparkles, Image as ImageIcon } from "lucide-react";
 import { shouldAutoOpen, setGuideDismissed } from "./utils";
 import { buildAuthUrl } from "@/lib/authIntent";
 
@@ -94,7 +94,7 @@ export function CreationGuide() {
           </div>
 
           <div className="grid min-h-0 gap-3 p-4 pt-2 sm:p-6 sm:pt-2 overflow-y-auto">
-            <GoalCard 
+            <GoalCard
               title="Montage Video"
               badge="Recommended"
               icon={<Film className="w-5 h-5 sm:w-6 sm:h-6" />}
@@ -122,6 +122,13 @@ export function CreationGuide() {
               description="Generate a narrated story with AI voiceover using credits."
               onClick={() => handleSelect("narration", "/generate?guide=narration", true)}
               testId="goal-narration"
+            />
+            <GoalCard 
+              title="Animate a Photo"
+              icon={<ImageIcon className="w-5 h-5 sm:w-6 sm:h-6" />}
+              description="Bring a single image to life. Uses credits."
+              onClick={() => handleSelect("animate_photo", "/gallery?tab=images&action=animate", true)}
+              testId="goal-animate-photo"
             />
           </div>
 

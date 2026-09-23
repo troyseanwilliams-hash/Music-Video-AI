@@ -328,6 +328,157 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
 
+  /photo-animations/quote:
+    post:
+      tags: [Jobs]
+      operationId: quotePhotoAnimation
+      summary: Validate and price one source-image animation without charging credits
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PhotoAnimationQuoteRequest'
+      responses:
+        '200':
+          description: Exact safe prompt and credit quote for approval.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhotoAnimationQuote'
+        '400':
+          description: Invalid request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Invalid source image or blocked prompt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Requested provider is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /photo-animations:
+    post:
+      tags: [Jobs]
+      operationId: createPhotoAnimation
+      summary: Reserve credits and queue one approved source-image animation
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePhotoAnimationRequest'
+      responses:
+        '201':
+          description: Animation job created and queued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhotoAnimationJob'
+        '200':
+          description: Existing job returned for an identical idempotent retry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhotoAnimationJob'
+        '400':
+          description: Invalid or unapproved request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '402':
+          description: Insufficient credits.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: Stale quote, changed source, or idempotency mismatch.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Invalid source image or blocked prompt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Requested provider is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /photo-animations/operations/{idempotencyKey}:
+    get:
+      tags: [Jobs]
+      operationId: getPhotoAnimationOperation
+      summary: Look up a photo animation submission by its durable operation key
+      description: A 404 does not authorize replacing the original key; a submit may still be validating and retaining its source before entering the serialized transaction.
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+        - name: idempotencyKey
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The authenticated user's operation was found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhotoAnimationJob'
+        '400':
+          description: Invalid operation key.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: No operation with that key belongs to the authenticated user.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
   /image-packs/plan:
     post:
       tags: [Jobs]
@@ -1849,6 +2000,110 @@ components:
           description: Exact ordered scene prompts approved by the user from the no-charge planning step.
           items:
             $ref: '#/components/schemas/ImagePackScene'
+
+    PhotoAnimationSource:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [kind, imageAssetId]
+          properties:
+            kind:
+              type: string
+              const: asset
+            imageAssetId:
+              type: string
+              format: uuid
+        - type: object
+          additionalProperties: false
+          required: [kind, objectPath]
+          properties:
+            kind:
+              type: string
+              const: upload
+            objectPath:
+              type: string
+              minLength: 1
+              maxLength: 500
+
+    PhotoAnimationQuoteRequest:
+      type: object
+      additionalProperties: false
+      required: [source, prompt, durationSeconds, provider, resolution, aspectRatio]
+      properties:
+        source:
+          $ref: '#/components/schemas/PhotoAnimationSource'
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        durationSeconds:
+          type: integer
+          enum: [5, 10]
+        provider:
+          type: string
+          enum: [kling, runway]
+        resolution:
+          type: string
+          enum: [720p]
+        aspectRatio:
+          type: string
+          enum: ['16:9', '9:16', '1:1']
+
+    CreatePhotoAnimationRequest:
+      allOf:
+        - $ref: '#/components/schemas/PhotoAnimationQuoteRequest'
+        - type: object
+          required: [approved, expectedCredits, planFingerprint, idempotencyKey]
+          properties:
+            approved:
+              type: boolean
+              const: true
+            expectedCredits:
+              type: integer
+              minimum: 1
+            planFingerprint:
+              type: string
+              pattern: '^[a-f0-9]{64}$'
+            idempotencyKey:
+              type: string
+              format: uuid
+
+    PhotoAnimationQuote:
+      type: object
+      required: [totalCredits, videoCredits, imageCredits, prompt, planFingerprint, durationSeconds, provider, resolution, aspectRatio]
+      properties:
+        totalCredits:
+          type: integer
+        videoCredits:
+          type: integer
+        imageCredits:
+          type: integer
+          const: 0
+        prompt:
+          type: string
+        planFingerprint:
+          type: string
+        durationSeconds:
+          type: integer
+          enum: [5, 10]
+        provider:
+          type: string
+          enum: [kling, runway]
+        resolution:
+          type: string
+          enum: [720p]
+        aspectRatio:
+          type: string
+          enum: ['16:9', '9:16', '1:1']
+
+    PhotoAnimationJob:
+      type: object
+      required: [id, status]
+      properties:
+        id:
+          type: string
+        status:
+          type: string
 
     ImagePackPlanRequest:
       type: object

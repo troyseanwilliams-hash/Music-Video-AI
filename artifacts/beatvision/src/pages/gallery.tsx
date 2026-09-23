@@ -34,6 +34,9 @@ import {
   type ImageRemixAsset,
 } from "@/lib/imageRemixHandoff";
 import { orderGalleryImages } from "@/lib/imageGallery";
+import { PhotoAnimationDialog } from "@/components/PhotoAnimationDialog";
+import { PhotoNextActions } from "@/components/PhotoNextActions";
+import { clearPendingPhotoAnimationBySourceKey, listPendingPhotoAnimations, storyHandoffUrl, type PendingPhotoAnimation } from "@/lib/photoAnimation";
 
 interface ImageAsset extends ImageRemixAsset {
   id: string;
@@ -92,7 +95,7 @@ async function getSignedVideoUrl(jobId: string): Promise<string> {
 
 export default function Gallery() {
   const [, setLocation] = useLocation();
-  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [galleryView, setGalleryView] = useState<"videos" | "images" | "music">("videos");
@@ -113,6 +116,8 @@ export default function Gallery() {
   const [imageActionError, setImageActionError] = useState<string | null>(null);
   const [trackSearch, setTrackSearch] = useState("");
   const [trackSort, setTrackSort] = useState<"new" | "old" | "name">("new");
+  const [animationImage, setAnimationImage] = useState<ImageAsset | null>(null);
+  const [pendingAnimations, setPendingAnimations] = useState<PendingPhotoAnimation[]>([]);
 
   const imageAssetsQuery = useInfiniteQuery({
     queryKey: ["generated-image-gallery"],
@@ -187,7 +192,8 @@ export default function Gallery() {
       "editor:init",
       JSON.stringify({
         kind: IMAGE_REMIX_KIND,
-        images: orderedImages.map(({ objectPath, prompt, assetIndex }) => ({
+        images: orderedImages.map(({ id, objectPath, prompt, assetIndex }) => ({
+          id,
           objectPath,
           prompt,
           assetIndex,
@@ -395,6 +401,40 @@ export default function Gallery() {
     }
   }, [isAuthenticated, isAuthLoading, setLocation]);
 
+  useEffect(() => {
+    if (!user?.id) return;
+    const refresh = () => setPendingAnimations(listPendingPhotoAnimations(user.id));
+    refresh();
+    window.addEventListener("photo-animation-pending", refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener("photo-animation-pending", refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id || pendingAnimations.length === 0) return;
+    let cancelled = false;
+    const poll = async () => {
+      await Promise.all(pendingAnimations.map(async (pending) => {
+        try {
+          const response = await fetch(`/api/jobs/${pending.jobId}`, { credentials: "include" });
+          if (!response.ok) return;
+          const job = await response.json() as { status?: string };
+          if (!cancelled && (job.status === "ready" || job.status === "completed" || job.status === "failed")) {
+            clearPendingPhotoAnimationBySourceKey(user.id, pending.sourceKey);
+          }
+        } catch {
+          // Keep durable state and retry after transient failures.
+        }
+      }));
+    };
+    void poll();
+    const timer = window.setInterval(poll, 5000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [pendingAnimations, user?.id]);
+
   if (isAuthLoading || !isAuthenticated) return null;
 
   return (
@@ -417,6 +457,21 @@ export default function Gallery() {
           </Button>
         </Link>
       </div>
+
+      {pendingAnimations.length > 0 && (
+        <div className="mb-6 flex flex-col gap-3 rounded-xl border border-primary/30 bg-primary/[0.06] p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-medium">Photo animation in progress</p>
+            <p className="text-sm text-muted-foreground">
+              {pendingAnimations.length === 1 ? "Your clip is still processing." : `${pendingAnimations.length} clips are still processing.`}
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:flex">
+            <Button asChild className="min-h-11"><Link href={`/jobs/${pendingAnimations[0].jobId}`}>View job</Link></Button>
+            <Button variant="outline" className="min-h-11" onClick={() => setGalleryView("videos")}>Gallery</Button>
+          </div>
+        </div>
+      )}
 
       <div className="mb-6 flex w-fit rounded-lg border border-border bg-card/60 p-1" role="tablist" aria-label="Gallery content">
         <button
@@ -923,6 +978,10 @@ export default function Gallery() {
                           </AlertDialogContent>
                         </AlertDialog>
                       </div>
+                      <PhotoNextActions
+                        onAnimate={() => setAnimationImage(asset)}
+                        onTellStory={() => setLocation(storyHandoffUrl(asset.objectPath))}
+                      />
                     </div>
                   </motion.article>
                 );
@@ -1202,9 +1261,36 @@ export default function Gallery() {
                 )}
                 Download image
               </Button>
+              <Button
+                className="mt-2 min-h-11 w-full bg-gradient-electric text-white shadow-glow"
+                onClick={() => setAnimationImage(previewImage)}
+              >
+                <Video className="mr-2 h-4 w-4" />
+                Animate this photo
+              </Button>
+              <Button
+                className="mt-2 min-h-11 w-full"
+                variant="outline"
+                onClick={() => setLocation(storyHandoffUrl(previewImage.objectPath))}
+              >
+                <Film className="mr-2 h-4 w-4" />
+                Tell a story with this photo
+              </Button>
             </div>
           </div>
         </div>
+      )}
+
+      {animationImage && user?.id && (
+        <PhotoAnimationDialog
+          open
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) setAnimationImage(null);
+          }}
+          source={{ kind: "asset", imageAssetId: animationImage.id }}
+          imageUrl={`/api/storage${animationImage.objectPath}`}
+          userId={user.id}
+        />
       )}
 
       {/* One panel at a time keeps the gallery light while still making Lip Sync

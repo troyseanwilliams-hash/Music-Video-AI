@@ -1,6 +1,7 @@
 export const IMAGE_REMIX_KIND = "generated_images" as const;
 
 export interface ImageRemixAsset {
+  id?: string;
   objectPath: string;
   prompt: string;
   assetIndex: number;
@@ -24,6 +25,7 @@ export function isValidImageRemixHandoff(value: unknown): value is ImageRemixHan
     const assetIndex = asset.assetIndex;
     return typeof asset.objectPath === "string"
       && asset.objectPath.startsWith("/objects/")
+      && (asset.id === undefined || typeof asset.id === "string")
       && typeof asset.prompt === "string"
       && typeof assetIndex === "number"
       && Number.isInteger(assetIndex)

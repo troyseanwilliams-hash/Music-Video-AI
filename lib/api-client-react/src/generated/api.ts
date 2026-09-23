@@ -29,6 +29,7 @@ import type {
   CreateCheckoutResponse,
   CreateImagePackRequest,
   CreateJobRequest,
+  CreatePhotoAnimationRequest,
   CreatePortalRequest,
   CreatePortalResponse,
   CreditGrantsResponse,
@@ -54,6 +55,9 @@ import type {
   ListPublicImageAssetsParams,
   ListVideosParams,
   LoginRequest,
+  PhotoAnimationJob,
+  PhotoAnimationQuote,
+  PhotoAnimationQuoteRequest,
   PublicImageAsset,
   PublicImageAssetListResponse,
   ReferralInfoResponse,
@@ -930,6 +934,226 @@ export const useCreateImagePack = <TError = ErrorType<ErrorEnvelope>,
       > => {
       return useMutation(getCreateImagePackMutationOptions(options));
     }
+
+export const getQuotePhotoAnimationUrl = () => {
+
+
+
+
+  return `/api/photo-animations/quote`
+}
+
+/**
+ * @summary Validate and price one source-image animation without charging credits
+ */
+export const quotePhotoAnimation = async (photoAnimationQuoteRequest: PhotoAnimationQuoteRequest, options?: RequestInit): Promise<PhotoAnimationQuote> => {
+
+  return customFetch<PhotoAnimationQuote>(getQuotePhotoAnimationUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(photoAnimationQuoteRequest)
+  }
+);}
+
+
+
+
+
+export const getQuotePhotoAnimationMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof quotePhotoAnimation>>, TError,{data: BodyType<PhotoAnimationQuoteRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof quotePhotoAnimation>>, TError,{data: BodyType<PhotoAnimationQuoteRequest>}, TContext> => {
+
+const mutationKey = ['quotePhotoAnimation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof quotePhotoAnimation>>, {data: BodyType<PhotoAnimationQuoteRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  quotePhotoAnimation(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type QuotePhotoAnimationMutationResult = NonNullable<Awaited<ReturnType<typeof quotePhotoAnimation>>>
+    export type QuotePhotoAnimationMutationBody = BodyType<PhotoAnimationQuoteRequest>
+    export type QuotePhotoAnimationMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Validate and price one source-image animation without charging credits
+ */
+export const useQuotePhotoAnimation = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof quotePhotoAnimation>>, TError,{data: BodyType<PhotoAnimationQuoteRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof quotePhotoAnimation>>,
+        TError,
+        {data: BodyType<PhotoAnimationQuoteRequest>},
+        TContext
+      > => {
+      return useMutation(getQuotePhotoAnimationMutationOptions(options));
+    }
+
+export const getCreatePhotoAnimationUrl = () => {
+
+
+
+
+  return `/api/photo-animations`
+}
+
+/**
+ * @summary Reserve credits and queue one approved source-image animation
+ */
+export const createPhotoAnimation = async (createPhotoAnimationRequest: CreatePhotoAnimationRequest, options?: RequestInit): Promise<PhotoAnimationJob> => {
+
+  return customFetch<PhotoAnimationJob>(getCreatePhotoAnimationUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createPhotoAnimationRequest)
+  }
+);}
+
+
+
+
+
+export const getCreatePhotoAnimationMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPhotoAnimation>>, TError,{data: BodyType<CreatePhotoAnimationRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createPhotoAnimation>>, TError,{data: BodyType<CreatePhotoAnimationRequest>}, TContext> => {
+
+const mutationKey = ['createPhotoAnimation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPhotoAnimation>>, {data: BodyType<CreatePhotoAnimationRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createPhotoAnimation(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePhotoAnimationMutationResult = NonNullable<Awaited<ReturnType<typeof createPhotoAnimation>>>
+    export type CreatePhotoAnimationMutationBody = BodyType<CreatePhotoAnimationRequest>
+    export type CreatePhotoAnimationMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Reserve credits and queue one approved source-image animation
+ */
+export const useCreatePhotoAnimation = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPhotoAnimation>>, TError,{data: BodyType<CreatePhotoAnimationRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createPhotoAnimation>>,
+        TError,
+        {data: BodyType<CreatePhotoAnimationRequest>},
+        TContext
+      > => {
+      return useMutation(getCreatePhotoAnimationMutationOptions(options));
+    }
+
+export const getGetPhotoAnimationOperationUrl = (idempotencyKey: string,) => {
+
+
+
+
+  return `/api/photo-animations/operations/${idempotencyKey}`
+}
+
+/**
+ * A 404 does not authorize replacing the original key; a submit may still be validating and retaining its source before entering the serialized transaction.
+ * @summary Look up a photo animation submission by its durable operation key
+ */
+export const getPhotoAnimationOperation = async (idempotencyKey: string, options?: RequestInit): Promise<PhotoAnimationJob> => {
+
+  return customFetch<PhotoAnimationJob>(getGetPhotoAnimationOperationUrl(idempotencyKey),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPhotoAnimationOperationQueryKey = (idempotencyKey: string,) => {
+    return [
+    `/api/photo-animations/operations/${idempotencyKey}`
+    ] as const;
+    }
+
+
+export const getGetPhotoAnimationOperationQueryOptions = <TData = Awaited<ReturnType<typeof getPhotoAnimationOperation>>, TError = ErrorType<ErrorEnvelope>>(idempotencyKey: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPhotoAnimationOperation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPhotoAnimationOperationQueryKey(idempotencyKey);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPhotoAnimationOperation>>> = ({ signal }) => getPhotoAnimationOperation(idempotencyKey, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: idempotencyKey !== null && idempotencyKey !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPhotoAnimationOperation>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPhotoAnimationOperationQueryResult = NonNullable<Awaited<ReturnType<typeof getPhotoAnimationOperation>>>
+export type GetPhotoAnimationOperationQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Look up a photo animation submission by its durable operation key
+ */
+
+export function useGetPhotoAnimationOperation<TData = Awaited<ReturnType<typeof getPhotoAnimationOperation>>, TError = ErrorType<ErrorEnvelope>>(
+ idempotencyKey: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPhotoAnimationOperation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPhotoAnimationOperationQueryOptions(idempotencyKey,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getPlanImagePackUrl = () => {
 

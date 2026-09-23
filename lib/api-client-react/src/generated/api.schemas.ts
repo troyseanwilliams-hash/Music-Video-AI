@@ -717,6 +717,121 @@ export interface CreateImagePackRequest {
   approvedScenes?: ImagePackScene[];
 }
 
+export type PhotoAnimationSource = {
+  kind: 'asset';
+  imageAssetId: string;
+} | {
+  kind: 'upload';
+  /**
+     * @minLength 1
+     * @maxLength 500
+     */
+  objectPath: string;
+};
+
+export type PhotoAnimationQuoteRequestDurationSeconds = typeof PhotoAnimationQuoteRequestDurationSeconds[keyof typeof PhotoAnimationQuoteRequestDurationSeconds];
+
+
+export const PhotoAnimationQuoteRequestDurationSeconds = {
+  NUMBER_5: 5,
+  NUMBER_10: 10,
+} as const;
+
+export type PhotoAnimationQuoteRequestProvider = typeof PhotoAnimationQuoteRequestProvider[keyof typeof PhotoAnimationQuoteRequestProvider];
+
+
+export const PhotoAnimationQuoteRequestProvider = {
+  kling: 'kling',
+  runway: 'runway',
+} as const;
+
+export type PhotoAnimationQuoteRequestResolution = typeof PhotoAnimationQuoteRequestResolution[keyof typeof PhotoAnimationQuoteRequestResolution];
+
+
+export const PhotoAnimationQuoteRequestResolution = {
+  '720p': '720p',
+} as const;
+
+export type PhotoAnimationQuoteRequestAspectRatio = typeof PhotoAnimationQuoteRequestAspectRatio[keyof typeof PhotoAnimationQuoteRequestAspectRatio];
+
+
+export const PhotoAnimationQuoteRequestAspectRatio = {
+  '16:9': '16:9',
+  '9:16': '9:16',
+  '1:1': '1:1',
+} as const;
+
+export interface PhotoAnimationQuoteRequest {
+  source: PhotoAnimationSource;
+  /**
+     * @minLength 1
+     * @maxLength 1000
+     */
+  prompt: string;
+  durationSeconds: PhotoAnimationQuoteRequestDurationSeconds;
+  provider: PhotoAnimationQuoteRequestProvider;
+  resolution: PhotoAnimationQuoteRequestResolution;
+  aspectRatio: PhotoAnimationQuoteRequestAspectRatio;
+}
+
+export type CreatePhotoAnimationRequest = PhotoAnimationQuoteRequest & {
+  approved: true;
+  /** @minimum 1 */
+  expectedCredits: number;
+  /** @pattern ^[a-f0-9]{64}$ */
+  planFingerprint: string;
+  idempotencyKey: string;
+};
+
+export type PhotoAnimationQuoteDurationSeconds = typeof PhotoAnimationQuoteDurationSeconds[keyof typeof PhotoAnimationQuoteDurationSeconds];
+
+
+export const PhotoAnimationQuoteDurationSeconds = {
+  NUMBER_5: 5,
+  NUMBER_10: 10,
+} as const;
+
+export type PhotoAnimationQuoteProvider = typeof PhotoAnimationQuoteProvider[keyof typeof PhotoAnimationQuoteProvider];
+
+
+export const PhotoAnimationQuoteProvider = {
+  kling: 'kling',
+  runway: 'runway',
+} as const;
+
+export type PhotoAnimationQuoteResolution = typeof PhotoAnimationQuoteResolution[keyof typeof PhotoAnimationQuoteResolution];
+
+
+export const PhotoAnimationQuoteResolution = {
+  '720p': '720p',
+} as const;
+
+export type PhotoAnimationQuoteAspectRatio = typeof PhotoAnimationQuoteAspectRatio[keyof typeof PhotoAnimationQuoteAspectRatio];
+
+
+export const PhotoAnimationQuoteAspectRatio = {
+  '16:9': '16:9',
+  '9:16': '9:16',
+  '1:1': '1:1',
+} as const;
+
+export interface PhotoAnimationQuote {
+  totalCredits: number;
+  videoCredits: number;
+  imageCredits: 0;
+  prompt: string;
+  planFingerprint: string;
+  durationSeconds: PhotoAnimationQuoteDurationSeconds;
+  provider: PhotoAnimationQuoteProvider;
+  resolution: PhotoAnimationQuoteResolution;
+  aspectRatio: PhotoAnimationQuoteAspectRatio;
+}
+
+export interface PhotoAnimationJob {
+  id: string;
+  status: string;
+}
+
 export type ImagePackPlanRequestAspectRatio = typeof ImagePackPlanRequestAspectRatio[keyof typeof ImagePackPlanRequestAspectRatio];
 
 

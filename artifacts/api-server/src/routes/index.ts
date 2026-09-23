@@ -29,6 +29,7 @@ import imageReviewRouter from "./image-review.js";
 import adminEmailCampaignsRouter from "./admin-email-campaigns.js";
 import podcastRouter from "./podcast.js";
 import narrationRouter from "./narration.js";
+import photoAnimationsRouter from "./photo-animations.js";
 
 const router: IRouter = Router();
 
@@ -62,5 +63,6 @@ router.use(imageReviewRouter);
 router.use(adminEmailCampaignsRouter);
 router.use(podcastRouter);
 router.use(narrationRouter);
+router.use(photoAnimationsRouter);
 
 export default router;

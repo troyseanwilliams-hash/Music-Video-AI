@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { AuroraBackground } from "@/components/AuroraBackground";
+import { PhotoAnimationShowcase } from "@/components/PhotoAnimationShowcase";
 
 import { useSEO } from "@/hooks/useSEO";
 
@@ -286,6 +287,9 @@ export default function Home() {
             </div>
           </div>
         </section>
+
+        {/* Photo Animation Showcase */}
+        <PhotoAnimationShowcase />
 
         {/* Premium Models Showcase */}
         <section className="py-24 border-y border-white/5 bg-black">

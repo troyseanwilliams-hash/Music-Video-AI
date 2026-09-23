@@ -740,6 +740,106 @@ export const CreateImagePackResponse = zod.object({
 
 
 /**
+ * @summary Validate and price one source-image animation without charging credits
+ */
+export const QuotePhotoAnimationHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const quotePhotoAnimationBodySourceTwoObjectPathMax = 500;
+
+export const quotePhotoAnimationBodyPromptMax = 1000;
+
+
+
+export const QuotePhotoAnimationBody = zod.object({
+  "source": zod.union([zod.object({
+  "kind": zod.literal("asset"),
+  "imageAssetId": zod.string().uuid()
+}),zod.object({
+  "kind": zod.literal("upload"),
+  "objectPath": zod.string().min(1).max(quotePhotoAnimationBodySourceTwoObjectPathMax)
+})]),
+  "prompt": zod.string().min(1).max(quotePhotoAnimationBodyPromptMax),
+  "durationSeconds": zod.union([zod.literal(5),zod.literal(10)]),
+  "provider": zod.enum(['kling', 'runway']),
+  "resolution": zod.enum(['720p']),
+  "aspectRatio": zod.enum(['16:9', '9:16', '1:1'])
+})
+
+export const QuotePhotoAnimationResponse = zod.object({
+  "totalCredits": zod.number(),
+  "videoCredits": zod.number(),
+  "imageCredits": zod.number(),
+  "prompt": zod.string(),
+  "planFingerprint": zod.string(),
+  "durationSeconds": zod.union([zod.literal(5),zod.literal(10)]),
+  "provider": zod.enum(['kling', 'runway']),
+  "resolution": zod.enum(['720p']),
+  "aspectRatio": zod.enum(['16:9', '9:16', '1:1'])
+})
+
+
+/**
+ * @summary Reserve credits and queue one approved source-image animation
+ */
+export const CreatePhotoAnimationHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const createPhotoAnimationBodyOneSourceTwoObjectPathMax = 500;
+
+export const createPhotoAnimationBodyOnePromptMax = 1000;
+
+
+export const createPhotoAnimationBodyTwoPlanFingerprintRegExp = new RegExp('^[a-f0-9]{64}$');
+
+
+export const CreatePhotoAnimationBody = zod.object({
+  "source": zod.union([zod.object({
+  "kind": zod.literal("asset"),
+  "imageAssetId": zod.string().uuid()
+}),zod.object({
+  "kind": zod.literal("upload"),
+  "objectPath": zod.string().min(1).max(createPhotoAnimationBodyOneSourceTwoObjectPathMax)
+})]),
+  "prompt": zod.string().min(1).max(createPhotoAnimationBodyOnePromptMax),
+  "durationSeconds": zod.union([zod.literal(5),zod.literal(10)]),
+  "provider": zod.enum(['kling', 'runway']),
+  "resolution": zod.enum(['720p']),
+  "aspectRatio": zod.enum(['16:9', '9:16', '1:1'])
+}).and(zod.object({
+  "approved": zod.boolean(),
+  "expectedCredits": zod.number().min(1),
+  "planFingerprint": zod.string().regex(createPhotoAnimationBodyTwoPlanFingerprintRegExp),
+  "idempotencyKey": zod.string().uuid()
+}))
+
+export const CreatePhotoAnimationResponse = zod.object({
+  "id": zod.string(),
+  "status": zod.string()
+})
+
+
+/**
+ * A 404 does not authorize replacing the original key; a submit may still be validating and retaining its source before entering the serialized transaction.
+ * @summary Look up a photo animation submission by its durable operation key
+ */
+export const GetPhotoAnimationOperationParams = zod.object({
+  "idempotencyKey": zod.coerce.string().uuid()
+})
+
+export const GetPhotoAnimationOperationHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const GetPhotoAnimationOperationResponse = zod.object({
+  "id": zod.string(),
+  "status": zod.string()
+})
+
+
+/**
  * Returns the exact ordered scene prompts to approve before creating a charged image pack.
  * @summary Plan an editable generated-image storyboard without reserving credits
  */

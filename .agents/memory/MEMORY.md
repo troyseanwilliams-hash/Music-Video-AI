@@ -68,3 +68,4 @@
 - [Direct Kling cutover](direct-kling-cutover.md) — keep gateway and direct providers distinct; stop new submissions without stranding accepted direct tasks.
 - [Signup measurement authority](signup-measurement-authority.md) — server account creation is authoritative; browser delivery gaps must not be mistaken for zero signups.
 - [Montage trial entry](montage-trial-entry.md) — trial discovery leads with Montage; Generate is the credit-priced next step, not a newly restricted feature.
+- [Photo animation intent recovery](photo-animation-intent.md) — a missing operation lookup can precede a pending POST commit; retain its key and allow only identical retries.

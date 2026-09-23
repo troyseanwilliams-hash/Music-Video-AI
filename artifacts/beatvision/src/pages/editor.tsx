@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { SoundtrackPickerDialog } from "@/components/SoundtrackPickerDialog";
+import { PhotoAnimationDialog } from "@/components/PhotoAnimationDialog";
 import TopUpRequiredDialog from "@/components/TopUpRequiredDialog";
 import { TutorialTip } from "@/components/TutorialTip";
 import { MontageWalkthrough } from "@/components/creation-guide/MontageWalkthrough";
@@ -65,6 +66,7 @@ import {
   IMAGE_REMIX_KIND,
   isValidImageRemixHandoff,
 } from "@/lib/imageRemixHandoff";
+import { storyHandoffUrl } from "@/lib/photoAnimation";
 import {
   Dialog,
   DialogContent,
@@ -88,6 +90,7 @@ interface Segment {
   trimStart?: number; // seconds trimmed off the front (video only)
   trimEnd?: number; // seconds trimmed off the back (video only)
   sourceVideoId?: string; // owned Gallery video used for audio/lyrics lookup
+  imageAssetId?: string; // owned generated image, used for safe animation handoff
 }
 
 interface ImageAsset {
@@ -155,7 +158,7 @@ interface ProjectSummary {
 
 interface ProjectManifest {
   version: 1;
-  segments: Array<Pick<Segment, "name" | "kind" | "objectPath" | "durationSec" | "trimStart" | "trimEnd" | "sourceVideoId">>;
+  segments: Array<Pick<Segment, "name" | "kind" | "objectPath" | "durationSec" | "trimStart" | "trimEnd" | "sourceVideoId" | "imageAssetId">>;
   music?: Pick<MusicTrack, "name" | "objectPath" | "mode" | "volume" | "loop" | "fade">;
   transition: { type: string; durationSec: number };
   resolution: "720p" | "1080p";
@@ -433,6 +436,9 @@ export default function Editor() {
   const [selectedGalleryVideoIds, setSelectedGalleryVideoIds] = useState<string[]>([]);
   const [imageAssetsOpen, setImageAssetsOpen] = useState(false);
   const [selectedImageAssetIds, setSelectedImageAssetIds] = useState<string[]>([]);
+  const [animateSegmentId, setAnimateSegmentId] = useState<string | null>(null);
+  const [readyAnimation, setReadyAnimation] = useState<{ segmentId: string; jobId: string } | null>(null);
+  const [pendingMontageAnimation, setPendingMontageAnimation] = useState<{ segmentId: string; jobId: string } | null>(null);
   const { data: galleryData, isLoading: galleryLoading } = useListVideos(
     { limit: 50 },
     {
@@ -500,6 +506,82 @@ export default function Editor() {
       setGuidePreviewPlayed(false);
     }
   }, [segments]);
+
+  useEffect(() => {
+    if (!pendingMontageAnimation || readyAnimation) return;
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, [pendingMontageAnimation, readyAnimation]);
+
+  useEffect(() => {
+    if (!pendingMontageAnimation) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/jobs/${pendingMontageAnimation.jobId}`, { credentials: "include" });
+        if (!response.ok) return;
+        const job = await response.json() as { status?: string };
+        if (cancelled) return;
+        if (job.status === "ready" || job.status === "completed") {
+          setReadyAnimation(pendingMontageAnimation);
+          setPendingMontageAnimation(null);
+          setAnimateSegmentId(null);
+        } else if (job.status === "failed") {
+          setPendingMontageAnimation(null);
+          toast({ title: "Animation failed", description: "Your original photo is unchanged.", variant: "destructive" });
+        }
+      } catch {
+        // Keep polling the durable job after transient network failures.
+      }
+    };
+    void poll();
+    const timer = window.setInterval(poll, 3000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [pendingMontageAnimation, toast]);
+
+  async function applyReadyAnimation(mode: "replace" | "add") {
+    if (!readyAnimation) return;
+    try {
+      const jobResponse = await fetch(`/api/jobs/${readyAnimation.jobId}`, { credentials: "include" });
+      const job = await jobResponse.json();
+      if (!jobResponse.ok || !job.videoId) throw new Error("The completed clip is not available yet.");
+      const videoResponse = await fetch(`/api/videos/${job.videoId}`, { credentials: "include" });
+      const payload = await videoResponse.json();
+      const video = payload.video ?? payload;
+      if (!videoResponse.ok || !video.videoObjectPath) throw new Error("The completed clip could not be loaded.");
+      const newSegment: Segment = {
+        id: uid(),
+        name: video.title || "Animated photo",
+        kind: "video",
+        localUrl: `/api/storage${video.videoObjectPath}`,
+        objectPath: video.videoObjectPath,
+        durationSec: video.durationSeconds || 5,
+        thumb: video.thumbnailObjectPath ? `/api/storage${video.thumbnailObjectPath}` : null,
+        uploading: false,
+        sourceVideoId: video.id,
+      };
+      if (mode === "replace" && !segmentsRef.current.some((segment) => segment.id === readyAnimation.segmentId)) {
+        throw new Error("The original photo was removed. Add the clip instead.");
+      }
+      setSegments((current) => {
+        if (mode === "add") return [...current, newSegment];
+        const exactIndex = current.findIndex((segment) => segment.id === readyAnimation.segmentId);
+        if (exactIndex < 0) return current;
+        const next = [...current];
+        next[exactIndex] = newSegment;
+        return next;
+      });
+      setReadyAnimation(null);
+      setAnimateSegmentId(null);
+      toast({ title: mode === "replace" ? "Photo replaced" : "Clip added", description: "Your animated clip is now in the timeline." });
+    } catch (cause) {
+      toast({ title: "Clip not added", description: cause instanceof Error ? cause.message : "Try again.", variant: "destructive" });
+    }
+  }
 
   // Auto-import a track handed off from a partner site (e.g. Digital Drift):
   // /editor?audio=<url>&title=<name> loads the song as the music track, like a
@@ -634,6 +716,7 @@ export default function Editor() {
               kind: "photo" as const,
               localUrl: objectUrl,
               objectPath: image.objectPath,
+              imageAssetId: image.id,
               durationSec: 3,
               thumb: objectUrl,
               uploading: false,
@@ -750,8 +833,8 @@ export default function Editor() {
 
   const projectManifest: ProjectManifest = {
     version: 1,
-    segments: segments.map(({ name, kind, objectPath, durationSec, trimStart, trimEnd, sourceVideoId }) => ({
-      name, kind, objectPath, durationSec, trimStart, trimEnd, sourceVideoId,
+    segments: segments.map(({ name, kind, objectPath, durationSec, trimStart, trimEnd, sourceVideoId, imageAssetId }) => ({
+      name, kind, objectPath, durationSec, trimStart, trimEnd, sourceVideoId, imageAssetId,
     })),
     ...(music ? { music: { name: music.name, objectPath: music.objectPath, mode: music.mode, volume: music.volume, loop: music.loop !== false, fade: !!music.fade } } : {}),
     transition: { type: transition, durationSec: transitionDuration },
@@ -780,6 +863,7 @@ export default function Editor() {
         trimStart: typeof segment.trimStart === "number" ? segment.trimStart : undefined,
         trimEnd: typeof segment.trimEnd === "number" ? segment.trimEnd : undefined,
         sourceVideoId: typeof segment.sourceVideoId === "string" ? segment.sourceVideoId : undefined,
+        imageAssetId: typeof segment.imageAssetId === "string" ? segment.imageAssetId : undefined,
       } as Segment;
     });
     const restoredMusic = manifest.music;
@@ -805,7 +889,7 @@ export default function Editor() {
     // Derive this exact normalized state so reopening is immediately "Saved".
     const restoredManifest: ProjectManifest = {
       version: 1,
-      segments: restored.map(({ name, kind, objectPath, durationSec, trimStart, trimEnd, sourceVideoId }) => ({ name, kind, objectPath, durationSec, trimStart, trimEnd, sourceVideoId })),
+      segments: restored.map(({ name, kind, objectPath, durationSec, trimStart, trimEnd, sourceVideoId, imageAssetId }) => ({ name, kind, objectPath, durationSec, trimStart, trimEnd, sourceVideoId, imageAssetId })),
       ...(restoredMusic ? { music: { name: restoredMusic.name, objectPath: restoredMusic.objectPath, mode: restoredMusic.mode, volume: restoredMusic.volume, loop: restoredMusic.loop, fade: restoredMusic.fade } } : {}),
       transition: { type: restoredTransition, durationSec: restoredTransitionDuration }, resolution: restoredResolution,
       orientation: restoredOrientation, videoName: restoredVideoName, sourceVideoId: restoredSourceVideoId,
@@ -1363,6 +1447,7 @@ export default function Editor() {
         kind: "photo" as const,
         localUrl: objectUrl,
         objectPath: asset.objectPath,
+        imageAssetId: asset.id,
         durationSec: 3,
         thumb: objectUrl,
         uploading: false,
@@ -2141,6 +2226,17 @@ export default function Editor() {
 
       {/* Timeline */}
       <Card className="mb-6 p-4" data-montage-guide="timeline">
+        {pendingMontageAnimation && (
+          <div className="mb-4 flex flex-col gap-3 rounded-lg border border-primary/30 bg-primary/[0.06] p-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium">Photo animation is processing</p>
+              <p className="text-xs text-muted-foreground">Keep Montage Studio open. Your original photo will remain until you choose what to do with the finished clip.</p>
+            </div>
+            <Button asChild size="sm" variant="outline" className="min-h-11 shrink-0">
+              <Link href={`/jobs/${pendingMontageAnimation.jobId}`}>View job</Link>
+            </Button>
+          </div>
+        )}
         <div className="text-muted-foreground mb-3 text-xs font-medium uppercase tracking-wide">
           Timeline {segments.length > 0 && `· ${totalDuration.toFixed(1)}s`}
         </div>
@@ -2252,6 +2348,27 @@ export default function Editor() {
               <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
                 Use this to match a line, scene, or section of your narration. The exported video keeps the selected duration.
               </p>
+              {sel.objectPath && (
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <Button
+                    type="button"
+                    className="min-h-11 whitespace-normal bg-gradient-electric text-white shadow-glow"
+                    onClick={() => setAnimateSegmentId(sel.id)}
+                  >
+                    <Wand2 className="mr-2 h-4 w-4 shrink-0" />
+                    Animate this photo
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="min-h-11 whitespace-normal"
+                    onClick={() => setLocation(storyHandoffUrl(sel.objectPath!))}
+                  >
+                    <Film className="mr-2 h-4 w-4 shrink-0" />
+                    Tell a story with this photo
+                  </Button>
+                </div>
+              )}
             </div>
           );
         })()}
@@ -2938,6 +3055,61 @@ export default function Editor() {
           <Button variant="outline" onClick={() => setRenameProject(null)}>Cancel</Button>
           <Button onClick={() => void renameSavedProject()} disabled={!projectNameDraft.trim()}>
             Rename
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {(() => {
+      const sourceSegment = segments.find((segment) => segment.id === animateSegmentId);
+      if (!sourceSegment?.objectPath || !user?.id) return null;
+      return (
+        <PhotoAnimationDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setAnimateSegmentId(null);
+          }}
+          source={sourceSegment.imageAssetId
+            ? { kind: "asset", imageAssetId: sourceSegment.imageAssetId }
+            : { kind: "upload", objectPath: sourceSegment.objectPath }}
+          imageUrl={sourceSegment.localUrl}
+          userId={user.id}
+          initialAspectRatio={orientation === "landscape" ? "16:9" : "9:16"}
+          onCompleted={(jobId) => {
+            setReadyAnimation({ segmentId: sourceSegment.id, jobId });
+            setPendingMontageAnimation(null);
+            setAnimateSegmentId(null);
+          }}
+          onJobStarted={(jobId) => {
+            setPendingMontageAnimation({ segmentId: sourceSegment.id, jobId });
+          }}
+        />
+      );
+    })()}
+
+    <Dialog open={readyAnimation !== null} onOpenChange={() => { /* An explicit choice keeps the original photo safe. */ }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Your animated clip is ready</DialogTitle>
+          <DialogDescription>
+            The original photo is still in your timeline. Choose whether to replace that exact photo or add the clip separately.
+          </DialogDescription>
+        </DialogHeader>
+        {!segments.some((segment) => segment.id === readyAnimation?.segmentId) && (
+          <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
+            The original photo was removed, so it cannot be replaced. No other timeline item will be changed.
+          </p>
+        )}
+        <DialogFooter className="gap-2 sm:gap-2">
+          <Button variant="outline" className="min-h-11" onClick={() => void applyReadyAnimation("add")}>
+            Add clip
+          </Button>
+          <Button
+            className="min-h-11"
+            disabled={!segments.some((segment) => segment.id === readyAnimation?.segmentId)}
+            onClick={() => void applyReadyAnimation("replace")}
+          >
+            Replace photo
           </Button>
         </DialogFooter>
       </DialogContent>

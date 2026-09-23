@@ -34,8 +34,11 @@ import LipSyncPanel from "@/components/LipSyncPanel";
 import ReferEarnCard from "@/components/ReferEarnCard";
 import GenerationFiller from "@/components/GenerationFiller";
 import GenerationStoryboard from "@/components/GenerationStoryboard";
+import { PhotoAnimationDialog } from "@/components/PhotoAnimationDialog";
+import { PhotoNextActions } from "@/components/PhotoNextActions";
 import { shouldShowVideoScenePreviews } from "@/lib/jobStatusDisplay";
 import { trackEvent } from "@/lib/analytics";
+import { storyHandoffUrl } from "@/lib/photoAnimation";
 
 const TERMINAL_STATUSES = new Set(["ready", "failed"]);
 
@@ -295,6 +298,7 @@ export default function JobStatus() {
   const [reviewMessage, setReviewMessage] = useState<string | null>(null);
   const [retryingWithRetainedImages, setRetryingWithRetainedImages] = useState(false);
   const [retainedImageRetryError, setRetainedImageRetryError] = useState<string | null>(null);
+  const [animationAsset, setAnimationAsset] = useState<ImagePackAsset | null>(null);
 
   useEffect(() => {
     setWarningDismissed(false);
@@ -1356,6 +1360,13 @@ export default function JobStatus() {
                         <p className="line-clamp-2 text-xs text-muted-foreground">
                           {asset ? asset.prompt : isActive ? "Waiting for this image" : "No image was saved"}
                         </p>
+                        {asset && isImagePackJob && (
+                          <PhotoNextActions
+                            className="mt-2"
+                            onAnimate={() => setAnimationAsset(asset)}
+                            onTellStory={() => setLocation(storyHandoffUrl(asset.objectPath))}
+                          />
+                        )}
                       </div>
                     </div>
                   );
@@ -1441,6 +1452,19 @@ export default function JobStatus() {
               </CardContent>
             </Card>
           </motion.div>
+        )}
+
+        {animationAsset && user?.id && (
+          <PhotoAnimationDialog
+            open
+            onOpenChange={(open) => {
+              if (!open) setAnimationAsset(null);
+            }}
+            source={{ kind: "asset", imageAssetId: animationAsset.id }}
+            imageUrl={`/api/storage${animationAsset.objectPath}`}
+            userId={user.id}
+            initialAspectRatio={imagePackAspectRatio === "16:9" ? "16:9" : "9:16"}
+          />
         )}
 
         {/* ── Complete: video player ── */}
