@@ -12,6 +12,7 @@ import { hostname, tmpdir } from "os";
 import { logger } from "./logger.js";
 import { notifyRenderReady, notifyAdminRenderFailed } from "./renderEmail.js";
 import { ObjectStorageService } from "./objectStorage.js";
+import { downloadLegacySunoAudio } from "./sunoResolver.js";
 import { analyzeAudioBuffer, type AudioAnalysis, type AudioSection } from "./audioAnalysis.js";
 import { generateClip, downloadClip, pollPixazoRequestUntilComplete, getActiveProvider, PROVIDER_API_FAILURE, PROVIDER_TERMINAL_FAILURE, PROVIDER_OUT_OF_CREDITS, PROVIDER_POLL_TIMEOUT, PROVIDER_POLL_ABORTED, PROVIDER_MEDIA_TERMINAL } from "./videoApis.js";
 import {
@@ -2302,25 +2303,15 @@ async function getAudioBuffer(
       const ext = audioDot !== -1 ? audioFilename.slice(audioDot + 1).toLowerCase() : "mp3";
       return { buffer: buf, ext };
     } catch (err) {
+      if (job.audioSourceType === "suno") throw new Error("Imported Suno audio is unavailable in object storage. Re-import the song.", { cause: err });
       logger.warn({ err, jobId: job.id }, "Could not download audio, using defaults");
       return null;
     }
   }
 
-  // Suno CDN URL (resolved on the client, stored in audioSourceUrl)
-  if (job.audioSourceType === "suno" && job.audioSourceUrl) {
-    try {
-      logger.info({ jobId: job.id }, "Fetching Suno audio from CDN URL");
-      const res = await fetch(job.audioSourceUrl, {
-        headers: { "User-Agent": "AIBeatSync/1.0" },
-      });
-      if (!res.ok) throw new Error(`Suno CDN returned ${res.status}`);
-      const buf = Buffer.from(await res.arrayBuffer());
-      return { buffer: buf, ext: "mp3" };
-    } catch (err) {
-      logger.warn({ err, jobId: job.id }, "Could not fetch Suno audio");
-      return null;
-    }
+  if (job.audioSourceType === "suno") {
+    if (!job.audioSourceUrl) throw new Error("Suno audio is missing its imported object and legacy source. Re-import the song.");
+    return { buffer: await downloadLegacySunoAudio(job.audioSourceUrl), ext: "mp3" };
   }
 
   return null;
@@ -3943,7 +3934,7 @@ async function processRunwayLipSyncJob(job: JobRow): Promise<void> {
 
     // Pull + trim the selected song segment, if one was provided.
     let audioData: { buffer: Buffer; ext: string } | null = null;
-    if (job.audioObjectPath || (job.audioSourceType === "suno" && job.audioSourceUrl)) {
+    if (job.audioObjectPath || job.audioSourceType === "suno") {
       const raw = await getAudioBuffer(job);
       if (raw) {
         const start = job.clipStartTime && job.clipStartTime > 0 ? job.clipStartTime : 0;

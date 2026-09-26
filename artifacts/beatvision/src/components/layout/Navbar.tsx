@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { buildAuthUrl } from "@/lib/authIntent";
 import { useGetDashboardStats, getGetDashboardStatsQueryKey } from "@workspace/api-client-react";
 import {
-  Video, LayoutDashboard, Wand2, LogOut, Loader2, ShieldCheck,
+  Video, ImageIcon, LayoutDashboard, Wand2, LogOut, Loader2, ShieldCheck,
     MessageSquare, Menu, X, Film, CreditCard, Compass, Music2, Settings, Sparkles, Gift,
 } from "lucide-react";
 import {
@@ -40,7 +40,8 @@ export function Navbar() {
   // Flat top bar links; Gallery sits next to Dashboard.
   const memberLinks = [
     { href: "/editor", label: "Montage", icon: Video },
-    { href: "/generate", label: "Generate", icon: Wand2 },
+    { href: "/generate", label: "Generate Video", icon: Wand2 },
+    { href: "/images", label: "Create Images", icon: ImageIcon },
     { href: "/prompt-studio", label: "Prompt", icon: Sparkles },
     { href: "/soundtracks", label: "Music", icon: Music2 },
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -48,6 +49,8 @@ export function Navbar() {
   ];
   const publicLinks = [
     { href: "/editor", label: "Montage", icon: Video },
+    { href: "/generate", label: "Generate Video", icon: Wand2 },
+    { href: "/images", label: "Create Images", icon: ImageIcon },
     { href: "/explore", label: "Explore", icon: Compass },
     { href: "/soundtracks", label: "Music", icon: Music2 },
     { href: "/tutorial/script-to-video", label: "Tutorial", icon: Film },
@@ -58,12 +61,12 @@ export function Navbar() {
   // The memberLinks has editor & soundtracks already.
   const topBarLinks = [
     ...(isAuthenticated ? memberLinks : []),
-    ...publicLinks.filter((link) => !isAuthenticated || (link.href !== "/soundtracks" && link.href !== "/editor")),
+    ...publicLinks.filter((link) => !isAuthenticated || !["/soundtracks", "/editor", "/generate", "/images"].includes(link.href)),
   ];
   // Account dropdown + mobile panel: everything.
   const navLinks = [
     ...(isAuthenticated ? memberLinks : []),
-    ...publicLinks.filter((link) => !isAuthenticated || (link.href !== "/soundtracks" && link.href !== "/editor")),
+    ...publicLinks.filter((link) => !isAuthenticated || !["/soundtracks", "/editor", "/generate", "/images"].includes(link.href)),
   ];
 
   return (

@@ -21,7 +21,7 @@ router.get("/suno/resolve", async (req, res) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Failed to resolve Suno URL";
     req.log.warn({ err, url }, "Suno resolve failed");
-    res.status(502).json({ error: msg });
+    res.status(/Not a valid|Untrusted|redirected too many/.test(msg) ? 400 : 502).json({ error: msg });
   }
 });
 

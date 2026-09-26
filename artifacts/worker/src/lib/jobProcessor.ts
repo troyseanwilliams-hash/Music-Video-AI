@@ -2350,6 +2350,69 @@ async function updateJobStatus(
   await notifyJobUpdate(jobId);
 }
 
+// Compatibility for Suno jobs queued before imports carried an owned objectPath.
+// Do not use this for new jobs: the object path branch below always takes priority.
+async function downloadLegacySunoAudio(raw: string): Promise<Buffer> {
+  const trusted = (value: string): boolean => {
+    try {
+      const url = new URL(value);
+      const authority = /^https:\/\/([^/?#]+)/i.exec(value)?.[1] ?? "";
+      return url.protocol === "https:" && url.hostname === "cdn1.suno.ai"
+        && !url.username && !url.password && !url.port && !authority.includes(":");
+    } catch { return false; }
+  };
+  let current = raw;
+  for (let redirects = 0; redirects <= 3; redirects++) {
+    if (!trusted(current)) throw new Error("Legacy Suno audio URL is not a trusted CDN URL. Re-import the song.");
+    let response: Response;
+    try {
+      response = await fetch(current, { redirect: "manual", signal: AbortSignal.timeout(30_000) });
+    } catch (err) {
+      throw new Error("Legacy Suno CDN is unreachable or timed out. Re-import the song or try again later.", { cause: err });
+    }
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      const location = response.headers.get("location");
+      await response.body?.cancel();
+      if (!location) throw new Error("Invalid Suno CDN redirect. Re-import the song.");
+      current = new URL(location, current).toString();
+      continue;
+    }
+    if (!response.ok) throw new Error(`Legacy Suno audio is unavailable (status ${response.status}). Re-import the song.`);
+    if (!/^audio\/(mpeg|mp3|x-mpeg|mpeg3)(?:\s*;|$)/i.test(response.headers.get("content-type") ?? "")) {
+      await response.body?.cancel();
+      throw new Error("Legacy Suno CDN returned a page instead of audio. Re-import the song.");
+    }
+    const limit = 50 * 1024 * 1024;
+    if (Number(response.headers.get("content-length") ?? "0") > limit) {
+      await response.body?.cancel();
+      throw new Error("Legacy Suno audio exceeds the import size limit. Re-import the song.");
+    }
+    if (!response.body) throw new Error("Legacy Suno CDN returned no audio. Re-import the song.");
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        size += value.length;
+        if (size > limit) throw new Error("Legacy Suno audio exceeds the import size limit. Re-import the song.");
+        chunks.push(value);
+      }
+    } finally {
+      if (size > limit) await reader.cancel().catch(() => {});
+      reader.releaseLock();
+    }
+    const buffer = Buffer.concat(chunks);
+    if (!(buffer.length >= 3 && (buffer.subarray(0, 3).toString("ascii") === "ID3"
+      || (buffer[0] === 0xff && (buffer[1]! & 0xe0) === 0xe0)))) {
+      throw new Error("Legacy Suno CDN returned invalid MP3 audio. Re-import the song.");
+    }
+    return buffer;
+  }
+  throw new Error("Suno CDN redirected too many times. Re-import the song.");
+}
+
 async function getAudioBuffer(
   job: JobRow,
 ): Promise<{ buffer: Buffer; ext: string } | null> {
@@ -2362,23 +2425,15 @@ async function getAudioBuffer(
       const ext = rawExt.length > 0 && rawExt.length <= 5 ? rawExt : "mp3";
       return { buffer: buf, ext };
     } catch (err) {
+      if (job.audioSourceType === "suno") throw new Error("Imported Suno audio is unavailable in object storage. Re-import the song.", { cause: err });
       logger.warn({ err, jobId: job.id }, "Could not download uploaded audio");
       return null;
     }
   }
 
-  if (job.audioSourceType === "suno" && job.audioSourceUrl) {
-    try {
-      const res = await fetch(job.audioSourceUrl, {
-        headers: { "User-Agent": "AIBeatSync/1.0" },
-        signal: AbortSignal.timeout(60_000),
-      });
-      if (!res.ok) throw new Error(`Audio source returned ${res.status}`);
-      return { buffer: Buffer.from(await res.arrayBuffer()), ext: "mp3" };
-    } catch (err) {
-      logger.warn({ err, jobId: job.id }, "Could not fetch source audio");
-      return null;
-    }
+  if (job.audioSourceType === "suno") {
+    if (!job.audioSourceUrl) throw new Error("Suno audio is missing its imported object and legacy source. Re-import the song.");
+    return { buffer: await downloadLegacySunoAudio(job.audioSourceUrl), ext: "mp3" };
   }
 
   return null;
@@ -3942,7 +3997,7 @@ async function processRunwayLipSyncJob(job: JobRow): Promise<void> {
 
     // Pull + trim the selected song segment, if one was provided.
     let audioData: { buffer: Buffer; ext: string } | null = null;
-    if (job.audioObjectPath || (job.audioSourceType === "suno" && job.audioSourceUrl)) {
+    if (job.audioObjectPath || job.audioSourceType === "suno") {
       const raw = await getAudioBuffer(job);
       if (raw) {
         const start = job.clipStartTime && job.clipStartTime > 0 ? job.clipStartTime : 0;

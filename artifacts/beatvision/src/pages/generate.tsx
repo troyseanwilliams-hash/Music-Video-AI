@@ -1,5 +1,8 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { analyzeNumberedScenes } from "@/lib/imageCreation";
+import { isSunoShareUrl, SUNO_LINK_ERROR, type ImportedSunoTrack } from "@/lib/sunoImport";
+import { useSunoImportRequest } from "@/hooks/useSunoImportRequest";
 import { AudioWaveformSelector } from "@/components/AudioWaveformSelector";
 import SignupTeaser from "@/components/SignupTeaser";
 import { useLocation, useSearch, Link } from "wouter";
@@ -59,30 +62,6 @@ import {
   type StoryboardSafety,
 } from "@/lib/storyboardSafety";
 
-const NUMBERED_IMAGE_SCENE_LINE =
-  /^\s*(?:scene\s+)?(\d{1,2})\s*(?:(?:[.):])\s*|\s+)(?:\(\s*(?:\d+(?:\.\d+)?s?|\d{1,2}:\d{2}(?::\d{2})?)\s*[-–—]\s*(?:\d+(?:\.\d+)?s?|\d{1,2}:\d{2}(?::\d{2})?)\s*\)\s*[:\-]?\s*)?(.+?)\s*$/i;
-
-function analyzeNumberedScenes(script: string, maxScenes: number): {
-  count: number | null;
-  invalid: boolean;
-} {
-  const lines = script.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const firstSceneIndex = lines.findIndex((line) => line.match(NUMBERED_IMAGE_SCENE_LINE)?.[1] === "1");
-  if (firstSceneIndex < 0) return { count: null, invalid: false };
-
-  let expected = 1;
-  for (const line of lines.slice(firstSceneIndex)) {
-    const match = line.match(NUMBERED_IMAGE_SCENE_LINE);
-    if (!match || Number(match[1]) !== expected || !match[2]?.trim()) {
-      return { count: null, invalid: true };
-    }
-    expected += 1;
-  }
-  const count = expected - 1;
-  return count >= 1 && count <= maxScenes
-    ? { count, invalid: false }
-    : { count: null, invalid: true };
-}
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -351,10 +330,10 @@ export default function Generate() {
     CreateJobRequestAudioSourceType.upload,
   );
   const [sunoInputUrl, setSunoInputUrl] = useState("");
-  const [sunoAutoResolve, setSunoAutoResolve] = useState(false);
-  const [sunoResolving, setSunoResolving] = useState(false);
-  const [sunoResolved, setSunoResolved] = useState<{ audioUrl: string; title: string; artist: string; objectPath?: string } | null>(null);
+  const [sunoImporting, setSunoImporting] = useState(false);
+  const [sunoResolved, setSunoResolved] = useState<(ImportedSunoTrack & { shareUrl: string }) | null>(null);
   const [sunoError, setSunoError] = useState<string | null>(null);
+  const sunoRequest = useSunoImportRequest();
   const [objectPath, setObjectPath] = useState<string | null>(null);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -373,7 +352,8 @@ export default function Generate() {
     lyrics?: string;
   }>({});
   const [selectedStyle, setSelectedStyle] = useState<VideoStyle>(VideoStyle.cinematic);
-  const [imagePackMode, setImagePackMode] = useState(false);
+  // Image-only jobs are created on /images; this page exclusively starts video jobs.
+  const imagePackMode = false;
   const [imagePackCount, setImagePackCount] = useState(4);
   const [imagePackAspectRatio, setImagePackAspectRatio] = useState<"9:16" | "16:9">("9:16");
   const [imagePackSubmitting, setImagePackSubmitting] = useState(false);
@@ -920,49 +900,45 @@ export default function Generate() {
     localStorage.removeItem("pendingSunoUrl");
     setSourceType(CreateJobRequestAudioSourceType.suno);
     setSunoInputUrl(pending);
-    setSunoAutoResolve(true);
   }, [isAuthenticated]);
 
-  const handleSunoResolve = useCallback(async () => {
-    if (!sunoInputUrl.trim() || sunoResolving) return;
-    setSunoResolving(true);
+  const invalidateSunoImport = () => {
+    sunoRequest.cancel();
+    setSunoImporting(false);
+    setSunoResolved(null);
+    setSunoError(null);
+  };
+
+  // Also cover source switches outside the audio tabs (narration shortcuts and handoffs).
+  useEffect(() => {
+    if (sourceType !== CreateJobRequestAudioSourceType.suno && sunoRequest.isActive()) {
+      sunoRequest.cancel();
+      setSunoImporting(false);
+      setSunoResolved(null);
+      setSunoError(null);
+    }
+  }, [sourceType]);
+
+  const handleSunoResolve = async () => {
+    // The ref is set synchronously, so repeated clicks cannot launch parallel imports.
+    if (sunoRequest.isActive()) return;
+    if (!isSunoShareUrl(sunoInputUrl)) {
+      setSunoError(SUNO_LINK_ERROR);
+      return;
+    }
+    setSunoImporting(true);
     setSunoError(null);
     setSunoResolved(null);
-    try {
-      const res = await fetch(`/api/suno/resolve?url=${encodeURIComponent(sunoInputUrl)}`);
-      const data = await res.json() as { audioUrl?: string; title?: string; artist?: string; error?: string };
-      if (!res.ok) throw new Error(data.error ?? "Failed to load track");
-      const importRes = await fetch("/api/audio/import-from-link", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: sunoInputUrl, title: data.title ?? "Untitled" }),
-      });
-      const imported = await importRes.json() as { objectPath?: string; error?: string };
-      if (!importRes.ok || !imported.objectPath) {
-        throw new Error(imported.error ?? "Failed to import track");
-      }
-      setSunoResolved({
-        audioUrl: data.audioUrl!,
-        title: data.title ?? "Untitled",
-        artist: data.artist ?? "",
-        objectPath: imported.objectPath,
-      });
-      setFieldErrors((fe) => ({ ...fe, audio: undefined }));
-    } catch (err) {
-      setSunoError(err instanceof Error ? err.message : "Could not load track");
-    } finally {
-      setSunoResolving(false);
-    }
-  }, [sunoInputUrl, sunoResolving]);
-
-  // Auto-resolve a deep-linked Suno URL once it's been set in state.
-  useEffect(() => {
-    if (sunoAutoResolve && sunoInputUrl.trim() && !sunoResolving) {
-      setSunoAutoResolve(false);
-      void handleSunoResolve();
-    }
-  }, [sunoAutoResolve, sunoInputUrl, sunoResolving, handleSunoResolve]);
+    const shareUrl = sunoInputUrl.trim();
+    await sunoRequest.start(shareUrl, {
+      success: (imported) => {
+        setSunoResolved({ ...imported, shareUrl });
+        setFieldErrors((fe) => ({ ...fe, audio: undefined }));
+      },
+      error: setSunoError,
+      settled: () => setSunoImporting(false),
+    });
+  };
 
   if (isAuthLoading) {
     return (
@@ -1273,13 +1249,12 @@ export default function Generate() {
 
   // Auto-sync lyrics against the audio source (2 credits).
   // Upload tab: uses the stored objectPath directly.
-  // Suno tab: imports the resolved streaming URL to object storage first (cached
-  //           on sunoResolved.objectPath so repeat clicks don't re-import).
+  // Suno tab: uses the owned object created by the explicit import.
   const canAutoSync =
     sourceType === CreateJobRequestAudioSourceType.upload
       ? !!objectPath
       : sourceType === CreateJobRequestAudioSourceType.suno
-        ? !!sunoResolved
+        ? !!sunoResolved?.objectPath
         : false;
 
   const autoSyncLyrics = async () => {
@@ -1292,31 +1267,7 @@ export default function Generate() {
       if (sourceType === CreateJobRequestAudioSourceType.upload) {
         audioObjectPath = objectPath;
       } else if (sourceType === CreateJobRequestAudioSourceType.suno && sunoResolved) {
-        // Use cached objectPath from a prior import, or import now.
-        if (sunoResolved.objectPath) {
-          audioObjectPath = sunoResolved.objectPath;
-        } else {
-          setLyricsSyncNote("Importing track… this takes a few seconds.");
-          const imp = await fetch("/api/audio/import-from-link", {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url: sunoResolved.audioUrl }),
-          });
-          const impData = await imp.json().catch(() => ({}));
-          if (!imp.ok) {
-            setLyricsSyncNote(impData?.error || "Couldn't import track. Please try again.");
-            return;
-          }
-          audioObjectPath = impData.objectPath as string;
-          // Cache so the next Auto-sync click skips the import — but only if
-          // the resolved track hasn't been swapped while the import ran.
-          const importedFor = sunoResolved.audioUrl;
-          setSunoResolved((prev) =>
-            prev && prev.audioUrl === importedFor ? { ...prev, objectPath: audioObjectPath! } : prev,
-          );
-        }
-        setLyricsSyncNote(null);
+        audioObjectPath = sunoResolved.objectPath;
       }
 
       if (!audioObjectPath) {
@@ -1440,7 +1391,7 @@ export default function Generate() {
           audioObjectPath:
             sourceType === CreateJobRequestAudioSourceType.none ? null : selectedAudioObjectPath,
           audioSourceUrl:
-            sourceType === CreateJobRequestAudioSourceType.suno ? (sunoResolved?.audioUrl ?? null) : null,
+            sourceType === CreateJobRequestAudioSourceType.suno ? (sunoResolved?.shareUrl ?? null) : null,
           lyricsText: lyricsEnabled && lyricsText.trim() ? lyricsText.trim() : null,
           aspectRatio,
           resolution,
@@ -1731,7 +1682,7 @@ export default function Generate() {
       errors.audio = isUploading ? "Still uploading — wait a moment." : "Please upload an audio file.";
     }
     if (!imagePackMode && sourceType === CreateJobRequestAudioSourceType.suno && !sunoResolved) {
-      errors.audio = sunoResolving ? "Loading track — wait a moment." : "Please load a Suno track first.";
+      errors.audio = sunoImporting ? "Resolving and importing track — wait a moment." : "Please import a Suno track first.";
     }
     if (
       !imagePackMode && sourceType === CreateJobRequestAudioSourceType.none
@@ -1864,7 +1815,7 @@ export default function Generate() {
             <div className="space-y-6">
               <h3 className="text-lg font-semibold">Add your audio or narration</h3>
 
-              <Tabs value={sourceType} onValueChange={(v) => setSourceType(v as CreateJobRequestAudioSourceType | "narration")}>
+              <Tabs value={sourceType} onValueChange={(v) => { if (v !== sourceType) invalidateSunoImport(); setSourceType(v as CreateJobRequestAudioSourceType | "narration"); }}>
                 <TabsList className="mb-4 grid w-full grid-cols-2 sm:grid-cols-4">
                   <TabsTrigger value={CreateJobRequestAudioSourceType.upload} className="flex gap-2"><Upload className="h-4 w-4"/> Upload</TabsTrigger>
                   <TabsTrigger value="narration" className="flex gap-2"><Mic className="h-4 w-4"/> Narration</TabsTrigger>
@@ -1915,15 +1866,14 @@ export default function Generate() {
                       value={sunoInputUrl}
                       onChange={(e) => {
                         setSunoInputUrl(e.target.value);
-                        setSunoResolved(null);
-                        setSunoError(null);
+                        invalidateSunoImport();
                       }}
-                      onBlur={handleSunoResolve}
                     />
-                    <Button variant="outline" onClick={handleSunoResolve} disabled={sunoResolving || !sunoInputUrl.trim()}>
-                      {sunoResolving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Load"}
+                    <Button type="button" variant="outline" className="min-h-11" onClick={() => void handleSunoResolve()} disabled={sunoImporting || !sunoInputUrl.trim()}>
+                      {sunoImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Import"}
                     </Button>
                   </div>
+                  {sunoImporting && <p role="status" className="text-sm text-muted-foreground">Resolving and importing track…</p>}
                   {sunoResolved && (
                     <div className="flex items-center gap-2 rounded-lg bg-[#1DB954]/10 p-3 text-sm">
                       <CheckCircle2 className="h-4 w-4 text-[#1DB954]" />
@@ -2001,38 +1951,24 @@ export default function Generate() {
         <div>
           <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary mb-3">
             <Sparkles className="h-3.5 w-3.5" />
-            AI Generator
+            Generate Video
           </div>
           <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight mb-2">
-            {imagePackMode ? (
-              <>Create an <span className="text-gradient-electric">image pack</span></>
-            ) : (
-              <>Create a <span className="text-gradient-electric">new video</span></>
-            )}
+            Create a <span className="text-gradient-electric">new video</span>
           </h1>
           <p className="text-sm sm:text-base text-muted-foreground max-w-xl">
-            {imagePackMode
-              ? "Describe the visual direction and create reusable still images for your next story, slideshow, or Montage Studio timeline."
-              : "Drop in a track — our AI reads its beat, energy, and mood, then generates a cinematic, beat-synced music video."}
+            Drop in a track — our AI reads its beat, energy, and mood, then generates a cinematic, beat-synced music video.
           </p>
+          <Link href="/images" className="mt-3 inline-flex min-h-11 items-center text-sm font-medium text-primary underline underline-offset-4">Want still images instead? Create Images</Link>
         </div>
 
-        <TutorialTip id="generate" title={imagePackMode ? "Making an image pack" : "Making a video"}>
-          {imagePackMode ? (
-            <>
-              Describe the visual direction, choose how many images you need, and optionally add a reference image for consistent character scenes.
-              Your saved images are ready to arrange in Montage Studio, where you can set each image&apos;s hold time to follow a spoken narrative or podcast.
-              Need help writing prompts from a script? <Link href="/tutorial/script-to-video" className="underline text-primary hover:text-primary/80">Read the Script-to-Video Tutorial</Link>.
-              We charge credits only when image generation succeeds.
-            </>
-          ) : (
+        <TutorialTip id="generate" title="Making a video">
             <>
               Add audio (upload, Suno link, or from My Music), describe the look, pick your engine — <strong>Runway</strong> (premium)
-              or <strong>Kling</strong> (value) — and a length. For a spoken narrative or podcast, create a still image pack, then use Montage Studio
+              or <strong>Kling</strong> (value) — and a length. For a spoken narrative or podcast, <Link href="/images" className="underline text-primary">create a still image pack</Link>, then use Montage Studio
               to place those images against your full audio and set each image&apos;s hold time to follow your timeline.
               <Link href="/tutorial/script-to-video" className="ml-1 underline text-primary hover:text-primary/80">Learn how</Link>. We charge credits only when it succeeds.
             </>
-          )}
         </TutorialTip>
 
         {/* ── Quick start: a compact mobile picker, full controls on larger screens ── */}
@@ -2163,130 +2099,6 @@ export default function Generate() {
           </div>
         </div>
         )}
-
-        <Collapsible open={imagePackMode} onOpenChange={setImagePackMode}>
-          <section
-            aria-labelledby="images-only-heading"
-            className="rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/[0.08] via-card to-accent/[0.045] p-4 shadow-lg sm:p-5"
-          >
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="flex items-center gap-2 text-sm font-semibold">
-                  <Sparkles className="h-4 w-4 text-primary" />
-                  <span id="images-only-heading">Images only</span>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        className="rounded-full text-muted-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                        aria-label="About Images only"
-                      >
-                        <Info className="h-4 w-4" />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="max-w-[260px] text-xs leading-relaxed">
-                      You only need a prompt to create an image pack. No audio track, video upload, or video render is required.
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  Generate a standalone pack of reusable stills without audio or video rendering.
-                </p>
-              </div>
-              <CollapsibleTrigger asChild>
-                <Button
-                  type="button"
-                  variant={imagePackMode ? "default" : "outline"}
-                  data-testid="toggle-image-pack-mode"
-                  aria-label={imagePackMode ? "Hide Images only options and return to video generation" : "Show Images only options"}
-                >
-                  {imagePackMode ? "Images only enabled" : "Images only"}
-                  <ChevronDown className={`ml-2 h-4 w-4 transition-transform ${imagePackMode ? "rotate-180" : ""}`} />
-                </Button>
-              </CollapsibleTrigger>
-            </div>
-            <CollapsibleContent>
-              <div className="mt-4 flex flex-col gap-3 rounded-xl border border-primary/20 bg-primary/[0.04] p-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold">Need a story example?</p>
-                  <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                    Try a 21-image historical mystery montage with built-in character and aircraft continuity.
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="shrink-0 border-primary/30 text-primary hover:bg-primary/10"
-                  onClick={() => {
-                    setPrompt(AMELIA_EARHART_MONTAGE_EXAMPLE);
-                    setImagePackCount(21);
-                    setSelectedStyle(VideoStyle.documentary);
-                    setImagePackAspectRatio("16:9");
-                    setFieldErrors((current) => ({ ...current, prompt: undefined }));
-                  }}
-                >
-                  Try Amelia Earhart example
-                </Button>
-              </div>
-              <div className="mt-4 grid gap-4 border-t border-primary/15 pt-4 sm:grid-cols-[minmax(0,1fr)_150px_220px] sm:items-end">
-                <div>
-                  <Label htmlFor="image-pack-count">Images to generate</Label>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {numberedImageSceneAnalysis.invalid
-                      ? "Numbered scripts need one complete, consecutively numbered scene per line."
-                      : numberedImageSceneCount
-                      ? `${numberedImageSceneCount} numbered scenes detected. Each line will generate one image in order.`
-                      : `Each image costs ${GENERATED_IMAGE_CREDITS_PER_VISUAL} credits. Failed images are refunded.`}
-                  </p>
-                </div>
-                <div>
-                  <Input
-                    id="image-pack-count"
-                    type="number"
-                    min={1}
-                    max={30}
-                    value={effectiveImagePackCount}
-                    onChange={(event) => setImagePackCount(Number(event.target.value))}
-                    disabled={numberedImageSceneCount !== null}
-                    aria-label="Images to generate"
-                  />
-                  <p className="mt-1 text-right text-xs font-medium text-primary">
-                    {imagePackCost} credits
-                  </p>
-                </div>
-                <div>
-                  <Label>Image size</Label>
-                  <div className="mt-2 grid grid-cols-2 gap-2" role="radiogroup" aria-label="Image size">
-                    {([
-                      ["9:16", "Portrait"],
-                      ["16:9", "Landscape"],
-                    ] as const).map(([ratio, label]) => {
-                      const selected = imagePackAspectRatio === ratio;
-                      return (
-                        <button
-                          key={ratio}
-                          type="button"
-                          role="radio"
-                          aria-checked={selected}
-                          onClick={() => setImagePackAspectRatio(ratio)}
-                          className={`rounded-lg border px-2 py-2 text-left text-xs font-medium transition-colors ${
-                            selected
-                              ? "border-primary bg-primary/10 text-primary"
-                              : "border-border bg-background hover:border-primary/50"
-                          }`}
-                        >
-                          <span className="block">{ratio}</span>
-                          <span className="text-[10px] font-normal text-muted-foreground">{label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </CollapsibleContent>
-          </section>
-        </Collapsible>
 
         <div className="grid gap-5 sm:gap-8 p-4 sm:p-8 rounded-2xl bg-card border border-card-border shadow-lg">
 
@@ -2560,6 +2372,7 @@ export default function Generate() {
             value={sourceType}
             onValueChange={(v) => {
               const next = v as CreateJobRequestAudioSourceType;
+              if (next !== sourceType) invalidateSunoImport();
               setSourceType(next);
               setFieldErrors((e) => ({ ...e, audio: undefined }));
               // No audio to derive a "full length" from — force a concrete duration.
@@ -3014,30 +2827,26 @@ export default function Generate() {
                     value={sunoInputUrl}
                     onChange={(e) => {
                       setSunoInputUrl(e.target.value);
-                      setSunoResolved(null);
-                      setSunoError(null);
+                      invalidateSunoImport();
                       setFieldErrors((fe) => ({ ...fe, audio: undefined }));
                     }}
-                    onBlur={handleSunoResolve}
                     className={`h-12 bg-background/50 ${fieldErrors.audio ? "border-destructive" : "border-input"}`}
                   />
                   <Button
                     type="button"
                     variant="outline"
                     className="h-12 px-4 shrink-0"
-                    onClick={handleSunoResolve}
-                    disabled={sunoResolving || !sunoInputUrl.trim()}
+                    onClick={() => void handleSunoResolve()}
+                    disabled={sunoImporting || !sunoInputUrl.trim()}
                   >
-                    {sunoResolving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Load"}
+                    {sunoImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Import"}
                   </Button>
                 </div>
+                {sunoImporting && <p role="status" className="text-sm text-muted-foreground">Resolving and importing track…</p>}
                 {sunoResolved && (
                   <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#1DB954]/10 border border-[#1DB954]/30 text-sm">
                     <CheckCircle2 className="h-4 w-4 text-[#1DB954] shrink-0" />
                     <span className="font-medium">{sunoResolved.title}</span>
-                    {sunoResolved.artist && (
-                      <span className="text-muted-foreground">by {sunoResolved.artist}</span>
-                    )}
                   </div>
                 )}
                 {sunoError && (

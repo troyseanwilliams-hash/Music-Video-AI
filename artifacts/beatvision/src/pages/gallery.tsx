@@ -98,7 +98,9 @@ export default function Gallery() {
   const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [galleryView, setGalleryView] = useState<"videos" | "images" | "music">("videos");
+  const [galleryView, setGalleryView] = useState<"videos" | "images" | "music">(
+    new URLSearchParams(window.location.search).get("view") === "images" ? "images" : "videos",
+  );
   const [loadingAction, setLoadingAction] = useState<Record<string, "watch" | "download" | undefined>>({});
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -451,9 +453,9 @@ export default function Gallery() {
           </p>
         </div>
 
-        <Link href="/generate">
+        <Link href={galleryView === "images" ? "/images" : "/generate"}>
           <Button className="bg-gradient-electric text-white shadow-glow">
-            Create new
+            {galleryView === "images" ? "Create Images" : "Generate Video"}
           </Button>
         </Link>
       </div>
@@ -1010,9 +1012,9 @@ export default function Gallery() {
             <p className="text-muted-foreground mb-8 max-w-md mx-auto">
               Create an Images-only pack and every finished image will appear here.
             </p>
-            <Link href="/generate">
+            <Link href="/images">
               <Button size="lg" className="bg-gradient-electric text-white shadow-glow">
-                Generate Images
+                Create Images
               </Button>
             </Link>
           </div>

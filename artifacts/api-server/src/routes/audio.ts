@@ -2,7 +2,7 @@ import { Router } from "express";
 import { randomUUID } from "crypto";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
 import { analyzeAudioBuffer } from "../lib/audioAnalysis.js";
-import { fetchTrustedSunoCdn, isCanonicalSunoShareUrl, resolveSunoUrl } from "../lib/sunoResolver.js";
+import { fetchTrustedSunoCdn, isSunoShareUrl, resolveSunoUrl } from "../lib/sunoResolver.js";
 import { signAudioAnalysisReceipt } from "../lib/audioAnalysisReceipt.js";
 import { and, eq, isNull } from "drizzle-orm";
 import { db, soundtracksTable } from "@workspace/db";
@@ -29,6 +29,7 @@ export async function readBoundedAudio(response: Response): Promise<Buffer> {
       chunks.push(value);
     }
   } finally {
+    if (size > MAX_IMPORTED_AUDIO_BYTES) await reader.cancel().catch(() => {});
     reader.releaseLock();
   }
   return Buffer.concat(chunks);
@@ -48,7 +49,7 @@ router.post("/audio/import-from-link", async (req, res) => {
     return;
   }
 
-  const isSuno = isCanonicalSunoShareUrl(rawUrl);
+  const isSuno = isSunoShareUrl(rawUrl);
 
   try {
     let audioUrl: string;
@@ -59,7 +60,7 @@ router.post("/audio/import-from-link", async (req, res) => {
       audioUrl = track.audioUrl;
       title = track.title || title;
     } else {
-      res.status(400).json({ error: "Paste a valid Suno song link (suno.com/song/…)." });
+      res.status(400).json({ error: "Paste a valid Suno song or short share link." });
       return;
     }
 
@@ -70,6 +71,11 @@ router.post("/audio/import-from-link", async (req, res) => {
     });
     if (!dl.ok) {
       res.status(422).json({ error: `Could not fetch the track (status ${dl.status}). Make sure it's public.` });
+      return;
+    }
+    if (!/^audio\/(mpeg|mp3|x-mpeg|mpeg3)(?:\s*;|$)/i.test(dl.headers.get("content-type") ?? "")) {
+      await dl.body?.cancel();
+      res.status(422).json({ error: "Suno returned a page or invalid audio instead of an MP3." });
       return;
     }
     const buffer = await readBoundedAudio(dl);

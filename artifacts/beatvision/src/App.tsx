@@ -13,6 +13,8 @@ import Home from "@/pages/home";
 import Login from "@/pages/login";
 import Register from "@/pages/register";
 import Generate from "@/pages/generate";
+import CreateImages from "@/pages/images";
+import { imageCreationRedirect } from "@/lib/imageCreation";
 import Editor from "@/pages/editor";
 import Dashboard from "@/pages/dashboard";
 import Gallery from "@/pages/gallery";
@@ -78,6 +80,16 @@ function AdminRunwayLipSyncRoute() {
   return <AdminOnly><AdminRunwayLipSync /></AdminOnly>;
 }
 
+function GenerateRoute() {
+  const [, navigate] = useLocation();
+  const destination = imageCreationRedirect(window.location.search);
+  useEffect(() => {
+    if (destination) navigate(destination, { replace: true });
+  }, [destination, navigate]);
+  // Do not mount Generate's handoff effects: they consume and clear query parameters.
+  return destination ? null : <Generate />;
+}
+
 // Fires a pageview on every route change and records time-on-page. Rendered
 // inside the router so it sees wouter's location.
 function AnalyticsTracker() {
@@ -108,7 +120,8 @@ function Router() {
           <Route path="/register" component={Register} />
           <Route path="/forgot-password" component={ForgotPassword} />
           <Route path="/reset-password" component={ResetPassword} />
-          <Route path="/generate" component={Generate} />
+          <Route path="/generate" component={GenerateRoute} />
+          <Route path="/images" component={CreateImages} />
           <Route path="/editor" component={Editor} />
           <Route path="/dashboard" component={Dashboard} />
           <Route path="/gallery" component={Gallery} />

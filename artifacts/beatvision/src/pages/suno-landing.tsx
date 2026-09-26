@@ -6,8 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Music2, Wand2, Clapperboard, Mic2, ArrowRight, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
 import { AuroraBackground } from "@/components/AuroraBackground";
-
-const SUNO_URL_RE = /suno\.(?:com|ai)\/song\/[a-f0-9-]{36}/i;
+import { isSunoShareUrl, SUNO_LINK_ERROR } from "@/lib/sunoImport";
 
 /**
  * SEO landing page: "Turn your Suno song into a music video."
@@ -26,7 +25,7 @@ export default function SunoLanding() {
     const prev = meta?.getAttribute("content") ?? null;
     meta?.setAttribute(
       "content",
-      "Paste your Suno song link and get an AI-generated, beat-synced music video with karaoke lyrics. Free to try — no upload needed.",
+      "Import a public Suno song and create a beat-synced AI music video. Review generation costs before you start; lyric overlays are optional.",
     );
     return () => {
       document.title = "AIBeatSync";
@@ -36,8 +35,8 @@ export default function SunoLanding() {
 
   function handleGo() {
     const trimmed = url.trim();
-    if (!SUNO_URL_RE.test(trimmed)) {
-      setError("That doesn't look like a Suno song link — it should look like suno.com/song/…");
+    if (!isSunoShareUrl(trimmed)) {
+      setError(SUNO_LINK_ERROR);
       return;
     }
     setError(null);
@@ -85,7 +84,7 @@ export default function SunoLanding() {
           </h1>
           <p className="text-muted-foreground text-lg mb-8">
             Paste a Suno link, pick a style, and get an AI-generated video cut to your beat —
-            with karaoke lyrics that fill in as they're sung.
+            with an optional, separately priced karaoke lyric overlay.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-3 max-w-xl mx-auto">
@@ -109,7 +108,7 @@ export default function SunoLanding() {
           </div>
           {error && <p className="text-sm text-destructive mt-3">{error}</p>}
           <p className="text-xs text-muted-foreground mt-4">
-            Free to try — new accounts start with trial credits. Your song must be public on Suno.
+            AI video generation uses credits. Review the cost before confirming. Your song must be public on Suno.
           </p>
         </motion.div>
       </section>

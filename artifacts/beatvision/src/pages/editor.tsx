@@ -6,6 +6,9 @@ import SignupTeaser from "@/components/SignupTeaser";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { importSunoTrack, isSunoShareUrl, SUNO_LINK_ERROR } from "@/lib/sunoImport";
 import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { SoundtrackPickerDialog } from "@/components/SoundtrackPickerDialog";
@@ -410,6 +413,16 @@ export default function Editor() {
   // while a previous upload/import is still in flight, the stale completion must
   // not overwrite (or null out) the newer selection.
   const musicLoadIdRef = useRef(0);
+  const [sunoDialogOpen, setSunoDialogOpen] = useState(false);
+  const [sunoLink, setSunoLink] = useState("");
+  const [sunoImportError, setSunoImportError] = useState<string | null>(null);
+  const [sunoImporting, setSunoImporting] = useState(false);
+  const sunoImportController = useRef<AbortController | null>(null);
+  useEffect(() => () => {
+    ++musicLoadIdRef.current;
+    sunoImportController.current?.abort();
+    sunoImportController.current = null;
+  }, []);
   const [submitting, setSubmitting] = useState(false);
   // Beat sync: detected from the added music track (BPM + beat times).
   const [beatInfo, setBeatInfo] = useState<{ bpm: number; beats: number[] } | null>(null);
@@ -597,7 +610,6 @@ export default function Editor() {
     // Strip the params so a refresh doesn't re-import.
     window.history.replaceState({}, "", window.location.pathname);
     const loadId = ++musicLoadIdRef.current;
-    setMusic({ name: "Loading…", objectPath: null, localUrl: null, mode: "mix", volume: 0.6, uploading: true });
     (async () => {
       try {
         const r = await fetch("/api/audio/import-from-link", {
@@ -614,7 +626,6 @@ export default function Editor() {
         toast({ title: "Track loaded", description: "Your song is ready — add clips or photos and render." });
       } catch (err) {
         if (musicLoadIdRef.current !== loadId) return;
-        setMusic(null);
         toast({ title: "Couldn't load the track", description: String((err as Error).message), variant: "destructive" });
       }
     })();
@@ -1477,6 +1488,7 @@ export default function Editor() {
   }
 
   async function addMusicFile(file: File) {
+    if (sunoImportController.current) closeSunoDialog();
     const loadId = ++musicLoadIdRef.current;
     const localUrl = URL.createObjectURL(file);
     setMusic({ name: file.name, objectPath: null, localUrl, mode: "mix", volume: 0.6, uploading: true });
@@ -1557,34 +1569,48 @@ export default function Editor() {
   };
 
   // Import a track from a Suno link into the timeline as the music.
+  function closeSunoDialog() {
+    sunoImportController.current?.abort();
+    sunoImportController.current = null;
+    ++musicLoadIdRef.current;
+    setSunoImporting(false);
+    setSunoImportError(null);
+    setSunoDialogOpen(false);
+  }
+
   async function addMusicFromLink() {
-    const url = window.prompt("Paste a public Suno song link (suno.com/song/…)");
-    if (!url || !url.trim()) return;
+    if (sunoImportController.current) return;
+    if (!isSunoShareUrl(sunoLink)) {
+      setSunoImportError(SUNO_LINK_ERROR);
+      return;
+    }
     const loadId = ++musicLoadIdRef.current;
-    setMusic({ name: "Loading…", objectPath: null, localUrl: null, mode: "mix", volume: 0.6, uploading: true });
+    const controller = new AbortController();
+    sunoImportController.current = controller;
+    setSunoImportError(null);
+    setSunoImporting(true);
     try {
-      const r = await fetch("/api/audio/import-from-link", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url.trim() }),
-      });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error || "Import failed");
+      const data = await importSunoTrack(sunoLink, controller.signal);
       // A newer selection replaced this one while it was importing — ignore.
-      if (musicLoadIdRef.current !== loadId) return;
+      if (musicLoadIdRef.current !== loadId || controller.signal.aborted) return;
       setMusic({
-        name: data.title || "Imported track",
+        name: data.title,
         objectPath: data.objectPath,
         localUrl: data.url,
         mode: "mix",
         volume: 0.6,
         uploading: false,
       });
+      setSunoDialogOpen(false);
+      setSunoLink("");
     } catch (err) {
-      if (musicLoadIdRef.current !== loadId) return;
-      setMusic(null);
-      toast({ title: "Couldn't import track", description: String((err as Error).message), variant: "destructive" });
+      if (musicLoadIdRef.current !== loadId || controller.signal.aborted) return;
+      setSunoImportError(err instanceof Error ? err.message : "Could not import track. Please try again.");
+    } finally {
+      if (sunoImportController.current === controller) {
+        sunoImportController.current = null;
+        setSunoImporting(false);
+      }
     }
   }
 
@@ -1983,13 +2009,36 @@ export default function Editor() {
         <Button variant="outline" onClick={() => musicInputRef.current?.click()} data-montage-guide="audio">
           <Music className="mr-2 h-4 w-4" /> {music ? "Change music" : "Add music"}
         </Button>
-        <Button variant="outline" onClick={addMusicFromLink} data-testid="add-music-from-link">
+        <Button variant="outline" onClick={() => setSunoDialogOpen(true)} data-testid="add-music-from-link">
           <Link2 className="mr-2 h-4 w-4" /> Add from Suno
         </Button>
+        <Dialog open={sunoDialogOpen} onOpenChange={(open) => { if (open) setSunoDialogOpen(true); else closeSunoDialog(); }}>
+          <DialogContent className="w-[calc(100vw-2rem)] max-w-md">
+            <DialogHeader>
+              <DialogTitle>Add music from Suno</DialogTitle>
+              <DialogDescription>Paste a public Suno song link. Your current music stays in place until the import succeeds.</DialogDescription>
+            </DialogHeader>
+            <form onSubmit={(event) => { event.preventDefault(); void addMusicFromLink(); }} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="editor-suno-url">Suno song link</Label>
+                <Input id="editor-suno-url" value={sunoLink} onChange={(event) => { setSunoLink(event.target.value); setSunoImportError(null); }}
+                  placeholder="https://suno.com/song/…" aria-invalid={!!sunoImportError} aria-describedby={sunoImportError ? "editor-suno-error" : undefined}
+                  disabled={sunoImporting} className="min-h-11" data-testid="editor-suno-url" />
+                {sunoImportError && <p id="editor-suno-error" role="alert" className="text-sm text-destructive">{sunoImportError}</p>}
+                {sunoImporting && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Resolving and importing track…</p>}
+              </div>
+              <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row">
+                <Button type="button" variant="outline" className="min-h-11" onClick={closeSunoDialog}>Cancel</Button>
+                <Button type="submit" className="min-h-11" disabled={sunoImporting}>{sunoImporting ? "Importing…" : "Import track"}</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
         <SoundtrackPickerDialog
           onSelect={(t) => {
             // Invalidate any in-flight upload/import so its completion (or
             // failure) can't overwrite or null out this selection.
+            if (sunoImportController.current) closeSunoDialog();
             musicLoadIdRef.current++;
             setMusic({ name: t.title, objectPath: t.objectPath, localUrl: t.url, mode: "mix", volume: 0.6, uploading: false });
           }}

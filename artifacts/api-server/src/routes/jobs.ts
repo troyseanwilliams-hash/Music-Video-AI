@@ -8,6 +8,7 @@ import {
   usersTable,
   videosTable,
   imageAssetsTable,
+  soundtracksTable,
 } from "@workspace/db";
 import type { VideoClipMeta } from "@workspace/db";
 import { eq, and, desc, count, isNull, inArray, sql } from "drizzle-orm";
@@ -554,8 +555,29 @@ router.post("/jobs", async (req, res) => {
       .json({ error: "audioObjectPath required for upload source type" });
     return;
   }
+  // Suno imports are persisted to owned object storage before rendering. Never
+  // accept a client-supplied CDN URL as a replacement for an imported object.
+  if (audioSourceType === "suno") {
+    if (!audioObjectPath) {
+      res.status(400).json({ error: "Import the Suno song first; audioObjectPath is required." });
+      return;
+    }
+    const [ownedTrack] = await db.select({ id: soundtracksTable.id })
+      .from(soundtracksTable)
+      .where(and(
+        eq(soundtracksTable.userId, req.user.id),
+        eq(soundtracksTable.objectPath, audioObjectPath),
+        eq(soundtracksTable.provider, "suno-import"),
+        isNull(soundtracksTable.deletedAt),
+      ))
+      .limit(1);
+    if (!ownedTrack) {
+      res.status(404).json({ error: "Imported Suno audio not found for this account. Import the song again." });
+      return;
+    }
+  }
   if (
-    (audioSourceType === "youtube" || audioSourceType === "suno") &&
+    audioSourceType === "youtube" &&
     !audioSourceUrl
   ) {
     res

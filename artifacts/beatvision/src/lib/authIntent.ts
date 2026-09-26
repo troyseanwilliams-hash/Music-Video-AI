@@ -38,6 +38,7 @@ export interface AuthUrlOptions {
 const AUTH_ROUTES = new Set([
   "/",
   "/generate",
+  "/images",
   "/editor",
   "/dashboard",
   "/gallery",

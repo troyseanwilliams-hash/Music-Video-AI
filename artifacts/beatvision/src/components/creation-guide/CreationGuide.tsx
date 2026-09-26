@@ -103,11 +103,18 @@ export function CreationGuide() {
               testId="goal-montage"
             />
             <GoalCard 
-              title="AI Generated Video"
+              title="Generate Video"
               icon={<PlaySquare className="w-5 h-5 sm:w-6 sm:h-6" />}
               description="Create stunning AI scenes and visuals using credits."
               onClick={() => handleSelect("generate", "/generate", true)}
               testId="goal-generate"
+            />
+            <GoalCard
+              title="Create Images"
+              icon={<Film className="w-5 h-5 sm:w-6 sm:h-6" />}
+              description="Create standalone image packs from a prompt or scene script. No audio or video needed."
+              onClick={() => handleSelect("images", "/images", true)}
+              testId="goal-images"
             />
             <GoalCard 
               title="Original Music"
