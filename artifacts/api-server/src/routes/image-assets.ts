@@ -5,6 +5,9 @@ import { z } from "zod";
 import {
   creditsTable,
   db,
+  lockActiveCredits,
+  splitCreditDebit,
+  debitCreditColumns,
   imageAssetLikesTable,
   imageAssetsTable,
   jobsTable,
@@ -27,6 +30,7 @@ import {
   UpdateImageAssetVisibilityResponse,
 } from "@workspace/api-zod";
 import { getUserTier } from "../lib/tier.js";
+import { canCreateCreditFundedMedia } from "../lib/generationEligibility.js";
 import { GENERATED_IMAGE_CREDITS_PER_VISUAL } from "../lib/creditCost.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import {
@@ -379,7 +383,7 @@ router.post("/image-packs", async (req, res) => {
   const isAdmin =
     !!process.env.ADMIN_EMAIL
     && user.email?.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase();
-  if (!isAdmin && user.subscriptionStatus !== "active") {
+  if (!isAdmin && !canCreateCreditFundedMedia(user)) {
     res.status(403).json({
       error: "A subscription is required to generate an image pack.",
       code: "SUBSCRIPTION_REQUIRED",
@@ -390,7 +394,7 @@ router.post("/image-packs", async (req, res) => {
   // Keep tier lookup on this flow too: it validates the subscription record
   // against the same source used by video generation, without changing the
   // product-wide access policy.
-  if (!isAdmin) await getUserTier(user);
+  if (!isAdmin && user.subscriptionStatus === "active") await getUserTier(user);
 
   const creditCost = imageCount * GENERATED_IMAGE_CREDITS_PER_VISUAL;
   await db
@@ -400,29 +404,19 @@ router.post("/image-packs", async (req, res) => {
 
   const jobId = randomUUID();
   const reservation = await db.transaction(async (tx) => {
-    const [credits] = await tx
-      .select()
-      .from(creditsTable)
-      .where(eq(creditsTable.userId, req.user.id))
-      .limit(1)
-      .for("update");
+    const credits = await lockActiveCredits(tx, req.user.id);
     if (!credits) throw new Error("Credits account unavailable.");
-    if (!isAdmin && credits.creditsRemaining < creditCost) {
+    if (credits.creditsRemaining < creditCost) {
       return { job: null, remaining: credits.creditsRemaining };
     }
 
-    const subscriptionDebit = Math.min(creditCost, Math.max(0, credits.subscriptionCredits));
-    const topupDebit = Math.min(
-      Math.max(0, creditCost - subscriptionDebit),
-      Math.max(0, credits.topupCredits),
-    );
+    const split = splitCreditDebit(credits, creditCost);
+    const subscriptionDebit = split.subscription;
+    const topupDebit = split.topup;
     await tx
       .update(creditsTable)
       .set({
-        subscriptionCredits: sql`GREATEST(subscription_credits - ${creditCost}, 0)`,
-        topupCredits: sql`GREATEST(topup_credits - GREATEST(${creditCost} - subscription_credits, 0), 0)`,
-        creditsRemaining: sql`GREATEST(credits_remaining - ${creditCost}, 0)`,
-        creditsUsed: sql`credits_used + ${creditCost}`,
+        ...debitCreditColumns(split, creditCost),
         updatedAt: new Date(),
       })
       .where(eq(creditsTable.userId, req.user.id));
@@ -443,6 +437,7 @@ router.post("/image-packs", async (req, res) => {
         manifest: {
           reservedCredits: creditCost,
           reservedSubscriptionCredits: subscriptionDebit,
+          reservedWelcomeCredits: split.welcome,
           reservedTopupCredits: topupDebit,
           imagePack: {
             imageCount,

@@ -85,7 +85,7 @@ export default function Home() {
                 </h1>
 
                 <p className="text-base sm:text-lg md:text-xl text-white/60 mb-8 max-w-xl lg:mx-0 font-light leading-relaxed">
-                  Create music videos and short narrated stories. {FREE_OFFER_COPY.short} {FREE_OFFER_COPY.music} <span className="text-sm text-white/50 mt-2 block">{FREE_OFFER_COPY.credits}</span>
+                  Create music videos and short narrated stories. {FREE_OFFER_COPY.short} <span className="text-sm text-white/70 mt-2 block">{FREE_OFFER_COPY.example}</span><span className="text-sm text-white/70 mt-1 block">{FREE_OFFER_COPY.expiry}</span><span className="text-xs text-white/50 mt-1 block">{FREE_OFFER_COPY.videoExample}</span><span className="text-sm text-white/50 mt-2 block">{FREE_OFFER_COPY.credits}</span>
                 </p>
 
                 <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 w-full sm:w-auto">
@@ -506,7 +506,7 @@ export default function Home() {
             <p className="text-xl text-white/50 mb-12">
               Join creators using AIBeatSync to produce music, narrated stories, cinematic videos, and social-ready releases.
             </p>
-            <p className="text-sm text-white/60 mb-6">{FREE_OFFER_COPY.short} {FREE_OFFER_COPY.credits}</p>
+            <p className="text-sm text-white/60 mb-6">{FREE_OFFER_COPY.short} {FREE_OFFER_COPY.example} {FREE_OFFER_COPY.expiry} {FREE_OFFER_COPY.credits}</p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-5">
               <Link href={isAuthenticated ? "/editor" : buildAuthUrl("/register", { returnTo: "/editor" })} onClick={() => trackCTA("footer", "open_montage_studio", "Open Montage Studio")}>
                 <Button size="lg" className="w-full sm:w-auto text-lg h-14 px-10 bg-white text-black hover:bg-white/90 rounded-full font-semibold">

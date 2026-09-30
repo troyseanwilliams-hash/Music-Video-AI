@@ -956,7 +956,10 @@ export default function Generate() {
 
   const isAdmin = user?.isAdmin ?? false;
   const subStatus = user?.subscriptionStatus ?? "none";
-  const canCreate = isAdmin || subStatus === "active";
+  const trialActive = subStatus === "trial" && !!user?.trialEndsAt && new Date(user.trialEndsAt).getTime() > Date.now();
+  // A trial account with credits can generate; credit and plan checks still happen
+  // at the individual generation endpoints.
+  const canCreate = isAdmin || subStatus === "active" || trialActive;
 
   if (!canCreate) {
     return (
@@ -973,13 +976,13 @@ export default function Generate() {
               Unlock <span className="text-gradient-electric">AI video generation</span>
             </h2>
             <p className="text-muted-foreground text-lg">
-              An active subscription lets you turn any track into a beat-synced music video.
+              Generate with an eligible plan and available credits. Your Montage Studio access remains available within its own limits.
             </p>
           </div>
           <div className="rounded-2xl border border-primary/20 bg-card/60 backdrop-blur p-6 text-left space-y-3">
             <div className="flex items-center gap-3 text-sm">
               <Crown className="h-4 w-4 text-primary shrink-0" />
-              <span>Unlimited AI music video generations</span>
+              <span>AI music video generations use credits</span>
             </div>
             <div className="flex items-center gap-3 text-sm">
               <Sparkles className="h-4 w-4 text-primary shrink-0" />

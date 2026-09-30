@@ -1,17 +1,17 @@
 import { Router } from "express";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
 import { alignLyrics, lyricAlignAvailable } from "../lib/lyricAlign.js";
-import { db, creditsTable, soundtracksTable, usersTable, videosTable } from "@workspace/db";
+import { db, creditsTable, soundtracksTable, videosTable, lockActiveCredits, splitCreditDebit, activeWelcomeRefund } from "@workspace/db";
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { LYRIC_ALIGN_COST, TRIAL_FREE_ALIGNS } from "../lib/creditCost.js";
+import { LYRIC_ALIGN_COST } from "../lib/creditCost.js";
 import { MAX_LYRICS_LENGTH } from "../lib/lyricLimits.js";
 
 const router = Router();
 const storageService = new ObjectStorageService();
 
 type ChargeResult =
-  | { ok: true; remaining: number; subDebit: number; topDebit: number }
+  | { ok: true; remaining: number; welcomeDebit: number; subDebit: number; topDebit: number }
   | { ok: false; remaining: number };
 
 /**
@@ -21,73 +21,35 @@ type ChargeResult =
  */
 async function chargeCredits(userId: string, cost: number): Promise<ChargeResult> {
   return db.transaction(async (tx) => {
-    let [c] = await tx.select().from(creditsTable).where(eq(creditsTable.userId, userId)).limit(1).for("update");
+    let c = await lockActiveCredits(tx, userId);
     if (!c) [c] = await tx.insert(creditsTable).values({ id: randomUUID(), userId }).returning();
     if (c!.creditsRemaining < cost) return { ok: false as const, remaining: c!.creditsRemaining };
-    const subDebit = Math.min(c!.subscriptionCredits, cost);
-    const topDebit = cost - subDebit;
+    const { welcome: welcomeDebit, subscription: subDebit, topup: topDebit } = splitCreditDebit(c!, cost);
     await tx.update(creditsTable).set({
+      welcomeCredits: sql`welcome_credits - ${welcomeDebit}`,
       subscriptionCredits: sql`subscription_credits - ${subDebit}`,
       topupCredits: sql`topup_credits - ${topDebit}`,
       creditsRemaining: sql`credits_remaining - ${cost}`,
       creditsUsed: sql`credits_used + ${cost}`,
       updatedAt: new Date(),
     }).where(eq(creditsTable.userId, userId));
-    return { ok: true as const, remaining: c!.creditsRemaining - cost, subDebit, topDebit };
+    return { ok: true as const, remaining: c!.creditsRemaining - cost, welcomeDebit, subDebit, topDebit };
   });
 }
 
 /** Refund exactly the buckets that were debited. */
-async function refundCredits(userId: string, subDebit: number, topDebit: number): Promise<void> {
-  await db.update(creditsTable).set({
+async function refundCredits(userId: string, subDebit: number, topDebit: number, welcomeDebit: number): Promise<void> {
+  await db.transaction(async (tx) => {
+    const welcomeRefund = await activeWelcomeRefund(tx, userId, welcomeDebit);
+    await tx.update(creditsTable).set({
+    welcomeCredits: sql`welcome_credits + ${welcomeRefund}`,
     subscriptionCredits: sql`subscription_credits + ${subDebit}`,
     topupCredits: sql`topup_credits + ${topDebit}`,
-    creditsRemaining: sql`credits_remaining + ${subDebit + topDebit}`,
-    creditsUsed: sql`GREATEST(credits_used - ${subDebit + topDebit}, 0)`,
+    creditsRemaining: sql`credits_remaining + ${welcomeRefund + subDebit + topDebit}`,
+    creditsUsed: sql`GREATEST(credits_used - ${welcomeDebit + subDebit + topDebit}, 0)`,
     updatedAt: new Date(),
-  }).where(eq(creditsTable.userId, userId));
-}
-
-/**
- * Trial allowance: consume one of the user's TRIAL_FREE_ALIGNS free auto-sync
- * runs. Row-locked so concurrent aligns can't both grab the last free slot.
- * - "free":      a free slot was consumed (no credit charge needed)
- * - "exhausted": user is on an active trial with no free slots left — Auto-sync
- *                is LOCKED for the rest of the trial (no pay-with-credits path)
- * - "not_trial": not on a trial — normal credit charging applies
- */
-async function consumeTrialAlign(userId: string): Promise<"free" | "exhausted" | "not_trial"> {
-  return db.transaction(async (tx) => {
-    const [u] = await tx.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1).for("update");
-    if (!u) return "not_trial";
-    const isAdmin = !!(
-      process.env.ADMIN_EMAIL && u.email?.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase()
-    );
-    const trialActive =
-      !isAdmin &&
-      !!u.trialEndsAt && new Date(u.trialEndsAt).getTime() > Date.now() &&
-      u.subscriptionStatus !== "active";
-    if (!trialActive) return "not_trial";
-    if (u.trialAlignsUsed >= TRIAL_FREE_ALIGNS) return "exhausted";
-    await tx.update(usersTable)
-      .set({ trialAlignsUsed: sql`trial_aligns_used + 1` })
-      .where(eq(usersTable.id, userId));
-    return "free";
+    }).where(eq(creditsTable.userId, userId));
   });
-}
-
-/** 403 payload when a trial user has used all free Auto-syncs. */
-const TRIAL_ALIGN_LOCKED = {
-  error: `You've used your ${TRIAL_FREE_ALIGNS} free Auto-syncs. Auto-sync unlocks again when you subscribe — you can still type or paste lyrics (including LRC timestamps) for free.`,
-  code: "TRIAL_ALIGN_EXHAUSTED",
-  trialAlignLimit: TRIAL_FREE_ALIGNS,
-};
-
-/** Give back a free trial slot when the alignment itself failed. */
-async function releaseTrialAlign(userId: string): Promise<void> {
-  await db.update(usersTable)
-    .set({ trialAlignsUsed: sql`GREATEST(trial_aligns_used - 1, 0)` })
-    .where(eq(usersTable.id, userId));
 }
 
 /** An LRC is usable when it has at least one timestamped line. */
@@ -161,15 +123,7 @@ router.post("/lyrics/align", async (req, res) => {
       res.status(404).json({ error: "Video not found" });
       return;
     }
-    const trialSlot = await consumeTrialAlign(userId);
-    if (trialSlot === "exhausted") {
-      res.status(403).json(TRIAL_ALIGN_LOCKED);
-      return;
-    }
-    const freeTrialSlot = trialSlot === "free";
-    let charge: ChargeResult | null = null;
-    if (!freeTrialSlot) {
-      charge = await chargeCredits(userId, LYRIC_ALIGN_COST);
+    const charge = await chargeCredits(userId, LYRIC_ALIGN_COST);
       if (!charge.ok) {
         res.status(402).json({
           error: `Vocal alignment costs ${LYRIC_ALIGN_COST} credits but you only have ${charge.remaining}.`,
@@ -179,15 +133,13 @@ router.post("/lyrics/align", async (req, res) => {
         });
         return;
       }
-    }
     try {
       const audioUrl = await storageService.getObjectEntitySignedUrl(video.videoObjectPath, 3600);
       const result = await alignLyrics({ audioUrl, lyricsText });
       if (!lrcUsable(result.lrc)) throw new Error("Alignment produced no usable timing");
-      res.json({ ...result, charged: freeTrialSlot ? 0 : LYRIC_ALIGN_COST, trialFree: freeTrialSlot });
+      res.json({ ...result, charged: LYRIC_ALIGN_COST, trialFree: false });
     } catch (err) {
-      if (freeTrialSlot) await releaseTrialAlign(userId);
-      else if (charge?.ok) await refundCredits(userId, charge.subDebit, charge.topDebit);
+      if (charge.ok) await refundCredits(userId, charge.subDebit, charge.topDebit, charge.welcomeDebit);
       req.log.warn({ err, videoId }, "Lyric alignment from video failed (charge released)");
       res.status(502).json({ error: err instanceof Error ? err.message : "Lyric alignment failed" });
     }
@@ -227,18 +179,8 @@ router.post("/lyrics/align", async (req, res) => {
     throw err;
   }
 
-  // Alignment always runs the paid AssemblyAI API, so it costs credits —
-  // except for the small free trial allowance. Trial users who've used their
-  // allowance are locked out until they subscribe.
-  const trialSlot = await consumeTrialAlign(userId);
-  if (trialSlot === "exhausted") {
-    res.status(403).json(TRIAL_ALIGN_LOCKED);
-    return;
-  }
-  const freeTrialSlot = trialSlot === "free";
-  let charge: ChargeResult | null = null;
-  if (!freeTrialSlot) {
-    charge = await chargeCredits(userId, LYRIC_ALIGN_COST);
+  // Alignment always runs the paid AssemblyAI API, so it costs credits.
+  const charge = await chargeCredits(userId, LYRIC_ALIGN_COST);
     if (!charge.ok) {
       res.status(402).json({
         error: `Vocal alignment costs ${LYRIC_ALIGN_COST} credits but you only have ${charge.remaining}.`,
@@ -248,15 +190,13 @@ router.post("/lyrics/align", async (req, res) => {
       });
       return;
     }
-  }
 
   try {
     const result = await alignLyrics({ audioUrl, lyricsText });
     if (!lrcUsable(result.lrc)) throw new Error("Alignment produced no usable timing");
-    res.json({ ...result, charged: freeTrialSlot ? 0 : LYRIC_ALIGN_COST, trialFree: freeTrialSlot });
+    res.json({ ...result, charged: LYRIC_ALIGN_COST, trialFree: false });
   } catch (err) {
-    if (freeTrialSlot) await releaseTrialAlign(userId);
-    else if (charge?.ok) await refundCredits(userId, charge.subDebit, charge.topDebit);
+    if (charge.ok) await refundCredits(userId, charge.subDebit, charge.topDebit, charge.welcomeDebit);
     req.log.warn({ err, audioObjectPath }, "Lyric alignment failed (charge released)");
     res.status(502).json({ error: err instanceof Error ? err.message : "Lyric alignment failed" });
   }

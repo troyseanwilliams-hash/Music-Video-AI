@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useGetDashboardStats, getGetDashboardStatsQueryKey } from "@workspace/api-client-react";
 import { LYRIC_OVERLAY_COST } from "@/lib/creditPricing";
+import { FREE_OFFER_COPY } from "@/lib/freeOffer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Plus, Film, CheckCircle2, Clock, AlertCircle, Crown, Play, Coins, Trash2, Zap, Mail, X, Wand2, Music2, Sparkles, Smile, Quote, Lightbulb, Scissors, type LucideIcon } from "lucide-react";
@@ -232,8 +233,8 @@ export default function Dashboard() {
             <Clock className={`h-4 w-4 shrink-0 ${trialExpired ? "text-destructive" : "text-primary"}`} />
             <span>
               {trialExpired
-                ? "Your free Montage trial has ended. Non-paid accounts can still make 10 clean Montage exports per calendar month, then 15 credits each. AI generation requires credits and plan eligibility."
-                : <>Free trial — <strong>{trialDaysLeft} day{trialDaysLeft !== 1 ? "s" : ""}</strong> remaining.</>}
+                ? "Your Montage Studio trial has ended. Non-paid accounts can still make 10 clean Montage exports per calendar month, then 15 credits each. AI generation requires credits and plan eligibility."
+                : <>Montage Studio access — <strong>{trialDaysLeft} day{trialDaysLeft !== 1 ? "s" : ""}</strong> remaining within trial limits. Generation uses credits.</>}
             </span>
           </div>
           <Link href="/pricing">
@@ -278,13 +279,13 @@ export default function Dashboard() {
                 <Sparkles className="h-5 w-5 text-primary" /> Welcome to AIBeatSync
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Your 7-day Montage trial includes <strong className="text-foreground">3 lifetime free instrumentals and 1 lifetime free vocal song</strong>. AI images, video and narration require credits and are subject to plan rules. Here's how to start:
+                <strong className="text-foreground">{FREE_OFFER_COPY.short}</strong> {FREE_OFFER_COPY.example} {FREE_OFFER_COPY.expiry} Music uses credits except for paid subscribers&apos; included monthly instrumentals. AI images, video and narration use credits and are subject to plan rules. Montage Studio remains available within trial and post-trial limits even when credits are exhausted. Here's how to start:
               </p>
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
                 <Link href="/editor" className="rounded-xl border border-border bg-background/40 p-4 transition-colors hover:border-primary/50">
                   <Scissors className="mb-2 h-5 w-5 text-primary" />
                   <p className="text-sm font-semibold">Montage Studio</p>
-                  <p className="text-xs text-muted-foreground">Unlimited clean exports of your uploaded clips & music.</p>
+                  <p className="text-xs text-muted-foreground">Clean exports of your uploaded clips & music within your trial or post-trial limits.</p>
                 </Link>
                 <Link href="/generate" className="rounded-xl border border-border bg-background/40 p-4 transition-colors hover:border-primary/50">
                   <Wand2 className="mb-2 h-5 w-5 text-primary" />
@@ -319,11 +320,21 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold">{stats.creditsRemaining}</div>
-                {(stats.subscriptionCredits > 0 || stats.topupCredits > 0) && (
+                {(stats.subscriptionCredits > 0 || stats.topupCredits > 0 || ("welcomeCredits" in stats && typeof stats.welcomeCredits === "number" && stats.welcomeCredits > 0)) && (
                   <div className="mt-1 text-xs text-muted-foreground" data-testid="text-credits-breakdown">
                     <span className="font-medium text-foreground/80">{stats.subscriptionCredits}</span> plan
                     <span className="mx-1">+</span>
-                    <span className="font-medium text-foreground/80">{stats.topupCredits}</span> top-up
+                    {"welcomeCredits" in stats && typeof stats.welcomeCredits === "number" ? (
+                      <>
+                        <span className="font-medium text-foreground/80">{stats.welcomeCredits}</span> welcome (expires when your 7-day trial ends)
+                        <span className="mx-1">+</span>
+                        <span className="font-medium text-foreground/80">{stats.topupCredits}</span> non-expiring top-up
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-medium text-foreground/80">{stats.topupCredits}</span> top-up / welcome (unused welcome credits expire when your 7-day trial ends)
+                      </>
+                    )}
                   </div>
                 )}
               </CardContent>
@@ -359,7 +370,7 @@ export default function Dashboard() {
                 <Zap className="h-4 w-4 text-accent shrink-0" />
                 <span>
                   {stats.creditsRemaining === 0
-                    ? "You're out of credits — top up or upgrade to keep creating."
+                    ? "AI generation needs credits — top up or upgrade to generate more. Clean Montage Studio exports remain available within applicable limits."
                     : <>Running low — <strong>{stats.creditsRemaining}</strong> credit{stats.creditsRemaining === 1 ? "" : "s"} left (a 10s video costs 60).</>}
                 </span>
               </div>

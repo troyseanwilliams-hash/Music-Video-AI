@@ -182,19 +182,14 @@ export function calculateGeneratedImageCost(
     * GENERATED_IMAGE_CREDITS_PER_VISUAL;
 }
 
-// Free monthly "Soundtracks" (instrumental) allowance by subscription tier —
-// a bonus that upsells higher plans. Beyond it, tracks cost credits.
-// Provider cost is fixed at ~$0.0217/track, so a generous allowance stays cheap:
-// Starter 25 ≈ $0.54/mo, Pro 100 ≈ $2.17/mo, Studio 300 ≈ $6.51/mo — small
-// fractions of each plan. Competitive with the music-gen market as a bonus.
+// Existing paid-plan instrumental entitlements; introductory lifetime free
+// music uses were replaced by welcome credits, but subscribed plans retain
+// their included monthly tracks.
 export const FREE_SOUNDTRACKS_BY_TIER: Record<string, number> = {
   starter: 25,
   pro: 100,
   studio: 300,
 };
-// One-time signup bonus: brand-new (non-subscriber) users get this many free
-// Soundtracks to try the feature before subscribing. Lifetime, not monthly.
-export const NEW_USER_FREE_SOUNDTRACKS = 3;
 export function freeSoundtracksFor(tier?: string | null): number {
   if (!tier) return 0;
   const t = tier.toLowerCase();
@@ -216,8 +211,7 @@ const MUSIC_GEN_MARKUP = 1.5;
 // Protect the music margin at the least expensive current customer rate:
 // Studio annual = $790 / 60,000 credits ≈ $0.01317 per credit.
 const MUSIC_CUSTOMER_USD_PER_CREDIT_FLOOR = 790 / 60_000;
-// Eleven Music is billed by generated minute. Vocal songs are never part of
-// the free instrumental allowance and are charged from their inferred length.
+// Eleven Music is billed by generated minute; charge from inferred length.
 export const ELEVEN_MUSIC_USD_PER_MINUTE = 0.15;
 export const VOCAL_SONG_MIN_SECONDS = 60;
 export const VOCAL_SONG_MAX_SECONDS = 300;

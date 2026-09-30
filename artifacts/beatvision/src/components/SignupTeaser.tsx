@@ -56,7 +56,7 @@ export default function SignupTeaser({ variant }: { variant: "generate" | "remix
           </div>
           <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight mb-4 leading-tight">{c.title}</h1>
           <p className="text-lg text-muted-foreground mb-8">{c.sub}</p>
-          <p className="text-sm text-muted-foreground mb-5">{FREE_OFFER_COPY.music} {FREE_OFFER_COPY.trialExtras} {FREE_OFFER_COPY.afterTrial} {FREE_OFFER_COPY.credits} {FREE_OFFER_COPY.paid}</p>
+          <p className="text-sm text-muted-foreground mb-5">{FREE_OFFER_COPY.example} {FREE_OFFER_COPY.expiry} {FREE_OFFER_COPY.music} {FREE_OFFER_COPY.trialExtras} {FREE_OFFER_COPY.afterTrial} {FREE_OFFER_COPY.credits} {FREE_OFFER_COPY.paid}</p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">
             <Link
               href={buildAuthUrl("/register", { returnTo: variant === "remix" ? "/editor" : "/generate" })}

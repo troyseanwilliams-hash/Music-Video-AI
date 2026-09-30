@@ -10,6 +10,7 @@ export interface BillingSubscriptionResponse {
   subscriptionStatus: string;
   hasStripeCustomer: boolean;
   creditsRemaining: number;
+  welcomeCredits: number;
   subscriptionCredits: number;
   topupCredits: number;
   /** @nullable */

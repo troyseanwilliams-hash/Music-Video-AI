@@ -2,7 +2,7 @@ import { Router } from "express";
 import { randomUUID } from "crypto";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
-import { creditsTable, db, imageAssetsTable, jobsTable } from "@workspace/db";
+import { creditsTable, db, imageAssetsTable, jobsTable, lockActiveCredits, splitCreditDebit, debitCreditColumns, activeWelcomeRefund, refundCreditColumns } from "@workspace/db";
 import { GENERATED_IMAGE_CREDITS_PER_VISUAL } from "../lib/creditCost.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { toCustomerJobView } from "../lib/customerJobView.js";
@@ -31,6 +31,7 @@ type ReviewScene = {
 };
 
 type ReviewReplacement = {
+  welcomeCredits?: number;
   id: string;
   index: number;
   prompt: string;
@@ -200,8 +201,7 @@ router.post("/jobs/:id/image-review/replacements", async (req, res): Promise<voi
         };
       }
     }
-    const [credits] = await tx.select().from(creditsTable)
-      .where(eq(creditsTable.userId, req.user.id)).limit(1).for("update");
+    const credits = await lockActiveCredits(tx, req.user.id);
     const replacementCosts = safeScenes.map((scene) =>
       imageReviewReplacementCredits(review!.scenes[String(scene.index)]!),
     );
@@ -212,31 +212,31 @@ router.post("/jobs/:id/image-review/replacements", async (req, res): Promise<voi
         status: 402 as const,
       };
     }
+    let welcomeRemaining = credits.welcomeCredits;
     let subscriptionRemaining = credits.subscriptionCredits;
     const pending: Record<string, ReviewReplacement> = {};
     for (const [sceneIndex, scene] of safeScenes.entries()) {
       const id = randomUUID();
       const sceneCredits = replacementCosts[sceneIndex]!;
-      const subscriptionCredits = Math.min(sceneCredits, subscriptionRemaining);
+      const welcomeCredits = Math.min(sceneCredits, welcomeRemaining);
+      welcomeRemaining -= welcomeCredits;
+      const subscriptionCredits = Math.min(sceneCredits - welcomeCredits, subscriptionRemaining);
       subscriptionRemaining -= subscriptionCredits;
       pending[id] = {
         id,
         index: scene.index,
         prompt: scene.prompt,
         credits: sceneCredits,
+        welcomeCredits,
         subscriptionCredits,
-        topupCredits: sceneCredits - subscriptionCredits,
+        topupCredits: sceneCredits - welcomeCredits - subscriptionCredits,
         status: "queued",
         createdAt: new Date().toISOString(),
       };
     }
-    const subscriptionDebit = total - (total - Math.min(total, credits.subscriptionCredits));
-    const topupDebit = total - subscriptionDebit;
+    const split = splitCreditDebit(credits, total);
     await tx.update(creditsTable).set({
-      subscriptionCredits: sql`${creditsTable.subscriptionCredits} - ${subscriptionDebit}`,
-      topupCredits: sql`${creditsTable.topupCredits} - ${topupDebit}`,
-      creditsRemaining: sql`${creditsTable.creditsRemaining} - ${total}`,
-      creditsUsed: sql`${creditsTable.creditsUsed} + ${total}`,
+      ...debitCreditColumns(split, total),
       updatedAt: new Date(),
     }).where(eq(creditsTable.userId, req.user.id));
     await tx.update(jobsTable).set({
@@ -487,15 +487,11 @@ router.post("/jobs/:id/image-review/approve", async (req, res): Promise<void> =>
         code: "BUNDLED_RESUME_UNAVAILABLE" as const,
       };
     }
+    let resumeWelcomeDebit = 0;
     let resumeSubscriptionDebit = 0;
     let resumeTopupDebit = 0;
     if (resumeCredits > 0) {
-      const [credits] = await tx
-        .select()
-        .from(creditsTable)
-        .where(eq(creditsTable.userId, req.user.id))
-        .limit(1)
-        .for("update");
+      const credits = await lockActiveCredits(tx, req.user.id);
       const available = Math.max(0, credits?.creditsRemaining ?? 0);
       if (!credits || available < resumeCredits) {
         return {
@@ -506,25 +502,12 @@ router.post("/jobs/:id/image-review/approve", async (req, res): Promise<void> =>
           creditsRemaining: available,
         };
       }
-      resumeSubscriptionDebit = Math.min(
-        resumeCredits,
-        Math.max(0, credits.subscriptionCredits),
-      );
-      resumeTopupDebit = resumeCredits - resumeSubscriptionDebit;
-      if (resumeTopupDebit > Math.max(0, credits.topupCredits)) {
-        return {
-          error: `Resuming this video requires ${resumeCredits} credits, but you have ${available}.`,
-          status: 402 as const,
-          code: "INSUFFICIENT_CREDITS" as const,
-          creditsRequired: resumeCredits,
-          creditsRemaining: available,
-        };
-      }
+      const split = splitCreditDebit(credits, resumeCredits);
+      resumeWelcomeDebit = split.welcome;
+      resumeSubscriptionDebit = split.subscription;
+      resumeTopupDebit = split.topup;
       await tx.update(creditsTable).set({
-        subscriptionCredits: sql`${creditsTable.subscriptionCredits} - ${resumeSubscriptionDebit}`,
-        topupCredits: sql`${creditsTable.topupCredits} - ${resumeTopupDebit}`,
-        creditsRemaining: sql`${creditsTable.creditsRemaining} - ${resumeCredits}`,
-        creditsUsed: sql`${creditsTable.creditsUsed} + ${resumeCredits}`,
+        ...debitCreditColumns(split, resumeCredits),
         updatedAt: new Date(),
       }).where(eq(creditsTable.userId, req.user.id));
     }
@@ -538,6 +521,7 @@ router.post("/jobs/:id/image-review/approve", async (req, res): Promise<void> =>
           'refunded', false,
           'reservedCredits', ${resumeCredits}::integer,
           'reservedSubscriptionCredits', ${resumeSubscriptionDebit}::integer,
+          'reservedWelcomeCredits', ${resumeWelcomeDebit}::integer,
           'reservedTopupCredits', ${resumeTopupDebit}::integer,
           'imageCreditCost', 0,
           'videoCreditCost', ${resumeCredits}::integer,
@@ -587,11 +571,10 @@ export async function refundQueuedImageReviewReplacements(jobId: string, userId:
     const total = queued.reduce((sum, item) => sum + item.credits, 0);
     const subscription = queued.reduce((sum, item) => sum + item.subscriptionCredits, 0);
     const topup = queued.reduce((sum, item) => sum + item.topupCredits, 0);
+    const welcome = queued.reduce((sum, item) => sum + (item.welcomeCredits ?? 0), 0);
+    const activeWelcome = await activeWelcomeRefund(tx, userId, welcome);
     await tx.update(creditsTable).set({
-      subscriptionCredits: sql`${creditsTable.subscriptionCredits} + ${subscription}`,
-      topupCredits: sql`${creditsTable.topupCredits} + ${topup}`,
-      creditsRemaining: sql`${creditsTable.creditsRemaining} + ${total}`,
-      creditsUsed: sql`GREATEST(${creditsTable.creditsUsed} - ${total}, 0)`,
+      ...refundCreditColumns({ welcome, subscription, topup }, activeWelcome),
       updatedAt: new Date(),
     }).where(eq(creditsTable.userId, userId));
     const remaining = Object.fromEntries(Object.entries(review.pendingReplacements ?? {})

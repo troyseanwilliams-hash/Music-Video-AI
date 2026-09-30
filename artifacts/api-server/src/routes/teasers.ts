@@ -6,7 +6,7 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db } from "@workspace/db";
-import { videosTable, jobsTable, creditsTable } from "@workspace/db";
+import { videosTable, jobsTable, creditsTable, lockActiveCredits, splitCreditDebit, activeWelcomeRefund } from "@workspace/db";
 import { eq, and, isNull, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { ObjectStorageService } from "../lib/objectStorage.js";
@@ -64,7 +64,7 @@ async function loadOwnedVideo(userId: string, videoId: string) {
 }
 
 type ChargeResult =
-  | { ok: true; remaining: number; subDebit: number; topDebit: number }
+  | { ok: true; remaining: number; welcomeDebit: number; subDebit: number; topDebit: number }
   | { ok: false; remaining: number };
 
 /**
@@ -74,31 +74,35 @@ type ChargeResult =
  */
 async function chargeCredits(userId: string, cost: number): Promise<ChargeResult> {
   return db.transaction(async (tx) => {
-    let [c] = await tx.select().from(creditsTable).where(eq(creditsTable.userId, userId)).limit(1).for("update");
+    let c = await lockActiveCredits(tx, userId);
     if (!c) [c] = await tx.insert(creditsTable).values({ id: randomUUID(), userId }).returning();
     if (c!.creditsRemaining < cost) return { ok: false as const, remaining: c!.creditsRemaining };
-    const subDebit = Math.min(c!.subscriptionCredits, cost);
-    const topDebit = cost - subDebit;
+    const { welcome: welcomeDebit, subscription: subDebit, topup: topDebit } = splitCreditDebit(c!, cost);
     await tx.update(creditsTable).set({
+      welcomeCredits: sql`welcome_credits - ${welcomeDebit}`,
       subscriptionCredits: sql`subscription_credits - ${subDebit}`,
       topupCredits: sql`topup_credits - ${topDebit}`,
       creditsRemaining: sql`credits_remaining - ${cost}`,
       creditsUsed: sql`credits_used + ${cost}`,
       updatedAt: new Date(),
     }).where(eq(creditsTable.userId, userId));
-    return { ok: true as const, remaining: c!.creditsRemaining - cost, subDebit, topDebit };
+    return { ok: true as const, remaining: c!.creditsRemaining - cost, welcomeDebit, subDebit, topDebit };
   });
 }
 
 /** Refund exactly the buckets that were debited. */
-async function refundCredits(userId: string, subDebit: number, topDebit: number): Promise<void> {
-  await db.update(creditsTable).set({
+async function refundCredits(userId: string, subDebit: number, topDebit: number, welcomeDebit: number): Promise<void> {
+  await db.transaction(async (tx) => {
+    const welcomeRefund = await activeWelcomeRefund(tx, userId, welcomeDebit);
+    await tx.update(creditsTable).set({
+    welcomeCredits: sql`welcome_credits + ${welcomeRefund}`,
     subscriptionCredits: sql`subscription_credits + ${subDebit}`,
     topupCredits: sql`topup_credits + ${topDebit}`,
-    creditsRemaining: sql`credits_remaining + ${subDebit + topDebit}`,
-    creditsUsed: sql`GREATEST(credits_used - ${subDebit + topDebit}, 0)`,
+    creditsRemaining: sql`credits_remaining + ${welcomeRefund + subDebit + topDebit}`,
+    creditsUsed: sql`GREATEST(credits_used - ${welcomeDebit + subDebit + topDebit}, 0)`,
     updatedAt: new Date(),
-  }).where(eq(creditsTable.userId, userId));
+    }).where(eq(creditsTable.userId, userId));
+  });
 }
 
 async function withSignedUrls(metas: TeaserMetaRow[]) {
@@ -213,7 +217,7 @@ function makeHandler(kind: "teaser" | "canvas") {
       res.json({ teasers: await withSignedUrls(metas), charged: cost });
     } catch (err) {
       // Refund on failure so users aren't charged for nothing.
-      await refundCredits(req.user.id, charge.subDebit, charge.topDebit);
+      await refundCredits(req.user.id, charge.subDebit, charge.topDebit, charge.welcomeDebit);
       req.log.error({ err, videoId: video.id, kind }, "Social export failed (refunded)");
       res.status(500).json({ error: "Export failed — credits refunded. Please try again." });
     }
@@ -300,7 +304,7 @@ router.post("/videos/:id/lyrics", async (req: Request<{ id: string }>, res: Resp
       res.json({ videoId: newVideoId, url: null, charged: LYRIC_OVERLAY_COST });
     }
   } catch (err) {
-    await refundCredits(req.user.id, charge.subDebit, charge.topDebit);
+    await refundCredits(req.user.id, charge.subDebit, charge.topDebit, charge.welcomeDebit);
     req.log.error({ err, videoId: video.id }, "Lyric overlay failed (refunded)");
     res.status(500).json({ error: "Lyric burn failed — credits refunded. Please try again." });
   }
@@ -349,7 +353,7 @@ router.post("/videos/:id/release-kit", async (req: Request<{ id: string }>, res:
   const lyricsCost = lyricsText ? LYRIC_OVERLAY_COST : 0;
   const totalCost = socialCost + lyricsCost;
 
-  let debit: { subDebit: number; topDebit: number } | null = null;
+  let debit: { welcomeDebit: number; subDebit: number; topDebit: number } | null = null;
   if (totalCost > 0) {
     const charge = await chargeCredits(req.user.id, totalCost);
     if (!charge.ok) {
@@ -361,12 +365,12 @@ router.post("/videos/:id/release-kit", async (req: Request<{ id: string }>, res:
       });
       return;
     }
-    debit = { subDebit: charge.subDebit, topDebit: charge.topDebit };
+    debit = { welcomeDebit: charge.welcomeDebit, subDebit: charge.subDebit, topDebit: charge.topDebit };
   }
 
   const refund = async () => {
     if (!debit) return;
-    await refundCredits(req.user.id, debit.subDebit, debit.topDebit);
+    await refundCredits(req.user.id, debit.subDebit, debit.topDebit, debit.welcomeDebit);
   };
 
   try {
@@ -509,7 +513,7 @@ router.post("/videos/:id/lipsync", async (req: Request<{ id: string }>, res: Res
 
   // Reserve credits up front (non-admins). Keep the exact bucket split so a
   // provider/storage failure restores precisely what was debited.
-  let charged: { subDebit: number; topDebit: number } | null = null;
+  let charged: { welcomeDebit: number; subDebit: number; topDebit: number } | null = null;
   if (!admin) {
     const charge = await chargeCredits(req.user.id, cost);
     if (!charge.ok) {
@@ -521,7 +525,7 @@ router.post("/videos/:id/lipsync", async (req: Request<{ id: string }>, res: Res
       });
       return;
     }
-    charged = { subDebit: charge.subDebit, topDebit: charge.topDebit };
+    charged = { welcomeDebit: charge.welcomeDebit, subDebit: charge.subDebit, topDebit: charge.topDebit };
   }
 
   try {
@@ -571,6 +575,7 @@ router.post("/videos/:id/lipsync", async (req: Request<{ id: string }>, res: Res
       manifest: {
         reservedCredits: admin ? 0 : cost,
         reservedSubscriptionCredits: charged?.subDebit ?? 0,
+        reservedWelcomeCredits: charged?.welcomeDebit ?? 0,
         reservedTopupCredits: charged?.topDebit ?? 0,
         lipSyncEnabled: true,
         publicLipSync: true,
@@ -588,7 +593,7 @@ router.post("/videos/:id/lipsync", async (req: Request<{ id: string }>, res: Res
   } catch (err) {
     // Queue setup failed before a worker could own the reservation.
     if (charged) {
-      await refundCredits(req.user.id, charged.subDebit, charged.topDebit);
+      await refundCredits(req.user.id, charged.subDebit, charged.topDebit, charged.welcomeDebit);
     }
     req.log.error({ err, videoId: video.id }, "Lip sync queueing failed");
     res.status(500).json({

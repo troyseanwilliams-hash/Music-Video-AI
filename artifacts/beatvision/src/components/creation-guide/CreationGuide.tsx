@@ -89,7 +89,7 @@ export function CreationGuide() {
             <DialogHeader>
               <DialogTitle className="text-xl sm:text-2xl font-bold pr-10 [@media(max-height:500px)]:text-lg">What would you like to create?</DialogTitle>
               <DialogDescription className="text-sm sm:text-base mt-1.5 sm:mt-2 [@media(max-height:500px)]:sr-only">
-                 Choose what you want to make. The guide is free; {FREE_OFFER_COPY.short} AI images, video and narration require credits and existing plan rules.
+                 Choose what you want to make. The guide is free; {FREE_OFFER_COPY.short} {FREE_OFFER_COPY.example} {FREE_OFFER_COPY.expiry} Generation uses credits and existing plan rules.
               </DialogDescription>
             </DialogHeader>
           </div>
@@ -99,14 +99,14 @@ export function CreationGuide() {
               title="Montage Video"
               badge="Recommended"
               icon={<Film className="w-5 h-5 sm:w-6 sm:h-6" />}
-              description={`${FREE_OFFER_COPY.headline}. Bring your own media; unlimited clean exports during trial. 3 lyric burns included, then credits apply. After trial: 10 clean exports/month, then 15 credits each.`}
+              description={`${FREE_OFFER_COPY.headline} ${FREE_OFFER_COPY.expiry} Bring your own media; clean exports during your active trial within trial limits. Lyric burns and Auto-sync use credits. After trial: 10 clean exports/month, then 15 credits each.`}
               onClick={() => handleSelect("montage", "/editor?guide=montage", true)}
               testId="goal-montage"
             />
             <GoalCard 
               title="Generate Video"
               icon={<PlaySquare className="w-5 h-5 sm:w-6 sm:h-6" />}
-              description="Create AI scenes and visuals using credits, subject to plan rules. New accounts start with 0 generation credits except valid grants."
+              description={`Create AI scenes and visuals using credits, subject to plan rules. ${FREE_OFFER_COPY.short} ${FREE_OFFER_COPY.example} ${FREE_OFFER_COPY.expiry}`}
               onClick={() => handleSelect("generate", "/generate", true)}
               testId="goal-generate"
             />

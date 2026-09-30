@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
+import { db, lockActiveCredits } from "@workspace/db";
 import {
   jobsTable,
   creditsTable,
@@ -331,7 +331,7 @@ router.get("/studio/quota", async (req, res) => {
   const quotaTrialActive =
     !!quotaUser?.trialEndsAt &&
     new Date(quotaUser.trialEndsAt).getTime() > Date.now() &&
-    (quotaUser?.subscriptionStatus ?? "none") !== "active";
+    quotaUser?.subscriptionStatus === "trial";
   let lyricUsed = 0;
   if (quotaTrialActive) {
     const [{ used: lu }] = await db
@@ -356,12 +356,12 @@ router.get("/studio/quota", async (req, res) => {
     trial: quotaTrialActive
       ? {
           lyricUsed,
-          lyricFree: TRIAL_LYRIC_EXPORTS,
-          lyricRemaining: Math.max(0, TRIAL_LYRIC_EXPORTS - lyricUsed),
+          lyricFree: 0,
+          lyricRemaining: 0,
           lyricOverageCost: LYRIC_OVERLAY_COST,
           alignUsed: quotaUser?.trialAlignsUsed ?? 0,
-          alignFree: TRIAL_FREE_ALIGNS,
-          alignRemaining: Math.max(0, TRIAL_FREE_ALIGNS - (quotaUser?.trialAlignsUsed ?? 0)),
+          alignFree: 0,
+          alignRemaining: 0,
           alignCost: LYRIC_ALIGN_COST,
         }
       : null,
@@ -418,7 +418,8 @@ router.post("/studio/render", async (req, res) => {
   );
   const isSubscribed = (userRecord?.subscriptionStatus ?? "none") === "active";
   const trialActive =
-    !!userRecord?.trialEndsAt && new Date(userRecord.trialEndsAt).getTime() > Date.now();
+    userRecord?.subscriptionStatus === "trial" &&
+    !!userRecord.trialEndsAt && new Date(userRecord.trialEndsAt).getTime() > Date.now();
   // Full, free Editor access during the 7-day trial, with a subscription, or for admins.
   const fullAccess = isAdmin || isSubscribed || trialActive;
 
@@ -449,11 +450,7 @@ router.post("/studio/render", async (req, res) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${userId}))`);
 
     const loadCredits = async () => {
-      let [userCredits] = await tx
-        .select()
-        .from(creditsTable)
-        .where(eq(creditsTable.userId, userId))
-        .limit(1);
+      let userCredits = await lockActiveCredits(tx, userId);
       if (!userCredits) {
         [userCredits] = await tx
           .insert(creditsTable)
@@ -463,23 +460,8 @@ router.post("/studio/render", async (req, res) => {
       return userCredits;
     };
 
-    // Trial karaoke allowance: lyric burns cost real money, so trial users get
-    // TRIAL_LYRIC_EXPORTS free lyric-burn exports. Beyond that, the standard
-    // lyric add-on is charged from their credit balance.
+    // Trial lyric burns consume the same credits as any other paid generation.
     if (lyricsRequested && trialActive && !isAdmin && !isSubscribed) {
-      const [{ used: lyricUsed }] = await tx
-        .select({ used: count() })
-        .from(jobsTable)
-        .where(
-          and(
-            eq(jobsTable.userId, userId),
-            eq(jobsTable.jobType, "editor_render"),
-            ne(jobsTable.status, "failed"),
-            sql`coalesce(${jobsTable.manifest} ->> 'lyricsText', '') <> ''`,
-          ),
-        );
-
-      if (lyricUsed >= TRIAL_LYRIC_EXPORTS) {
         chargeCredits = true;
         chargeAmount = LYRIC_OVERLAY_COST;
         const userCredits = await loadCredits();
@@ -487,16 +469,14 @@ router.post("/studio/render", async (req, res) => {
           rejection = {
             status: 402,
             body: {
-              error: `Your free trial includes ${TRIAL_LYRIC_EXPORTS} karaoke lyric exports and you've used them all. Extra lyric exports cost ${chargeAmount} credits (you have ${userCredits.creditsRemaining}) — or subscribe for unlimited karaoke videos.`,
-              code: "TRIAL_LYRIC_LIMIT",
+              error: `Lyric exports cost ${chargeAmount} credits (you have ${userCredits.creditsRemaining}).`,
+              code: "INSUFFICIENT_CREDITS",
               creditsRequired: chargeAmount,
               creditsRemaining: userCredits.creditsRemaining,
-              trialLyricLimit: TRIAL_LYRIC_EXPORTS,
             },
           };
           return null;
         }
-      }
     }
 
     if (!fullAccess) {

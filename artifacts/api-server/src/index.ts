@@ -17,11 +17,13 @@ async function fixAdminCredits(): Promise<void> {
   if (!email) return;
   const [user] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, email)).limit(1);
   if (!user) return;
-  const [existing] = await db.select({ creditsRemaining: creditsTable.creditsRemaining }).from(creditsTable).where(eq(creditsTable.userId, user.id)).limit(1);
-  if (existing?.creditsRemaining === 1475) return;
-  await db.insert(creditsTable).values({ id: randomUUID(), userId: user.id, creditsRemaining: 1475, subscriptionCredits: 10, topupCredits: 1465 })
-    .onConflictDoUpdate({ target: creditsTable.userId, set: { creditsRemaining: 1475, subscriptionCredits: 10, topupCredits: 1465 } });
-  logger.info({ email, credits: 1475 }, "Admin credits fixed on startup");
+  // Never rewrite an existing balance at startup: that can erase a welcome
+  // reservation, paid credits, or worker refunds when a process restarts.
+  const created = await db.insert(creditsTable)
+    .values({ id: randomUUID(), userId: user.id, creditsRemaining: 1475, subscriptionCredits: 10, topupCredits: 1465 })
+    .onConflictDoNothing({ target: creditsTable.userId })
+    .returning({ id: creditsTable.id });
+  if (created.length) logger.info({ email, credits: 1475 }, "Admin credits provisioned");
 }
 
 const rawPort = process.env["PORT"];

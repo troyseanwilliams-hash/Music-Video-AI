@@ -1,4 +1,4 @@
-import { db } from "@workspace/db";
+import { activeWelcomeRefund, db } from "@workspace/db";
 import { creditsTable, imageAssetsTable, jobsTable } from "@workspace/db";
 import { count, eq, sql } from "drizzle-orm";
 import { GENERATED_IMAGE_CREDITS_PER_VISUAL } from "./creditCost.js";
@@ -8,6 +8,7 @@ type ImageFirstBillingMeta = {
   reservedCredits?: number;
   reservedSubscriptionCredits?: number;
   reservedTopupCredits?: number;
+  reservedWelcomeCredits?: number;
   imageCreditCost?: number;
   reusedSourceImageCount?: number;
   videoCreditCost?: number;
@@ -33,6 +34,7 @@ export type ImageFirstSettlementAmounts = {
   refundedCredits: number;
   subscriptionRefund: number;
   topupRefund: number;
+  welcomeRefund: number;
   completedImages: number;
   spentVideoScenes: number;
 };
@@ -87,6 +89,7 @@ function zeroSettlementAmounts(): ImageFirstSettlementAmounts {
     refundedCredits: 0,
     subscriptionRefund: 0,
     topupRefund: 0,
+    welcomeRefund: 0,
     completedImages: 0,
     spentVideoScenes: 0,
   };
@@ -136,10 +139,11 @@ export function calculateImageFirstSettlement(
   const originalSubscription = Math.max(
     0,
     meta.reservedSubscriptionCredits
-      ?? (meta.reservedTopupCredits === undefined ? reserved : 0),
+      ?? (meta.reservedTopupCredits === undefined && meta.reservedWelcomeCredits === undefined ? reserved : 0),
   );
   const originalTopup = Math.max(0, meta.reservedTopupCredits ?? 0);
-  const currentReservation = Math.min(reserved, originalSubscription + originalTopup);
+  const originalWelcome = Math.max(0, meta.reservedWelcomeCredits ?? 0);
+  const currentReservation = Math.min(reserved, originalWelcome + originalSubscription + originalTopup);
   const previouslyCharged = Math.min(
     reserved,
     Math.max(0, meta.imageFirstChargedCredits ?? 0),
@@ -151,17 +155,19 @@ export function calculateImageFirstSettlement(
   const chargedCredits = Math.min(reserved, previouslyCharged + newlyCharged);
   const subscriptionRefund = Math.max(
     0,
-    originalSubscription - Math.min(newlyCharged, originalSubscription),
+    originalSubscription - Math.min(Math.max(0, newlyCharged - originalWelcome), originalSubscription),
   );
   const topupRefund = Math.max(
     0,
-    originalTopup - Math.max(0, newlyCharged - originalSubscription),
+    originalTopup - Math.max(0, newlyCharged - originalWelcome - originalSubscription),
   );
+  const welcomeRefund = Math.max(0, originalWelcome - Math.min(newlyCharged, originalWelcome));
   return {
     chargedCredits,
-    refundedCredits: subscriptionRefund + topupRefund,
+    refundedCredits: welcomeRefund + subscriptionRefund + topupRefund,
     subscriptionRefund,
     topupRefund,
+    welcomeRefund,
     completedImages,
     spentVideoScenes,
   };
@@ -213,13 +219,20 @@ export async function settleImageFirstReservation(
       .select({ count: count() })
       .from(imageAssetsTable)
       .where(eq(imageAssetsTable.jobId, jobId));
-    const amounts = calculateImageFirstSettlement(meta, Number(completed?.count ?? 0));
+    const calculated = calculateImageFirstSettlement(meta, Number(completed?.count ?? 0));
+    const welcomeRefund = await activeWelcomeRefund(tx, userId, calculated.welcomeRefund);
+    const amounts = {
+      ...calculated,
+      welcomeRefund,
+      refundedCredits: calculated.subscriptionRefund + calculated.topupRefund + welcomeRefund,
+    };
     if (amounts.refundedCredits > 0) {
       await tx
         .update(creditsTable)
         .set({
           subscriptionCredits: sql`subscription_credits + ${amounts.subscriptionRefund}`,
           topupCredits: sql`topup_credits + ${amounts.topupRefund}`,
+          welcomeCredits: sql`welcome_credits + ${amounts.welcomeRefund}`,
           creditsRemaining: sql`credits_remaining + ${amounts.refundedCredits}`,
           creditsUsed: sql`GREATEST(credits_used - ${amounts.refundedCredits}, 0)`,
           updatedAt: new Date(),

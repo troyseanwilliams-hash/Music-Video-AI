@@ -2,29 +2,32 @@
 // editorCost, creditCost, and music entitlements on the API.
 export const FREE_OFFER = {
   trialDays: 7,
-  startingGenerationCredits: 0,
-  lifetimeInstrumentals: 3,
-  lifetimeVocalSongs: 1,
-  trialLyricExports: 3,
-  trialAutoSyncs: 3,
+  startingGenerationCredits: 150,
+  trialLyricExports: 0,
+  trialAutoSyncs: 0,
   postTrialMonthlyMontageExports: 10,
   postTrialMontageOverageCredits: 15,
-  referralSignupBonusCredits: 50,
 } as const;
 
 export const FREE_OFFER_COPY = {
-  headline: "7-day free Montage trial — no card required",
-  short: "Start a 7-day free Montage trial: unlimited clean exports with your own media, no card required.",
-  music: "Includes 3 lifetime free instrumentals and 1 lifetime free vocal song.",
-  trialExtras: "During the trial, get 3 lyric-burn exports and 3 Auto-sync aligns included.",
+  headline: "Get 150 free credits when you create your account.",
+  short: "Get 150 free credits when you create your account.",
+  example: "Enough for about 21 images, or 1 video clip plus several images. Actual usage varies by model and settings.",
+  expiry: "Unused welcome credits expire when your 7-day trial ends.",
+  videoExample: "For the clip-plus-images example, choose a 5-second 720p Kling clip; higher-cost settings may leave fewer credits for images.",
+  music: "New accounts use credits for music. Paid subscribers also retain monthly included instrumentals (Starter 25, Pro 100, Studio 300); vocal songs use credits.",
+  trialExtras: "Clean Montage Studio exports are included during the active trial. Karaoke lyric-burn exports and Auto-sync aligns use credits; paid subscriber features retain their plan benefits.",
   afterTrial: "After the trial, non-paid accounts get 10 clean Montage exports per calendar month, then 15 credits per export.",
-  credits: "New accounts start with 0 generation credits (except valid referral or promotional grants). AI images, video and narration require credits and are subject to existing plan rules.",
-  paid: "Paid checkout charges immediately; the free Montage trial is not a free trial of paid AI plans.",
-  referral: "If your invitation code is valid, you'll receive 50 bonus credits when you sign up.",
+  credits: "Music beyond paid subscriber included instrumentals, AI images, video and narration use credits and are subject to plan rules. Montage Studio access continues within the applicable trial and post-trial limits even when credits run out.",
+  paid: "No card is required to create an account. Paid checkout charges immediately; account credits are not a free trial of paid AI plans.",
+  referral: "Your invitation code will be applied when you sign up.",
 } as const;
 
 export const freeOfferTerms = [
   FREE_OFFER_COPY.short,
+  FREE_OFFER_COPY.example,
+  FREE_OFFER_COPY.expiry,
+  FREE_OFFER_COPY.videoExample,
   FREE_OFFER_COPY.music,
   FREE_OFFER_COPY.trialExtras,
   FREE_OFFER_COPY.afterTrial,

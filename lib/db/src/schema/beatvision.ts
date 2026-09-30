@@ -345,14 +345,15 @@ export const creditsTable = pgTable("credits", {
     .notNull()
     .references(() => usersTable.id, { onDelete: "cascade" })
     .unique(),
-  // creditsRemaining is the sum of subscriptionCredits + topupCredits and is
+  // creditsRemaining is the sum of welcomeCredits + subscriptionCredits + topupCredits and is
   // kept up to date by every grant/consume site so existing callers keep
   // working. New code should prefer the bucketed columns when it needs to
   // distinguish source.
-  // New users start their trial with 0 credits — the trial gives access to the
-  // free features (Prompt Studio builders, free Soundtracks, Remix exports), and
-  // credits ("points") are granted only when they subscribe.
+  // Database default stays zero for existing users, admin provisioning and
+  // legacy row creation. Registration explicitly grants a time-limited
+  // welcome balance in its account-creation transaction.
   creditsRemaining: integer("credits_remaining").notNull().default(0),
+  welcomeCredits: integer("welcome_credits").notNull().default(0),
   subscriptionCredits: integer("subscription_credits").notNull().default(0),
   topupCredits: integer("topup_credits").notNull().default(0),
   creditsUsed: integer("credits_used").notNull().default(0),
@@ -360,8 +361,7 @@ export const creditsTable = pgTable("credits", {
   // Free monthly "Soundtracks" (instrumental) allowance usage, reset monthly.
   freeSoundtracksUsed: integer("free_soundtracks_used").notNull().default(0),
   freeSoundtracksResetAt: timestamp("free_soundtracks_reset_at", { withTimezone: true }),
-  // One-time introductory vocal song. Kept separate from the recurring
-  // instrumental allowance so monthly resets can never restore it.
+  // Legacy usage tracking for accounts created before the welcome offer.
   freeVocalSongsUsed: integer("free_vocal_songs_used").notNull().default(0),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
@@ -455,7 +455,7 @@ export type SupportTicket = typeof supportTicketsTable.$inferSelect;
 export const creditGrantSourceEnum = pgEnum("credit_grant_source", [
   "subscription",
   "topup",
-  "trial",
+  "trial", // One-time welcome grant (legacy enum value; no migration needed).
   "admin",
   "referral",
 ]);
@@ -490,7 +490,8 @@ export const referralsTable = pgTable("referrals", {
     .unique()
     .references(() => usersTable.id, { onDelete: "cascade" }),
   code: text("code").notNull(),
-  // "credited" once both sides have received their signup credits.
+  // "credited" once the eligible referrer receives their reward. Invitee
+  // receives only the account-creation welcome grant (referredCredits = 0).
   status: text("status").notNull().default("credited"),
   referrerCredits: integer("referrer_credits").notNull().default(0),
   referredCredits: integer("referred_credits").notNull().default(0),

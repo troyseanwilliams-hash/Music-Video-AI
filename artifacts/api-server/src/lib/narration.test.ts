@@ -87,6 +87,11 @@ describe("AIBeatSync narration contract", () => {
     expect(narrationRefundSplit({
       chargedSubscriptionCredits: 5,
       chargedTopupCredits: 2,
-    })).toEqual({ subscription: 5, topup: 2, total: 7 });
+    })).toEqual({ subscription: 5, topup: 2, welcome: 0, total: 7 });
+    expect(narrationRefundSplit({
+      chargedWelcomeCredits: 4,
+      chargedSubscriptionCredits: 5,
+      chargedTopupCredits: 2,
+    })).toEqual({ subscription: 5, topup: 2, welcome: 4, total: 11 });
   });
 });

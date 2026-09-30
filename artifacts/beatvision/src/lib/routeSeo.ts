@@ -14,7 +14,7 @@ export const publicRouteSeo: Record<string, RouteSeo> = {
   "/": {
     path: "/",
     title: "AI Music Video & Creative Studio | AIBeatSync",
-    description: "Turn your music into beat-synced AI videos with AIBeatSync. Create images, music and narrated stories in one studio built for independent creators.",
+    description: "Get 150 free credits when you create your AIBeatSync account. Enough for about 21 images, or 1 video clip plus several images. Actual usage varies by model and settings. Unused welcome credits expire when your 7-day trial ends.",
   },
   "/images": {
     path: "/images",
@@ -34,7 +34,7 @@ export const publicRouteSeo: Record<string, RouteSeo> = {
   "/pricing": {
     path: "/pricing",
     title: "AI Video, Image & Music Pricing | AIBeatSync",
-    description: "Explore AIBeatSync credit plans for music, images, narration, video generation and Montage Studio exports. Find the plan that fits your creative workflow.",
+    description: "Get 150 free credits when you create your AIBeatSync account. Enough for about 21 images, or 1 video clip plus several images. Actual usage varies by model and settings. Unused welcome credits expire when your 7-day trial ends. Explore plans for music, images and video.",
   },
   // /gallery is the signed-in customer's library, not the public community gallery.
   "/gallery": {
@@ -52,7 +52,7 @@ export const publicRouteSeo: Record<string, RouteSeo> = {
   "/register": {
     path: "/register",
     title: "Create Your AIBeatSync Account | AIBeatSync",
-    description: "Create an AIBeatSync account to start making music, images and AI videos in your creative studio.",
+    description: "Get 150 free credits when you create your AIBeatSync account. Enough for about 21 images, or 1 video clip plus several images. Actual usage varies by model and settings. Unused welcome credits expire when your 7-day trial ends.",
     noindex: true,
   },
   "/explore": {

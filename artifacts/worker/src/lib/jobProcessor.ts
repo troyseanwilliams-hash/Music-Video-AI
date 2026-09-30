@@ -1,5 +1,5 @@
 import { db, getLocalResourceLeaseWaiters, getResourceLeaseExecutionContext, getResourceLeaseMetrics, runWithResourceLeaseExecutionContext, withResourceLease } from "@workspace/db";
-import { jobsTable, videosTable, creditsTable, imageAssetsTable } from "@workspace/db";
+import { jobsTable, videosTable, creditsTable, imageAssetsTable, activeWelcomeRefund, lockActiveCredits, splitCreditDebit } from "@workspace/db";
 import type { VideoClipMeta } from "@workspace/db";
 import { eq, and, sql, count, isNull } from "drizzle-orm";
 import { GENERATED_IMAGE_CREDITS_PER_VISUAL } from "./creditCost.js";
@@ -336,6 +336,7 @@ type ImageReviewState = {
     credits: number;
     subscriptionCredits: number;
     topupCredits: number;
+    welcomeCredits?: number;
     status: "queued" | "processing" | "uncertain";
     createdAt: string;
   }>;
@@ -376,6 +377,7 @@ type AiJobMeta = {
   reservedCredits?: number;
   reservedSubscriptionCredits?: number;
   reservedTopupCredits?: number;
+  reservedWelcomeCredits?: number;
   refunded?: boolean;
   lipSyncPollUrl?: string;
   partialClips?: Record<string, string>; // clip index -> object storage path
@@ -406,11 +408,13 @@ type AiJobMeta = {
   baseCreditCost?: number;
   baseReservedSubscriptionCredits?: number;
   baseReservedTopupCredits?: number;
+  baseReservedWelcomeCredits?: number;
   bundledLipSyncEnabled?: boolean;
   bundledLipSyncChildId?: string;
   bundledLipSyncCost?: number;
   bundledLipSyncReservedSubscriptionCredits?: number;
   bundledLipSyncReservedTopupCredits?: number;
+  bundledLipSyncReservedWelcomeCredits?: number;
   bundledLipSyncActivated?: boolean;
   selectedSceneSources?: Record<string, { sourceImageAssetId?: string }>;
   photoAnimation?: {
@@ -1192,11 +1196,14 @@ async function refundFailedImageReviewReplacement(jobId: string, replacementId: 
     const review = meta.imageReview;
     const replacement = review?.pendingReplacements?.[replacementId];
     if (!replacement) return;
+    const welcomeRefund = await activeWelcomeRefund(tx, job!.userId, replacement.welcomeCredits ?? 0);
+    const restored = replacement.subscriptionCredits + replacement.topupCredits + welcomeRefund;
     await tx.update(creditsTable).set({
       subscriptionCredits: sql`${creditsTable.subscriptionCredits} + ${replacement.subscriptionCredits}`,
       topupCredits: sql`${creditsTable.topupCredits} + ${replacement.topupCredits}`,
-      creditsRemaining: sql`${creditsTable.creditsRemaining} + ${replacement.credits}`,
-      creditsUsed: sql`GREATEST(${creditsTable.creditsUsed} - ${replacement.credits}, 0)`,
+      welcomeCredits: sql`${creditsTable.welcomeCredits} + ${welcomeRefund}`,
+      creditsRemaining: sql`${creditsTable.creditsRemaining} + ${restored}`,
+      creditsUsed: sql`GREATEST(${creditsTable.creditsUsed} - ${restored}, 0)`,
       updatedAt: new Date(),
     }).where(eq(creditsTable.userId, job!.userId));
     const { [replacementId]: _failed, ...remaining } = review!.pendingReplacements ?? {};
@@ -1252,18 +1259,22 @@ async function refundImagePackRemainder(job: JobRow): Promise<number> {
     );
     const originalSubscription = Math.max(0, meta.reservedSubscriptionCredits ?? 0);
     const originalTopUp = Math.max(0, meta.reservedTopupCredits ?? 0);
-    const subscriptionRefund = Math.max(0, originalSubscription - Math.min(charged, originalSubscription));
+    const originalWelcome = Math.max(0, meta.reservedWelcomeCredits ?? 0);
+    const welcomeRefundDue = Math.max(0, originalWelcome - Math.min(charged, originalWelcome));
+    const subscriptionRefund = Math.max(0, originalSubscription - Math.min(Math.max(0, charged - originalWelcome), originalSubscription));
     const topUpRefund = Math.max(
       0,
-      originalTopUp - Math.max(0, charged - originalSubscription),
+      originalTopUp - Math.max(0, charged - originalWelcome - originalSubscription),
     );
-    const refund = subscriptionRefund + topUpRefund;
+    const welcomeRefund = await activeWelcomeRefund(tx, job.userId, welcomeRefundDue);
+    const refund = welcomeRefund + subscriptionRefund + topUpRefund;
     if (refund > 0) {
       await tx
         .update(creditsTable)
         .set({
           subscriptionCredits: sql`subscription_credits + ${subscriptionRefund}`,
           topupCredits: sql`topup_credits + ${topUpRefund}`,
+          welcomeCredits: sql`welcome_credits + ${welcomeRefund}`,
           creditsRemaining: sql`credits_remaining + ${refund}`,
           creditsUsed: sql`GREATEST(credits_used - ${refund}, 0)`,
           updatedAt: new Date(),
@@ -2099,15 +2110,18 @@ async function refundReservation(jobId: string, userId: string, reason: string):
     if (reserved <= 0 || meta.refunded) return 0;
     const hasExactSplit =
       typeof meta.reservedSubscriptionCredits === "number" ||
-      typeof meta.reservedTopupCredits === "number";
+      typeof meta.reservedTopupCredits === "number" ||
+      typeof meta.reservedWelcomeCredits === "number";
     const subscriptionRefund = hasExactSplit ? Math.max(0, meta.reservedSubscriptionCredits ?? 0) : reserved;
     const topupRefund = hasExactSplit ? Math.max(0, meta.reservedTopupCredits ?? 0) : 0;
-    const total = subscriptionRefund + topupRefund;
+    const welcomeRefund = await activeWelcomeRefund(tx, userId, Math.max(0, meta.reservedWelcomeCredits ?? 0));
+    const total = welcomeRefund + subscriptionRefund + topupRefund;
     await tx
       .update(creditsTable)
       .set({
         subscriptionCredits: sql`subscription_credits + ${subscriptionRefund}`,
         topupCredits: sql`topup_credits + ${topupRefund}`,
+        welcomeCredits: sql`welcome_credits + ${welcomeRefund}`,
         creditsRemaining: sql`credits_remaining + ${total}`,
         creditsUsed: sql`GREATEST(credits_used - ${total}, 0)`,
         updatedAt: new Date(),
@@ -3441,6 +3455,10 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
     const noteMsg = assemblyOnlyRetry
       ? `${errMsg} — retry ${nextRetry}/${maxRetries} in ${delayMs / 60_000}m using saved scenes at no charge`
       : `${errMsg} — retry ${nextRetry}/${maxRetries} in ${delayMs / 60_000}m`;
+    const activeWelcome = sql`CASE WHEN EXISTS (
+      SELECT 1 FROM users WHERE users.id = credits.user_id AND users.trial_ends_at > NOW()
+    ) THEN welcome_credits ELSE 0 END`;
+    const activeBalance = sql`subscription_credits + topup_credits + ${activeWelcome}`;
 
     // `target` fences the charge on still OWNING the job: if the watchdog (or
     // anything else) already re-queued/failed this row, its status is no longer
@@ -3455,12 +3473,13 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
       ),
       charged AS (
         UPDATE credits SET
-          subscription_credits = GREATEST(subscription_credits - ${retryCost}, 0),
-          topup_credits = GREATEST(topup_credits - GREATEST(${retryCost} - subscription_credits, 0), 0),
-          credits_remaining = credits_remaining - ${retryCost},
+          welcome_credits = GREATEST(${activeWelcome} - ${retryCost}, 0),
+          subscription_credits = GREATEST(subscription_credits - GREATEST(${retryCost} - ${activeWelcome}, 0), 0),
+          topup_credits = GREATEST(topup_credits - GREATEST(${retryCost} - ${activeWelcome} - subscription_credits, 0), 0),
+          credits_remaining = ${activeBalance} - ${retryCost},
           credits_used = credits_used + ${retryCost},
           updated_at = NOW()
-        WHERE ${retryCost} > 0 AND user_id = ${job.userId} AND credits_remaining >= ${retryCost}
+        WHERE ${retryCost} > 0 AND user_id = ${job.userId} AND ${activeBalance} >= ${retryCost}
           AND EXISTS (SELECT 1 FROM target)
         RETURNING user_id
       )
@@ -3491,7 +3510,7 @@ async function retryOrFail(job: JobRow, err: unknown): Promise<void> {
           AND ${retryCost} > 0
           AND NOT EXISTS (
             SELECT 1 FROM credits
-            WHERE user_id = ${job.userId} AND credits_remaining >= ${retryCost}
+            WHERE user_id = ${job.userId} AND ${activeBalance} >= ${retryCost}
           )
         RETURNING id
       `);
@@ -3694,7 +3713,23 @@ async function processEditorJob(job: JobRow): Promise<void> {
       createAndUploadWebPreview(result.videoBuffer, videoId, result.durationSeconds),
     ]);
 
-    await db.insert(videosTable).values({
+    await db.transaction(async (tx) => {
+    if (manifest.chargeCredits && (manifest.chargeAmount ?? 0) > 0) {
+      const cost = manifest.chargeAmount!;
+      const balance = await lockActiveCredits(tx, job.userId);
+      if (!balance) throw new Error("Insufficient active credits for editor export");
+      const split = splitCreditDebit(balance, cost);
+      await tx.update(creditsTable).set({
+        welcomeCredits: sql`welcome_credits - ${split.welcome}`,
+        subscriptionCredits: sql`subscription_credits - ${split.subscription}`,
+        topupCredits: sql`topup_credits - ${split.topup}`,
+        creditsRemaining: sql`credits_remaining - ${cost}`,
+        creditsUsed: sql`credits_used + ${cost}`,
+        totalGenerations: sql`total_generations + 1`,
+        updatedAt: new Date(),
+      }).where(eq(creditsTable.userId, job.userId));
+    }
+    await tx.insert(videosTable).values({
       id: videoId,
       userId: job.userId,
       jobId: job.id,
@@ -3706,24 +3741,6 @@ async function processEditorJob(job: JobRow): Promise<void> {
       shareToken: randomUUID().replace(/-/g, "").slice(0, 16),
     });
 
-    // Trial/subscription renders are free; post-trial renders deduct credits.
-    if (manifest.chargeCredits) {
-      const creditCost = manifest.chargeAmount ?? 0;
-      // Deduct from the subscription bucket first, then top-up — same split as
-      // AI generation — so creditsRemaining stays equal to sub + top-up.
-      await db
-        .update(creditsTable)
-        .set({
-          subscriptionCredits: sql`GREATEST(subscription_credits - ${creditCost}, 0)`,
-          topupCredits: sql`GREATEST(topup_credits - GREATEST(${creditCost} - subscription_credits, 0), 0)`,
-          creditsRemaining: sql`GREATEST(credits_remaining - ${creditCost}, 0)`,
-          creditsUsed: sql`credits_used + ${creditCost}`,
-          totalGenerations: sql`total_generations + 1`,
-          updatedAt: new Date(),
-        })
-        .where(eq(creditsTable.userId, job.userId));
-      logger.info({ jobId: job.id, creditCost }, "Editor credits deducted on success");
-    }
 
     // Surface removed files (and a dropped transition) to the user on the
     // finished job — the job page shows this note alongside the completed
@@ -3738,11 +3755,15 @@ async function processEditorJob(job: JobRow): Promise<void> {
         ? "Note: your first export attempt hit a hiccup, so the retry that succeeded used hard cuts instead of your chosen transition. Try the export again to get the transition."
         : null;
     const combinedNotice = [removedNotice, transitionNotice].filter(Boolean).join(" ") || null;
-    await updateJobStatus(job.id, {
+    const finished = await tx.update(jobsTable).set({
       status: "ready",
       progressPercent: 100,
       videoId,
       errorMessage: combinedNotice,
+      claimedAt: null,
+      updatedAt: new Date(),
+    }).where(and(eq(jobsTable.id, job.id), eq(jobsTable.claimedAt, job.claimedAt!))).returning({ id: jobsTable.id });
+    if (!finished.length) throw new Error(`${OWNERSHIP_LOST} (editor finalization)`);
     });
     void notifyRenderReady(job);
     logger.info({ jobId: job.id, videoId }, "Editor render completed");
@@ -3919,7 +3940,23 @@ async function processRemixJob(job: JobRow): Promise<void> {
       });
     }
 
-    await db.insert(videosTable).values({
+    await db.transaction(async (tx) => {
+    if (manifest.chargeCredits && manifest.remixCost > 0) {
+      const cost = manifest.remixCost;
+      const balance = await lockActiveCredits(tx, job.userId);
+      if (!balance) throw new Error("Insufficient active credits for remix");
+      const split = splitCreditDebit(balance, cost);
+      await tx.update(creditsTable).set({
+        welcomeCredits: sql`welcome_credits - ${split.welcome}`,
+        subscriptionCredits: sql`subscription_credits - ${split.subscription}`,
+        topupCredits: sql`topup_credits - ${split.topup}`,
+        creditsRemaining: sql`credits_remaining - ${cost}`,
+        creditsUsed: sql`credits_used + ${cost}`,
+        totalGenerations: sql`total_generations + 1`,
+        updatedAt: new Date(),
+      }).where(eq(creditsTable.userId, job.userId));
+    }
+    await tx.insert(videosTable).values({
       id: newVideoId,
       userId: job.userId,
       jobId: job.id,
@@ -3934,23 +3971,12 @@ async function processRemixJob(job: JobRow): Promise<void> {
       shareToken: randomUUID().replace(/-/g, "").slice(0, 16),
     });
 
-    if (manifest.chargeCredits && manifest.remixCost > 0) {
-      const cost = manifest.remixCost;
-      await db
-        .update(creditsTable)
-        .set({
-          subscriptionCredits: sql`GREATEST(subscription_credits - ${cost}, 0)`,
-          topupCredits: sql`GREATEST(topup_credits - GREATEST(${cost} - subscription_credits, 0), 0)`,
-          creditsRemaining: sql`GREATEST(credits_remaining - ${cost}, 0)`,
-          creditsUsed: sql`credits_used + ${cost}`,
-          totalGenerations: sql`total_generations + 1`,
-          updatedAt: new Date(),
-        })
-        .where(eq(creditsTable.userId, job.userId));
-      logger.info({ jobId: job.id, cost }, "Remix credits deducted on success");
-    }
-
-    await updateJobStatus(job.id, { status: "ready", progressPercent: 100, videoId: newVideoId });
+    const finished = await tx.update(jobsTable).set({
+      status: "ready", progressPercent: 100, videoId: newVideoId,
+      claimedAt: null, updatedAt: new Date(),
+    }).where(and(eq(jobsTable.id, job.id), eq(jobsTable.claimedAt, job.claimedAt!))).returning({ id: jobsTable.id });
+    if (!finished.length) throw new Error(`${OWNERSHIP_LOST} (remix finalization)`);
+    });
     void notifyRenderReady(job);
     logger.info({ jobId: job.id, newVideoId }, "Remix completed");
   } catch (err) {
@@ -3964,6 +3990,7 @@ type RunwayLipsyncMeta = {
   reservedCredits?: number;
   reservedSubscriptionCredits?: number;
   reservedTopupCredits?: number;
+  reservedWelcomeCredits?: number;
   refunded?: boolean;
   lipSyncEnabled?: boolean;
   publicLipSync?: boolean;
@@ -4518,6 +4545,7 @@ async function processJobInner(job: JobRow, supervisor: JobRunSupervisor): Promi
               reservedSubscriptionCredits:
                 parentMeta.bundledLipSyncReservedSubscriptionCredits ?? 0,
               reservedTopupCredits: parentMeta.bundledLipSyncReservedTopupCredits ?? 0,
+              reservedWelcomeCredits: parentMeta.bundledLipSyncReservedWelcomeCredits ?? 0,
             } as unknown as Record<string, unknown>,
             updatedAt: new Date(),
           })
@@ -4527,6 +4555,7 @@ async function processJobInner(job: JobRow, supervisor: JobRunSupervisor): Promi
           reservedCredits: parentMeta.baseCreditCost ?? parentMeta.reservedCredits ?? 0,
           reservedSubscriptionCredits: parentMeta.baseReservedSubscriptionCredits ?? 0,
           reservedTopupCredits: parentMeta.baseReservedTopupCredits ?? 0,
+          reservedWelcomeCredits: parentMeta.baseReservedWelcomeCredits ?? 0,
           bundledLipSyncActivated: true,
         };
       }
@@ -4842,6 +4871,10 @@ async function recoverStaleTimeoutJobs(): Promise<void> {
         meta.completeSavedClipRecovery === true || meta.finalizeWithPartial === true || pendingBundle
           ? 0
           : imageFirstAutomaticRetryCost(meta);
+      const activeWelcome = sql`CASE WHEN EXISTS (
+        SELECT 1 FROM users WHERE users.id = credits.user_id AND users.trial_ends_at > NOW()
+      ) THEN welcome_credits ELSE 0 END`;
+      const activeBalance = sql`subscription_credits + topup_credits + ${activeWelcome}`;
       const requeued = await db.execute<{ id: string }>(sql`
         WITH target AS (
           SELECT id FROM jobs
@@ -4853,14 +4886,15 @@ async function recoverStaleTimeoutJobs(): Promise<void> {
         ),
         charged AS (
           UPDATE credits SET
-            subscription_credits = GREATEST(subscription_credits - ${retryCost}, 0),
-            topup_credits = GREATEST(topup_credits - GREATEST(${retryCost} - subscription_credits, 0), 0),
-            credits_remaining = credits_remaining - ${retryCost},
+            welcome_credits = GREATEST(${activeWelcome} - ${retryCost}, 0),
+            subscription_credits = GREATEST(subscription_credits - GREATEST(${retryCost} - ${activeWelcome}, 0), 0),
+            topup_credits = GREATEST(topup_credits - GREATEST(${retryCost} - ${activeWelcome} - subscription_credits, 0), 0),
+            credits_remaining = ${activeBalance} - ${retryCost},
             credits_used = credits_used + ${retryCost},
             updated_at = NOW()
           WHERE ${retryCost} > 0
             AND user_id = ${row.user_id}
-            AND credits_remaining >= ${retryCost}
+            AND ${activeBalance} >= ${retryCost}
             AND EXISTS (SELECT 1 FROM target)
           RETURNING user_id
         )
@@ -4891,7 +4925,7 @@ async function recoverStaleTimeoutJobs(): Promise<void> {
             AND ${staleWindow}
             AND NOT EXISTS (
               SELECT 1 FROM credits
-              WHERE user_id = ${row.user_id} AND credits_remaining >= ${retryCost}
+              WHERE user_id = ${row.user_id} AND ${activeBalance} >= ${retryCost}
             )
           RETURNING id
         `);

@@ -275,7 +275,7 @@ export default function Login() {
               Create one free
             </Link>
           </p>
-          <p className="mt-3 text-center text-xs text-muted-foreground">{FREE_OFFER_COPY.short} {FREE_OFFER_COPY.credits}</p>
+          <p className="mt-3 text-center text-xs text-muted-foreground">{FREE_OFFER_COPY.short} {FREE_OFFER_COPY.example} {FREE_OFFER_COPY.expiry} {FREE_OFFER_COPY.credits}</p>
 
           <p className="text-center text-xs text-muted-foreground/60 mt-6">
             By continuing, you agree to our{" "}

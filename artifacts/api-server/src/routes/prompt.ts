@@ -13,7 +13,7 @@ import {
 import { generateLyrics, lyricsProviderAvailable } from "../lib/lyricsGen.js";
 import { planShots, shotPlanFingerprint } from "../lib/shotPlan.js";
 import { verifyAudioAnalysisReceipt } from "../lib/audioAnalysisReceipt.js";
-import { db, creditsTable } from "@workspace/db";
+import { db, creditsTable, lockActiveCredits, splitCreditDebit, activeWelcomeRefund } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { LYRICS_BUILD_COST } from "../lib/creditCost.js";
@@ -24,34 +24,38 @@ const router: IRouter = Router();
 // refund that restores exactly the buckets that were debited (same pattern as
 // routes/lyrics.ts and routes/teasers.ts).
 type ChargeResult =
-  | { ok: true; remaining: number; subDebit: number; topDebit: number }
+  | { ok: true; remaining: number; welcomeDebit: number; subDebit: number; topDebit: number }
   | { ok: false; remaining: number };
 
 async function chargeCredits(userId: string, cost: number): Promise<ChargeResult> {
   return db.transaction(async (tx) => {
-    let [c] = await tx.select().from(creditsTable).where(eq(creditsTable.userId, userId)).limit(1).for("update");
+    let c = await lockActiveCredits(tx, userId);
     if (!c) [c] = await tx.insert(creditsTable).values({ id: randomUUID(), userId }).returning();
     if (c!.creditsRemaining < cost) return { ok: false as const, remaining: c!.creditsRemaining };
-    const subDebit = Math.min(c!.subscriptionCredits, cost);
-    const topDebit = cost - subDebit;
+    const { welcome: welcomeDebit, subscription: subDebit, topup: topDebit } = splitCreditDebit(c!, cost);
     await tx.update(creditsTable).set({
+      welcomeCredits: sql`welcome_credits - ${welcomeDebit}`,
       subscriptionCredits: sql`subscription_credits - ${subDebit}`,
       topupCredits: sql`topup_credits - ${topDebit}`,
       creditsRemaining: sql`credits_remaining - ${cost}`,
       creditsUsed: sql`credits_used + ${cost}`,
       updatedAt: new Date(),
     }).where(eq(creditsTable.userId, userId));
-    return { ok: true as const, remaining: c!.creditsRemaining - cost, subDebit, topDebit };
+    return { ok: true as const, remaining: c!.creditsRemaining - cost, welcomeDebit, subDebit, topDebit };
   });
 }
-async function refundCredits(userId: string, subDebit: number, topDebit: number): Promise<void> {
-  await db.update(creditsTable).set({
+async function refundCredits(userId: string, subDebit: number, topDebit: number, welcomeDebit: number): Promise<void> {
+  await db.transaction(async (tx) => {
+    const welcomeRefund = await activeWelcomeRefund(tx, userId, welcomeDebit);
+    await tx.update(creditsTable).set({
+    welcomeCredits: sql`welcome_credits + ${welcomeRefund}`,
     subscriptionCredits: sql`subscription_credits + ${subDebit}`,
     topupCredits: sql`topup_credits + ${topDebit}`,
-    creditsRemaining: sql`credits_remaining + ${subDebit + topDebit}`,
-    creditsUsed: sql`GREATEST(credits_used - ${subDebit + topDebit}, 0)`,
+    creditsRemaining: sql`credits_remaining + ${welcomeRefund + subDebit + topDebit}`,
+    creditsUsed: sql`GREATEST(credits_used - ${welcomeDebit + subDebit + topDebit}, 0)`,
     updatedAt: new Date(),
-  }).where(eq(creditsTable.userId, userId));
+    }).where(eq(creditsTable.userId, userId));
+  });
 }
 
 // Prompt Builder — helper endpoints that turn a plain description into a polished
@@ -292,7 +296,7 @@ router.post("/prompt/lyrics", async (req: Request, res: Response) => {
   }
   // Charge only when a real LLM will run (the no-key template fallback is free).
   const willUseLLM = lyricsProviderAvailable() !== "template";
-  let debit: { subDebit: number; topDebit: number } | null = null;
+  let debit: { welcomeDebit: number; subDebit: number; topDebit: number } | null = null;
   if (willUseLLM) {
     const charge = await chargeCredits(user.id, LYRICS_BUILD_COST);
     if (!charge.ok) {
@@ -304,7 +308,7 @@ router.post("/prompt/lyrics", async (req: Request, res: Response) => {
       });
       return;
     }
-    debit = { subDebit: charge.subDebit, topDebit: charge.topDebit };
+    debit = { welcomeDebit: charge.welcomeDebit, subDebit: charge.subDebit, topDebit: charge.topDebit };
   }
   try {
     const result = await generateLyrics({
@@ -318,13 +322,13 @@ router.post("/prompt/lyrics", async (req: Request, res: Response) => {
     });
     let charged = willUseLLM ? LYRICS_BUILD_COST : 0;
     if (debit && parsed.data.lyrics?.trim() && !result.changed) {
-      await refundCredits(user.id, debit.subDebit, debit.topDebit);
+      await refundCredits(user.id, debit.subDebit, debit.topDebit, debit.welcomeDebit);
       debit = null;
       charged = 0;
     }
     res.json({ ...result, charged, enhanced: !!parsed.data.lyrics?.trim() });
   } catch (err) {
-    if (debit) await refundCredits(user.id, debit.subDebit, debit.topDebit);
+    if (debit) await refundCredits(user.id, debit.subDebit, debit.topDebit, debit.welcomeDebit);
     logger.error({ err }, "Lyrics build failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Lyrics build failed" });
   }

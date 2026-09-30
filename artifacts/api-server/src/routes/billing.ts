@@ -9,7 +9,7 @@ import {
   lt,
   or,
 } from "drizzle-orm";
-import { db } from "@workspace/db";
+import { db, lockActiveCredits } from "@workspace/db";
 import {
   usersTable,
   creditsTable,
@@ -249,11 +249,7 @@ router.get("/billing/subscription", async (req, res) => {
     return;
   }
 
-  const [credits] = await db
-    .select()
-    .from(creditsTable)
-    .where(eq(creditsTable.userId, req.user.id))
-    .limit(1);
+  const credits = await db.transaction((tx) => lockActiveCredits(tx, req.user.id));
 
   let planName: string | null = null;
   let priceLookupKey: string | null = null;
@@ -298,6 +294,7 @@ router.get("/billing/subscription", async (req, res) => {
     subscriptionStatus: user.subscriptionStatus,
     hasStripeCustomer: Boolean(user.stripeCustomerId),
     creditsRemaining: credits?.creditsRemaining ?? 0,
+    welcomeCredits: credits?.welcomeCredits ?? 0,
     subscriptionCredits: credits?.subscriptionCredits ?? 0,
     topupCredits: credits?.topupCredits ?? 0,
     planName,
@@ -576,6 +573,11 @@ router.post("/billing/checkout", async (req, res) => {
         success_url: defaultSuccess,
         cancel_url: defaultCancel,
         allow_promotion_codes: true,
+        custom_text: {
+          submit: {
+            message: "New accounts receive 150 welcome credits for their first 7 days. Actual usage varies by model and settings. This purchase charges immediately and does not grant another signup bonus.",
+          },
+        },
         ...(checkoutPendingUntil
           ? { expires_at: Math.floor(checkoutPendingUntil.getTime() / 1000) }
           : {}),

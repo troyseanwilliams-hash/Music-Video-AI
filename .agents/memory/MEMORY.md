@@ -50,7 +50,7 @@
 - [Suite Stripe authority](suite-stripe-authority.md) — Suite billing may use a separate Stripe account; keep customer IDs account-scoped and verify Suite webhooks independently.
 - [Existing artifact imports](existing-artifact-imports.md) — preserve artifact registration when replacing app files; deleting the artifact directory also removes its managed workflow.
 - [Generate is narrative-only](generate-narrative-only.md) — keep Visual Montage out of Generate; retain legacy montage internals for old jobs and separate Montage Studio workflows.
-- [Free first vocal song](free-first-vocal-song.md) — every account gets one lifetime free vocal song; claim before provider work, restore failures, and never touch paid or instrumental balances.
+- [Vocal signup offer](free-first-vocal-song.md) — welcome credits replace the standalone free vocal song; paid instrumental benefits remain.
 - [Post-approval clip duplicates](duplicate-clip-recovery.md) — image uniqueness is enforced before approval; generated clips may repeat afterward and must still stitch.
 - [Resend campaign limits](resend-campaign-limits.md) — use immutable daily cohorts and per-recipient outcomes; never auto-retry an ambiguous send after finite idempotency retention.
 - [Production JSON object counts](production-json-object-counts.md) — production SQL lacks jsonb_object_length; count jsonb_object_keys rows instead.
@@ -71,4 +71,4 @@
 - [Photo animation intent recovery](photo-animation-intent.md) — a missing operation lookup can precede a pending POST commit; retain its key and allow only identical retries.
 - [Suno import authority](suno-import-authority.md) — render owned imported audio; preserve prior music on failure and keep legacy external fetches tightly bounded.
 - [Creation workflow separation](creation-workflow-separation.md) — standalone images have their own flow; video image foundations still belong in Generate Video.
-- [Free offer positioning](free-offer-positioning.md) — distinguish the useful free Montage trial from credit-priced AI generation and immediate paid checkout.
+- [Free offer positioning](free-offer-positioning.md) — 150 signup credits expire with trial; source-aware refunds must preserve paid funds and never revive expired grants.

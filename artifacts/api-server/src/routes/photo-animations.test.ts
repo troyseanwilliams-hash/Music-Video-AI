@@ -239,7 +239,7 @@ describe("photo animation quote and submission", () => {
       [asset],
       [{ id: request(common).user.id, email: "user@test", subscriptionStatus: "active" }],
       [{ id: asset.id }],
-      [{ creditsRemaining: 500, subscriptionCredits: 80, topupCredits: 420 }],
+      [{ creditsRemaining: 500, welcomeCredits: 0, subscriptionCredits: 80, topupCredits: 420 }],
     );
     mocks.executeResults.push({ rows: [] });
     const submitted = response();

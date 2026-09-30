@@ -669,7 +669,7 @@ function AdminMusicPanel() {
           </div>
         </div>
         <CardDescription className="mt-2">
-          Generate royalty-free music, then drop it straight into a Remix or AI video. Subscribers get a batch of free music generations every month (Starter 25 · Pro 100 · Studio 300); extra tracks cost credits.
+          Generate royalty-free music, then drop it straight into a Remix or AI video. Paid subscribers retain monthly included instrumentals (Starter 25 · Pro 100 · Studio 300); additional instrumentals and vocal songs use credits.
         </CardDescription>
       </CardHeader>
 

@@ -21,7 +21,7 @@ import {
   useGetDashboardStats,
   useListVideos,
 } from "@workspace/api-client-react";
-import { canAffordCredits, LYRIC_ALIGN_COST } from "@/lib/creditPricing";
+import { canAffordCredits, LYRIC_ALIGN_COST, LYRIC_OVERLAY_COST } from "@/lib/creditPricing";
 import { getRemixTimeEstimate } from "@/lib/jobEstimates";
 import { trackEvent } from "@/lib/analytics";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -663,7 +663,7 @@ export default function Editor() {
     };
   }, [music?.objectPath]);
 
-  const trialActive = !!user?.trialEndsAt && new Date(user.trialEndsAt).getTime() > Date.now();
+  const trialActive = user?.subscriptionStatus === "trial" && !!user.trialEndsAt && new Date(user.trialEndsAt).getTime() > Date.now();
   const trialDaysLeft = user?.trialEndsAt
     ? Math.max(0, Math.ceil((new Date(user.trialEndsAt).getTime() - Date.now()) / 86400000))
     : 0;
@@ -676,19 +676,12 @@ export default function Editor() {
     remaining: number;
     overageCost: number;
     trial: {
-      lyricUsed: number;
-      lyricFree: number;
-      lyricRemaining: number;
       lyricOverageCost: number;
-      alignUsed: number;
-      alignFree: number;
-      alignRemaining: number;
       alignCost: number;
     } | null;
   } | null>(null);
   useEffect(() => {
-    // Subscribers/admins are unlimited; trial users still need the quota for
-    // their limited karaoke-lyric allowance.
+    // Trial users need the quota to price karaoke lyric burns before export.
     if (!isAuthenticated || (fullAccess && !trialActive) || user?.subscriptionStatus === "active" || user?.isAdmin) return;
     fetch("/api/studio/quota", { credentials: "include" })
       .then((r) => (r.ok ? r.json() : null))
@@ -995,11 +988,11 @@ export default function Editor() {
   // Montage Studio is pure ffmpeg (no AI cost), so the real charge is the flat
   // freemium overage (studio.ts): free on trial/subscription and within the
   // monthly free allotment, otherwise a small flat fee per export — never
-  // size-scaled. Trial exception: karaoke lyric burns beyond the trial
-  // allowance cost the standard lyric add-on. Mirror the server's quota so the
+  // size-scaled. Trial karaoke lyric burns cost the standard lyric add-on.
+  // Mirror the server's quota so the
   // shown estimate matches what's actually charged.
   const trialLyricCost =
-    karaokeEnabled && trialActive && quota?.trial && lyricsText.trim() && quota.trial.lyricRemaining <= 0
+    karaokeEnabled && trialActive && quota?.trial && lyricsText.trim()
       ? quota.trial.lyricOverageCost
       : 0;
   const estimatedCost = trialActive
@@ -1829,11 +1822,11 @@ export default function Editor() {
       {trialActive && (
         <Card className="border-primary/30 bg-primary/5 mb-6 p-4 text-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            Free trial — {trialDaysLeft} day{trialDaysLeft === 1 ? "" : "s"} left. The full Montage Studio is unlocked: 1080p,
+            Montage Studio trial — {trialDaysLeft} day{trialDaysLeft === 1 ? "" : "s"} left. Your Montage Studio features remain available within trial limits even when generation credits run out: 1080p,
             no watermark, smooth transitions.{" "}
             {segments.length > 0 &&
               (estimatedCost > 0 ? (
-                <>This export includes a karaoke lyric burn beyond your trial allowance, so it costs <strong>{estimatedCost} credits</strong>.{" "}</>
+                <>This export includes a karaoke lyric burn, so it costs <strong>{estimatedCost} credits</strong>.{" "}</>
               ) : (
                 <>Exports are <strong>free</strong> while you're on the trial.{" "}</>
               ))}
@@ -1890,7 +1883,7 @@ export default function Editor() {
               : trialActive
               ? estimatedCost > 0
                 ? `Estimated cost: ${estimatedCost} credits for the lyric add-on.`
-                : `Free during your trial${quota?.trial ? `; ${quota.trial.lyricRemaining} karaoke lyric benefit${quota.trial.lyricRemaining === 1 ? "" : "s"} remaining.` : "."}`
+                : "Clean export included during your active trial. Karaoke lyric burns and Auto-sync use credits."
               : quota && quota.remaining > 0
                 ? `Free export; ${quota.remaining} of ${quota.free} monthly exports remain.`
                 : quota
@@ -2754,38 +2747,10 @@ export default function Editor() {
             </div>
             {karaokeEnabled ? (
               <>
-            {trialActive && quota?.trial && (
+            {trialActive && (
               <p className="mb-2 text-xs text-muted-foreground" data-testid="text-trial-lyric-allowance">
-                {quota.trial.lyricRemaining > 0 ? (
-                  <>
-                    Free trial includes{" "}
-                    <strong className="text-foreground">
-                      {quota.trial.lyricRemaining} of {quota.trial.lyricFree} karaoke lyric exports
-                    </strong>
-                    . After that, each lyric export is {quota.trial.lyricOverageCost} credits.
-                  </>
-                ) : (
-                  <>
-                    You've used your {quota.trial.lyricFree} free trial karaoke exports — extra lyric
-                    exports cost {quota.trial.lyricOverageCost} credits, or{" "}
-                    <Link href="/pricing" className="text-primary underline">subscribe for unlimited</Link>.
-                  </>
-                )}{" "}
-                {quota.trial.alignRemaining > 0 ? (
-                  <>
-                    Auto-sync:{" "}
-                    <strong className="text-foreground">
-                      {quota.trial.alignRemaining} of {quota.trial.alignFree} free
-                    </strong>{" "}
-                    during your trial, then it unlocks with a subscription.
-                  </>
-                ) : (
-                  <>
-                    Free trial Auto-syncs used — Auto-sync unlocks when you{" "}
-                    <Link href="/pricing" className="text-primary underline">subscribe</Link>. Typed or
-                    pasted lyrics still work.
-                  </>
-                )}
+                Karaoke lyric exports cost {LYRIC_OVERLAY_COST} credits each.
+                Auto-sync costs {LYRIC_ALIGN_COST} credits per run. Paid subscribers retain their plan benefits.
               </p>
             )}
             <Textarea

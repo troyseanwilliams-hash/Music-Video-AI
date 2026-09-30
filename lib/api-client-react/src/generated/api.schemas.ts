@@ -1303,9 +1303,11 @@ export interface LikeResponse {
 }
 
 export interface CreditsResponse {
-  /** Total credits available (subscriptionCredits + topupCredits) */
+  /** Total active credits available (welcomeCredits + subscriptionCredits + topupCredits) */
   creditsRemaining: number;
-  /** Credits granted by the active subscription (or trial). May be reset on renewal. */
+  /** Seven-day signup grant; zero at or after the signup trial ends. */
+  welcomeCredits: number;
+  /** Credits granted by the active subscription. May be reset on renewal. */
   subscriptionCredits: number;
   /** Credits from one-time top-up purchases. Never reset by renewals. */
   topupCredits: number;
@@ -1370,6 +1372,7 @@ export interface BillingSubscriptionResponse {
   subscriptionStatus: string;
   hasStripeCustomer: boolean;
   creditsRemaining: number;
+  welcomeCredits: number;
   subscriptionCredits: number;
   topupCredits: number;
   /** @nullable */
@@ -1581,6 +1584,7 @@ export interface DashboardStats {
   failedJobs: number;
   totalVideos: number;
   creditsRemaining: number;
+  welcomeCredits: number;
   subscriptionCredits: number;
   topupCredits: number;
   recentJobs?: Job[];

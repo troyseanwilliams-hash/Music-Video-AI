@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
+import { db, lockActiveCredits } from "@workspace/db";
 import { jobsTable, videosTable, creditsTable } from "@workspace/db";
 import { eq, count, and, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -28,11 +28,10 @@ router.get("/dashboard/stats", async (req, res) => {
       .select({ count: count() })
       .from(videosTable)
       .where(and(eq(videosTable.userId, userId), isNull(videosTable.deletedAt))),
-    db
-      .select()
-      .from(creditsTable)
-      .where(eq(creditsTable.userId, userId))
-      .limit(1),
+    db.transaction(async (tx) => {
+      const row = await lockActiveCredits(tx, userId);
+      return row ? [row] : [];
+    }),
     // jobIds that still have a live (existing, non-deleted) video.
     db
       .select({ jobId: videosTable.jobId })
@@ -72,10 +71,12 @@ router.get("/dashboard/stats", async (req, res) => {
 
   let creditsRemaining = 10;
   let subscriptionCredits = 10;
+  let welcomeCredits = 0;
   let topupCredits = 0;
   if (credits[0]) {
     creditsRemaining = credits[0].creditsRemaining;
     subscriptionCredits = credits[0].subscriptionCredits;
+    welcomeCredits = credits[0].welcomeCredits;
     topupCredits = credits[0].topupCredits;
   } else {
     try {
@@ -106,6 +107,7 @@ router.get("/dashboard/stats", async (req, res) => {
     totalVideos: totalVideosResult[0]?.count ?? 0,
     creditsRemaining,
     subscriptionCredits,
+    welcomeCredits,
     topupCredits,
     recentJobs,
     activeJobs,

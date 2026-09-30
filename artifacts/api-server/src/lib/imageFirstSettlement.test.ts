@@ -10,6 +10,37 @@ const storyboard = {
 };
 
 describe("image-first reservation settlement", () => {
+  it("charges welcome first and refunds the unspent amounts to their exact source buckets", () => {
+    const amounts = calculateImageFirstSettlement({
+      imageFirstVersion: 1,
+      reservedCredits: 30,
+      reservedWelcomeCredits: 10,
+      reservedSubscriptionCredits: 8,
+      reservedTopupCredits: 12,
+      imageCreditCost: 21,
+      videoCreditCost: 9,
+      storyboard,
+    }, 2);
+    expect(amounts.chargedCredits).toBe(14);
+    expect(amounts.welcomeRefund).toBe(0);
+    expect(amounts.subscriptionRefund).toBe(4);
+    expect(amounts.topupRefund).toBe(12);
+    expect(amounts.refundedCredits).toBe(16);
+  });
+
+  it("keeps unused welcome credits separate from paid credits when no work was spent", () => {
+    const amounts = calculateImageFirstSettlement({
+      imageFirstVersion: 1,
+      reservedCredits: 30,
+      reservedWelcomeCredits: 10,
+      reservedSubscriptionCredits: 8,
+      reservedTopupCredits: 12,
+      storyboard,
+    }, 0);
+    expect(amounts.welcomeRefund).toBe(10);
+    expect(amounts.subscriptionRefund).toBe(8);
+    expect(amounts.topupRefund).toBe(12);
+  });
   it("does not charge again when retained images failed before any video request", () => {
     expect(imageFirstAutomaticRetryCost({
       imageFirstVersion: 1,
@@ -49,6 +80,7 @@ describe("image-first reservation settlement", () => {
     }, 2)).toEqual({
       chargedCredits: 14,
       refundedCredits: 286,
+      welcomeRefund: 0,
       subscriptionRefund: 186,
       topupRefund: 100,
       completedImages: 2,

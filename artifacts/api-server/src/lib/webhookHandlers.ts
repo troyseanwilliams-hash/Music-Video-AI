@@ -1,5 +1,5 @@
 import Stripe from "stripe";
-import { db } from "@workspace/db";
+import { db, lockActiveCredits } from "@workspace/db";
 import {
   creditsTable,
   creditGrantsTable,
@@ -110,6 +110,7 @@ async function grantCredits(params: {
         .insert(creditsTable)
         .values({ id: randomUUID(), userId: params.userId })
         .onConflictDoNothing({ target: creditsTable.userId });
+      await lockActiveCredits(tx, params.userId);
 
       const [grant] = await tx
         .insert(creditGrantsTable)
@@ -253,6 +254,7 @@ async function resetSubscriptionCredits(params: {
         .insert(creditsTable)
         .values({ id: randomUUID(), userId: params.userId })
         .onConflictDoNothing({ target: creditsTable.userId });
+      await lockActiveCredits(tx, params.userId);
 
       const [grant] = await tx
         .insert(creditGrantsTable)
@@ -278,7 +280,7 @@ async function resetSubscriptionCredits(params: {
         .update(creditsTable)
         .set({
           subscriptionCredits: params.credits,
-          creditsRemaining: sql`${params.credits} + ${creditsTable.topupCredits}`,
+          creditsRemaining: sql`${params.credits} + ${creditsTable.topupCredits} + ${creditsTable.welcomeCredits}`,
         })
         .where(eq(creditsTable.userId, params.userId));
 
@@ -590,6 +592,7 @@ export async function handleInvoicePaid(
         .insert(creditsTable)
         .values({ id: randomUUID(), userId: user.id })
         .onConflictDoNothing({ target: creditsTable.userId });
+      await lockActiveCredits(tx, user.id);
 
       const [grant] = await tx
         .insert(creditGrantsTable)
@@ -611,7 +614,7 @@ export async function handleInvoicePaid(
           .update(creditsTable)
           .set({
             subscriptionCredits: totalCredits,
-            creditsRemaining: sql`${totalCredits} + ${creditsTable.topupCredits}`,
+            creditsRemaining: sql`${totalCredits} + ${creditsTable.topupCredits} + ${creditsTable.welcomeCredits}`,
           })
           .where(eq(creditsTable.userId, user.id));
       }
@@ -1022,11 +1025,12 @@ export async function handleSubscriptionUpdated(
           .insert(creditsTable)
           .values({ id: randomUUID(), userId: user.id })
           .onConflictDoNothing({ target: creditsTable.userId });
+        await lockActiveCredits(tx, user.id);
         await tx
           .update(creditsTable)
           .set({
             subscriptionCredits: 0,
-            creditsRemaining: sql`${creditsTable.topupCredits}`,
+            creditsRemaining: sql`${creditsTable.topupCredits} + ${creditsTable.welcomeCredits}`,
           })
           .where(eq(creditsTable.userId, user.id));
 
@@ -1192,13 +1196,16 @@ export async function handleSubscriptionUpdated(
   // balance.
   if (subscription.status === "canceled") {
     await ensureCreditsRow(user.id);
-    await db
+    await db.transaction(async (tx) => {
+      await lockActiveCredits(tx, user.id);
+      await tx
       .update(creditsTable)
       .set({
         subscriptionCredits: 0,
-        creditsRemaining: sql`${creditsTable.topupCredits}`,
+        creditsRemaining: sql`${creditsTable.topupCredits} + ${creditsTable.welcomeCredits}`,
       })
       .where(eq(creditsTable.userId, user.id));
+    });
     logger.info({ userId: user.id }, "Subscription cancelled — plan credits zeroed (top-up kept)");
   }
 }
@@ -1579,11 +1586,12 @@ async function handleChargeRefunded(
       // credits from the currently active invoice; older grants have already
       // expired through the next period's reset.
       if (user && currentGrantCredits > 0) {
+        await lockActiveCredits(tx, user.id);
         await tx
           .update(creditsTable)
           .set({
             subscriptionCredits: sql`greatest(${creditsTable.subscriptionCredits} - ${currentGrantCredits}, 0)`,
-            creditsRemaining: sql`${creditsTable.topupCredits} + greatest(${creditsTable.subscriptionCredits} - ${currentGrantCredits}, 0)`,
+            creditsRemaining: sql`${creditsTable.topupCredits} + ${creditsTable.welcomeCredits} + greatest(${creditsTable.subscriptionCredits} - ${currentGrantCredits}, 0)`,
           })
           .where(eq(creditsTable.userId, user.id));
       }

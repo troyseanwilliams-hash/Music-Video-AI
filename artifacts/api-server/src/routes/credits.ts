@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
+import { db, lockActiveCredits } from "@workspace/db";
 import { creditsTable, usersTable, videosTable, jobsTable } from "@workspace/db";
 import { eq, ilike, or, desc, and, inArray, count } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -34,19 +34,16 @@ router.get("/credits", async (req, res) => {
     return;
   }
 
-  const credits = await db
-    .select()
-    .from(creditsTable)
-    .where(eq(creditsTable.userId, req.user.id))
-    .limit(1);
+  const current = await db.transaction((tx) => lockActiveCredits(tx, req.user.id));
 
-  if (!credits[0]) {
+  if (!current) {
     const [newCredits] = await db
       .insert(creditsTable)
       .values({ id: randomUUID(), userId: req.user.id })
       .returning();
     res.json({
       creditsRemaining: newCredits.creditsRemaining,
+      welcomeCredits: newCredits.welcomeCredits,
       subscriptionCredits: newCredits.subscriptionCredits,
       topupCredits: newCredits.topupCredits,
       creditsUsed: newCredits.creditsUsed,
@@ -56,11 +53,12 @@ router.get("/credits", async (req, res) => {
   }
 
   res.json({
-    creditsRemaining: credits[0].creditsRemaining,
-    subscriptionCredits: credits[0].subscriptionCredits,
-    topupCredits: credits[0].topupCredits,
-    creditsUsed: credits[0].creditsUsed,
-    totalGenerations: credits[0].totalGenerations,
+    creditsRemaining: current.creditsRemaining,
+    welcomeCredits: current.welcomeCredits,
+    subscriptionCredits: current.subscriptionCredits,
+    topupCredits: current.topupCredits,
+    creditsUsed: current.creditsUsed,
+    totalGenerations: current.totalGenerations,
   });
 });
 
@@ -95,15 +93,11 @@ router.get("/admin/users", async (req, res) => {
     .orderBy(desc(usersTable.createdAt));
 
   const userIds = allUsers.map((u) => u.id);
-  const creditRows =
-    userIds.length > 0
-      ? await db
-          .select()
-          .from(creditsTable)
-          .where(or(...userIds.map((id) => eq(creditsTable.userId, id))))
-      : [];
+  const creditRows = await Promise.all(userIds.map((id) =>
+    db.transaction((tx) => lockActiveCredits(tx, id)),
+  ));
 
-  const creditMap = new Map(creditRows.map((c) => [c.userId, c]));
+  const creditMap = new Map(creditRows.filter((c) => c !== null).map((c) => [c!.userId, c!]));
 
   // Count completed videos per user, split by how they were made:
   //   Generated = AI pipeline ("ai" + clip-regen "remix")
@@ -136,6 +130,7 @@ router.get("/admin/users", async (req, res) => {
     return {
       ...u,
       creditsRemaining: c?.creditsRemaining ?? 0,
+      welcomeCredits: c?.welcomeCredits ?? 0,
       subscriptionCredits: c?.subscriptionCredits ?? 0,
       topupCredits: c?.topupCredits ?? 0,
       creditsUsed: c?.creditsUsed ?? 0,
@@ -179,28 +174,31 @@ router.post("/admin/credits/set", async (req, res) => {
   // Admin overrides treat the new balance as a top-up so it survives any
   // future "reset monthly credits at renewal" behavior. The subscription
   // bucket is zeroed to make the totals add up.
-  const existing = await db.select().from(creditsTable).where(eq(creditsTable.userId, targetUserId)).limit(1);
-  if (existing[0]) {
-    await db
+  const remaining = await db.transaction(async (tx) => {
+    const existing = await lockActiveCredits(tx, targetUserId);
+    if (existing) {
+      await tx
       .update(creditsTable)
       .set({
-        creditsRemaining: amount,
+        creditsRemaining: amount + existing.welcomeCredits,
         subscriptionCredits: 0,
         topupCredits: amount,
         updatedAt: new Date(),
       })
       .where(eq(creditsTable.userId, targetUserId));
-  } else {
-    await db.insert(creditsTable).values({
+      return amount + existing.welcomeCredits;
+    }
+    await tx.insert(creditsTable).values({
       id: randomUUID(),
       userId: targetUserId,
       creditsRemaining: amount,
       subscriptionCredits: 0,
       topupCredits: amount,
     });
-  }
+    return amount;
+  });
 
-  res.json({ ok: true, userId: targetUserId, creditsRemaining: amount });
+  res.json({ ok: true, userId: targetUserId, creditsRemaining: remaining });
 });
 
 // ── Admin: export the full user list as a Resend-ready CSV. Open

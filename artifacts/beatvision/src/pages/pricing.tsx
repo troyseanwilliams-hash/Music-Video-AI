@@ -410,17 +410,17 @@ export default function Pricing() {
           <Sparkles className="h-4 w-4 text-primary" />
           <span>
             <strong className="text-foreground">{FREE_OFFER_COPY.headline}</strong>
-            {" "}{FREE_OFFER_COPY.music}
+            {" "}{FREE_OFFER_COPY.example} {FREE_OFFER_COPY.expiry}
           </span>
         </div>
         <div className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-          {FREE_OFFER_COPY.trialExtras} {FREE_OFFER_COPY.afterTrial}{" "}
+          {FREE_OFFER_COPY.videoExample} {FREE_OFFER_COPY.music} {FREE_OFFER_COPY.trialExtras} {FREE_OFFER_COPY.afterTrial}{" "}
           {FREE_OFFER_COPY.credits} {FREE_OFFER_COPY.paid}
         </div>
         {!isAuthenticated && (
           <div className="mt-5">
             <Link href="/register">
-              <Button size="lg" className="w-full sm:w-auto">Start your free trial</Button>
+              <Button size="lg" className="w-full sm:w-auto">Create account — get 150 credits</Button>
             </Link>
             <p className="mt-2 text-xs text-muted-foreground">No credit card required to create an account.</p>
           </div>
@@ -450,7 +450,9 @@ export default function Pricing() {
               subscription.topupCredits > 0) && (
               <span className="text-muted-foreground">
                 · {subscription.subscriptionCredits} plan +{" "}
-                {subscription.topupCredits} top-up
+                {"welcomeCredits" in subscription && typeof subscription.welcomeCredits === "number"
+                  ? `${subscription.welcomeCredits} welcome (expires when your 7-day trial ends) + ${subscription.topupCredits} top-up`
+                  : `${subscription.topupCredits} top-up / welcome (unused welcome credits expire when your 7-day trial ends)`}
               </span>
             )}
             {subscription.planName && (
@@ -523,7 +525,7 @@ export default function Pricing() {
             {
               icon: Music2,
               title: "Music",
-              description: "Three lifetime free instrumentals and one lifetime free vocal song; additional songs use credits.",
+              description: "Paid subscribers receive monthly included instrumentals (Starter 25, Pro 100, Studio 300). Vocal songs and additional instrumentals use credits.",
             },
             {
               icon: ImageIcon,
@@ -674,7 +676,7 @@ export default function Pricing() {
                     <span>
                       <strong>AI Music</strong>{" "}
                       <span className="text-muted-foreground">
-                        — 3 lifetime free instrumentals and 1 lifetime free vocal song per account; additional songs use credits
+                        — Starter: 25, Pro: 100, Studio: 300 included instrumentals each month; additional instrumentals and vocal songs use credits
                       </span>
                     </span>
                   </li>
@@ -715,8 +717,8 @@ export default function Pricing() {
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                      <span>
-                       3 free trial lyric-burn exports, then the lyric add-on charge; 3 free trial Auto-sync
-                       aligns, then Auto-sync locks for the rest of the trial
+                       Trial karaoke lyric-burn exports cost credits; Auto-sync aligns cost credits per run.
+                       Paid subscribers retain their plan&apos;s Montage Studio features
                      </span>
                   </li>
                   <li className="flex items-start gap-2">

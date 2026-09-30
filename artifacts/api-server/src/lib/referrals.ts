@@ -9,10 +9,10 @@ import {
 import { eq, sql, count } from "drizzle-orm";
 import { logger } from "./logger.js";
 
-// Signup rewards (credits). Referrer earns per successful signup, capped to
-// limit farming; the referred user gets a welcome bonus on top of trial.
+// Referrer earns per successful signup, capped to limit farming. New users
+// receive their one-time welcome credits in the registration transaction.
 export const REFERRER_CREDITS = 100;
-export const REFERRED_CREDITS = 50;
+export const REFERRED_CREDITS = 0; // Welcome grant already covers the invitee.
 export const MAX_CREDITED_REFERRALS = 20;
 
 // Unambiguous alphabet (no 0/O/1/I) for hand-typeable codes.
@@ -131,7 +131,6 @@ export async function processReferralSignup(
     if (!row) return; // already credited
 
     await grantReferralCredits(referrer.id, referrerCredits);
-    await grantReferralCredits(newUserId, REFERRED_CREDITS);
 
     logger.info(
       { referrerId: referrer.id, referredId: newUserId, referrerCredits },

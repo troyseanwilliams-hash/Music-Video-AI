@@ -272,6 +272,25 @@ describe("credit grant idempotency across webhook redelivery", () => {
     mocks.db.transaction.mockImplementation(async (callback: any) => {
       let grantInsertedInTransaction = false;
       const tx = {
+        select() {
+          return {
+            from() {
+              return {
+                where() {
+                  return {
+                    limit() {
+                      return {
+                        async for() {
+                          return [{ welcomeCredits: 0 }];
+                        },
+                      };
+                    },
+                  };
+                },
+              };
+            },
+          };
+        },
         insert() {
           const builder = {
             values(values: Record<string, unknown>) {

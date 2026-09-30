@@ -37,7 +37,8 @@ vi.mock("../lib/referrals.js", () => ({
 }));
 
 import router from "./auth.js";
-import { analyticsEventsTable, usersTable } from "@workspace/db";
+import { analyticsEventsTable, usersTable, creditsTable, creditGrantsTable } from "@workspace/db";
+import { WELCOME_CREDITS } from "../lib/welcomeOffer.js";
 
 type FakeResponse = {
   statusCode: number;
@@ -133,12 +134,17 @@ describe("registration signup measurement", () => {
       values: vi.fn(() => userInsert),
       returning: vi.fn(async () => [user]),
     };
+    const creditsInsert = { values: vi.fn(async () => []) };
+    const grantInsert = { values: vi.fn(async () => []) };
     const eventInsert = {
       values: vi.fn(() => eventInsert),
       onConflictDoNothing: vi.fn(async () => []),
     };
     mocks.tx.insert.mockImplementation((table: unknown) =>
-      table === usersTable ? userInsert : eventInsert,
+      table === usersTable ? userInsert
+        : table === creditsTable ? creditsInsert
+        : table === creditGrantsTable ? grantInsert
+        : eventInsert,
     );
     mocks.db.transaction.mockImplementation(async (callback: (tx: unknown) => unknown) =>
       callback(mocks.tx),
@@ -157,8 +163,20 @@ describe("registration signup measurement", () => {
 
     expect(mocks.db.transaction).toHaveBeenCalledTimes(1);
     expect(mocks.tx.insert).toHaveBeenCalledWith(usersTable);
+    expect(mocks.tx.insert).toHaveBeenCalledWith(creditsTable);
+    expect(mocks.tx.insert).toHaveBeenCalledWith(creditGrantsTable);
     expect(mocks.tx.insert).toHaveBeenCalledWith(analyticsEventsTable);
-    const eventBuilder = mocks.tx.insert.mock.results[1]?.value;
+    expect(mocks.tx.insert.mock.results[1]?.value.values).toHaveBeenCalledWith(expect.objectContaining({
+      userId: user.id,
+      creditsRemaining: WELCOME_CREDITS,
+      welcomeCredits: WELCOME_CREDITS,
+    }));
+    expect(mocks.tx.insert.mock.results[2]?.value.values).toHaveBeenCalledWith(expect.objectContaining({
+      userId: user.id,
+      source: "trial",
+      creditsGranted: WELCOME_CREDITS,
+    }));
+    const eventBuilder = mocks.tx.insert.mock.results[3]?.value;
     expect(eventBuilder.values).toHaveBeenCalledWith(expect.objectContaining({
       id: expect.any(String),
       anonId: "visitor-123",
@@ -178,13 +196,9 @@ describe("registration signup measurement", () => {
       }),
     };
     mocks.tx.insert.mockImplementation((table: unknown) =>
-      table === usersTable
-        ? {
-            values: vi.fn(() => ({
-              returning: vi.fn(async () => [user]),
-            })),
-          }
-        : eventInsert,
+      table === usersTable ? {
+        values: vi.fn(() => ({ returning: vi.fn(async () => [user]) })),
+      } : table === analyticsEventsTable ? eventInsert : { values: vi.fn(async () => []) },
     );
 
     let transactionCommitted = false;
@@ -213,6 +227,42 @@ describe("registration signup measurement", () => {
     expect(mocks.db.insert).toHaveBeenCalledWith(analyticsEventsTable);
   });
 
+  it("rolls back signup if the welcome grant cannot be recorded", async () => {
+    mocks.tx.insert.mockImplementation((table: unknown) =>
+      table === usersTable ? {
+        values: vi.fn(() => ({ returning: vi.fn(async () => [user]) })),
+      } : table === creditGrantsTable ? {
+        values: vi.fn(async () => { throw new Error("grant unavailable"); }),
+      } : { values: vi.fn(async () => []) },
+    );
+    let committed = false;
+    mocks.db.transaction.mockImplementation(async (callback: (tx: unknown) => unknown) => {
+      const result = await callback(mocks.tx);
+      committed = true;
+      return result;
+    });
+    await expect(registrationHandler()(
+      request({ name: "New User", email: "new@example.test", password: "password123" }),
+      response(),
+    )).rejects.toThrow("grant unavailable");
+    expect(committed).toBe(false);
+    expect(mocks.notifyNewUser).not.toHaveBeenCalled();
+    expect(mocks.sendWelcomeEmail).not.toHaveBeenCalled();
+    expect(mocks.createSession).not.toHaveBeenCalled();
+  });
+
+  it("does not add invitee credits beyond the welcome grant", async () => {
+    await registrationHandler()(
+      request({ name: "New User", email: "new@example.test", password: "password123", referralCode: "ABCDEFGH" }),
+      response(),
+    );
+    expect(mocks.processReferralSignup).toHaveBeenCalledWith("ABCDEFGH", user.id);
+    expect(mocks.tx.insert.mock.results[1]?.value.values).toHaveBeenCalledWith(expect.objectContaining({
+      creditsRemaining: WELCOME_CREDITS,
+      welcomeCredits: WELCOME_CREDITS,
+    }));
+  });
+
   it("categorizes duplicate signup attempts without creating a user", async () => {
     mocks.db.select.mockImplementation(() => ({
       from: () => ({
@@ -230,6 +280,8 @@ describe("registration signup measurement", () => {
 
     expect(res.statusCode).toBe(409);
     expect(mocks.db.transaction).not.toHaveBeenCalled();
+    expect(mocks.processReferralSignup).not.toHaveBeenCalled();
+    expect(mocks.sendWelcomeEmail).not.toHaveBeenCalled();
     expect(mocks.db.insert).toHaveBeenCalledWith(analyticsEventsTable);
     expect(mocks.db.insert.mock.results[0]?.value.values).toHaveBeenCalledWith(
       expect.objectContaining({

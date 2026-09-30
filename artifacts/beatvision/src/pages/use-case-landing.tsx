@@ -147,10 +147,10 @@ export function LyricVideoLanding() {
 
 export function InstrumentalLanding() {
   return <UseCaseLanding cfg={{
-    docTitle: "Free AI Instrumental Generator — Royalty-Free Beats | AIBeatSync",
-    metaDescription: "Generate royalty-free instrumental music with AI. Describe a vibe and get an original beat you can use in videos, streams, and content — free tracks included.",
+    docTitle: "AI Instrumental Generator — Royalty-Free Beats | AIBeatSync",
+    metaDescription: "Generate royalty-free instrumental music with AI using credits. New accounts get 150 free credits; unused welcome credits expire when the 7-day trial ends.",
     badge: "Original beats. Royalty-free. Yours.",
-    h1a: "Free", h1accent: "AI instrumental", h1b: "generator",
+    h1a: "Create with our", h1accent: "AI instrumental", h1b: "generator",
     subhead: "Describe the vibe — lofi, cinematic, trap, ambient — and get an original royalty-free instrumental in seconds. Score a video with it, loop it, or download it.",
     ctaLabel: "Generate a beat", ctaHref: "/soundtracks",
     steps: [
@@ -158,7 +158,7 @@ export function InstrumentalLanding() {
       { icon: Disc3, title: "Loop or reuse", body: "Loop it to any length, save it to My Music, or drop it into a video." },
       { icon: Film, title: "Turn it into a video", body: "One click sends your beat into the video generator for a full music video." },
     ],
-    seo: "AIBeatSync's music generator creates original, royalty-free instrumental music from a text description — free tracks included on every plan. Use the beats in your videos, streams, and social content, then turn any track into a cinematic AI music video in the same place.",
+    seo: "AIBeatSync's music generator creates original, royalty-free instrumental music from a text description using credits. New accounts get 150 free credits; unused welcome credits expire when the 7-day trial ends. Use the beats in your videos, streams, and social content, then turn any track into a cinematic AI music video in the same place.",
   }} />;
 }
 

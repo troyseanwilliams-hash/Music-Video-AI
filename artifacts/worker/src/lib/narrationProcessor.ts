@@ -5,7 +5,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { promisify } from "util";
 import { and, eq, sql } from "drizzle-orm";
-import { creditsTable, db, jobsTable, withResourceLease } from "@workspace/db";
+import { activeWelcomeRefund, creditsTable, db, jobsTable, withResourceLease } from "@workspace/db";
 import { analyzeAudioBuffer } from "./audioAnalysis.js";
 import { signAudioAnalysisReceipt } from "./audioAnalysisReceipt.js";
 import {
@@ -34,6 +34,7 @@ type Meta = {
   chargedCredits: number;
   chargedSubscriptionCredits: number;
   chargedTopupCredits: number;
+  chargedWelcomeCredits?: number;
   refunded?: boolean;
   narrationRequestId?: string | null;
   musicRequestId?: string | null;
@@ -44,10 +45,11 @@ function metaOf(job: Job): Meta {
   return job.manifest as Meta;
 }
 
-export function narrationRefundSplit(meta: Pick<Meta, "chargedSubscriptionCredits" | "chargedTopupCredits">) {
+export function narrationRefundSplit(meta: Pick<Meta, "chargedSubscriptionCredits" | "chargedTopupCredits" | "chargedWelcomeCredits">) {
   const subscription = Math.max(0, meta.chargedSubscriptionCredits ?? 0);
   const topup = Math.max(0, meta.chargedTopupCredits ?? 0);
-  return { subscription, topup, total: subscription + topup };
+  const welcome = Math.max(0, meta.chargedWelcomeCredits ?? 0);
+  return { subscription, topup, welcome, total: subscription + topup + welcome };
 }
 
 async function updateOwned(job: Job, values: Partial<typeof jobsTable.$inferInsert>): Promise<void> {
@@ -70,10 +72,13 @@ export async function refundNarrationOnce(jobId: string): Promise<number> {
     if (!job || job.jobType !== "narration") return 0;
     const meta = metaOf(job);
     if (meta.refunded || meta.chargedCredits <= 0 || job.status === "ready") return 0;
-    const { subscription, topup, total } = narrationRefundSplit(meta);
+    const { subscription, topup, welcome } = narrationRefundSplit(meta);
+    const activeWelcome = await activeWelcomeRefund(tx, job.userId, welcome);
+    const total = subscription + topup + activeWelcome;
     await tx.update(creditsTable).set({
       subscriptionCredits: sql`subscription_credits + ${subscription}`,
       topupCredits: sql`topup_credits + ${topup}`,
+      welcomeCredits: sql`welcome_credits + ${activeWelcome}`,
       creditsRemaining: sql`credits_remaining + ${total}`,
       creditsUsed: sql`GREATEST(credits_used - ${total}, 0)`,
       updatedAt: new Date(),

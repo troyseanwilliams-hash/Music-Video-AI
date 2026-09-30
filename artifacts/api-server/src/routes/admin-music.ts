@@ -6,8 +6,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomUUID } from "crypto";
 import { z } from "zod";
-import { db, creditsTable, usersTable, soundtracksTable, soundtrackLikesTable } from "@workspace/db";
-import { eq, sql, and, desc, isNull, inArray, lt } from "drizzle-orm";
+import { db, creditsTable, usersTable, soundtracksTable, soundtrackLikesTable, lockActiveCredits, splitCreditDebit, debitCreditColumns, activeWelcomeRefund, refundCreditColumns } from "@workspace/db";
+import { eq, sql, and, desc, isNull, inArray } from "drizzle-orm";
 import {
   generateSong,
   getActiveMusicProvider,
@@ -21,7 +21,6 @@ import { generateLyrics, lyricsProviderAvailable } from "../lib/lyricsGen.js";
 import {
   calculateSongCost,
   freeSoundtracksFor,
-  NEW_USER_FREE_SOUNDTRACKS,
   SONG_VOCAL_CREDITS,
   VOCAL_SONG_CREDITS_PER_MINUTE,
 } from "../lib/creditCost.js";
@@ -29,17 +28,15 @@ import { notifyFeatureRequest } from "../lib/notifications.js";
 import { getUncachableStripeClient } from "../lib/stripeClient.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { logger } from "../lib/logger.js";
-import { getSongSettlement } from "../lib/songEntitlement.js";
 
-// Determine a user's subscription tier (starter/pro/studio) from Stripe.
 async function getUserTier(user: { stripeSubscriptionId?: string | null }): Promise<string | null> {
-  if (!user?.stripeSubscriptionId) return null;
+  if (!user.stripeSubscriptionId) return null;
   try {
     const stripe = await getUncachableStripeClient();
     const sub = await stripe.subscriptions.retrieve(user.stripeSubscriptionId);
     const lk = sub.items.data[0]?.price?.lookup_key ?? null;
     if (!lk) return null;
-    for (const t of ["studio", "pro", "starter"]) if (lk.startsWith(t)) return t;
+    for (const tier of ["studio", "pro", "starter"]) if (lk.startsWith(tier)) return tier;
     return null;
   } catch {
     return null;
@@ -119,14 +116,11 @@ const GenerateBody = z.object({
   // Loop the generated clip (via ffmpeg, free) to this length to match a video.
   loopToSeconds: z.number().int().min(1).max(MAX_SONG_SECONDS).optional(),
   provider: z.enum(["simulation", "acestep", "musicgen", "pixazo", "elevenlabs"]).optional(),
-  // Generate a full VOCAL song (Eleven Music) instead of an instrumental. Priced
-  // higher and never covered by the free allowance.
+  // Generate a full VOCAL song (Eleven Music) instead of an instrumental.
   withVocals: z.boolean().optional(),
   // Let the model write the lyrics from the prompt (no lyrics box needed).
   lyricsOptimizer: z.boolean().optional(),
 });
-
-const FREE_VOCAL_SONGS_PER_ACCOUNT = 1;
 
 router.post("/admin/music/generate", async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
@@ -151,108 +145,71 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
     : parsed.data.durationSeconds ?? 30;
   const cost = calculateSongCost(durationSeconds, wantsVocals);
 
-  // Freemium metering. Admins are unlimited. Subscribers get a monthly free
-  // "Soundtracks" allowance by tier (a bonus that upsells higher plans); beyond
-  // it, each track costs credits.
-  let isFree = admin; // no credit charge for this generation (admins never charged)
-  let freeRemaining: number | null = null;
-  let claimedFreeVocalSong = false;
-  let freeVocalSongsRemaining: number | null = admin
-    ? null
-    : 0;
+  // Preserve existing paid subscribers' monthly included instrumental tracks.
+  // Free signup tracks and free vocal songs have been replaced by welcome credits.
+  const [user] = admin ? [null] : await db.select().from(usersTable)
+    .where(eq(usersTable.id, req.user.id)).limit(1);
+  const tier = !wantsVocals && user?.subscriptionStatus === "active"
+    ? await getUserTier(user) : null;
+  const allowance = !wantsVocals && user?.subscriptionStatus === "active"
+    ? freeSoundtracksFor(tier) || freeSoundtracksFor("starter") : 0;
 
+  // Reserve before contacting the provider; a row lock serializes both
+  // included-track claims and credit debits across simultaneous requests.
+  let reservedSubscription = 0;
+  let reservedTopup = 0;
+  let reservedWelcome = 0;
+  let claimedFreeResetAt: Date | null = null;
+  let freeRemaining = 0;
   if (!admin) {
-    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.user.id)).limit(1);
-    let [credits] = await db.select().from(creditsTable).where(eq(creditsTable.userId, req.user.id)).limit(1);
-    if (!credits) {
-      [credits] = await db.insert(creditsTable).values({ id: randomUUID(), userId: req.user.id }).returning();
+    const reservation = await db.transaction(async (tx) => {
+      await tx.insert(creditsTable).values({ id: randomUUID(), userId: req.user.id })
+        .onConflictDoNothing({ target: creditsTable.userId });
+      const credits = await lockActiveCredits(tx, req.user.id);
+      if (!credits) throw new Error("Credits account unavailable.");
+      const now = new Date();
+      const resetAt = credits.freeSoundtracksResetAt;
+      const used = !resetAt || resetAt.getTime() <= now.getTime()
+        ? 0 : credits.freeSoundtracksUsed;
+      if (allowance > used) {
+        const nextReset = resetAt && resetAt.getTime() > now.getTime()
+          ? resetAt
+          : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, now.getUTCDate(),
+              now.getUTCHours(), now.getUTCMinutes(), now.getUTCSeconds(), now.getUTCMilliseconds()));
+        await tx.update(creditsTable).set({
+          freeSoundtracksUsed: used + 1,
+          freeSoundtracksResetAt: nextReset,
+        }).where(eq(creditsTable.userId, req.user.id));
+        return { charged: true as const, free: true as const, resetAt: nextReset, remaining: allowance - used - 1 };
+      }
+      if (credits.creditsRemaining < cost) return { remaining: credits.creditsRemaining, charged: false as const };
+      const split = splitCreditDebit(credits, cost);
+      await tx.update(creditsTable).set({
+        ...debitCreditColumns(split, cost),
+        updatedAt: new Date(),
+      }).where(eq(creditsTable.userId, req.user.id));
+      return { charged: true as const, free: false as const, ...split };
+    });
+    if (!reservation.charged) {
+      res.status(402).json({
+        error: `This song costs ${cost} credits but you have ${reservation.remaining}.`,
+        code: "INSUFFICIENT_CREDITS",
+        creditsRequired: cost,
+        creditsRemaining: reservation.remaining,
+      });
+      return;
     }
-    const active = (user?.subscriptionStatus ?? "none") === "active";
-
-    if (wantsVocals) {
-      // Every account gets one lifetime introductory vocal song. Claim it
-      // atomically before the provider call so concurrent requests cannot both
-      // consume the same free use. Failures restore the claim in the catch path.
-      const claimed = await db
-        .update(creditsTable)
-        .set({
-          freeVocalSongsUsed: sql`${creditsTable.freeVocalSongsUsed} + 1`,
-        })
-        .where(
-          and(
-            eq(creditsTable.userId, req.user.id),
-            lt(creditsTable.freeVocalSongsUsed, FREE_VOCAL_SONGS_PER_ACCOUNT),
-          ),
-        )
-        .returning({ used: creditsTable.freeVocalSongsUsed });
-      if (claimed.length > 0) {
-        isFree = true;
-        claimedFreeVocalSong = true;
-        freeVocalSongsRemaining = Math.max(
-          0,
-          FREE_VOCAL_SONGS_PER_ACCOUNT - claimed[0].used,
-        );
-      } else if ((credits?.creditsRemaining ?? 0) < cost) {
-        res.status(402).json({
-          error: `A vocal song costs ${cost} credits but you have ${credits?.creditsRemaining ?? 0}.`,
-          code: "INSUFFICIENT_CREDITS",
-          creditsRequired: cost,
-          creditsRemaining: credits?.creditsRemaining ?? 0,
-        });
-        return;
-      }
-      // When the free use was already consumed, isFree stays false and credits
-      // are deducted on success below.
-    } else if (active) {
-      // Subscriber: monthly free allowance by tier (lazy monthly reset).
-      let used = credits?.freeSoundtracksUsed ?? 0;
-      const resetAt = credits?.freeSoundtracksResetAt ? new Date(credits.freeSoundtracksResetAt).getTime() : 0;
-      if (!resetAt || resetAt <= Date.now()) {
-        used = 0;
-        const next = new Date();
-        next.setUTCMonth(next.getUTCMonth() + 1);
-        await db.update(creditsTable).set({ freeSoundtracksUsed: 0, freeSoundtracksResetAt: next }).where(eq(creditsTable.userId, req.user.id));
-      }
-
-      const tier = await getUserTier(user);
-      // Active subscribers always get their free allowance; if the Stripe tier
-      // can't be read, fall back to the Starter allowance so free tracks are
-      // never accidentally charged to their credit balance.
-      const allowance = freeSoundtracksFor(tier) || freeSoundtracksFor("starter");
-
-      if (used < allowance) {
-        isFree = true;
-        freeRemaining = allowance - used - 1;
-      } else if ((credits?.creditsRemaining ?? 0) < cost) {
-        res.status(402).json({
-          error: `You've used all ${allowance} free music generations this month. Extra tracks cost ${cost} credits but you have ${credits?.creditsRemaining ?? 0}.`,
-          code: "INSUFFICIENT_CREDITS",
-          creditsRequired: cost,
-          creditsRemaining: credits?.creditsRemaining ?? 0,
-          freeAllowance: allowance,
-        });
-        return;
-      } else {
-        freeRemaining = 0;
-      }
+    if (reservation.free) {
+      claimedFreeResetAt = reservation.resetAt;
+      freeRemaining = reservation.remaining;
     } else {
-      // New / non-subscriber: a one-time signup bonus of free Soundtracks to try
-      // the feature (lifetime — no monthly reset; the same counter carries over
-      // and is reset to 0 the first time they subscribe). Then upsell.
-      const used = credits?.freeSoundtracksUsed ?? 0;
-      if (used < NEW_USER_FREE_SOUNDTRACKS) {
-        isFree = true;
-        freeRemaining = NEW_USER_FREE_SOUNDTRACKS - used - 1;
-      } else {
-        res.status(403).json({
-          error: `You've used your ${NEW_USER_FREE_SOUNDTRACKS} free music generations. Subscribe to get more every month.`,
-          code: "SUBSCRIPTION_REQUIRED",
-        });
-        return;
-      }
+      reservedSubscription = reservation.subscription;
+      reservedTopup = reservation.topup;
+      reservedWelcome = reservation.welcome;
     }
   }
 
+  let delivered = false;
   try {
     const song = await generateSong({
       prompt: parsed.data.prompt,
@@ -279,28 +236,6 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
     const objectPath = await storageService.uploadAudioBuffer(audioBuffer, songId, ext);
     const url = await storageService.getObjectEntitySignedUrl(objectPath, 3600);
 
-    // On success (non-admins only): a free track burns one of the monthly
-    // allowance; a paid track deducts credits (subscription bucket drawn first).
-    if (!admin) {
-      const settlement = getSongSettlement(isFree, wantsVocals);
-      if (settlement === "free-instrumental") {
-        await db
-          .update(creditsTable)
-          .set({ freeSoundtracksUsed: sql`free_soundtracks_used + 1` })
-          .where(eq(creditsTable.userId, req.user.id));
-      } else if (settlement === "paid") {
-        await db
-          .update(creditsTable)
-          .set({
-            subscriptionCredits: sql`GREATEST(subscription_credits - ${cost}, 0)`,
-            topupCredits: sql`GREATEST(topup_credits - GREATEST(${cost} - subscription_credits, 0), 0)`,
-            creditsRemaining: sql`GREATEST(credits_remaining - ${cost}, 0)`,
-            creditsUsed: sql`credits_used + ${cost}`,
-          })
-          .where(eq(creditsTable.userId, req.user.id));
-      }
-    }
-
     // Persist to the user's Soundtracks library (play/download/reuse/share).
     // Non-fatal: if this fails (e.g. the table isn't migrated yet), the user
     // still gets their generated track back rather than losing the generation.
@@ -320,12 +255,15 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
         loopedToSeconds,
         provider: song.provider,
       });
+      // A durable library track is owed its reservation even if subsequent
+      // logging or response serialization fails.
+      delivered = true;
     } catch (persistErr) {
       savedToLibrary = false;
       logger.error({ err: persistErr, songId }, "Soundtrack generated but failed to save to library (is the soundtracks table migrated?)");
     }
 
-    logger.info({ songId, provider: song.provider, cost, admin, isFree, loopedToSeconds, savedToLibrary }, "Soundtrack generated");
+    logger.info({ songId, provider: song.provider, cost, admin, loopedToSeconds, savedToLibrary }, "Soundtrack generated");
     res.json({
       songId,
       objectPath, // feed this straight into the video generator as the audio source
@@ -334,37 +272,50 @@ router.post("/admin/music/generate", async (req: Request, res: Response) => {
       hasVocals: song.hasVocals,
       ext,
       loopedToSeconds, // null unless the clip was looped
-      creditsCharged: isFree ? 0 : cost,
-      wasFree: isFree, // true when covered by the monthly free allowance
-      freeRemaining, // free tracks left this month (null for admins)
-      freeVocalSongsRemaining,
+      creditsCharged: admin || claimedFreeResetAt ? 0 : cost,
+      wasFree: admin || !!claimedFreeResetAt,
+      freeRemaining: admin ? null : freeRemaining,
+      freeVocalSongsRemaining: 0,
       savedToLibrary, // false if the library insert failed (track still returned)
     });
+    delivered = true;
   } catch (err) {
-    if (claimedFreeVocalSong) {
-      await db
+    if (!delivered && !res.headersSent && claimedFreeResetAt) {
+      await db.update(creditsTable)
+        .set({ freeSoundtracksUsed: sql`GREATEST(${creditsTable.freeSoundtracksUsed} - 1, 0)` })
+        .where(and(eq(creditsTable.userId, req.user.id),
+          eq(creditsTable.freeSoundtracksResetAt, claimedFreeResetAt)))
+        .catch((restoreErr) => logger.error({ err: restoreErr, userId: req.user!.id },
+          "Failed to restore included soundtrack after generation failure"));
+    } else if (!delivered && !res.headersSent && !admin) {
+      await db.transaction(async (tx) => {
+        const welcomeRefund = await activeWelcomeRefund(tx, req.user!.id, reservedWelcome);
+        await tx
         .update(creditsTable)
         .set({
-          freeVocalSongsUsed: sql`GREATEST(${creditsTable.freeVocalSongsUsed} - 1, 0)`,
+          ...refundCreditColumns({ welcome: reservedWelcome, subscription: reservedSubscription, topup: reservedTopup }, welcomeRefund),
+          updatedAt: new Date(),
         })
-        .where(eq(creditsTable.userId, req.user.id))
+        .where(eq(creditsTable.userId, req.user!.id));
+      })
         .catch((restoreErr) => {
           logger.error(
             { err: restoreErr, userId: req.user!.id },
-            "Failed to restore free vocal song after generation failure",
+            "Failed to refund song reservation after generation failure",
           );
         });
     }
     logger.error({ err }, "Admin song generation failed");
-    res.status(500).json({
-      error: err instanceof Error ? err.message : "Song generation failed",
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "Song generation failed",
+      });
+    }
   }
 });
 
-// The signed-in user's Soundtracks freemium status: how many free tracks their
-// tier includes, how many remain this month, and their credit balance for
-// overage. Drives the "N free Soundtracks left" display.
+// Paid subscribers retain their monthly instrumental allowance; everyone
+// else (and every vocal generation) uses credits.
 router.get("/music/soundtracks-status", async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: "Unauthorized" });
@@ -372,45 +323,31 @@ router.get("/music/soundtracks-status", async (req: Request, res: Response) => {
   }
   const admin = isAdmin(req.user.email);
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.user.id)).limit(1);
-  const [credits] = await db.select().from(creditsTable).where(eq(creditsTable.userId, req.user.id)).limit(1);
+  const credits = await db.transaction((tx) => lockActiveCredits(tx, req.user.id));
   const active = (user?.subscriptionStatus ?? "none") === "active";
-
-  let freeAllowance: number;
-  let used: number;
-  let tier: string | null = null;
-  if (active) {
-    // Subscriber: monthly allowance by tier. Elapsed reset window = fresh month.
-    tier = await getUserTier(user ?? {});
-    freeAllowance = freeSoundtracksFor(tier) || freeSoundtracksFor("starter");
-    const resetAt = credits?.freeSoundtracksResetAt ? new Date(credits.freeSoundtracksResetAt).getTime() : 0;
-    used = !resetAt || resetAt <= Date.now() ? 0 : credits?.freeSoundtracksUsed ?? 0;
-  } else {
-    // New / non-subscriber: one-time signup bonus (lifetime counter, no reset).
-    freeAllowance = NEW_USER_FREE_SOUNDTRACKS;
-    used = credits?.freeSoundtracksUsed ?? 0;
-  }
+  const tier = active ? await getUserTier(user ?? {}) : null;
+  const freeAllowance = active
+    ? freeSoundtracksFor(tier) || freeSoundtracksFor("starter") : 0;
+  const resetAt = credits?.freeSoundtracksResetAt;
+  const freeUsed = active && resetAt && resetAt.getTime() > Date.now()
+    ? credits?.freeSoundtracksUsed ?? 0 : 0;
 
   res.json({
     admin, // admins generate unlimited/free
     enabled: SONG_GENERATOR_PUBLIC || admin, // whether this user can generate now
     tier,
-    isSignupBonus: !active, // freeAllowance is the one-time new-user bonus
+    isSignupBonus: false,
     freeAllowance,
-    freeUsed: used,
-    freeRemaining: Math.max(0, freeAllowance - used),
-    freeResetAt: active ? credits?.freeSoundtracksResetAt ?? null : null,
+    freeUsed,
+    freeRemaining: Math.max(0, freeAllowance - freeUsed),
+    freeResetAt: active && resetAt && resetAt.getTime() > Date.now() ? resetAt : null,
     creditsRemaining: credits?.creditsRemaining ?? 0,
     subscriptionActive: active,
     // Vocal (with-lyrics) song generation: duration-based credit rate +
     // whether the Eleven Music model is configured.
     vocalCost: SONG_VOCAL_CREDITS,
     vocalCreditsPerMinute: VOCAL_SONG_CREDITS_PER_MINUTE,
-    freeVocalSongsRemaining: admin
-      ? null
-      : Math.max(
-          0,
-          FREE_VOCAL_SONGS_PER_ACCOUNT - (credits?.freeVocalSongsUsed ?? 0),
-        ),
+    freeVocalSongsRemaining: 0,
     vocalsEnabled:
       isUsableElevenLabsMusicCredential() || !!process.env.PIXAZO_API_KEY,
   });

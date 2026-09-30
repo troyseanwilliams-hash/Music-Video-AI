@@ -52,6 +52,8 @@ pool.on("error", (error) => {
 
 export const db = drizzle(pool, { schema });
 
+export { lockActiveCredits, splitCreditDebit, activeWelcomeRefund, debitCreditColumns, refundCreditColumns, welcomeGrantActive } from "./welcomeCredits.js";
+
 export * from "./schema";
 export * from "./campaignSchedule";
 export * from "./resourceLease";

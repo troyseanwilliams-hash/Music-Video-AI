@@ -2,6 +2,7 @@ import { Resend } from "resend";
 import twilio from "twilio";
 import { logger } from "./logger.js";
 import { adminEmailHtml, detailRow, escapeHtml, unsubscribeUrl, unsubscribeHeaders } from "./emailTemplates.js";
+import { WELCOME_CREDITS, WELCOME_OFFER_COPY } from "./welcomeOffer.js";
 
 function getSmsClient(): ReturnType<typeof twilio> | null {
   const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN } = process.env;
@@ -182,7 +183,7 @@ export function sendWelcomeEmail(user: { id: string; email?: string | null; name
     .send({
       from: "AIBeatSync <notifications@aibeatsync.com>",
       to: user.email,
-      subject: "Welcome to AIBeatSync 🎬 — turn your songs into music videos",
+      subject: `Welcome to AIBeatSync 🎬 — ${WELCOME_CREDITS} credits to get started`,
       ...(unsubHeaders ? { headers: unsubHeaders } : {}),
       html: `
         <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;padding:32px 24px;color:#111">
@@ -191,9 +192,8 @@ export function sendWelcomeEmail(user: { id: string; email?: string | null; name
           </div>
           <h1 style="font-size:22px;margin:0 0 12px">Welcome${firstName ? `, ${firstName}` : ""}! 👋</h1>
           <p style="font-size:15px;line-height:1.6;color:#333;margin:0 0 20px">
-            You're in. AIBeatSync turns any song into a ready-to-post AI music video — the visuals
-            are generated shot by shot and cut to the beat of your track. Your account starts with a
-            <strong>7-day full-access trial</strong>, so dive right in.
+            You're in. ${WELCOME_OFFER_COPY} Use them to make AI images, music and video.
+            Your credits don't expire; other included Editor features remain available during your introductory access window.
           </p>
           <p style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;color:#888;margin:0 0 4px">What you can do</p>
           <table style="width:100%;border-collapse:collapse;font-size:14px;line-height:1.5">

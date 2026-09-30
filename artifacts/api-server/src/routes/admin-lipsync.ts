@@ -21,7 +21,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomUUID } from "crypto";
 import { z } from "zod";
-import { db, jobsTable, creditsTable, usersTable } from "@workspace/db";
+import { db, jobsTable, creditsTable, usersTable, lockActiveCredits, splitCreditDebit, debitCreditColumns } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { calculateLipsyncCost, LIPSYNC_MIN_SECONDS, LIPSYNC_MAX_SECONDS } from "../lib/creditCost.js";
 import { lipsyncAvailable } from "../lib/lipsync.js";
@@ -134,9 +134,8 @@ router.post("/admin/runway-lipsync/jobs", async (req: Request, res: Response) =>
   const [userRecord] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   void userRecord;
 
-  // Admins are still metered (balance floors at 0, creditsUsed still tracks
-  // spend) -- same behavior as the main /jobs route -- but are never blocked by
-  // an insufficient balance, since this is an internal testing tool.
+  // Reserve only active funds; even internal testing cannot silently create
+  // a negative balance or revive an expired signup grant.
   const creditCost = calculateLipsyncCost(durationSeconds);
   const credits = await db.select().from(creditsTable).where(eq(creditsTable.userId, userId)).limit(1);
   let userCredits = credits[0];
@@ -145,16 +144,21 @@ router.post("/admin/runway-lipsync/jobs", async (req: Request, res: Response) =>
     userCredits = newCredits;
   }
   void userCredits;
+  const available = await db.transaction((tx) => lockActiveCredits(tx, userId));
+  if (!available || available.creditsRemaining < creditCost) {
+    res.status(402).json({ error: "Insufficient active credits for this render.", code: "INSUFFICIENT_CREDITS" });
+    return;
+  }
 
   const jobId = randomUUID();
   const job = await db.transaction(async (tx) => {
+    const active = await lockActiveCredits(tx, userId);
+    if (!active || active.creditsRemaining < creditCost) return null;
+    const split = splitCreditDebit(active, creditCost);
     await tx
       .update(creditsTable)
       .set({
-        subscriptionCredits: sql`GREATEST(subscription_credits - ${creditCost}, 0)`,
-        topupCredits: sql`GREATEST(topup_credits - GREATEST(${creditCost} - subscription_credits, 0), 0)`,
-        creditsRemaining: sql`GREATEST(credits_remaining - ${creditCost}, 0)`,
-        creditsUsed: sql`credits_used + ${creditCost}`,
+        ...debitCreditColumns(split, creditCost),
         updatedAt: new Date(),
       })
       .where(eq(creditsTable.userId, userId));
@@ -179,6 +183,9 @@ router.post("/admin/runway-lipsync/jobs", async (req: Request, res: Response) =>
         // Pixazo-only flag consumed by the admin job processor.
         manifest: {
           reservedCredits: creditCost,
+          reservedWelcomeCredits: split.welcome,
+          reservedSubscriptionCredits: split.subscription,
+          reservedTopupCredits: split.topup,
           provider: "pixazo",
           lipSyncEnabled,
         } as unknown as Record<string, unknown>,
@@ -187,6 +194,10 @@ router.post("/admin/runway-lipsync/jobs", async (req: Request, res: Response) =>
       .returning();
     return inserted;
   });
+  if (!job) {
+    res.status(402).json({ error: "Insufficient active credits for this render.", code: "INSUFFICIENT_CREDITS" });
+    return;
+  }
 
   req.log.info(
     { userId, jobId, lipSyncEnabled, durationSeconds, creditCost },

@@ -7,9 +7,11 @@
  */
 
 export interface CreditsResponse {
-  /** Total credits available (subscriptionCredits + topupCredits) */
+  /** Total active credits available (welcomeCredits + subscriptionCredits + topupCredits) */
   creditsRemaining: number;
-  /** Credits granted by the active subscription (or trial). May be reset on renewal. */
+  /** Seven-day signup grant; zero at or after the signup trial ends. */
+  welcomeCredits: number;
+  /** Credits granted by the active subscription. May be reset on renewal. */
   subscriptionCredits: number;
   /** Credits from one-time top-up purchases. Never reset by renewals. */
   topupCredits: number;

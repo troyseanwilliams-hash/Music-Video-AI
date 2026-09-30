@@ -47,15 +47,12 @@ interface Soundtrack {
 interface StatusResp {
   admin: boolean;
   enabled: boolean;
-  isSignupBonus: boolean;
   freeAllowance: number;
-  freeUsed: number;
   freeRemaining: number;
   creditsRemaining: number;
   subscriptionActive: boolean;
   vocalCost?: number;
   vocalCreditsPerMinute?: number;
-  freeVocalSongsRemaining?: number | null;
   vocalsEnabled?: boolean;
 }
 
@@ -289,10 +286,8 @@ export default function Soundtracks() {
       const data = await readApiResponse(res);
       if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "The music engine couldn't finish this track. Please try again.");
       return data as {
-        wasFree: boolean;
         creditsCharged: number;
-        freeRemaining: number | null;
-        freeVocalSongsRemaining: number | null;
+        wasFree: boolean;
       };
     },
     onSuccess: (data) => {
@@ -304,9 +299,7 @@ export default function Soundtracks() {
       toast({
         title: "Music ready",
         description: data.wasFree
-          ? withVocals
-            ? "Your free vocal song was used."
-            : "Used one of your free music generations."
+          ? withVocals ? "No credits charged." : "One included instrumental generation used."
           : `${data.creditsCharged} credits used.`,
       });
       setTimeout(() => setProgress(0), 900);
@@ -446,14 +439,7 @@ export default function Soundtracks() {
     );
   }
 
-  const freeLabel = status
-    ? status.admin
-      ? "Unlimited (admin)"
-      : status.isSignupBonus
-        ? `${status.freeRemaining} of ${status.freeAllowance} free to try left`
-        : `${status.freeRemaining} of ${status.freeAllowance} free this month`
-    : null;
-
+  const includedInstrumental = !withVocals && !!status?.subscriptionActive && (status.freeRemaining ?? 0) > 0;
   const visibleTracks = (tracks ?? [])
     .filter((s) => {
       const q = libSearch.trim().toLowerCase();
@@ -479,9 +465,10 @@ export default function Soundtracks() {
             Compose original tracks from scratch. Start with a vibe, add lyrics if you want vocals, and produce high-fidelity music.
           </p>
         </div>
-        {freeLabel && (
+        {status && (
           <div className="hidden sm:flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-2 text-sm font-medium text-primary shadow-sm shrink-0">
-            <Sparkles className="h-4 w-4" /> {freeLabel}
+            <Sparkles className="h-4 w-4" /> {status.creditsRemaining} credits available
+            {status.subscriptionActive && status.freeAllowance > 0 && ` · ${status.freeRemaining} of ${status.freeAllowance} included instrumentals left this month`}
           </div>
         )}
       </div>
@@ -570,9 +557,7 @@ export default function Soundtracks() {
                     <div className="flex items-center gap-3">
                       <h2 className="text-xl font-semibold">Vocals & Lyrics</h2>
                        <Badge variant="secondary" className="font-medium text-xs">
-                         {status?.admin || (status?.freeVocalSongsRemaining ?? 0) > 0
-                           ? "First song free"
-                           : `${estimatedVocalCredits} credits est.`}
+                         {estimatedVocalCredits} credits est.
                        </Badge>
                     </div>
                   </div>
@@ -710,11 +695,9 @@ export default function Soundtracks() {
           <div className="bg-muted/30 border-t border-border p-6 md:px-8 flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="text-sm text-muted-foreground w-full md:w-auto text-center md:text-left">
               {withVocals
-                ? status?.admin || (status?.freeVocalSongsRemaining ?? 0) > 0
-                  ? `Your first vocal song is free. Estimated length: ${formatVocalDuration(estimatedVocalDuration)}.`
-                  : `Estimated ${formatVocalDuration(estimatedVocalDuration)} vocal song: ${estimatedVocalCredits} credits.`
-                : status?.admin || (status?.freeRemaining ?? 0) > 0
-                  ? "You are using a free music generation."
+                ? `Estimated ${formatVocalDuration(estimatedVocalDuration)} vocal song: ${estimatedVocalCredits} credits.`
+                : includedInstrumental
+                  ? `This instrumental uses 1 of your ${status.freeRemaining} remaining monthly included generations.`
                   : `Generating this music will use ≈ ${songCredits(duration)} credits.`}
             </div>
 
@@ -739,11 +722,7 @@ export default function Soundtracks() {
                 className="w-full md:w-auto bg-gradient-electric text-white text-base font-bold px-8 h-12 shadow-md hover:shadow-lg transition-all"
                 disabled={prompt.trim().length < 3 || lyricsBusy}
                 onClick={() => {
-                  const generationIsFree = withVocals
-                    ? status?.admin || (status?.freeVocalSongsRemaining ?? 0) > 0
-                    : status?.admin || (status?.freeRemaining ?? 0) > 0;
-                  const requiredCredits = withVocals ? estimatedVocalCredits : generationIsFree ? 0 : songCredits(duration);
-                  const creditsToCheck = generationIsFree ? 0 : requiredCredits;
+                  const creditsToCheck = status.admin ? 0 : includedInstrumental ? 0 : withVocals ? estimatedVocalCredits : songCredits(duration);
                   if (!canAffordCredits(creditsToCheck, status?.creditsRemaining)) {
                     setTopUpCost(creditsToCheck);
                     setTopUpOpen(true);

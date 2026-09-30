@@ -84,7 +84,7 @@ export const DAILY_CONTENT: DailyItem[] = [
   { type: "tip", text: "Prompt can generate lyrics for 3 credits — handy for finishing a song idea fast." },
   { type: "tip", text: "Montage Studio supports smooth transitions between every clip on your timeline — crossfade, Circle Open, and more." },
   { type: "tip", text: "You can generate 5-second Spotify Canvas clips, perfectly sized and beat-synced, ready to upload straight to Spotify for Artists." },
-  { type: "tip", text: "Refer a friend and you'll both earn free credits — grab your referral link from your dashboard." },
+  { type: "tip", text: "Refer a friend to earn credits for eligible signups. They'll get the standard 150 welcome credits, not an additional invitee bonus. Unused welcome credits expire when their 7-day trial ends." },
   { type: "tip", text: "Upload a reference image — album art, a mood board, anything — and the AI keeps your video's look on-brand from the first frame." },
   { type: "tip", text: "Choose from 8 distinct cinematic visual styles when generating with AI, from documentary grit to ethereal fantasy." },
   { type: "tip", text: `Montage Studio exports have no watermark. ${FREE_OFFER_COPY.afterTrial}` },

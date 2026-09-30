@@ -51,7 +51,7 @@ export default function Register() {
 
   useSEO({
     title: "Create your account",
-    description: `${FREE_OFFER_COPY.short} ${FREE_OFFER_COPY.music} ${FREE_OFFER_COPY.credits}`,
+    description: `${FREE_OFFER_COPY.short} ${FREE_OFFER_COPY.example} ${FREE_OFFER_COPY.expiry} ${FREE_OFFER_COPY.credits}`,
     canonical: "/register",
     noindex: true,
   });
@@ -136,9 +136,10 @@ export default function Register() {
 
         <div className="mb-5 sm:mb-8">
           <h1 className="text-3xl font-bold tracking-tight mb-2">Create your account</h1>
-          <p className="text-muted-foreground text-sm">{FREE_OFFER_COPY.short} {FREE_OFFER_COPY.music}</p>
+          <p className="text-muted-foreground text-sm">{FREE_OFFER_COPY.short} {FREE_OFFER_COPY.example} {FREE_OFFER_COPY.expiry}</p>
+          <p className="text-muted-foreground text-xs mt-2">{FREE_OFFER_COPY.videoExample}</p>
           <p className="text-muted-foreground text-xs mt-2">{FREE_OFFER_COPY.trialExtras} {FREE_OFFER_COPY.afterTrial}</p>
-          <p className="text-muted-foreground text-xs mt-2">{FREE_OFFER_COPY.credits} {FREE_OFFER_COPY.paid}</p>
+          <p className="text-muted-foreground text-xs mt-2">{FREE_OFFER_COPY.music} {FREE_OFFER_COPY.credits} {FREE_OFFER_COPY.paid}</p>
         </div>
 
         {referralCode && (

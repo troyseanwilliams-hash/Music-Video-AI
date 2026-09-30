@@ -2,7 +2,7 @@ import bcrypt from "bcrypt";
 import crypto from "crypto";
 import { Router, type IRouter, type Request, type Response } from "express";
 import { RegisterUserBody, LoginUserBody, GetCurrentAuthUserResponse } from "@workspace/api-zod";
-import { db, analyticsEventsTable, usersTable } from "@workspace/db";
+import { db, analyticsEventsTable, usersTable, creditsTable, creditGrantsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
 function isAdminEmail(email: string | null | undefined): boolean {
@@ -22,6 +22,7 @@ function buildUserPayload(user: typeof usersTable.$inferSelect) {
   };
 }
 import { processReferralSignup } from "../lib/referrals.js";
+import { WELCOME_CREDITS } from "../lib/welcomeOffer.js";
 import { notifyNewUser, sendWelcomeEmail } from "../lib/notifications.js";
 import { emailShell, ctaButton } from "../lib/emailTemplates.js";
 import { z } from "zod";
@@ -111,7 +112,7 @@ router.post("/auth/register", async (req: Request, res: Response) => {
     return;
   }
 
-  // Anti-abuse: cap free-trial accounts per client IP. req.ip is the real client
+  // Anti-abuse: cap new accounts per client IP. req.ip is the real client
   // (trust proxy is enabled). Tune/disable with MAX_ACCOUNTS_PER_IP (0 = off).
   const signupIp = (req.ip || "").toString().trim();
   const maxAccountsPerIp = parseInt(process.env.MAX_ACCOUNTS_PER_IP ?? "3", 10);
@@ -126,7 +127,7 @@ router.post("/auth/register", async (req: Request, res: Response) => {
       await recordSignupFailure(req, "rate_limited", anonId);
       res.status(429).json({
         error:
-          "We've reached the limit of free accounts from your network. If you need another account, please contact support.",
+          "We've reached the limit of new accounts from your network. If you need another account, please contact support.",
         code: "TOO_MANY_ACCOUNTS",
       });
       return;
@@ -149,7 +150,7 @@ router.post("/auth/register", async (req: Request, res: Response) => {
           passwordHash,
           firstName,
           lastName,
-          // New users get a 7-day full-access Editor trial.
+          // Retain the internal Editor access window, independently of welcome credits.
           subscriptionStatus: "trial",
           trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
           lastLoginAt: new Date(),
@@ -160,6 +161,22 @@ router.post("/auth/register", async (req: Request, res: Response) => {
       if (!createdUser) {
         throw new Error("Registration did not create an account");
       }
+
+      // Grant exactly once on account creation, in the same transaction. A
+      // duplicate email fails its unique constraint and rolls everything back;
+      // login and lazy credits-row creation cannot grant this offer.
+      await tx.insert(creditsTable).values({
+        id: crypto.randomUUID(),
+        userId: createdUser.id,
+        creditsRemaining: WELCOME_CREDITS,
+        welcomeCredits: WELCOME_CREDITS,
+      });
+      await tx.insert(creditGrantsTable).values({
+        id: crypto.randomUUID(),
+        userId: createdUser.id,
+        source: "trial",
+        creditsGranted: WELCOME_CREDITS,
+      });
 
       // The event id is derived from this opaque new user id. The primary key
       // plus onConflictDoNothing makes retries idempotent and this insert is
@@ -188,7 +205,7 @@ router.post("/auth/register", async (req: Request, res: Response) => {
   // Welcome email to the user themselves (best-effort, never blocks signup).
   sendWelcomeEmail({ id: user.id, email: user.email, name: [user.firstName, user.lastName].filter(Boolean).join(" ") || null });
 
-  // Share-to-earn: credit referrer + new user. Never blocks or fails signup.
+  // Share-to-earn: credit the referrer only; invitee already received the signup grant.
   if (referralCode) {
     await processReferralSignup(referralCode, user.id);
   }

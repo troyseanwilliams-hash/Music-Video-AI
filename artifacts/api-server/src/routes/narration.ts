@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { Router } from "express";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
-import { creditsTable, db, jobsTable, soundtracksTable, usersTable } from "@workspace/db";
+import { creditsTable, db, jobsTable, soundtracksTable, usersTable, lockActiveCredits, splitCreditDebit, debitCreditColumns } from "@workspace/db";
 import { analyzeAudioBuffer } from "../lib/audioAnalysis.js";
 import {
   defaultNarrationVoiceId,
@@ -19,6 +19,7 @@ import {
   type NarrationMusicSource,
 } from "../lib/narration.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { canCreateCreditFundedMedia } from "../lib/generationEligibility.js";
 
 const router = Router();
 const storage = new ObjectStorageService();
@@ -222,7 +223,7 @@ router.post("/narrations", async (req, res) => {
   }
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.user.id)).limit(1);
   const isAdmin = admin(user?.email);
-  if (!isAdmin && user?.subscriptionStatus !== "active" && user?.subscriptionStatus !== "trialing") {
+  if (!isAdmin && !canCreateCreditFundedMedia(user)) {
     return void res.status(403).json({
       error: "An active membership or trial is required for AI narration.",
       code: "SUBSCRIPTION_REQUIRED",
@@ -238,7 +239,7 @@ router.post("/narrations", async (req, res) => {
     )).limit(1);
     if (existing) return { job: existing, remaining: null, replay: true };
 
-    let [credits] = await tx.select().from(creditsTable).where(eq(creditsTable.userId, req.user.id)).limit(1).for("update");
+    let credits = await lockActiveCredits(tx, req.user.id);
     if (!credits) {
       [credits] = await tx.insert(creditsTable).values({ id: randomUUID(), userId: req.user.id }).returning();
     }
@@ -246,17 +247,12 @@ router.post("/narrations", async (req, res) => {
     if (!isAdmin && credits.creditsRemaining < charged) {
       return { job: null, remaining: credits.creditsRemaining, replay: false };
     }
-    const subscriptionDebit = isAdmin ? 0 : Math.min(charged, Math.max(0, credits.subscriptionCredits));
-    const topupDebit = isAdmin ? 0 : charged - subscriptionDebit;
-    if (topupDebit > Math.max(0, credits.topupCredits)) {
-      return { job: null, remaining: credits.creditsRemaining, replay: false };
-    }
+    const split = splitCreditDebit(credits, charged);
+    const subscriptionDebit = split.subscription;
+    const topupDebit = split.topup;
     if (charged > 0) {
       await tx.update(creditsTable).set({
-        subscriptionCredits: sql`subscription_credits - ${subscriptionDebit}`,
-        topupCredits: sql`topup_credits - ${topupDebit}`,
-        creditsRemaining: sql`credits_remaining - ${charged}`,
-        creditsUsed: sql`credits_used + ${charged}`,
+        ...debitCreditColumns(split, charged),
         updatedAt: new Date(),
       }).where(eq(creditsTable.userId, req.user.id));
     }
@@ -281,6 +277,7 @@ router.post("/narrations", async (req, res) => {
         estimatedCost,
         chargedCredits: charged,
         chargedSubscriptionCredits: subscriptionDebit,
+        chargedWelcomeCredits: split.welcome,
         chargedTopupCredits: topupDebit,
         refunded: false,
       },

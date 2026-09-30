@@ -2,8 +2,9 @@ import { createHash, randomUUID } from "crypto";
 import { Router } from "express";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
-import { creditsTable, db, imageAssetsTable, jobsTable, usersTable } from "@workspace/db";
+import { creditsTable, db, imageAssetsTable, jobsTable, usersTable, lockActiveCredits, splitCreditDebit, debitCreditColumns } from "@workspace/db";
 import { calculateCreditCost } from "../lib/creditCost.js";
+import { canCreateCreditFundedMedia } from "../lib/generationEligibility.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { assessGeneratedMediaPrompt } from "../lib/promptSafety.js";
 import { perceptualFingerprint } from "../lib/mediaUniqueness.js";
@@ -312,7 +313,7 @@ router.post("/photo-animations", async (req, res): Promise<void> => {
         .where(eq(usersTable.id, req.user.id)).limit(1).for("update");
       if (!user) return { kind: "unauthorized" as const };
       const admin = Boolean(process.env.ADMIN_EMAIL && user.email?.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase());
-      if (!admin && user.subscriptionStatus !== "active") return { kind: "subscription" as const };
+      if (!admin && !canCreateCreditFundedMedia(user)) return { kind: "subscription" as const };
 
       const duplicate = await tx.execute<{ id: string; status: string; requestHash: string }>(sql`
         SELECT id, status, manifest->'photoAnimation'->>'requestHash' AS "requestHash"
@@ -337,19 +338,16 @@ router.post("/photo-animations", async (req, res): Promise<void> => {
           )).limit(1).for("update");
         if (!lockedAsset) return { kind: "source" as const };
       }
-      const [credits] = await tx.select().from(creditsTable)
-        .where(eq(creditsTable.userId, req.user.id)).limit(1).for("update");
+      const credits = await lockActiveCredits(tx, req.user.id);
       if (!credits) throw new Error("Credits account unavailable.");
       if (credits.creditsRemaining < plan.videoCredits) {
         return { kind: "credits" as const, remaining: credits.creditsRemaining };
       }
-      const subscriptionDebit = Math.min(plan.videoCredits, Math.max(0, credits.subscriptionCredits));
-      const topupDebit = Math.min(plan.videoCredits - subscriptionDebit, Math.max(0, credits.topupCredits));
+      const split = splitCreditDebit(credits, plan.videoCredits);
+      const subscriptionDebit = split.subscription;
+      const topupDebit = split.topup;
       await tx.update(creditsTable).set({
-        subscriptionCredits: sql`GREATEST(subscription_credits - ${plan.videoCredits}, 0)`,
-        topupCredits: sql`GREATEST(topup_credits - GREATEST(${plan.videoCredits} - subscription_credits, 0), 0)`,
-        creditsRemaining: sql`GREATEST(credits_remaining - ${plan.videoCredits}, 0)`,
-        creditsUsed: sql`credits_used + ${plan.videoCredits}`,
+        ...debitCreditColumns(split, plan.videoCredits),
         updatedAt: new Date(),
       }).where(eq(creditsTable.userId, req.user.id));
       await tx.insert(jobsTable).values({
@@ -367,6 +365,7 @@ router.post("/photo-animations", async (req, res): Promise<void> => {
         manifest: {
           reservedCredits: plan.videoCredits,
           reservedSubscriptionCredits: subscriptionDebit,
+          reservedWelcomeCredits: split.welcome,
           reservedTopupCredits: topupDebit,
           generationMode: "narrative",
           narrativeVisualSource: "video",

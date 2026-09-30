@@ -46,7 +46,7 @@ export default function ReferEarnCard() {
 
   async function handleShare() {
     track("referral_share");
-    const text = `I'm making AI music videos on AIBeatSync — join with my link and we both get free credits: ${shareLink}`;
+    const text = `I'm making AI music videos on AIBeatSync — create your account with my link and get 150 free credits (unused welcome credits expire when your 7-day trial ends): ${shareLink}`;
     try {
       if (navigator.share) {
         await navigator.share({ title: "AIBeatSync", text, url: shareLink });
@@ -79,7 +79,7 @@ export default function ReferEarnCard() {
       <CardContent>
         <p className="text-sm text-muted-foreground mb-3">
           Earn <span className="font-semibold text-foreground">{data.rewardPerReferral} credits</span> for
-          every friend who signs up — they get {data.referredBonus} bonus credits too.
+          every eligible friend who signs up. They get 150 welcome credits when they create an account, not an additional referral bonus. Unused welcome credits expire when their 7-day trial ends.
         </p>
         <div className="flex items-center gap-2">
           <code

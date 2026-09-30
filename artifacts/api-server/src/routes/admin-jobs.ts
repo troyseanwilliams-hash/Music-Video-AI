@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
+import { db, lockActiveCredits, splitCreditDebit, debitCreditColumns, activeWelcomeRefund, refundCreditColumns } from "@workspace/db";
 import { jobsTable, usersTable, creditsTable, imageAssetsTable } from "@workspace/db";
 import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
@@ -32,6 +32,7 @@ type AiJobMeta = {
   imageFirstVersion?: number;
   imageFirstRefundedCredits?: number;
   reservedCredits?: number;
+  reservedWelcomeCredits?: number;
   reservedSubscriptionCredits?: number;
   reservedTopupCredits?: number;
   refunded?: boolean;
@@ -417,6 +418,7 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
       return { kind: "unsafe_recovery_state" as const };
     }
     let retrySubscriptionReservation = meta.reservedSubscriptionCredits;
+    let retryWelcomeReservation = meta.reservedWelcomeCredits;
     let retryTopupReservation = meta.reservedTopupCredits;
     // A failed render returns its reservation. An explicit admin retry is a
     // new billable provider attempt, so reserve from the user's CURRENT
@@ -424,34 +426,25 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
     // bucket mix after the refund; requiring the historical split would reject
     // a user who still has enough total credits.
     if (meta.refunded && (meta.reservedCredits ?? 0) > 0) {
-      const [credits] = await tx
-        .select()
-        .from(creditsTable)
-        .where(eq(creditsTable.userId, job.userId))
-        .limit(1)
-        .for("update");
+      const credits = await lockActiveCredits(tx, job.userId);
       // Image-first failures settle completed work immediately and return only
       // the unfinished portion. Re-reserve exactly that returned amount so
       // retained images/clips are never charged twice on an admin recovery.
       const total = imageFirstRetryReservation(meta);
-      const subscriptionDebit = Math.min(credits?.subscriptionCredits ?? 0, total);
-      const topupDebit = total - subscriptionDebit;
       if (
         !credits ||
-        credits.creditsRemaining < total ||
-        credits.topupCredits < topupDebit
+        credits.creditsRemaining < total
       ) {
         return { kind: "insufficient_credits" as const };
       }
-      retrySubscriptionReservation = subscriptionDebit;
-      retryTopupReservation = topupDebit;
+      const split = splitCreditDebit(credits, total);
+      retryWelcomeReservation = split.welcome;
+      retrySubscriptionReservation = split.subscription;
+      retryTopupReservation = split.topup;
       await tx
         .update(creditsTable)
         .set({
-          subscriptionCredits: sql`subscription_credits - ${subscriptionDebit}`,
-          topupCredits: sql`topup_credits - ${topupDebit}`,
-          creditsRemaining: sql`credits_remaining - ${total}`,
-          creditsUsed: sql`credits_used + ${total}`,
+          ...debitCreditColumns(split, total),
           updatedAt: new Date(),
         })
         .where(eq(creditsTable.userId, job.userId));
@@ -489,6 +482,7 @@ router.post("/admin/jobs/:id/retry", async (req, res) => {
           ...retryMeta,
           refunded: false,
           reservedSubscriptionCredits: retrySubscriptionReservation,
+          reservedWelcomeCredits: retryWelcomeReservation,
           reservedTopupCredits: retryTopupReservation,
         },
         updatedAt: new Date(),
@@ -655,20 +649,19 @@ router.post("/admin/jobs/:id/courtesy-30-scene", async (req, res) => {
     const total = meta.refunded ? 0 : (meta.reservedCredits ?? 0);
     const subscriptionRefund = meta.refunded ? 0 : (meta.reservedSubscriptionCredits ?? 0);
     const topupRefund = meta.refunded ? 0 : (meta.reservedTopupCredits ?? 0);
-    if (subscriptionRefund + topupRefund !== total) {
+    const welcomeRefund = meta.refunded ? 0 : (meta.reservedWelcomeCredits ?? 0);
+    if (subscriptionRefund + topupRefund + welcomeRefund !== total) {
       return {
         kind: "invalid" as const,
         error: "The current reservation split does not match the reserved total.",
       };
     }
     if (total > 0) {
+      const activeWelcome = await activeWelcomeRefund(tx, job.userId, welcomeRefund);
       await tx
         .update(creditsTable)
         .set({
-          subscriptionCredits: sql`subscription_credits + ${subscriptionRefund}`,
-          topupCredits: sql`topup_credits + ${topupRefund}`,
-          creditsRemaining: sql`credits_remaining + ${total}`,
-          creditsUsed: sql`credits_used - ${total}`,
+          ...refundCreditColumns({ welcome: welcomeRefund, subscription: subscriptionRefund, topup: topupRefund }, activeWelcome),
           updatedAt: new Date(),
         })
         .where(eq(creditsTable.userId, job.userId));
@@ -680,6 +673,7 @@ router.post("/admin/jobs/:id/courtesy-30-scene", async (req, res) => {
       courtesy30SceneVersion: 1,
       reservedCredits: 0,
       reservedSubscriptionCredits: 0,
+      reservedWelcomeCredits: 0,
       reservedTopupCredits: 0,
       refunded: false,
       storyboard: {

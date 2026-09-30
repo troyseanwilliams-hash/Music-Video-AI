@@ -1,7 +1,7 @@
 import { Router } from "express";
 import https from "https";
 import { Client } from "pg";
-import { db } from "@workspace/db";
+import { db, lockActiveCredits, splitCreditDebit, debitCreditColumns, activeWelcomeRefund, refundCreditColumns } from "@workspace/db";
 import {
   jobsTable,
   creditsTable,
@@ -29,6 +29,7 @@ import {
   MAX_FULL_SECONDS,
 } from "../lib/creditCost.js";
 import { getUserTier, canRender4k } from "../lib/tier.js";
+import { canCreateCreditFundedMedia } from "../lib/generationEligibility.js";
 import {
   applyApprovedScenePrompts,
   hasStrictUniqueSourcePlan,
@@ -63,6 +64,7 @@ function isAdminEmail(email: string | null | undefined): boolean {
 // Shape of the billing/salvage state we stash in an AI job's manifest jsonb.
 type AiJobMeta = {
   reservedCredits?: number;
+  reservedWelcomeCredits?: number;
   reservedSubscriptionCredits?: number;
   reservedTopupCredits?: number;
   refunded?: boolean;
@@ -262,20 +264,20 @@ async function refundJobReservation(job: {
     const reserved = meta.reservedCredits ?? 0;
     if (reserved <= 0 || meta.refunded) return 0;
     const hasExactSplit =
+      typeof meta.reservedWelcomeCredits === "number" ||
       typeof meta.reservedSubscriptionCredits === "number" ||
       typeof meta.reservedTopupCredits === "number";
     const subscriptionRefund = hasExactSplit ? Math.max(0, meta.reservedSubscriptionCredits ?? 0) : reserved;
     const topupRefund = hasExactSplit ? Math.max(0, meta.reservedTopupCredits ?? 0) : 0;
-    const total = subscriptionRefund + topupRefund;
+    const welcomeRefund = Math.max(0, meta.reservedWelcomeCredits ?? 0);
+    const total = subscriptionRefund + topupRefund + welcomeRefund;
     paths = Object.values(meta.partialClips ?? {});
 
+    const activeWelcome = await activeWelcomeRefund(tx, job.userId, welcomeRefund);
     await tx
       .update(creditsTable)
       .set({
-        subscriptionCredits: sql`subscription_credits + ${subscriptionRefund}`,
-        topupCredits: sql`topup_credits + ${topupRefund}`,
-        creditsRemaining: sql`credits_remaining + ${total}`,
-        creditsUsed: sql`GREATEST(credits_used - ${total}, 0)`,
+        ...refundCreditColumns({ welcome: welcomeRefund, subscription: subscriptionRefund, topup: topupRefund }, activeWelcome),
         updatedAt: new Date(),
       })
       .where(eq(creditsTable.userId, job.userId));
@@ -421,7 +423,8 @@ router.get("/jobs/video-capabilities", async (req, res) => {
     .where(eq(usersTable.id, req.user.id))
     .limit(1);
   const isAdmin = !!(process.env.ADMIN_EMAIL && userRecord?.email?.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase());
-  const tier = await getUserTier(userRecord ?? {});
+  const tier = userRecord?.subscriptionStatus === "active"
+    ? await getUserTier(userRecord) : null;
   res.json({
     tier,
     isAdmin,
@@ -673,8 +676,7 @@ router.post("/jobs", async (req, res) => {
   req.log.info({ userId: req.user.id, ip: req.ip }, "Copyright attestation recorded");
 
   if (!isAdmin) {
-    const status = userRecord?.subscriptionStatus ?? "none";
-    if (status !== "active") {
+    if (!canCreateCreditFundedMedia(userRecord)) {
       res.status(403).json({
         error: "A subscription is required to create videos.",
         code: "SUBSCRIPTION_REQUIRED",
@@ -685,7 +687,8 @@ router.post("/jobs", async (req, res) => {
 
   // Resolve the subscription tier once (non-admins): gates 4K and decides the
   // Starter-tier watermark. getUserTier is try/caught (falls open on Stripe error).
-  const tier = isAdmin ? null : await getUserTier(userRecord ?? {});
+  const tier = isAdmin || userRecord?.subscriptionStatus !== "active"
+    ? null : await getUserTier(userRecord ?? {});
 
   // 4K is a premium tier — Pro & Studio only (admins always allowed).
   if (!isAdmin && String(resolution ?? "").toLowerCase() === "4k" && !canRender4k(tier)) {
@@ -829,8 +832,8 @@ router.post("/jobs", async (req, res) => {
     : 0;
   const creditCost = baseCreditCost + bundledLipSyncCost;
 
-  // Ensure a credits row exists for everyone — admins are metered too (their
-  // balance floors at 0 but creditsUsed still tracks the spend).
+  // Ensure a credits row exists for everyone; reservations, including admin
+  // requests, must be backed by active credits.
   const credits = await db
     .select()
     .from(creditsTable)
@@ -855,28 +858,21 @@ router.post("/jobs", async (req, res) => {
   const jobId = randomUUID();
   const bundledLipSyncChildId = bundledLipSyncEnabled ? randomUUID() : null;
   const reservation = await db.transaction(async (tx) => {
-    const [lockedCredits] = await tx
-      .select()
-      .from(creditsTable)
-      .where(eq(creditsTable.userId, req.user.id))
-      .limit(1)
-      .for("update");
+    const lockedCredits = await lockActiveCredits(tx, req.user.id);
     if (!lockedCredits) throw new Error("Credits account unavailable.");
-    if (!isAdmin && lockedCredits.creditsRemaining < creditCost) {
+    if (lockedCredits.creditsRemaining < creditCost) {
       return { job: null, remaining: lockedCredits.creditsRemaining };
     }
 
-    const subscriptionDebit = Math.min(
-      creditCost,
-      Math.max(0, lockedCredits.subscriptionCredits),
-    );
-    const topupDebit = Math.min(
-      Math.max(0, creditCost - subscriptionDebit),
-      Math.max(0, lockedCredits.topupCredits),
-    );
-    const baseSubscriptionDebit = Math.min(baseCreditCost, subscriptionDebit);
+    const split = splitCreditDebit(lockedCredits, creditCost);
+    const welcomeDebit = split.welcome;
+    const subscriptionDebit = split.subscription;
+    const topupDebit = split.topup;
+    const baseWelcomeDebit = Math.min(baseCreditCost, welcomeDebit);
+    const lipSyncWelcomeDebit = Math.max(0, welcomeDebit - baseWelcomeDebit);
+    const baseSubscriptionDebit = Math.min(Math.max(0, baseCreditCost - baseWelcomeDebit), subscriptionDebit);
     const baseTopupDebit = Math.min(
-      Math.max(0, baseCreditCost - baseSubscriptionDebit),
+      Math.max(0, baseCreditCost - baseWelcomeDebit - baseSubscriptionDebit),
       topupDebit,
     );
     const lipSyncSubscriptionDebit = Math.max(0, subscriptionDebit - baseSubscriptionDebit);
@@ -885,10 +881,7 @@ router.post("/jobs", async (req, res) => {
     await tx
       .update(creditsTable)
       .set({
-        subscriptionCredits: sql`GREATEST(subscription_credits - ${creditCost}, 0)`,
-        topupCredits: sql`GREATEST(topup_credits - GREATEST(${creditCost} - subscription_credits, 0), 0)`,
-        creditsRemaining: sql`GREATEST(credits_remaining - ${creditCost}, 0)`,
-        creditsUsed: sql`credits_used + ${creditCost}`,
+        ...debitCreditColumns(split, creditCost),
         updatedAt: new Date(),
       })
       .where(eq(creditsTable.userId, req.user.id));
@@ -920,14 +913,17 @@ router.post("/jobs", async (req, res) => {
       // manifest jsonb: reservedCredits is refunded by the worker on failure.
       manifest: {
         reservedCredits: creditCost,
+        reservedWelcomeCredits: welcomeDebit,
         reservedSubscriptionCredits: subscriptionDebit,
         reservedTopupCredits: topupDebit,
         baseCreditCost,
         baseReservedSubscriptionCredits: baseSubscriptionDebit,
+        baseReservedWelcomeCredits: baseWelcomeDebit,
         baseReservedTopupCredits: baseTopupDebit,
         bundledLipSyncEnabled,
         bundledLipSyncCost,
         bundledLipSyncReservedSubscriptionCredits: lipSyncSubscriptionDebit,
+        bundledLipSyncReservedWelcomeCredits: lipSyncWelcomeDebit,
         bundledLipSyncReservedTopupCredits: lipSyncTopupDebit,
         generationMode: normalizedGenerationMode,
         narrativeVisualSource: normalizedNarrativeVisualSource,
@@ -1023,6 +1019,7 @@ router.post("/jobs", async (req, res) => {
           bundledParentJobId: jobId,
           bundledLipSyncCost,
           bundledLipSyncReservedSubscriptionCredits: lipSyncSubscriptionDebit,
+          bundledLipSyncReservedWelcomeCredits: lipSyncWelcomeDebit,
           bundledLipSyncReservedTopupCredits: lipSyncTopupDebit,
           sourceVideoTitle: prompt.slice(0, 100),
         } as unknown as Record<string, unknown>,
@@ -2004,7 +2001,7 @@ router.post("/jobs/:id/remix", async (req, res) => {
     userRecord?.email?.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase()
   );
 
-  if (!isAdmin && (userRecord?.subscriptionStatus ?? "none") !== "active") {
+  if (!isAdmin && !canCreateCreditFundedMedia(userRecord)) {
     res.status(403).json({
       error: "A subscription is required to remix videos.",
       code: "SUBSCRIPTION_REQUIRED",
@@ -2036,11 +2033,7 @@ router.post("/jobs/:id/remix", async (req, res) => {
   const chargeCredits = !isAdmin;
 
   if (chargeCredits) {
-    let [userCredits] = await db
-      .select()
-      .from(creditsTable)
-      .where(eq(creditsTable.userId, req.user.id))
-      .limit(1);
+    let userCredits = await db.transaction((tx) => lockActiveCredits(tx, req.user.id));
     if (!userCredits) {
       [userCredits] = await db
         .insert(creditsTable)
