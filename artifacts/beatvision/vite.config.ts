@@ -1,8 +1,10 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+import { publicRouteSeo, renderRouteHtml, seoForPath } from "./src/lib/routeSeo";
 
 const rawPort = process.env.PORT;
 
@@ -26,12 +28,69 @@ if (!basePath) {
   );
 }
 
+// Static production hosting has no application server. Emit an HTML shell per
+// public route so social crawlers see the right head without running JavaScript.
+// Private and tokenized pages get a dedicated noindex shell.
+function routeHtmlPlugin(): Plugin {
+  return {
+    name: "route-html",
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        const pathname = new URL(req.url ?? "/", "http://localhost").pathname.replace(/\/+$/, "") || "/";
+        if (pathname === "/" || !(/^(\/(?:admin|jobs|s|image|podcast)\/)/.test(pathname) ||
+          pathname in publicRouteSeo || ["/signup", "/editor", "/dashboard", "/prompt-studio", "/settings",
+            "/redeem", "/forgot-password", "/reset-password", "/admin", "/suite", "/podcast"].includes(pathname))) {
+          next();
+          return;
+        }
+        try {
+          const html = readFileSync(path.resolve(import.meta.dirname, "index.html"), "utf8");
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.end(await server.transformIndexHtml(pathname, renderRouteHtml(html, seoForPath(pathname))));
+        } catch (error) {
+          next(error);
+        }
+      });
+    },
+    writeBundle(options) {
+      const outDir = options.dir;
+      if (!outDir) throw new Error("Missing Vite output directory");
+      const indexPath = path.join(outDir, "index.html");
+      const html = readFileSync(indexPath, "utf8");
+      const writeRoute = (file: string, content: string) => {
+        const destination = path.join(outDir, file);
+        mkdirSync(path.dirname(destination), { recursive: true });
+        writeFileSync(destination, content);
+      };
+      writeRoute("index.html", renderRouteHtml(html, publicRouteSeo["/"]));
+      for (const [route, seo] of Object.entries(publicRouteSeo)) {
+        if (route === "/") continue;
+        writeRoute(`seo${route}.html`, renderRouteHtml(html, seo));
+        writeRoute(`${route.slice(1)}/index.html`, renderRouteHtml(html, seo));
+      }
+      writeRoute("signup/index.html", renderRouteHtml(html, publicRouteSeo["/register"]));
+      for (const route of ["/dashboard", "/editor", "/settings", "/prompt-studio", "/forgot-password",
+        "/reset-password", "/redeem", "/admin", "/podcast", "/suite"]) {
+        const privateHtml = renderRouteHtml(html, seoForPath(route));
+        writeRoute(`${route.slice(1)}/index.html`, privateHtml);
+        writeRoute(`seo${route}.html`, privateHtml);
+      }
+      // Tokenized/private IDs cannot have a known canonical at build time.
+      // Omit URL hints instead of incorrectly canonicalizing every job to dashboard.
+      writeRoute("seo/private.html", renderRouteHtml(html, seoForPath("/dashboard"))
+        .replace(/\s*<link rel="canonical"[^>]*>/, "")
+        .replace(/\s*<meta property="og:url"[^>]*>/, ""));
+    },
+  };
+}
+
 export default defineConfig({
   base: basePath,
   plugins: [
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),
+    routeHtmlPlugin(),
     ...(process.env.NODE_ENV !== "production" &&
     process.env.REPL_ID !== undefined
       ? [

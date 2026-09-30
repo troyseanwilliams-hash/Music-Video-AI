@@ -28,6 +28,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { track, trackEvent } from "@/lib/analytics";
 import { GENERATED_IMAGE_CREDITS_PER_VISUAL } from "@/lib/creditPricing";
+import { FREE_OFFER_COPY } from "@/lib/freeOffer";
 import {
   Check,
   Loader2,
@@ -114,6 +115,24 @@ export default function Pricing() {
   const [busyPriceId, setBusyPriceId] = useState<string | null>(null);
   const [portalBusy, setPortalBusy] = useState(false);
   const [redeemBusy, setRedeemBusy] = useState(false);
+
+  // Keep the choice in the pricing URL so refresh, login/register, and browser
+  // back/forward all restore the same billing interval.
+  useEffect(() => {
+    const restoreInterval = () => {
+      setInterval(getAuthIntent().interval ?? "month");
+    };
+    window.addEventListener("popstate", restoreInterval);
+    return () => window.removeEventListener("popstate", restoreInterval);
+  }, []);
+
+  const selectInterval = (nextInterval: Interval) => {
+    if (nextInterval === interval) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("interval", nextInterval);
+    window.history.pushState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+    setInterval(nextInterval);
+  };
 
   useSEO({
     title: "Pricing",
@@ -390,18 +409,13 @@ export default function Pricing() {
         <div className="mx-auto mt-5 flex max-w-md items-start gap-2 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-3 text-left text-sm font-medium sm:inline-flex sm:max-w-none sm:items-center sm:rounded-full sm:py-2">
           <Sparkles className="h-4 w-4 text-primary" />
           <span>
-            New accounts get a{" "}
-            <strong className="text-foreground">
-              7-day trial with zero starting credits, excluding valid referral or promotional grants
-            </strong>
-            {" "}plus <strong className="text-foreground">3 lifetime free instrumentals</strong> and{" "}
-            <strong className="text-foreground">1 lifetime free vocal song</strong>.
+            <strong className="text-foreground">{FREE_OFFER_COPY.headline}</strong>
+            {" "}{FREE_OFFER_COPY.music}
           </span>
         </div>
         <div className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-          Trial users get unlimited clean Montage exports, 3 free lyric-burn exports, and 3 free Auto-sync
-          aligns. After those 3 aligns, Auto-sync is locked for the rest of the trial. AI video, image, and
-          narration generation uses credits; after the trial, Auto-sync stays locked until you subscribe.
+          {FREE_OFFER_COPY.trialExtras} {FREE_OFFER_COPY.afterTrial}{" "}
+          {FREE_OFFER_COPY.credits} {FREE_OFFER_COPY.paid}
         </div>
         {!isAuthenticated && (
           <div className="mt-5">
@@ -456,10 +470,11 @@ export default function Pricing() {
               Pay yearly and save {annualSavings.percent}% — about two months free
             </div>
           )}
-          <div className="inline-flex rounded-lg border border-border bg-card/50 p-1" aria-label="Billing interval">
+          <div className="inline-flex rounded-lg border border-border bg-card/50 p-1" role="group" aria-label="Billing interval">
             <button
               type="button"
-              onClick={() => setInterval("month")}
+              onClick={() => selectInterval("month")}
+              aria-pressed={interval === "month"}
               className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
                 interval === "month"
                   ? "bg-primary text-primary-foreground"
@@ -471,7 +486,8 @@ export default function Pricing() {
             </button>
             <button
               type="button"
-              onClick={() => setInterval("year")}
+              onClick={() => selectInterval("year")}
+              aria-pressed={interval === "year"}
               className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
                 interval === "year"
                   ? "bg-primary text-primary-foreground"
@@ -560,10 +576,8 @@ export default function Pricing() {
 
       <section className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
         {subscriptions.map((plan) => {
-          const price =
-            plan.prices.find((p) => p.interval === interval) ??
-            plan.prices.find((p) => p.interval === "month") ??
-            plan.prices[0];
+          // Never silently substitute a monthly checkout when yearly is selected.
+          const price = plan.prices.find((p) => p.interval === interval);
           if (!price) return null;
           const Icon = TIER_ICONS[plan.name.toLowerCase()] ?? Sparkles;
           const yearlySaving =
@@ -605,7 +619,9 @@ export default function Pricing() {
                   <CardTitle className="text-2xl">{plan.name}</CardTitle>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  {plan.description}
+                  {price.interval === "year"
+                    ? `${price.credits.toLocaleString()} credits per year — billed annually`
+                    : plan.description}
                 </p>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -618,8 +634,11 @@ export default function Pricing() {
                       / {price.interval === "year" ? "yr" : "mo"}
                     </span>
                   </div>
+                  {price.interval === "year" && (
+                    <p className="mt-1 text-sm font-medium">Billed {formatPrice(price.unitAmount, price.currency)} once per year</p>
+                  )}
                   <div className="mt-1 text-sm text-muted-foreground">
-                    {price.credits} credits per{" "}
+                    {price.credits.toLocaleString()} credits per{" "}
                     {price.interval === "year" ? "year" : "month"}
                   </div>
                   {yearlySaving && monthlyEquivalent !== null && (
@@ -629,7 +648,7 @@ export default function Pricing() {
                       </span>
                       <span className="text-muted-foreground"> a year · {yearlySaving.percent}% off monthly</span>
                       <span className="mt-0.5 block text-xs text-muted-foreground">
-                        {formatPrice(monthlyEquivalent, price.currency)}/month when billed yearly
+                        {formatPrice(monthlyEquivalent, price.currency)}/month effective · billed yearly
                       </span>
                     </div>
                   )}

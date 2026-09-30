@@ -23,6 +23,79 @@ publicDir = "artifacts/beatvision/dist/public"
 serve = "static"
 
 [[services.production.rewrites]]
+from = "/images"
+to = "/seo/images.html"
+[[services.production.rewrites]]
+from = "/soundtracks"
+to = "/seo/soundtracks.html"
+[[services.production.rewrites]]
+from = "/generate"
+to = "/seo/generate.html"
+[[services.production.rewrites]]
+from = "/pricing"
+to = "/seo/pricing.html"
+[[services.production.rewrites]]
+from = "/gallery"
+to = "/seo/gallery.html"
+[[services.production.rewrites]]
+from = "/login"
+to = "/seo/login.html"
+[[services.production.rewrites]]
+from = "/register"
+to = "/seo/register.html"
+[[services.production.rewrites]]
+from = "/signup"
+to = "/seo/register.html"
+[[services.production.rewrites]]
+from = "/explore"
+to = "/seo/explore.html"
+[[services.production.rewrites]]
+from = "/dashboard"
+to = "/seo/dashboard.html"
+[[services.production.rewrites]]
+from = "/editor"
+to = "/seo/editor.html"
+[[services.production.rewrites]]
+from = "/settings"
+to = "/seo/settings.html"
+[[services.production.rewrites]]
+from = "/prompt-studio"
+to = "/seo/prompt-studio.html"
+[[services.production.rewrites]]
+from = "/forgot-password"
+to = "/seo/forgot-password.html"
+[[services.production.rewrites]]
+from = "/reset-password"
+to = "/seo/reset-password.html"
+[[services.production.rewrites]]
+from = "/redeem"
+to = "/seo/redeem.html"
+[[services.production.rewrites]]
+from = "/admin"
+to = "/seo/admin.html"
+[[services.production.rewrites]]
+from = "/podcast"
+to = "/seo/podcast.html"
+[[services.production.rewrites]]
+from = "/suite"
+to = "/seo/suite.html"
+[[services.production.rewrites]]
+from = "/admin/*"
+to = "/seo/private.html"
+[[services.production.rewrites]]
+from = "/jobs/*"
+to = "/seo/private.html"
+[[services.production.rewrites]]
+from = "/s/*"
+to = "/seo/private.html"
+[[services.production.rewrites]]
+from = "/image/*"
+to = "/seo/private.html"
+[[services.production.rewrites]]
+from = "/podcast/*"
+to = "/seo/private.html"
+
+[[services.production.rewrites]]
 from = "/*"
 to = "/index.html"
 

@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { publicRouteSeo, seoForPath } from "@/lib/routeSeo";
 
 interface SEOProps {
   title?: string;
@@ -29,10 +30,20 @@ export function useSEO({
   const canonicalUrl = canonical ? `${BASE_URL}${canonical}` : BASE_URL;
 
   useEffect(() => {
+    // The router owns metadata for these routes, including noindex on dynamic
+    // IDs; asynchronous page data must not overwrite robots or canonical later.
+    const path = window.location.pathname.replace(/\/+$/, "") || "/";
+    if (path in publicRouteSeo || path === "/signup" || path.startsWith("/image/")) {
+      if (jsonLd !== undefined) upsertJsonLd(jsonLd);
+      return;
+    }
+    if (seoForPath(path).noindex) {
+      setMeta("name", "robots", "noindex, nofollow");
+    }
     document.title = fullTitle;
 
     setMeta("name", "description", description ?? "");
-    setMeta("name", "robots", noindex ? "noindex, nofollow" : "index, follow, max-snippet:-1, max-image-preview:large");
+    setMeta("name", "robots", noindex || seoForPath(path).noindex ? "noindex, nofollow" : "index, follow, max-snippet:-1, max-image-preview:large");
 
     setMeta("property", "og:title", fullTitle);
     setMeta("property", "og:description", description ?? "");

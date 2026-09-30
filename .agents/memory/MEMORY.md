@@ -71,3 +71,4 @@
 - [Photo animation intent recovery](photo-animation-intent.md) — a missing operation lookup can precede a pending POST commit; retain its key and allow only identical retries.
 - [Suno import authority](suno-import-authority.md) — render owned imported audio; preserve prior music on failure and keep legacy external fetches tightly bounded.
 - [Creation workflow separation](creation-workflow-separation.md) — standalone images have their own flow; video image foundations still belong in Generate Video.
+- [Free offer positioning](free-offer-positioning.md) — distinguish the useful free Montage trial from credit-priced AI generation and immediate paid checkout.

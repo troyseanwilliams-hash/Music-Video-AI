@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { PlaySquare, Film, Music, BookOpen, Sparkles, Image as ImageIcon } from "lucide-react";
 import { shouldAutoOpen, setGuideDismissed } from "./utils";
 import { buildAuthUrl } from "@/lib/authIntent";
+import { FREE_OFFER_COPY } from "@/lib/freeOffer";
 
 export function CreationGuide() {
   const [isOpen, setIsOpen] = useState(false);
@@ -88,7 +89,7 @@ export function CreationGuide() {
             <DialogHeader>
               <DialogTitle className="text-xl sm:text-2xl font-bold pr-10 [@media(max-height:500px)]:text-lg">What would you like to create?</DialogTitle>
               <DialogDescription className="text-sm sm:text-base mt-1.5 sm:mt-2 [@media(max-height:500px)]:sr-only">
-                Choose what you want to make. Start with a guided Montage walkthrough, or explore music, narration, and AI visuals. Using this guide is free.
+                 Choose what you want to make. The guide is free; {FREE_OFFER_COPY.short} AI images, video and narration require credits and existing plan rules.
               </DialogDescription>
             </DialogHeader>
           </div>
@@ -98,35 +99,35 @@ export function CreationGuide() {
               title="Montage Video"
               badge="Recommended"
               icon={<Film className="w-5 h-5 sm:w-6 sm:h-6" />}
-              description="7-day unlimited trial. Bring your own media. Clean edits free. Optional lyric charges."
+              description={`${FREE_OFFER_COPY.headline}. Bring your own media; unlimited clean exports during trial. 3 lyric burns included, then credits apply. After trial: 10 clean exports/month, then 15 credits each.`}
               onClick={() => handleSelect("montage", "/editor?guide=montage", true)}
               testId="goal-montage"
             />
             <GoalCard 
               title="Generate Video"
               icon={<PlaySquare className="w-5 h-5 sm:w-6 sm:h-6" />}
-              description="Create stunning AI scenes and visuals using credits."
+              description="Create AI scenes and visuals using credits, subject to plan rules. New accounts start with 0 generation credits except valid grants."
               onClick={() => handleSelect("generate", "/generate", true)}
               testId="goal-generate"
             />
             <GoalCard
               title="Create Images"
               icon={<Film className="w-5 h-5 sm:w-6 sm:h-6" />}
-              description="Create standalone image packs from a prompt or scene script. No audio or video needed."
+              description="Create standalone image packs from a prompt or scene script. Credits and plan rules apply."
               onClick={() => handleSelect("images", "/images", true)}
               testId="goal-images"
             />
             <GoalCard 
               title="Original Music"
               icon={<Music className="w-5 h-5 sm:w-6 sm:h-6" />}
-              description="Generate custom soundtracks. 3 lifetime instrumentals + 1 vocal included."
+              description={FREE_OFFER_COPY.music}
               onClick={() => handleSelect("music", "/soundtracks", true)}
               testId="goal-music"
             />
             <GoalCard 
               title="Narrated Story"
               icon={<BookOpen className="w-5 h-5 sm:w-6 sm:h-6" />}
-              description="Generate a narrated story with AI voiceover using credits."
+              description="Generate a narrated story with AI voiceover using credits and subject to plan rules."
               onClick={() => handleSelect("narration", "/generate?guide=narration", true)}
               testId="goal-narration"
             />

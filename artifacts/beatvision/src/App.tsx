@@ -52,6 +52,7 @@ import Podcast from "@/pages/podcast";
 
 import TutorialScriptToVideo from "@/pages/tutorial-script-to-video";
 import { useAuth } from "@/hooks/useAuth";
+import { RouteMetadata } from "@/components/RouteMetadata";
 import { Loader2 } from "lucide-react";
 
 import { CreationGuide } from "@/components/creation-guide/CreationGuide";
@@ -100,6 +101,8 @@ function AnalyticsTracker() {
 }
 
 function Router() {
+  const [location] = useLocation();
+  const isAuthPage = ["/login", "/register", "/signup", "/forgot-password", "/reset-password"].includes(location.replace(/\/$/, ""));
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col font-sans">
       {/* Keyboard/screen-reader skip link — first focusable element on the page */}
@@ -110,14 +113,16 @@ function Router() {
         Skip to main content
       </a>
       <AnalyticsTracker />
+      <RouteMetadata />
       <ScrollToTop />
       <Navbar />
-      <CreationGuide />
+      {!isAuthPage && <CreationGuide />}
       <main id="main-content" tabIndex={-1} className="flex-1 flex flex-col outline-none">
         <Switch>
           <Route path="/" component={Home} />
           <Route path="/login" component={Login} />
           <Route path="/register" component={Register} />
+          <Route path="/signup" component={Register} />
           <Route path="/forgot-password" component={ForgotPassword} />
           <Route path="/reset-password" component={ResetPassword} />
           <Route path="/generate" component={GenerateRoute} />

@@ -28,11 +28,12 @@ import { AuroraBackground } from "@/components/AuroraBackground";
 import { PhotoAnimationShowcase } from "@/components/PhotoAnimationShowcase";
 
 import { useSEO } from "@/hooks/useSEO";
+import { FREE_OFFER_COPY, freeOfferTerms } from "@/lib/freeOffer";
 
 export default function Home() {
   useSEO({
     title: "AI Studio for Music and Video",
-    description: "Turn your audio into visual stories with AIBeatSync. Start a 7-day registration trial for free instrumentals and unlimited clean Montage exports.",
+    description: `Turn your audio into visual stories with AIBeatSync. ${FREE_OFFER_COPY.short}`,
     canonical: "/",
     jsonLd: {
       "@context": "https://schema.org",
@@ -43,7 +44,7 @@ export default function Home() {
         "@type": "Offer",
         "price": "0",
         "priceCurrency": "USD",
-        "description": "Start a 7-day registration trial with zero starting credits, excluding valid referral or promotional grants. Enjoy 3 lifetime free instrumentals and 1 free vocal song. Both trial and paid users get unlimited clean Montage exports. During the trial, receive 3 free lyric-burn exports and 3 free auto-sync aligns. After the trial, non-paid users can export 10 free videos per calendar month."
+        "description": freeOfferTerms
       }
     }
   });
@@ -84,7 +85,7 @@ export default function Home() {
                 </h1>
 
                 <p className="text-base sm:text-lg md:text-xl text-white/60 mb-8 max-w-xl lg:mx-0 font-light leading-relaxed">
-                  Create music videos and short narrated stories. Start a 7-day free trial for unlimited clean Montage exports using your own uploaded music and clips (no card required). Includes 3 lifetime free instrumentals and 1 free vocal song. <br className="hidden sm:block" /><span className="text-sm text-white/40 mt-2 block">(AI video generation and optional paid lyrics add-ons require credits.)</span>
+                  Create music videos and short narrated stories. {FREE_OFFER_COPY.short} {FREE_OFFER_COPY.music} <span className="text-sm text-white/50 mt-2 block">{FREE_OFFER_COPY.credits}</span>
                 </p>
 
                 <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 w-full sm:w-auto">
@@ -108,6 +109,7 @@ export default function Home() {
                     </Button>
                   </Link>
                 </div>
+                <p className="mt-4 text-xs text-white/50 max-w-xl">{FREE_OFFER_COPY.trialExtras} {FREE_OFFER_COPY.afterTrial} {FREE_OFFER_COPY.paid}</p>
 
                 <motion.div
                   initial={{ opacity: 0 }}
@@ -504,6 +506,7 @@ export default function Home() {
             <p className="text-xl text-white/50 mb-12">
               Join creators using AIBeatSync to produce music, narrated stories, cinematic videos, and social-ready releases.
             </p>
+            <p className="text-sm text-white/60 mb-6">{FREE_OFFER_COPY.short} {FREE_OFFER_COPY.credits}</p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-5">
               <Link href={isAuthenticated ? "/editor" : buildAuthUrl("/register", { returnTo: "/editor" })} onClick={() => trackCTA("footer", "open_montage_studio", "Open Montage Studio")}>
                 <Button size="lg" className="w-full sm:w-auto text-lg h-14 px-10 bg-white text-black hover:bg-white/90 rounded-full font-semibold">

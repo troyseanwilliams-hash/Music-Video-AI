@@ -1,10 +1,5 @@
 User-agent: *
 Allow: /
 Disallow: /api/
-Disallow: /admin
-Disallow: /dashboard
-Disallow: /jobs/
-Disallow: /login
-Disallow: /register
 
 Sitemap: https://aibeatsync.com/sitemap.xml

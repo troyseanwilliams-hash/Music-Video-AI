@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Music2, Wand2, Zap, Film, Eye, EyeOff, Headphones } from "lucide-react";
 import { motion } from "framer-motion";
+import { FREE_OFFER_COPY } from "@/lib/freeOffer";
 import {
   buildAuthUrl,
   getAuthCrossLinkDestination,
@@ -89,7 +90,7 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] flex">
+    <div className="min-h-[calc(100dvh-4rem)] flex">
       {/* Left panel — branding & features */}
       <div className="hidden lg:flex lg:w-1/2 relative bg-gradient-to-br from-[#0d0d1a] via-[#120d2e] to-[#0a0a18] overflow-hidden flex-col justify-between p-12">
         <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-purple-600/20 rounded-full blur-[120px] -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
@@ -157,7 +158,7 @@ export default function Login() {
       </div>
 
       {/* Right panel — sign-in form */}
-      <div className="flex w-full lg:w-1/2 items-center justify-center relative overflow-hidden px-6 py-12">
+      <div className="flex w-full lg:w-1/2 items-center justify-center relative px-4 sm:px-6 py-6 sm:py-12">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-primary/8 rounded-full blur-[120px] pointer-events-none lg:hidden" />
 
         <motion.div
@@ -181,7 +182,7 @@ export default function Login() {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" aria-busy={isSubmitting}>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -236,7 +237,7 @@ export default function Login() {
                 id="login-error"
                 role="alert"
                 aria-live="assertive"
-                className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2"
+                className="text-sm break-words text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2"
               >
                 {error}
               </p>
@@ -255,6 +256,7 @@ export default function Login() {
                 "Sign in"
               )}
             </Button>
+            <p role="status" aria-live="polite" className="sr-only">{isSubmitting ? "Signing in. Please wait." : ""}</p>
           </form>
 
           <p className="text-center text-sm text-muted-foreground mt-6">
@@ -273,6 +275,7 @@ export default function Login() {
               Create one free
             </Link>
           </p>
+          <p className="mt-3 text-center text-xs text-muted-foreground">{FREE_OFFER_COPY.short} {FREE_OFFER_COPY.credits}</p>
 
           <p className="text-center text-xs text-muted-foreground/60 mt-6">
             By continuing, you agree to our{" "}

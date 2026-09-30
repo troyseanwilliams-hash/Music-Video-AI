@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Play, Sparkles, Scissors, Lock, Wand2, Music, ArrowRight } from "lucide-react";
 import { trackEvent } from "@/lib/analytics";
 import { buildAuthUrl } from "@/lib/authIntent";
+import { FREE_OFFER_COPY } from "@/lib/freeOffer";
 
 const SAMPLES = ["/sample1.mp4", "/sample2.mp4", "/sample3.mp4"];
 
@@ -18,11 +19,11 @@ const CONTENT: Record<"generate" | "remix", Content> = {
         Turn any song into a <span className="text-gradient-electric">cinematic music video</span>
       </>
     ),
-    sub: "Upload a track and our AI generates beat-synced visuals — your character, your style, ready to post. Create a free account to start.",
+    sub: "Upload a track to create beat-synced AI visuals. AI video generation requires credits and is subject to plan rules; signing up alone does not include generation credits.",
     bullets: [
       { icon: Sparkles, text: "Beat-synced AI visuals in 8 cinematic styles" },
       { icon: Lock, text: "Character Lock keeps your look consistent across every clip" },
-      { icon: Play, text: "Storyboard preview before you spend a thing" },
+      { icon: Play, text: "Review your storyboard before spending video credits" },
       { icon: Wand2, text: "Up to 4K resolution and 10-minute videos" },
     ],
   },
@@ -33,12 +34,12 @@ const CONTENT: Record<"generate" | "remix", Content> = {
         Build your own cut in the <span className="text-gradient-electric">Montage Studio</span>
       </>
     ),
-    sub: "Drop clips and photos on a timeline, sync music, add transitions, and export a clean 1080p video — no watermark. Free to start, with a 7-day trial of unlimited exports.",
+    sub: `Drop your own clips and photos on a timeline, sync music and export clean 1080p video. ${FREE_OFFER_COPY.short}`,
     bullets: [
       { icon: Scissors, text: "Drag-to-trim timeline for your clips & photos" },
       { icon: Music, text: "Sync a music track — loop or fade it to fit" },
       { icon: Sparkles, text: "Smooth transitions with a live preview" },
-      { icon: Play, text: "7-day trial: unlimited exports, no card required" },
+      { icon: Play, text: FREE_OFFER_COPY.headline },
     ],
   },
 };
@@ -55,10 +56,12 @@ export default function SignupTeaser({ variant }: { variant: "generate" | "remix
           </div>
           <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight mb-4 leading-tight">{c.title}</h1>
           <p className="text-lg text-muted-foreground mb-8">{c.sub}</p>
+          <p className="text-sm text-muted-foreground mb-5">{FREE_OFFER_COPY.music} {FREE_OFFER_COPY.trialExtras} {FREE_OFFER_COPY.afterTrial} {FREE_OFFER_COPY.credits} {FREE_OFFER_COPY.paid}</p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">
             <Link
               href={buildAuthUrl("/register", { returnTo: variant === "remix" ? "/editor" : "/generate" })}
               onClick={() => trackEvent("teaser_cta_clicked", { source: variant, destination: "register" })}
+              className="w-full sm:w-auto"
             >
               <Button size="lg" className="w-full sm:w-auto h-12 px-8 text-base bg-gradient-electric text-white shadow-glow border-0 hover:opacity-90">
                 Sign up free <ArrowRight className="ml-2 h-5 w-5" />
@@ -67,6 +70,7 @@ export default function SignupTeaser({ variant }: { variant: "generate" | "remix
             <Link
               href="/pricing"
               onClick={() => trackEvent("teaser_cta_clicked", { source: variant, destination: "pricing" })}
+              className="w-full sm:w-auto"
             >
               <Button size="lg" variant="outline" className="w-full sm:w-auto h-12 px-8 text-base">
                 See plans
@@ -109,7 +113,7 @@ export default function SignupTeaser({ variant }: { variant: "generate" | "remix
             href={buildAuthUrl("/register", { returnTo: variant === "remix" ? "/editor" : "/generate" })}
             onClick={() => trackEvent("teaser_cta_clicked", { source: variant, destination: "register" })}
           >
-            <Button size="lg" className="bg-gradient-electric text-white shadow-glow border-0 hover:opacity-90">
+            <Button size="lg" className="max-w-full whitespace-normal h-auto min-h-12 bg-gradient-electric text-white shadow-glow border-0 hover:opacity-90">
               Create your free account <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </Link>
