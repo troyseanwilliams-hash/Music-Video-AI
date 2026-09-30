@@ -74,7 +74,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { SoundtrackPickerDialog } from "@/components/SoundtrackPickerDialog";
-import TopUpRequiredDialog from "@/components/TopUpRequiredDialog";
+import GenerateCreditPurchase from "@/components/GenerateCreditPurchase";
 import { TutorialTip } from "@/components/TutorialTip";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -1377,6 +1377,10 @@ export default function Generate() {
       });
       return;
     }
+    if (!canAfford) {
+      setTopUpOpen(true);
+      return;
+    }
     setConfirmOpen(false);
     const trackedDuration = Number.parseInt(String(effectiveRequestedDuration), 10);
     trackEvent("creation_started", {
@@ -1539,6 +1543,10 @@ export default function Generate() {
       return;
     }
 
+    if (!canAfford) {
+      setTopUpOpen(true);
+      return;
+    }
     setConfirmOpen(false);
     setImagePackSubmitting(true);
     trackEvent("creation_started", {
@@ -3884,6 +3892,11 @@ export default function Generate() {
                     <span className="ml-1">— insufficient balance</span>
                   )}
                 </div>
+                {!isAdmin && balance !== null && !canAfford && (
+                  <Button variant="outline" className="w-full" onClick={() => setTopUpOpen(true)} data-testid="button-generate-buy-credits">
+                    <CreditCard className="mr-2 h-4 w-4" /> Buy more credits without leaving Generate
+                  </Button>
+                )}
                 <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
                   <Clock className="h-3.5 w-3.5" />
                   <span>
@@ -4415,25 +4428,31 @@ export default function Generate() {
             Dismiss
           </Button>
 
-          {(errorDialog.code === "INSUFFICIENT_CREDITS" ||
-            errorDialog.code === "SUBSCRIPTION_REQUIRED") && (
-            <Link href="/pricing">
+          {errorDialog.code === "INSUFFICIENT_CREDITS" && (
+            <Button onClick={() => {
+              setErrorDialog((s) => ({ ...s, open: false }));
+              setTopUpOpen(true);
+            }} data-testid="button-error-buy-credits">
+              <CreditCard className="mr-2 h-4 w-4" /> Buy more credits
+            </Button>
+          )}
+          {errorDialog.code === "SUBSCRIPTION_REQUIRED" && (
+            <a href="/pricing" target="_blank" rel="noopener noreferrer" data-testid="link-error-plans-new-tab">
               <Button className="w-full sm:w-auto bg-gradient-electric text-white shadow-glow border-0 sm:order-2">
                 <Crown className="mr-2 h-4 w-4" />
-                View Plans
+                View Plans in a new tab
               </Button>
-            </Link>
+            </a>
           )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
 
-    <TopUpRequiredDialog
+    <GenerateCreditPurchase
       open={topUpOpen}
       onOpenChange={setTopUpOpen}
-      creditsRequired={cost}
-      creditsRemaining={balance ?? 0}
-      title="More credits needed to generate this video"
+      creditsRequired={activeCost}
+      creditsRemaining={balance}
     />
     </>
   );

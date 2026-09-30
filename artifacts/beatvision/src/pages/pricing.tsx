@@ -29,6 +29,7 @@ import { useToast } from "@/hooks/use-toast";
 import { track, trackEvent } from "@/lib/analytics";
 import { GENERATED_IMAGE_CREDITS_PER_VISUAL } from "@/lib/creditPricing";
 import { FREE_OFFER_COPY } from "@/lib/freeOffer";
+import { notifyGenerateCreditReturn } from "@/lib/generateCreditCheckout";
 import {
   Check,
   Loader2,
@@ -154,6 +155,7 @@ export default function Pricing() {
 
   useEffect(() => {
     const status = getQueryParam("status");
+    notifyGenerateCreditReturn(window.location.search);
     if (status === "success") {
       trackEvent("checkout_returned", { outcome: "success" });
       toast({

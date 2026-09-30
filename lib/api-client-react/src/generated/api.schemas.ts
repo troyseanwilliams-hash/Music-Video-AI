@@ -1585,6 +1585,11 @@ export interface DashboardStats {
   totalVideos: number;
   creditsRemaining: number;
   welcomeCredits: number;
+  /**
+     * Authoritative welcome-credit expiry, the earlier of signup plus seven days and the original trial end. Does not apply to legacy non-expiring credits.
+     * @nullable
+     */
+  welcomeExpiresAt?: string | null;
   subscriptionCredits: number;
   topupCredits: number;
   recentJobs?: Job[];

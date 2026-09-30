@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { db, lockActiveCredits } from "@workspace/db";
-import { jobsTable, videosTable, creditsTable } from "@workspace/db";
+import { jobsTable, videosTable, creditsTable, usersTable } from "@workspace/db";
 import { eq, count, and, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { touchPresence } from "../lib/presence.js";
+import { welcomeCreditExpiry } from "../lib/welcomeOffer.js";
 
 const router = Router();
 
@@ -22,7 +23,7 @@ router.get("/dashboard/stats", async (req, res) => {
     [req.user.firstName, req.user.lastName].filter(Boolean).join(" ") || null,
   );
 
-  const [allJobs, totalVideosResult, credits, liveVideoRows] = await Promise.all([
+  const [allJobs, totalVideosResult, credits, liveVideoRows, owners] = await Promise.all([
     db.select().from(jobsTable).where(eq(jobsTable.userId, userId)),
     db
       .select({ count: count() })
@@ -37,6 +38,8 @@ router.get("/dashboard/stats", async (req, res) => {
       .select({ jobId: videosTable.jobId })
       .from(videosTable)
       .where(and(eq(videosTable.userId, userId), isNull(videosTable.deletedAt))),
+    db.select({ createdAt: usersTable.createdAt, trialEndsAt: usersTable.trialEndsAt })
+      .from(usersTable).where(eq(usersTable.id, userId)).limit(1),
   ]);
 
   // Recent Activity shows ONLY active saved videos: completed jobs whose video
@@ -108,6 +111,7 @@ router.get("/dashboard/stats", async (req, res) => {
     creditsRemaining,
     subscriptionCredits,
     welcomeCredits,
+    welcomeExpiresAt: owners[0] ? welcomeCreditExpiry(owners[0]) : null,
     topupCredits,
     recentJobs,
     activeJobs,

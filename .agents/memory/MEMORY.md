@@ -72,3 +72,4 @@
 - [Suno import authority](suno-import-authority.md) — render owned imported audio; preserve prior music on failure and keep legacy external fetches tightly bounded.
 - [Creation workflow separation](creation-workflow-separation.md) — standalone images have their own flow; video image foundations still belong in Generate Video.
 - [Free offer positioning](free-offer-positioning.md) — 150 signup credits expire with trial; source-aware refunds must preserve paid funds and never revive expired grants.
+- [Generate checkout preservation](generate-checkout-preservation.md) — keep the original Generate tab open during checkout; balance refresh must not reset or auto-submit the draft.

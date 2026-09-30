@@ -2510,6 +2510,7 @@ export const GetDashboardStatsResponse = zod.object({
   "totalVideos": zod.number(),
   "creditsRemaining": zod.number(),
   "welcomeCredits": zod.number(),
+  "welcomeExpiresAt": zod.coerce.date().nullish().describe('Authoritative welcome-credit expiry, the earlier of signup plus seven days and the original trial end. Does not apply to legacy non-expiring credits.'),
   "subscriptionCredits": zod.number(),
   "topupCredits": zod.number(),
   "recentJobs": zod.array(zod.object({

@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Plus, Film, CheckCircle2, Clock, AlertCircle, Crown, Play, Coins, Trash2, Zap, Mail, X, Wand2, Music2, Sparkles, Smile, Quote, Lightbulb, Scissors, type LucideIcon } from "lucide-react";
 import ReferEarnCard from "@/components/ReferEarnCard";
+import { DashboardCreditBalance, DashboardCreditHistory } from "@/components/DashboardCredits";
 import { Switch } from "@/components/ui/switch";
 import { useQuery } from "@tanstack/react-query";
 import { getDailyContent, type DailyItemType } from "@/lib/dailyContent";
@@ -311,34 +312,7 @@ export default function Dashboard() {
               </CardContent>
             </Card>
             
-            <Card className="bg-card/50 border-card-border" data-testid="card-credits-remaining">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Credits Remaining</CardTitle>
-                <div className="h-4 w-4 rounded-full bg-accent/20 flex items-center justify-center">
-                  <div className="h-2 w-2 rounded-full bg-accent" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">{stats.creditsRemaining}</div>
-                {(stats.subscriptionCredits > 0 || stats.topupCredits > 0 || ("welcomeCredits" in stats && typeof stats.welcomeCredits === "number" && stats.welcomeCredits > 0)) && (
-                  <div className="mt-1 text-xs text-muted-foreground" data-testid="text-credits-breakdown">
-                    <span className="font-medium text-foreground/80">{stats.subscriptionCredits}</span> plan
-                    <span className="mx-1">+</span>
-                    {"welcomeCredits" in stats && typeof stats.welcomeCredits === "number" ? (
-                      <>
-                        <span className="font-medium text-foreground/80">{stats.welcomeCredits}</span> welcome (expires when your 7-day trial ends)
-                        <span className="mx-1">+</span>
-                        <span className="font-medium text-foreground/80">{stats.topupCredits}</span> non-expiring top-up
-                      </>
-                    ) : (
-                      <>
-                        <span className="font-medium text-foreground/80">{stats.topupCredits}</span> top-up / welcome (unused welcome credits expire when your 7-day trial ends)
-                      </>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <DashboardCreditBalance stats={stats} welcomeExpiresAt={stats.welcomeExpiresAt ?? null} />
 
             <Card className="bg-card/50 border-card-border">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -382,6 +356,8 @@ export default function Dashboard() {
               </Link>
             </div>
           )}
+
+          {user && <DashboardCreditHistory userId={user.id} />}
 
           {/* Something of the Day — rotates daily, deterministic by date */}
           <div className="flex items-start gap-4 p-5 rounded-2xl bg-card/60 border border-card-border">

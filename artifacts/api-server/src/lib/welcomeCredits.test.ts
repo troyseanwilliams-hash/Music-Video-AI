@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { creditsTable, activeWelcomeRefund, lockActiveCredits, splitCreditDebit, welcomeGrantActive } from "@workspace/db";
+import { welcomeCreditExpiry } from "./welcomeOffer.js";
 
 describe("seven-day welcome credit grant", () => {
   const createdAt = new Date("2026-01-01T00:00:00.000Z");
   const sevenDays = new Date("2026-01-08T00:00:00.000Z");
+
+  it("reports the authoritative expiry despite extended or shortened trials", () => {
+    expect(welcomeCreditExpiry({ createdAt, trialEndsAt: new Date("2027-01-01T00:00:00Z") })).toBe(sevenDays.toISOString());
+    expect(welcomeCreditExpiry({ createdAt, trialEndsAt: new Date("2026-01-04T00:00:00Z") })).toBe("2026-01-04T00:00:00.000Z");
+    expect(welcomeCreditExpiry({ createdAt, trialEndsAt: null })).toBeNull();
+  });
 
   it("is available up to, but not including, the 7-day boundary", () => {
     const owner = { createdAt, trialEndsAt: sevenDays };
