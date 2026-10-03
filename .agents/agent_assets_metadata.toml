@@ -133,3 +133,17 @@ mtime_ms = 1790134239584
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:40c49f5e-786c-4e75-b341-440182ee3372/aa5b53ae-1290-4f3a-b064-f40a325785cc/06a950cb-c788-44e9-a9c9-388109f83ab7"
 storage_version_token = "1790135917354813"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "zkLAAoaTGw8dxRV4XBsrI"
+uri = "file://attached_assets/generate-smoke/sailboat-5s.mp4"
+type = "video"
+title = "Generate test — 5-second sailboat video"
+description = "Created through the live Generate service: script preview, image approval, video generation, and download. Verified 5.000 seconds, 1280×720, H.264 at 24 fps."
+logical_id = "b2f3f17c-d6f6-4c97-a581-876efd97d1c0"
+content_hash = "sha256:8f62639ae04df3e8107a29b5460710b3caf2236e635c68c049c2cb8e334bbf9a"
+size = 3501105
+mtime_ms = 1791066115537
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:40c49f5e-786c-4e75-b341-440182ee3372/b2f3f17c-d6f6-4c97-a581-876efd97d1c0/189890d3-7dc4-4c21-8f7c-a3034e367124"
+storage_version_token = "1791066156193499"
+content_type = "video/mp4"
