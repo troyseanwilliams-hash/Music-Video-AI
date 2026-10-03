@@ -6,6 +6,8 @@ import { buildAuthUrl } from "@/lib/authIntent";
 import {
   ArrowRight,
   Play,
+  Volume2,
+  ImageIcon,
   Sparkles,
   Music,
   Scissors,
@@ -20,7 +22,6 @@ import {
   Wallet,
   Activity,
   CreditCard,
-  Film,
   AudioWaveform
 } from "lucide-react";
 import { motion } from "framer-motion";
@@ -29,6 +30,18 @@ import { PhotoAnimationShowcase } from "@/components/PhotoAnimationShowcase";
 
 import { useSEO } from "@/hooks/useSEO";
 import { FREE_OFFER_COPY, freeOfferTerms } from "@/lib/freeOffer";
+
+const CREATE_PATHS = [
+  { id: "music-video", title: "Music video", desc: "Opens the AI video generator. Uses credits.", cta: "Start", to: "/generate", action: "path_music_video", icon: Clapperboard },
+  { id: "lyric-video", title: "Lyric video", desc: "Opens the video generator, where you can add lyric captions.", cta: "Start", to: "/generate", action: "path_lyric_video", icon: Mic2 },
+  { id: "animate-photo", title: "Animate a photo", desc: "Opens your gallery images to animate one. Uses credits.", cta: "Pick a photo", to: "/gallery?tab=images&action=animate", action: "path_animate_photo", icon: ImageIcon },
+] as const;
+
+const GUIDES = [
+  { label: "AI music videos", to: "/ai-music-video-generator" },
+  { label: "Lyric videos", to: "/ai-lyric-video" },
+  { label: "Suno to video", to: "/suno-to-video" },
+] as const;
 
 export default function Home() {
   useSEO({
@@ -76,40 +89,79 @@ export default function Home() {
               >
                 <div className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-sm font-medium text-white/80 mb-6 backdrop-blur-md">
                   <Sparkles className="mr-2 h-4 w-4 text-primary" />
-                  The AI studio for musicians and storytellers
+                  Music videos, lyric videos and animated photos
                 </div>
 
                 <h1 className="text-4xl sm:text-5xl md:text-7xl font-extrabold tracking-tighter mb-6 leading-[1.1]">
-                  Turn your audio <br className="hidden sm:block" />
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent">into visual stories.</span>
+                  Make a video <br className="hidden sm:block" />
+                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent">for your song.</span>
                 </h1>
 
                 <p className="text-base sm:text-lg md:text-xl text-white/60 mb-8 max-w-xl lg:mx-0 font-light leading-relaxed">
-                  Create music videos and short narrated stories. {FREE_OFFER_COPY.short} <span className="text-sm text-white/70 mt-2 block">{FREE_OFFER_COPY.example}</span><span className="text-sm text-white/70 mt-1 block">{FREE_OFFER_COPY.expiry}</span><span className="text-xs text-white/50 mt-1 block">{FREE_OFFER_COPY.videoExample}</span><span className="text-sm text-white/50 mt-2 block">{FREE_OFFER_COPY.credits}</span>
+                  Upload a track and pick how you want to start. AI generation creates new visuals from prompts and uses credits. Montage Studio edits your own clips and photos on a timeline.
                 </p>
 
-                <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 w-full sm:w-auto">
-                  <Link
-                    href={isAuthenticated ? "/editor" : buildAuthUrl("/register", { returnTo: "/editor" })}
-                    onClick={() => trackCTA("hero", "open_editor", "Start creating in Montage")}
-                    className="w-full sm:w-auto"
-                  >
-                    <Button size="lg" className="w-full sm:w-auto text-base sm:text-lg h-12 sm:h-14 px-6 sm:px-8 bg-white text-black hover:bg-white/90 shadow-[0_0_40px_rgba(255,255,255,0.2)] border-0 transition-all group rounded-full">
-                      <Scissors className="mr-2 h-5 w-5" />
-                      Start creating in Montage
-                    </Button>
-                  </Link>
-                  <Link href={isAuthenticated ? "/generate" : buildAuthUrl("/register", { returnTo: "/generate" })} onClick={() => trackCTA("hero", "open_generate", "Explore AI generation")} className="w-full sm:w-auto">
-                    <Button size="lg" variant="outline" className="w-full sm:w-auto text-base sm:text-lg h-12 sm:h-14 px-6 sm:px-8 border-white/10 bg-white/5 hover:bg-white/10 hover:text-white backdrop-blur-md transition-all group rounded-full text-white/90 flex flex-col justify-center gap-0 leading-tight">
-                      <div className="flex items-center">
-                        <Wand2 className="mr-2 h-4 w-4" />
-                        Explore AI generation
-                      </div>
-                      <span className="text-[10px] text-white/40 font-normal">Pricing & credits apply</span>
-                    </Button>
-                  </Link>
+                <div className="grid w-full gap-3 sm:grid-cols-3" data-testid="group-creation-paths">
+                  {CREATE_PATHS.map((p) => (
+                    <Link
+                      key={p.id}
+                      href={isAuthenticated ? p.to : buildAuthUrl("/register", { returnTo: p.to })}
+                      onClick={() => trackCTA("hero_paths", p.action, p.title)}
+                      data-testid={`link-path-${p.id}`}
+                      className="group flex flex-col items-start gap-2 rounded-2xl border border-white/10 bg-white/5 p-4 text-left backdrop-blur-md transition-colors hover:border-primary/40 hover:bg-white/10"
+                    >
+                      <p.icon className="h-5 w-5 text-primary" />
+                      <span className="font-semibold text-white">{p.title}</span>
+                      <span className="text-xs leading-snug text-white/55">{p.desc}</span>
+                      <span className="mt-auto flex items-center text-xs font-medium text-white/80">
+                        {p.cta} <ArrowRight className="ml-1 h-3 w-3 transition-transform group-hover:translate-x-1" />
+                      </span>
+                    </Link>
+                  ))}
                 </div>
-                <p className="mt-4 text-xs text-white/50 max-w-xl">{FREE_OFFER_COPY.trialExtras} {FREE_OFFER_COPY.afterTrial} {FREE_OFFER_COPY.paid}</p>
+
+                <div className="mt-3 flex flex-wrap items-center justify-center lg:justify-start gap-x-4 gap-y-1 text-xs text-white/50" data-testid="group-guides">
+                  <span>Guides:</span>
+                  {GUIDES.map((g) => (
+                    <Link key={g.to} href={g.to} onClick={() => trackCTA("hero_guides", "view_guide", g.label)} className="underline underline-offset-4 hover:text-white" data-testid={`link-guide-${g.to.slice(1)}`}>
+                      {g.label}
+                    </Link>
+                  ))}
+                  <span className="text-white/40">Prefer your own footage? <Link href={isAuthenticated ? "/editor" : buildAuthUrl("/register", { returnTo: "/editor" })} onClick={() => trackCTA("hero_guides", "open_editor", "Montage Studio")} className="underline underline-offset-4 hover:text-white" data-testid="link-hero-montage">Montage Studio</Link></span>
+                </div>
+
+                {!isAuthenticated && (
+                  <div className="mt-5 w-full max-w-xl rounded-2xl border border-primary/25 bg-primary/10 p-4 text-left" data-testid="panel-free-offer">
+                    <p className="text-sm font-semibold text-white">{FREE_OFFER_COPY.short}</p>
+                    <p className="mt-1 text-xs text-white/70">{FREE_OFFER_COPY.example}</p>
+                    <p className="mt-1 text-xs text-white/70">{FREE_OFFER_COPY.expiry}</p>
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <Link
+                        href={buildAuthUrl("/register", { returnTo: "/generate" })}
+                        onClick={() => trackCTA("hero", "register", "Create free account")}
+                        data-testid="link-hero-register"
+                      >
+                        <Button size="sm" className="rounded-full bg-white text-black hover:bg-white/90">
+                          Create free account <ArrowRight className="ml-1 h-4 w-4" />
+                        </Button>
+                      </Link>
+                      <Link href="/pricing" onClick={() => trackCTA("hero", "view_pricing", "Pricing")} className="text-xs text-white/60 underline underline-offset-4 hover:text-white">
+                        Pricing
+                      </Link>
+                    </div>
+                    <details className="mt-3 text-xs text-white/55" onToggle={(e) => { if ((e.currentTarget as HTMLDetailsElement).open) track("offer_terms_expand", { location: "hero" }); }}>
+                      <summary className="cursor-pointer text-white/70 hover:text-white" data-testid="button-offer-terms">Offer terms and credit details</summary>
+                      <div className="mt-2 space-y-1.5 leading-relaxed">
+                        <p>{FREE_OFFER_COPY.videoExample}</p>
+                        <p>{FREE_OFFER_COPY.music}</p>
+                        <p>{FREE_OFFER_COPY.trialExtras}</p>
+                        <p>{FREE_OFFER_COPY.afterTrial}</p>
+                        <p>{FREE_OFFER_COPY.credits}</p>
+                        <p>{FREE_OFFER_COPY.paid}</p>
+                      </div>
+                    </details>
+                  </div>
+                )}
 
                 <motion.div
                   initial={{ opacity: 0 }}
@@ -139,30 +191,23 @@ export default function Home() {
               >
                 <div className="relative overflow-hidden rounded-[2.5rem] border border-white/10 bg-[#050505] shadow-[0_0_60px_rgba(255,255,255,0.05)] aspect-[9/16] ring-1 ring-white/5">
                   <video
-                    src="/kling-showcase.mp4"
+                    src="/homepage-demo.mp4"
                     poster="/kling-showcase-poster.jpg"
                     className="h-full w-full object-cover"
                     playsInline
                     controls
                     preload="metadata"
+                    data-testid="video-hero-demo"
+                    onPlay={() => track("demo_video_play", { location: "hero", src: "homepage-demo" })}
                   />
-                  <div className="absolute top-6 right-6 bg-black/60 backdrop-blur-md border border-white/10 rounded-full px-3 py-1.5 flex items-center gap-2 shadow-xl pointer-events-none">
+                  <div className="absolute top-5 left-5 bg-black/60 backdrop-blur-md border border-white/10 rounded-full px-3 py-1.5 pointer-events-none">
                     <span className="text-[10px] font-bold tracking-wider text-white uppercase">Rendered in Kling</span>
                   </div>
-                  <div className="absolute inset-x-4 bottom-4 rounded-2xl border border-white/15 bg-black/65 p-3 backdrop-blur-xl shadow-2xl pointer-events-none">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/20 text-primary">
-                          <Film className="h-4 w-4" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="truncate text-[11px] font-semibold text-white">Cinematic Output</p>
-                          <p className="text-[9px] uppercase tracking-[0.18em] text-white/45">High Quality Gen</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
                 </div>
+                <p className="mt-3 flex items-center justify-center gap-2 text-xs text-white/60">
+                  <Volume2 className="h-4 w-4 text-primary" /> Press play and turn your sound on.
+                </p>
+                <p className="mt-1 text-center text-[11px] text-white/40">Example output made with AI generation. Results vary by prompt, model and settings.</p>
               </motion.div>
             </div>
           </div>
@@ -234,14 +279,14 @@ export default function Home() {
                   <span className="text-white/40">before animation.</span>
                 </h2>
                 <p className="text-lg text-white/60 mb-8 leading-relaxed">
-                  Blindly generating video wastes your balance. We pause the process so you can review the storyboard. Approve the images, regenerate the ones that miss the mark, and animate only when the vision is perfect.
+                  Blindly generating video wastes your balance. We pause the process so you can review the storyboard. Approve the images, regenerate the ones that miss the mark, and animate only the scenes you are happy with.
                 </p>
 
                 <ul className="space-y-4 mb-10">
                   {[
                     "Review every scene's foundation image",
-                    "Maintain consistent character looks",
-                    "Guarantee the narrative flows correctly",
+                    "Use reference images to help keep characters more consistent",
+                    "Check the scene order before you spend video credits",
                     "Animate only the scenes you approve"
                   ].map((item, i) => (
                     <li key={i} className="flex items-center gap-3 text-white/80">
@@ -352,7 +397,7 @@ export default function Home() {
                 Everything you need to <span className="text-white/40">tell the whole story.</span>
               </h2>
               <p className="text-lg text-white/60 max-w-2xl mx-auto">
-                No jumping between tabs. Every tool is integrated into one seamless workflow.
+                No jumping between tabs. Generate, edit and export in one place.
               </p>
             </div>
 
@@ -368,11 +413,11 @@ export default function Home() {
                 <div className="space-y-6">
                   <div>
                     <h4 className="text-white font-semibold mb-2">Visual Approval</h4>
-                    <p className="text-sm text-white/50 leading-relaxed">Review foundation images before animating to guarantee your aesthetic and save credits.</p>
+                    <p className="text-sm text-white/50 leading-relaxed">Review foundation images before animating so you only spend video credits on scenes you approve.</p>
                   </div>
                   <div>
-                    <h4 className="text-white font-semibold mb-2">Character Lock</h4>
-                    <p className="text-sm text-white/50 leading-relaxed">Lock a face or look from a reference image so characters remain consistent across clips.</p>
+                    <h4 className="text-white font-semibold mb-2">Reference Images</h4>
+                    <p className="text-sm text-white/50 leading-relaxed">Add a reference image to help characters look more consistent across clips. Results can still vary between scenes.</p>
                   </div>
                   <div>
                     <h4 className="text-white font-semibold mb-2">Prompt Studio</h4>
@@ -416,7 +461,7 @@ export default function Home() {
                 <div className="space-y-6">
                   <div>
                     <h4 className="text-white font-semibold mb-2">Montage Studio</h4>
-                    <p className="text-sm text-white/50 leading-relaxed">A built-in timeline editor to trim, transition, and finalize your masterpiece.</p>
+                    <p className="text-sm text-white/50 leading-relaxed">A built-in timeline editor to trim, transition, and finalize your own clips and photos. No AI generation required.</p>
                   </div>
                   <div>
                     <h4 className="text-white font-semibold mb-2">Up to 4K Quality</h4>
@@ -504,7 +549,7 @@ export default function Home() {
               Ready for your next release?
             </h2>
             <p className="text-xl text-white/50 mb-12">
-              Join creators using AIBeatSync to produce music, narrated stories, cinematic videos, and social-ready releases.
+              Generate new AI visuals with credits, or edit your own footage in Montage Studio.
             </p>
             <p className="text-sm text-white/60 mb-6">{FREE_OFFER_COPY.short} {FREE_OFFER_COPY.example} {FREE_OFFER_COPY.expiry} {FREE_OFFER_COPY.credits}</p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-5">

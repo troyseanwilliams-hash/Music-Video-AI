@@ -2,7 +2,7 @@ import type { ComponentType, ReactNode } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Play, Sparkles, Scissors, Lock, Wand2, Music, ArrowRight } from "lucide-react";
-import { trackEvent } from "@/lib/analytics";
+import { track, trackEvent } from "@/lib/analytics";
 import { buildAuthUrl } from "@/lib/authIntent";
 import { FREE_OFFER_COPY } from "@/lib/freeOffer";
 
@@ -22,7 +22,7 @@ const CONTENT: Record<"generate" | "remix", Content> = {
     sub: "Upload a track to create beat-synced AI visuals. AI video generation requires credits and is subject to plan rules; signing up alone does not include generation credits.",
     bullets: [
       { icon: Sparkles, text: "Beat-synced AI visuals in 8 cinematic styles" },
-      { icon: Lock, text: "Character Lock keeps your look consistent across every clip" },
+      { icon: Lock, text: "Reference images help keep characters more consistent; results can vary" },
       { icon: Play, text: "Review your storyboard before spending video credits" },
       { icon: Wand2, text: "Up to 4K resolution and 10-minute videos" },
     ],
@@ -56,7 +56,8 @@ export default function SignupTeaser({ variant }: { variant: "generate" | "remix
           </div>
           <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight mb-4 leading-tight">{c.title}</h1>
           <p className="text-lg text-muted-foreground mb-8">{c.sub}</p>
-          <p className="text-sm text-muted-foreground mb-5">{FREE_OFFER_COPY.example} {FREE_OFFER_COPY.expiry} {FREE_OFFER_COPY.music} {FREE_OFFER_COPY.trialExtras} {FREE_OFFER_COPY.afterTrial} {FREE_OFFER_COPY.credits} {FREE_OFFER_COPY.paid}</p>
+          <p className="text-sm font-semibold mb-1">{FREE_OFFER_COPY.short}</p>
+          <p className="text-sm text-muted-foreground mb-5">{FREE_OFFER_COPY.example} {FREE_OFFER_COPY.expiry}</p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">
             <Link
               href={buildAuthUrl("/register", { returnTo: variant === "remix" ? "/editor" : "/generate" })}
@@ -107,6 +108,18 @@ export default function SignupTeaser({ variant }: { variant: "generate" | "remix
             </div>
           ))}
         </div>
+
+        <details className="mt-10 max-w-2xl mx-auto text-xs text-muted-foreground" onToggle={(e) => { if ((e.currentTarget as HTMLDetailsElement).open) track("offer_terms_expand", { location: `teaser_${variant}` }); }}>
+          <summary className="cursor-pointer text-center hover:text-foreground" data-testid="button-teaser-terms">Offer terms and credit details</summary>
+          <div className="mt-3 space-y-1.5 leading-relaxed">
+            <p>{FREE_OFFER_COPY.videoExample}</p>
+            <p>{FREE_OFFER_COPY.music}</p>
+            <p>{FREE_OFFER_COPY.trialExtras}</p>
+            <p>{FREE_OFFER_COPY.afterTrial}</p>
+            <p>{FREE_OFFER_COPY.credits}</p>
+            <p>{FREE_OFFER_COPY.paid}</p>
+          </div>
+        </details>
 
         <div className="text-center mt-12">
           <Link
