@@ -12,7 +12,7 @@ import {
   generateSong,
   getActiveMusicProvider,
   inferVocalDurationSeconds,
-  isUsableElevenLabsMusicCredential,
+  vocalMusicAvailable,
   loopAudioToLength,
   MAX_SONG_SECONDS,
   type MusicProvider,
@@ -348,8 +348,7 @@ router.get("/music/soundtracks-status", async (req: Request, res: Response) => {
     vocalCost: SONG_VOCAL_CREDITS,
     vocalCreditsPerMinute: VOCAL_SONG_CREDITS_PER_MINUTE,
     freeVocalSongsRemaining: 0,
-    vocalsEnabled:
-      isUsableElevenLabsMusicCredential() || !!process.env.PIXAZO_API_KEY,
+    vocalsEnabled: vocalMusicAvailable(),
   });
 });
 

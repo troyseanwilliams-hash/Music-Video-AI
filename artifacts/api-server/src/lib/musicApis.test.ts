@@ -10,6 +10,11 @@ import {
 } from "./musicApis.js";
 import { preserveDraftIfRewritten } from "./lyricsGen.js";
 
+vi.mock("@workspace/db", () => ({
+  withResourceLease: async (_kind: string, fn: (context: { signal: AbortSignal }) => unknown) =>
+    fn({ signal: new AbortController().signal }),
+}));
+
 describe("inferVocalDurationSeconds", () => {
   it("uses a full-song default when the provider writes the lyrics", () => {
     expect(inferVocalDurationSeconds()).toBe(180);

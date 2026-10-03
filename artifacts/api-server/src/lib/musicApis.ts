@@ -76,7 +76,11 @@ function aceStepConfigured(): boolean {
 export function isUsableElevenLabsMusicCredential(
   key = getEnv("ELEVENLABS_API_KEY"),
 ): boolean {
-  return Boolean(key?.startsWith("sk_") && key.length >= 20);
+  return typeof key === "string" && /^sk_[a-zA-Z0-9]{17,}$/.test(key);
+}
+
+export function vocalMusicAvailable(): boolean {
+  return isUsableElevenLabsMusicCredential() || Boolean(getEnv("PIXAZO_API_KEY"));
 }
 
 export function getActiveMusicProvider(
@@ -86,12 +90,8 @@ export function getActiveMusicProvider(
   const hasPixazo = !!getEnv("PIXAZO_API_KEY");
   const hasUsableElevenLabs = isUsableElevenLabsMusicCredential();
   const hasReplicate = !!getEnv("REPLICATE_API_TOKEN");
-  // Explicit Replicate hints win when Replicate is configured.
-  if (hasReplicate && hint === "acestep" && aceStepConfigured()) return "acestep";
-  if (hasReplicate && hint === "musicgen") return "musicgen";
-  // Keep explicit direct-provider requests pinned so an administrator receives
-  // the real configuration error instead of silently exercising a fallback.
-  if (hint === "elevenlabs") return "elevenlabs";
+  // Every override stays pinned, including missing configuration.
+  if (hint) return hint;
   // Vocal songs use Eleven Music. Keep instrumental routing unchanged so the
   // existing lower-cost instrumental provider remains available.
   if (withVocals && hasUsableElevenLabs) return "elevenlabs";
@@ -280,8 +280,10 @@ export function isElevenMusicCredentialFailure(
   return (
     httpStatus === 401 ||
     httpStatus === 403 ||
-    providerStatus === "missing_permissions" ||
-    providerStatus === "api_key_id_used_as_api_key"
+    (httpStatus === 400 && (
+      providerStatus === "missing_permissions" ||
+      providerStatus === "api_key_id_used_as_api_key"
+    ))
   );
 }
 
@@ -388,7 +390,7 @@ async function generateWithPixazoMusic(req: SongRequest): Promise<string> {
   }
   const data = (await submit.json()) as { request_id?: string; polling_url?: string };
   const requestId = data.request_id;
-  if (!requestId) throw new Error("Pixazo music: no request_id returned");
+  if (!requestId) throw new Error("The music engine did not confirm this request. No credits were charged; please try again later.");
   const pollUrl = data.polling_url ?? `https://gateway.pixazo.ai/v2/requests/status/${requestId}`;
 
   for (let i = 0; i < 120; i++) {
@@ -494,6 +496,14 @@ export const MAX_SONG_SECONDS = 120;
 
 export async function generateSong(req: SongRequest): Promise<SongResult> {
   const provider = getActiveMusicProvider(req.provider ?? null, req.withVocals === true);
+  if (
+    (provider === "pixazo" && !getEnv("PIXAZO_API_KEY")) ||
+    ((provider === "acestep" || provider === "musicgen") && !getEnv("REPLICATE_API_TOKEN")) ||
+    (provider === "acestep" && !aceStepConfigured()) ||
+    (req.withVocals && (provider === "simulation" || provider === "musicgen"))
+  ) {
+    throw new Error("AI music generation is temporarily unavailable. No credits were charged; please try again shortly.");
+  }
   const maxDuration = req.withVocals ? MAX_VOCAL_SONG_SECONDS : MAX_SONG_SECONDS;
   const dur = Math.min(Math.max(req.durationSeconds || 30, 5), maxDuration);
 
@@ -509,9 +519,10 @@ export async function generateSong(req: SongRequest): Promise<SongResult> {
     try {
       return await generateWithElevenMusic(req);
     } catch (err) {
-      const explicitlyPinned = req.provider === "elevenlabs";
+      const explicitlyPinned = req.provider != null;
       if (
         !explicitlyPinned &&
+        req.withVocals === true &&
         err instanceof ElevenMusicCredentialError &&
         !!getEnv("PIXAZO_API_KEY")
       ) {
