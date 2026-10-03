@@ -3,6 +3,10 @@ name: Email system conventions
 description: Branded email templates, worker/api-server copy rule, and unsubscribe security constraints
 ---
 
+- Signup admin alerts are email-only; leave other notification channels unchanged.
+  **Why:** The user chose email instead of signup texts after Twilio inactive-account failures.
+  **How to apply:** Do not reintroduce signup SMS or an SMS fallback without a new request.
+
 - All transactional emails share the branded template module `emailTemplates.ts`, kept **byte-identical** in api-server and worker `src/lib/` (like renderEmail.ts). Edit in api-server, `cp` to worker.
 - **Why:** worker sends render emails independently; drift breaks branding/token compat.
 - Unsubscribe links are HMAC tokens keyed on SESSION_SECRET (no fallback secret — throws if missing; callers degrade to a dashboard link, never block signup).

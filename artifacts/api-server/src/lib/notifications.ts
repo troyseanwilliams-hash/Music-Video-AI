@@ -120,7 +120,8 @@ export function notifyNewSupportTicket(ticket: SupportTicketInfo): void {
 }
 
 // Notify admin(s) when a new user signs up. Sent to NOTIFY_EMAIL if set,
-// otherwise ADMIN_EMAIL. Never throws — best-effort.
+// otherwise ADMIN_EMAIL. Signup alerts are email-only; never send signup SMS.
+// Never throws — best-effort.
 export function notifyNewUser(user: { id: string; email?: string | null; name?: string | null }): void {
   const adminEmail = process.env.NOTIFY_EMAIL || process.env.ADMIN_EMAIL;
   const resend = getResend();
@@ -143,15 +144,6 @@ export function notifyNewUser(user: { id: string; email?: string | null; name?: 
       .catch((err: unknown) => logger.error({ err, userId: user.id }, "Failed to send new-user email"));
   }
 
-  const sms = getSmsClient();
-  const fromNumber = process.env.TWILIO_FROM_NUMBER;
-  const adminPhone = process.env.ADMIN_PHONE;
-  if (sms && fromNumber && adminPhone) {
-    sms.messages
-      .create({ body: `AIBeatSync: New signup — ${user.email ?? user.id.slice(0, 8)}`, from: fromNumber, to: adminPhone })
-      .then(() => logger.info({ userId: user.id }, "New-user SMS sent"))
-      .catch((err: unknown) => logger.error({ err, userId: user.id }, "Failed to send new-user SMS"));
-  }
 }
 
 // Welcome email to the new user themselves — features highlight plus a light
