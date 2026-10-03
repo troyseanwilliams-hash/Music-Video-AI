@@ -116,7 +116,7 @@ export interface CreateJobRequest {
      */
   approvedScenePrompts?: CreateJobRequestApprovedScenePromptsItem[];
   /**
-     * Optional Visual Montage scene assignments that reuse generated images owned by the current user as exact animation sources.
+     * Optional scene assignments for Narrative or Visual Montage that reuse generated images owned by the current user as exact animation sources, without a new image-generation charge.
      * @maxItems 60
      */
   selectedSceneSources?: CreateJobRequestSelectedSceneSourcesItem[];

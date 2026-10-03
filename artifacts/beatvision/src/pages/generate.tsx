@@ -592,6 +592,7 @@ export default function Generate() {
   const handleGalleryReferenceSelect = (asset: ReferenceGalleryAsset) => {
     if (sceneSourcePickerIndex !== null) {
       setSelectedSceneSources((current) => ({ ...current, [sceneSourcePickerIndex]: asset }));
+      setScriptApproved(false);
       setSceneSourcePickerIndex(null);
       setGalleryPickerOpen(false);
       return;
@@ -1027,9 +1028,7 @@ export default function Generate() {
     generationMode as GenerationMode,
     narrativeVisualSource === CreateJobRequestNarrativeVisualSource.generated_images ? "generated_images" : "video",
   );
-  const reusedSceneSourceCount = generationMode === CreateJobRequestGenerationMode.montage
-    ? Object.keys(selectedSceneSources).length
-    : 0;
+  const reusedSceneSourceCount = imagePackMode ? 0 : Object.keys(selectedSceneSources).length;
   const generatedImageCost = Math.max(
     0,
     fullGeneratedImageCost - reusedSceneSourceCount * GENERATED_IMAGE_CREDITS_PER_VISUAL,
@@ -1099,6 +1098,14 @@ export default function Generate() {
     : "image";
   const generatedPromptLabel = `${generatedPromptKind} prompt`;
   const generatedPromptLabelPlural = `${generatedPromptKind} prompts`;
+  useEffect(() => {
+    // Scene assignments belong to the reviewed plan, not to a future script.
+    if (!shotPlan) {
+      setSelectedSceneSources({});
+      setSceneSourcePickerIndex(null);
+    }
+  }, [shotPlan]);
+
   const updateShotPrompt = (shotIndex: number, nextPrompt: string) => {
     setShotPlan((current) => current ? {
       ...current,
@@ -1435,12 +1442,10 @@ export default function Generate() {
             prompt: shot.prompt.trim(),
           })),
           selectedSceneSources:
-            generationMode === CreateJobRequestGenerationMode.montage
-              ? Object.entries(selectedSceneSources).map(([index, asset]) => ({
+            Object.entries(selectedSceneSources).map(([index, asset]) => ({
                   index: Number(index),
                   imageAssetId: asset.id,
-                }))
-              : [],
+                })),
           scriptApproved,
           // Copyright/ownership attestation (gated by the checkbox above) —
           // not applicable to a silent "no audio" render, so it's implicitly
@@ -3490,7 +3495,7 @@ export default function Generate() {
                               data-testid={`input-scene-image-prompt-${shot.index}`}
                             />
                              <StoryboardSafetyStatus safety={shot.safety} sceneIndex={shot.index} />
-                            {generationMode === CreateJobRequestGenerationMode.montage && (
+                            {!imagePackMode && (
                               <div className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-secondary/20 p-2">
                                 <div className="flex min-w-0 items-center gap-2">
                                   {selectedSceneSources[shot.index] ? (
@@ -3522,11 +3527,11 @@ export default function Generate() {
                                       variant="ghost"
                                       size="sm"
                                       className="h-7 px-2 text-xs"
-                                      onClick={() => setSelectedSceneSources((current) => {
+                                      onClick={() => { setScriptApproved(false); setSelectedSceneSources((current) => {
                                         const next = { ...current };
                                         delete next[shot.index];
                                         return next;
-                                      })}
+                                      }); }}
                                     >
                                       Remove
                                     </Button>
@@ -4154,7 +4159,7 @@ export default function Generate() {
                         </span>
                       </div>
                     <div className="flex justify-between text-xs">
-                      <span className="text-muted-foreground">Image foundation · {generationEstimate.unitCount} images</span>
+                      <span className="text-muted-foreground">Image foundation · {Math.max(0, generationEstimate.unitCount - reusedSceneSourceCount)} new{reusedSceneSourceCount > 0 ? `, ${reusedSceneSourceCount} saved` : ""}</span>
                       <span>{generatedImageCost} credits</span>
                     </div>
                     <div className="flex justify-between text-xs">

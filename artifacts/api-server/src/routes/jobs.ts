@@ -751,13 +751,6 @@ router.post("/jobs", async (req, res) => {
     return;
   }
   const requestedSceneSources = selectedSceneSources ?? [];
-  if (normalizedGenerationMode !== "montage" && requestedSceneSources.length > 0) {
-    res.status(422).json({
-      error: "Saved source images can only be assigned to Visual Montage scenes.",
-      code: "SELECTED_SCENE_SOURCES_MODE_INVALID",
-    });
-    return;
-  }
   const requestedSourceIndexes = requestedSceneSources.map((source) => source.index);
   const requestedSourceIds = requestedSceneSources.map((source) => source.imageAssetId);
   if (
@@ -766,7 +759,7 @@ router.post("/jobs", async (req, res) => {
     || requestedSourceIndexes.some((index) => index < 0 || index >= storyboard.shots.length)
   ) {
     res.status(422).json({
-      error: "Each saved image must be assigned to one valid Montage scene.",
+      error: "Each saved image must be assigned to one valid scene.",
       code: "SELECTED_SCENE_SOURCES_INVALID",
     });
     return;

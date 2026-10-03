@@ -415,7 +415,7 @@ export const CreateJobBody = zod.object({
   "selectedSceneSources": zod.array(zod.object({
   "index": zod.number().min(createJobBodySelectedSceneSourcesItemIndexMin).max(createJobBodySelectedSceneSourcesItemIndexMax),
   "imageAssetId": zod.string().uuid()
-})).max(createJobBodySelectedSceneSourcesMax).optional().describe('Optional Visual Montage scene assignments that reuse generated images owned by the current user as exact animation sources.'),
+})).max(createJobBodySelectedSceneSourcesMax).optional().describe('Optional scene assignments for Narrative or Visual Montage that reuse generated images owned by the current user as exact animation sources, without a new image-generation charge.'),
   "scriptApproved": zod.boolean().describe('Explicit user confirmation that the submitted script and scene prompts were reviewed and approved before generation.')
 })
 
