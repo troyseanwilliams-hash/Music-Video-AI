@@ -1,3 +1,4 @@
+import { StorageRetentionNotice } from "@/components/StorageRetentionNotice";
 import { useEffect, useState } from "react";
 import { useLocation, Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
@@ -224,6 +225,7 @@ export default function Dashboard() {
 
   return (
     <div className="container mx-auto px-4 py-12 max-w-6xl">
+      <StorageRetentionNotice />
       {subStatus === "trial" && !isAdmin && (
         <div className={`mb-6 flex flex-col items-stretch gap-3 rounded-lg border px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-4 ${
           trialExpired

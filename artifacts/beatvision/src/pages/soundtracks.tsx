@@ -1,3 +1,4 @@
+import { StorageRetentionNotice } from "@/components/StorageRetentionNotice";
 import { useState, useEffect } from "react";
 import { useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
@@ -456,6 +457,7 @@ export default function Soundtracks() {
   return (
     <>
     <div className="container mx-auto px-4 py-8 max-w-4xl">
+      <StorageRetentionNotice />
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
         <div className="max-w-2xl">
           <h1 className="text-3xl font-bold tracking-tight mb-2 flex items-center gap-2">

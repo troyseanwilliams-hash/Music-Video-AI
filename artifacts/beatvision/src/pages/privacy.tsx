@@ -78,7 +78,7 @@ export default function Privacy() {
         <section className="space-y-3">
           <h2 className="text-lg font-semibold text-foreground">6. Data Retention and Deletion</h2>
           <p>
-            We retain your account and content for as long as your account is active. You can delete individual videos and clips yourself at any time. To delete your account entirely, contact us at{" "}
+            Files are stored for only 30 days after your membership expires. Download and back up your videos, images, and audio before that period ends; files may then be permanently deleted. Account records have separate retention requirements. You can remove individual videos and clips from your library at any time. To delete your account entirely, contact us at{" "}
             <a href={`mailto:${CONTACT_EMAIL}`} className="text-primary hover:underline">{CONTACT_EMAIL}</a>{" "}
             or through the <Link href="/support" className="text-primary hover:underline">Support page</Link>, and we'll remove your account and associated content, except where we're required to retain records (e.g., billing history) for legal or accounting purposes.
           </p>
