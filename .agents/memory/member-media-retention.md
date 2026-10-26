@@ -1,16 +1,10 @@
 ---
 name: Member media retention
-description: Project policy for retaining videos that members remove from their own view.
+description: Project policy for deleting stored media after a paid membership or free trial ends.
 ---
 
-Do not permanently delete a current member's video because a retention timer elapsed. A user-level delete may hide the video, but its stored files remain until an administrator explicitly confirms permanent deletion.
+After a paid membership or free trial ends, notify the user to download their files and permanently delete their stored videos, images, and audio after 30 days. Do not delete media while the account is active or past due. Preserve the user account, credits, billing history, and non-media records.
 
-**Why:** The product owner does not want current members' media removed automatically and rejected the previous 30-day soft-delete purge policy.
+**Why:** The user explicitly authorized automatic media deletion after the 30-day post-membership/trial retention period, superseding the earlier admin-only deletion policy.
 
-**How to apply:** Do not add scheduled or age-based purge jobs for member media. Keep permanent deletion admin-only, clearly labeled, and protected by explicit confirmation.
-
-Tell users to download their files: files will only be stored for 30 days after membership expires.
-
-**Why:** The user explicitly requested this customer-facing storage policy. This replaces indefinite post-membership storage expectations, not protection for current members.
-
-**How to apply:** Show the notice in account and media-library surfaces and terms. The request authorizes communication, not automatic deletion or a bulk email campaign. No deletion scheduler was requested; keep permanent deletion explicitly confirmed until separately authorized.
+**How to apply:** Start the 30-day period when an expired account is first successfully notified; grant existing expired accounts a fresh 30-day warning period at rollout. Skip active or past-due accounts and accounts with active jobs. Do not purge billing or account records.

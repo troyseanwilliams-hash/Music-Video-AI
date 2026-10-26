@@ -1007,7 +1007,7 @@ export async function handleSubscriptionUpdated(
             : subscription.status === "canceled"
               ? "cancelled"
               : subscription.status,
-          membershipExpiresAt,
+          ...(membershipExpiresAt ? { membershipExpiresAt } : {}),
           ...(isActive ? {
             mediaRetentionStartedAt: null,
             mediaRetentionNoticeSentAt: null,
@@ -1178,7 +1178,7 @@ export async function handleSubscriptionUpdated(
         : subscription.status === "canceled"
           ? "cancelled"
           : subscription.status,
-      membershipExpiresAt,
+      ...(membershipExpiresAt ? { membershipExpiresAt } : {}),
       ...(isActive ? {
         mediaRetentionStartedAt: null,
         mediaRetentionNoticeSentAt: null,

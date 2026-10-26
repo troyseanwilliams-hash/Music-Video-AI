@@ -59,7 +59,7 @@
 - [Recovery preflight writes](recovery-preflight-writes.md) — retained-media recovery must skip unchanged progress writes so database degradation cannot delay accepted-output collection.
 - [Infrastructure retry fencing](infrastructure-retry-fencing.md) — transient outages may resume free only behind durable submission fencing; bound retries and atomically fence exhaustion settlement.
 - [Preview backfill deletion locking](preview-backfill-deletion-locking.md) — preview attachment and every permanent video purge must serialize on the same video-row lock.
-- [Member media retention](member-media-retention.md) — never automatically purge videos belonging to current members; permanent deletion is an explicit admin action only.
+- [Member media retention](member-media-retention.md) — active and past-due members are protected; after membership or trial ends, notify users and delete stored media after 30 days.
 - [Music-aware prompt handoff](music-aware-prompt-handoff.md) — exact prompt plans require receipt-verified audio; preserve edits as numbered input, then revalidate in Generate before charging.
 - [Narration credit authority](narration-credit-authority.md) — AIBeatSync narration mirrors AIPodSync’s core workflow but charges only AIBeatSync credits.
 - [Narration gallery handoff](narration-gallery-handoff.md) — video handoff must save narration to My Music first; one editable title follows the audio into video setup.

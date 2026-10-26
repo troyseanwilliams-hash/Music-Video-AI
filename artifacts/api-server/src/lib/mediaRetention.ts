@@ -14,34 +14,57 @@ import { ObjectStorageService } from "./objectStorage.js";
 import { logger } from "./logger.js";
 import { sendMediaRetentionNotice } from "./notifications.js";
 
-const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+export const MEDIA_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const SWEEP_INTERVAL_MS = 60 * 60 * 1000;
 const BATCH_SIZE = 10;
 const storage = new ObjectStorageService();
 let running = false;
 
-export function mediaObjectPaths(value: unknown, paths = new Set<string>()): Set<string> {
+const MEDIA_PATH_KEYS = new Set([
+  "audioObjectPath",
+  "clipPaths",
+  "objectPath",
+  "previewObjectPath",
+  "previewPath",
+  "referenceImagePath",
+  "thumbnailObjectPath",
+  "thumbnailPath",
+  "videoObjectPath",
+  "fullVideoPath",
+]);
+
+export function mediaObjectPaths(
+  value: unknown,
+  paths = new Set<string>(),
+  key?: string,
+): Set<string> {
   if (typeof value === "string") {
-    const matches = value.match(/\/objects\/[A-Za-z0-9._/-]+/g) ?? [];
-    for (const path of matches) paths.add(path.replace(/[),.;]+$/, ""));
+    if (key && MEDIA_PATH_KEYS.has(key) && value.startsWith("/objects/")) {
+      paths.add(value);
+    }
   } else if (Array.isArray(value)) {
-    for (const item of value) mediaObjectPaths(item, paths);
+    for (const item of value) mediaObjectPaths(item, paths, key);
   } else if (value && typeof value === "object") {
-    for (const item of Object.values(value)) mediaObjectPaths(item, paths);
+    for (const [childKey, item] of Object.entries(value)) {
+      mediaObjectPaths(item, paths, childKey);
+    }
   }
   return paths;
 }
 
-function expirationOf(user: {
+export function membershipExpirationOf(user: {
   subscriptionStatus: string;
+  stripeSubscriptionId?: string | null;
   trialEndsAt: Date | null;
   membershipExpiresAt: Date | null;
 }): Date | null {
-  const expirations = [
-    user.trialEndsAt,
-    user.membershipExpiresAt,
-  ].filter((date): date is Date => date instanceof Date);
   if (user.subscriptionStatus === "active" || user.subscriptionStatus === "past_due") return null;
+  const hasTrialExpiry = user.subscriptionStatus === "trial"
+    || (user.subscriptionStatus === "none" && !user.stripeSubscriptionId);
+  const expirations = [
+    user.membershipExpiresAt,
+    ...(hasTrialExpiry ? [user.trialEndsAt] : []),
+  ].filter((date): date is Date => date instanceof Date);
   if (!expirations.length) return null;
   return new Date(Math.max(...expirations.map((date) => date.getTime())));
 }
@@ -52,6 +75,7 @@ async function deleteDueUserMedia(userId: string, now: Date): Promise<void> {
       id: usersTable.id,
       email: usersTable.email,
       subscriptionStatus: usersTable.subscriptionStatus,
+      stripeSubscriptionId: usersTable.stripeSubscriptionId,
       trialEndsAt: usersTable.trialEndsAt,
       membershipExpiresAt: usersTable.membershipExpiresAt,
       mediaRetentionStartedAt: usersTable.mediaRetentionStartedAt,
@@ -75,7 +99,7 @@ async function deleteDueUserMedia(userId: string, now: Date): Promise<void> {
         notInArray(jobsTable.status, ["ready", "failed"]),
       ))
       .limit(1);
-    const expiration = expirationOf(user);
+    const expiration = membershipExpirationOf(user);
     const eligible = !liveSuite
       && !activeJob
       && !user.billingCheckoutPendingUntil?.getTime()
@@ -93,30 +117,38 @@ async function deleteDueUserMedia(userId: string, now: Date): Promise<void> {
     }
 
     if (!user.mediaRetentionStartedAt) {
-      // Existing accounts get a full 30-day warning period from first
-      // discovery; newly expired accounts are found on the hourly sweep.
+      const sent = await sendMediaRetentionNotice({
+        id: userId,
+        email: user.email,
+        deleteAt: new Date(now.getTime() + MEDIA_RETENTION_MS),
+      });
+      if (!sent) {
+        logger.warn({ userId }, "Media retention paused until the user can be notified");
+        return;
+      }
+      // Existing expired accounts get a full 30-day warning period from
+      // rollout, and new expirations are discovered on the hourly sweep.
       await tx.update(usersTable).set({
         mediaRetentionStartedAt: now,
-        mediaRetentionNoticeSentAt: null,
+        mediaRetentionNoticeSentAt: now,
       }).where(eq(usersTable.id, userId));
+      logger.info({ userId, deleteAt: new Date(now.getTime() + MEDIA_RETENTION_MS) }, "Media retention period started");
+      return;
     }
-    const retentionStartedAt = user.mediaRetentionStartedAt ?? now;
+
+    const retentionStartedAt = user.mediaRetentionStartedAt;
     if (!user.mediaRetentionNoticeSentAt) {
       const sent = await sendMediaRetentionNotice({
         id: userId,
         email: user.email,
-        deleteAt: new Date(retentionStartedAt.getTime() + RETENTION_MS),
+        deleteAt: new Date(retentionStartedAt.getTime() + MEDIA_RETENTION_MS),
       });
-      if (sent) {
-        await tx.update(usersTable).set({ mediaRetentionNoticeSentAt: now })
-          .where(eq(usersTable.id, userId));
-      }
+      if (!sent) return;
+      await tx.update(usersTable).set({ mediaRetentionNoticeSentAt: now })
+        .where(eq(usersTable.id, userId));
     }
 
-    if (retentionStartedAt.getTime() + RETENTION_MS > now.getTime()) {
-      if (!user.mediaRetentionStartedAt) {
-        logger.info({ userId, deleteAt: new Date(retentionStartedAt.getTime() + RETENTION_MS) }, "Media retention period started");
-      }
+    if (retentionStartedAt.getTime() + MEDIA_RETENTION_MS > now.getTime()) {
       return;
     }
 
@@ -167,10 +199,15 @@ export async function runMediaRetentionSweep(now = new Date()): Promise<void> {
       .where(and(
         ne(usersTable.subscriptionStatus, "active"),
         ne(usersTable.subscriptionStatus, "past_due"),
-        or(
-          lt(usersTable.trialEndsAt, now),
-          lt(usersTable.membershipExpiresAt, now),
-        ),
+        sql`CASE
+          WHEN ${usersTable.subscriptionStatus} = 'trial'
+            OR (${usersTable.subscriptionStatus} = 'none' AND ${usersTable.stripeSubscriptionId} IS NULL)
+          THEN GREATEST(
+            COALESCE(${usersTable.trialEndsAt}, '-infinity'::timestamptz),
+            COALESCE(${usersTable.membershipExpiresAt}, '-infinity'::timestamptz)
+          )
+          ELSE ${usersTable.membershipExpiresAt}
+        END < ${now}`,
         sql`NOT EXISTS (
           SELECT 1 FROM ${jobsTable}
           WHERE ${jobsTable.userId} = ${usersTable.id}
@@ -193,6 +230,10 @@ export async function runMediaRetentionSweep(now = new Date()): Promise<void> {
 }
 
 export function startMediaRetentionSweep(): () => void {
+  if (process.env.NODE_ENV !== "production" && process.env.ENABLE_MEDIA_RETENTION_SWEEP !== "true") {
+    logger.info("Media retention sweep disabled outside production");
+    return () => {};
+  }
   const timer = setInterval(() => {
     void runMediaRetentionSweep().catch((err) =>
       logger.error({ err }, "Media retention sweep failed"),

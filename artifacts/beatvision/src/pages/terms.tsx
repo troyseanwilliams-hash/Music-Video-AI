@@ -3,7 +3,7 @@ import { ArrowLeft, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { STORAGE_RETENTION_MESSAGE } from "@/components/StorageRetentionNotice";
 
-const EFFECTIVE_DATE = "October 12, 2026";
+const EFFECTIVE_DATE = "October 26, 2026";
 const COMPANY_NAME = "AIBeatSync";
 const SITE_URL = "https://aibeatsync.com";
 const CONTACT_EMAIL = "legal@aibeatsync.com";
@@ -105,7 +105,7 @@ export default function Terms() {
           <div id="file-storage" className="space-y-3 scroll-mt-24">
             <h3 className="font-semibold text-foreground">File storage after membership expiration</h3>
             <p>{STORAGE_RETENTION_MESSAGE}</p>
-            <p>Do not rely on the Service as your only backup. After the 30-day storage period, files may be permanently deleted and unavailable for recovery.</p>
+            <p>Do not rely on the Service as your only backup. Videos, images, and audio are permanently deleted after the 30-day period following the end of a paid membership or free trial.</p>
           </div>
           <p>
             Subject to your compliance with these Terms and payment of applicable fees, you own the Generated Content produced from your User Content. {COMPANY_NAME} claims no ownership over your Generated Content. However, you acknowledge that similar outputs may be generated for other users and that {COMPANY_NAME} retains rights to the underlying AI models and technology.

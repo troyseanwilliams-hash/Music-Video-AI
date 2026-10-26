@@ -164,7 +164,7 @@ export async function sendMediaRetentionNotice(user: {
     from: "AIBeatSync <notifications@aibeatsync.com>",
     to: user.email,
     subject: "Download your AIBeatSync files before they expire",
-    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:32px;color:#222"><h1>Your files are scheduled for deletion</h1><p>Your membership or free trial has ended. Your stored videos, images, and audio are scheduled for permanent deletion on <strong>${deleteDate} (UTC)</strong>.</p><p>Download any files you want to keep before then. After deletion, files cannot be restored.</p><p><a href="${appUrl}/gallery" style="display:inline-block;background:#7138ef;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none">Download your files</a></p><p>Questions? Reply to this email or contact support.</p></div>`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:32px;color:#222"><h1>Your files are scheduled for deletion</h1><p>Your membership or free trial has ended. Your stored videos, images, and audio are scheduled for permanent deletion on <strong>${deleteDate} (UTC)</strong>.</p><p>Download any files you want to keep before then. After deletion, files cannot be restored.</p><p><a href="${appUrl}/gallery" style="display:inline-block;background:#7138ef;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none">Download videos and images</a></p><p><a href="${appUrl}/soundtracks" style="color:#7138ef">Download audio</a></p><p>Questions? Reply to this email or contact support.</p></div>`,
   });
   if (result.error) {
     logger.error({ err: result.error, userId: user.id }, "Failed to send media retention notice");

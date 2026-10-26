@@ -2,7 +2,7 @@ import { Link } from "wouter";
 import { ArrowLeft, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-const EFFECTIVE_DATE = "August 14, 2026";
+const EFFECTIVE_DATE = "October 26, 2026";
 const COMPANY_NAME = "AIBeatSync";
 const CONTACT_EMAIL = "legal@aibeatsync.com";
 
@@ -78,7 +78,7 @@ export default function Privacy() {
         <section className="space-y-3">
           <h2 className="text-lg font-semibold text-foreground">6. Data Retention and Deletion</h2>
           <p>
-            Files are stored for only 30 days after your membership expires. Download and back up your videos, images, and audio before that period ends; files may then be permanently deleted. Account records have separate retention requirements. You can remove individual videos and clips from your library at any time. To delete your account entirely, contact us at{" "}
+            Videos, images, and audio are stored for 30 days after your paid membership or free trial ends, then permanently deleted. Download and back up your files before that period ends. Account records have separate retention requirements. You can remove individual videos and clips from your library at any time. To delete your account entirely, contact us at{" "}
             <a href={`mailto:${CONTACT_EMAIL}`} className="text-primary hover:underline">{CONTACT_EMAIL}</a>{" "}
             or through the <Link href="/support" className="text-primary hover:underline">Support page</Link>, and we'll remove your account and associated content, except where we're required to retain records (e.g., billing history) for legal or accounting purposes.
           </p>

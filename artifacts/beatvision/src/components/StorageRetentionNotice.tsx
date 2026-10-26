@@ -2,7 +2,7 @@ import { Download } from "lucide-react";
 import { Link } from "wouter";
 
 export const STORAGE_RETENTION_MESSAGE =
-  "Please download and keep a copy of your videos, images, and audio. Your files will only be stored for 30 days after your membership expires. Download everything you want to keep before that period ends.";
+  "Please download and keep a copy of your videos, images, and audio. Your files are stored for 30 days after your paid membership or free trial ends, then permanently deleted. Download anything you want to keep before then.";
 
 export function StorageRetentionNotice() {
   return (
@@ -11,9 +11,11 @@ export function StorageRetentionNotice() {
       <div>
         <p className="font-semibold text-foreground">Download and back up your files</p>
         <p className="mt-1 text-muted-foreground">{STORAGE_RETENTION_MESSAGE}</p>
-        <Link href="/terms#file-storage" className="mt-2 inline-block text-primary underline underline-offset-4">
-          File storage policy
-        </Link>
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+          <Link href="/gallery" className="text-primary underline underline-offset-4">Download videos and images</Link>
+          <Link href="/soundtracks" className="text-primary underline underline-offset-4">Download audio</Link>
+          <Link href="/terms#file-storage" className="text-primary underline underline-offset-4">File storage policy</Link>
+        </div>
       </div>
     </aside>
   );
