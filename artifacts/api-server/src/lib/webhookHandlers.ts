@@ -857,6 +857,14 @@ export async function handleSubscriptionUpdated(
 
   const isActive =
     subscription.status === "active" || subscription.status === "trialing";
+  const subscriptionItem = subscription.items.data[0];
+  const itemPeriodEnd = subscriptionItem
+    ? (subscriptionItem as Stripe.SubscriptionItem & { current_period_end?: number }).current_period_end
+    : undefined;
+  const legacyPeriodEnd = (subscription as Stripe.Subscription & { current_period_end?: number }).current_period_end;
+  const membershipExpiresAt = typeof itemPeriodEnd === "number"
+    ? new Date(itemPeriodEnd * 1000)
+    : typeof legacyPeriodEnd === "number" ? new Date(legacyPeriodEnd * 1000) : null;
 
   // ── Suite subscription lifecycle ──────────────────────────────────────────
   const linkId: string | null = subscription.metadata?.["linkId"] ?? null;
@@ -999,6 +1007,12 @@ export async function handleSubscriptionUpdated(
             : subscription.status === "canceled"
               ? "cancelled"
               : subscription.status,
+          membershipExpiresAt,
+          ...(isActive ? {
+            mediaRetentionStartedAt: null,
+            mediaRetentionNoticeSentAt: null,
+            mediaRetentionDeletedAt: null,
+          } : {}),
           billingCheckoutPendingUntil: null,
         })
         .where(eq(usersTable.id, user.id));
@@ -1164,6 +1178,12 @@ export async function handleSubscriptionUpdated(
         : subscription.status === "canceled"
           ? "cancelled"
           : subscription.status,
+      membershipExpiresAt,
+      ...(isActive ? {
+        mediaRetentionStartedAt: null,
+        mediaRetentionNoticeSentAt: null,
+        mediaRetentionDeletedAt: null,
+      } : {}),
       billingCheckoutPendingUntil: null,
     })
     .where(

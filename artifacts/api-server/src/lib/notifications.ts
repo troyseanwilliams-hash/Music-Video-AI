@@ -146,6 +146,33 @@ export function notifyNewUser(user: { id: string; email?: string | null; name?: 
 
 }
 
+export async function sendMediaRetentionNotice(user: {
+  id: string;
+  email: string | null;
+  deleteAt: Date;
+}): Promise<boolean> {
+  const resend = getResend();
+  if (!resend || !user.email) return false;
+  const deleteDate = user.deleteAt.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+  const appUrl = (process.env.APP_URL || "https://aibeatsync.com").replace(/\/+$/, "");
+  const result = await resend.emails.send({
+    from: "AIBeatSync <notifications@aibeatsync.com>",
+    to: user.email,
+    subject: "Download your AIBeatSync files before they expire",
+    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:32px;color:#222"><h1>Your files are scheduled for deletion</h1><p>Your membership or free trial has ended. Your stored videos, images, and audio are scheduled for permanent deletion on <strong>${deleteDate} (UTC)</strong>.</p><p>Download any files you want to keep before then. After deletion, files cannot be restored.</p><p><a href="${appUrl}/gallery" style="display:inline-block;background:#7138ef;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none">Download your files</a></p><p>Questions? Reply to this email or contact support.</p></div>`,
+  });
+  if (result.error) {
+    logger.error({ err: result.error, userId: user.id }, "Failed to send media retention notice");
+    return false;
+  }
+  return true;
+}
+
 // Welcome email to the new user themselves — features highlight plus a light
 // AIPodSync (sister product) mention. Best-effort, never blocks signup.
 export function sendWelcomeEmail(user: { id: string; email?: string | null; name?: string | null }): void {

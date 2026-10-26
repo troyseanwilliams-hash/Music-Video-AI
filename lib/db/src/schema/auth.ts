@@ -21,6 +21,10 @@ export const usersTable = pgTable("users", {
   profileImageUrl: varchar("profile_image_url"),
   subscriptionStatus: varchar("subscription_status").notNull().default("none"),
   trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
+  membershipExpiresAt: timestamp("membership_expires_at", { withTimezone: true }),
+  mediaRetentionStartedAt: timestamp("media_retention_started_at", { withTimezone: true }),
+  mediaRetentionNoticeSentAt: timestamp("media_retention_notice_sent_at", { withTimezone: true }),
+  mediaRetentionDeletedAt: timestamp("media_retention_deleted_at", { withTimezone: true }),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   // Client IP captured at registration — used to limit multiple free-trial
   // accounts from the same network.

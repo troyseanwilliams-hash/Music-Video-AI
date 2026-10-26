@@ -11,6 +11,7 @@ import { replayRecentStripeEvents } from "./lib/webhookHandlers.js";
 import { db, pool, usersTable, creditsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { startMediaRetentionSweep } from "./lib/mediaRetention.js";
 
 async function fixAdminCredits(): Promise<void> {
   const email = process.env.ADMIN_EMAIL?.toLowerCase().trim();
@@ -44,6 +45,7 @@ const runProcessor =
   process.env.NODE_ENV !== "production" ||
   process.env.RUN_JOB_PROCESSOR === "true";
 let shuttingDown = false;
+const stopMediaRetentionSweep = startMediaRetentionSweep();
 
 const server = app.listen(port, (err) => {
   if (err) {
@@ -167,6 +169,7 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
     server.close(() => resolve());
     server.closeIdleConnections?.();
   });
+  stopMediaRetentionSweep();
   const stopProcessor = runProcessor
     ? stopJobProcessor(boundedTimeout)
     : Promise.resolve({ drained: true, activeJobIds: [] as string[] });
