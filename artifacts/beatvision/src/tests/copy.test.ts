@@ -22,9 +22,10 @@ describe("Copy verification", () => {
     expect(homeContent.toLowerCase()).not.toContain("you fully own");
   });
 
-  it("preserves exact primary CTA Start creating in Montage", () => {
+  it("offers a clear Montage Studio CTA for editing the user's own footage", () => {
     const homeContent = fs.readFileSync(path.join(__dirname, "../pages/home.tsx"), "utf-8");
-    expect(homeContent).toContain("Start creating in Montage");
+    expect(homeContent).toContain("Open Montage Studio");
+    expect(homeContent).toContain('data-testid="link-hero-montage"');
   });
 
   it("uses proper explicit auth intent via buildAuthUrl for editor and generate", () => {
