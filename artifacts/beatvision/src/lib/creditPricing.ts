@@ -4,7 +4,7 @@ export type AiProvider = "runway" | "kling" | "kling_v4" | "luma";
 export type GenerationMode = "montage" | "narrative";
 
 export const PROVIDER_LABELS: Record<AiProvider, string> = {
-  runway: "Runway Gen-4",
+  runway: "Runway Gen-4.5",
   kling: "Kling",
   kling_v4: "Kling 4.0",
   luma: "Luma Dream Machine",
@@ -46,8 +46,8 @@ export function calculateLipsyncCost(seconds: number | null | undefined): number
 // lipsync clip's own duration, so the panel always shows exactly what the
 // server reserves/charges/refunds. Mirror of
 // artifacts/api-server/src/lib/creditCost.ts:calculateLipsyncCostFromSourceVideo.
-//   e.g. a 60s Runway video (6 clips × 10s × $0.14/s = $8.40 real cost) →
-//   1.5× = $12.60 → 840 credits.
+//   e.g. a 60s Runway video (6 clips × 10s × $0.12/s = $7.20 real cost) →
+//   1.5× = $10.80 → 720 credits.
 //
 // Only meaningful for a source job with well-defined generation inputs
 // (jobType "ai" or "remix"). For anything else (e.g. a Studio editor_render
@@ -75,7 +75,7 @@ export const LYRIC_ALIGN_COST = 2;
 // Mirror of artifacts/api-server/src/lib/creditCost.ts. Charge = real provider
 // clip cost × tiered markup (2× single-clip / 1.5× multi-clip). Full videos are
 // capped at 5 min and scale 3–10 clips with song length.
-const RUNWAY_USD_PER_SECOND = 0.14; // Freeway: $1.40 per 10s clip
+const RUNWAY_USD_PER_SECOND = 0.12; // Runway Gen-4.5: 12 API credits/s at $0.01/credit
 const KLING_USD_PER_SECOND = 0.07; // standard Kling via Pixazo
 function usdPerSecondFor(provider?: AiProvider): number {
   return provider === "kling" ? KLING_USD_PER_SECOND : RUNWAY_USD_PER_SECOND;

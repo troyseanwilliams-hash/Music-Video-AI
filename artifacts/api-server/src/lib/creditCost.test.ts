@@ -36,8 +36,8 @@ describe("unique-scene provider work and pricing", () => {
       numClips: 18,
       clipDurationSec: 10,
     });
-    expect(calculateCreditCost("180", "720p", null, "runway", "montage")).toBe(2521);
-    expect(calculateCreditCost("180", "720p", null, "runway", "narrative")).toBe(2521);
+    expect(calculateCreditCost("180", "720p", null, "runway", "montage")).toBe(2160);
+    expect(calculateCreditCost("180", "720p", null, "runway", "narrative")).toBe(2160);
   });
 
   it("uses sixty paid scenes for every ten-minute full-track video", () => {
@@ -45,12 +45,12 @@ describe("unique-scene provider work and pricing", () => {
       numClips: 60,
       clipDurationSec: 10,
     });
-    expect(calculateCreditCost("full", "720p", 600, "runway", "narrative")).toBe(8401);
+    expect(calculateCreditCost("full", "720p", 600, "runway", "narrative")).toBe(7200);
     expect(getClipPlan("full", 600, "montage")).toEqual({
       numClips: 60,
       clipDurationSec: 10,
     });
-    expect(calculateCreditCost("full", "720p", 600, "runway", "montage")).toBe(8401);
+    expect(calculateCreditCost("full", "720p", 600, "runway", "montage")).toBe(7200);
   });
 
   it("keeps five-second Narrative output on a single five-second provider call", () => {
@@ -93,50 +93,50 @@ describe("image-first video pricing", () => {
 // the debit, and the refund), not as an end-to-end HTTP test.
 
 describe("calculateLipsyncCostFromSourceVideo (completed-video Lip Sync)", () => {
-  it("matches the spec's worked example: a 60s Runway video ($8.40 real cost) -> 840 credits", () => {
-    // 60s requestedDuration -> 6 clips x 10s (getClipPlan) x $0.14/s (Runway) = $8.40 real cost.
-    // $8.40 x 1.5 = $12.60 -> $12.60 / $0.015/credit = 840 credits.
+  it("matches the direct Gen-4.5 rate: a 60s Runway video ($7.20 real cost) -> 720 credits", () => {
+    // 60s requestedDuration -> 6 clips x 10s (getClipPlan) x $0.12/s (Runway) = $7.20 real cost.
+    // $7.20 x 1.5 = $10.80 -> $10.80 / $0.015/credit = 720 credits.
     const cost = calculateLipsyncCostFromSourceVideo("60", null, null, "runway");
-    expect(cost).toBe(840);
+    expect(cost).toBe(720);
     // Sanity-check the promised $ figures directly, not just the credit total
     // (kept as toBeCloseTo -- float division/multiplication order differs
     // slightly from the implementation's, which is not itself a bug).
-    const realCostUsd = 6 * 10 * 0.14;
-    expect(realCostUsd).toBeCloseTo(8.4, 5);
-    expect(realCostUsd * 1.5).toBeCloseTo(12.6, 5);
+    const realCostUsd = 6 * 10 * 0.12;
+    expect(realCostUsd).toBeCloseTo(7.2, 5);
+    expect(realCostUsd * 1.5).toBeCloseTo(10.8, 5);
   });
 
   it("defaults to the Runway rate when no provider is given (same as an untouched job.aiProvider)", () => {
-    expect(calculateLipsyncCostFromSourceVideo("60", null, null, undefined)).toBe(840);
-    expect(calculateLipsyncCostFromSourceVideo("60", null, null, null)).toBe(840);
+    expect(calculateLipsyncCostFromSourceVideo("60", null, null, undefined)).toBe(720);
+    expect(calculateLipsyncCostFromSourceVideo("60", null, null, null)).toBe(720);
   });
 
-  it("scales down for the cheaper Kling provider ($0.07/s vs Runway's $0.14/s)", () => {
+  it("scales down for the cheaper Kling provider ($0.07/s vs Runway's $0.12/s)", () => {
     // Same 60s / 6-clip plan, half the per-second rate -> half the real cost -> half the price.
     expect(calculateLipsyncCostFromSourceVideo("60", null, null, "kling")).toBe(420);
   });
 
   it("scales with the source video's output resolution (720p x1, 1080p x1.25, 4K x5)", () => {
-    expect(calculateLipsyncCostFromSourceVideo("60", "720p", null, "runway")).toBe(840);
-    expect(calculateLipsyncCostFromSourceVideo("60", "1080p", null, "runway")).toBe(1050);
-    expect(calculateLipsyncCostFromSourceVideo("60", "4k", null, "runway")).toBe(4200);
+    expect(calculateLipsyncCostFromSourceVideo("60", "720p", null, "runway")).toBe(720);
+    expect(calculateLipsyncCostFromSourceVideo("60", "1080p", null, "runway")).toBe(900);
+    expect(calculateLipsyncCostFromSourceVideo("60", "4k", null, "runway")).toBe(3600);
   });
 
   it("prices a single-clip (short) source video correctly", () => {
-    // 10s -> 1 clip x 10s x $0.14/s = $1.40 real cost -> x1.5 = $2.10 -> 140 credits.
-    expect(calculateLipsyncCostFromSourceVideo("10", null, null, "runway")).toBe(140);
+    // 10s -> 1 clip x 10s x $0.12/s = $1.20 real cost -> x1.5 = $1.80 -> 120 credits.
+    expect(calculateLipsyncCostFromSourceVideo("10", null, null, "runway")).toBe(120);
     // 5s -> 1 clip x 5s x $0.07/s (Kling) = $0.35 -> x1.5 = $0.525 -> 35 credits.
     expect(calculateLipsyncCostFromSourceVideo("5", null, null, "kling")).toBe(35);
   });
 
   it("prices a full-track source video, scaled by the song's real duration", () => {
-    // A 90s song -> 9 unique clips x 10s x $0.14/s, priced at the standard long-form markup.
-    expect(calculateLipsyncCostFromSourceVideo("full", null, 90, "runway")).toBe(1261);
+    // A 90s song -> 9 unique clips x 10s x $0.12/s, priced at the standard long-form markup.
+    expect(calculateLipsyncCostFromSourceVideo("full", null, 90, "runway")).toBe(1080);
   });
 
   it("prices a long explicit-duration source video (5 min)", () => {
-    // 300s -> 30 unique clips x 10s x $0.14/s, priced at the standard long-form markup.
-    expect(calculateLipsyncCostFromSourceVideo("300", null, null, "runway")).toBe(4201);
+    // 300s -> 30 unique clips x 10s x $0.12/s, priced at the standard long-form markup.
+    expect(calculateLipsyncCostFromSourceVideo("300", null, null, "runway")).toBe(3600);
   });
 
   it("is always at least 1.5x the real (pre-markup) provider cost, across providers and resolutions", () => {
@@ -151,7 +151,7 @@ describe("calculateLipsyncCostFromSourceVideo (completed-video Lip Sync)", () =>
       // Recompute the real cost the same way the source job was billed
       // (mirrors jobs.ts's own calculateCreditCost inputs), independent of
       // the lipsync formula, then assert the floor holds.
-      const rate = provider === "kling" ? 0.07 : 0.14;
+      const rate = provider === "kling" ? 0.07 : 0.12;
       const durSec = dur === "full" ? undefined : parseInt(dur, 10);
       let numClips: number;
       let clipDurationSec: number;
@@ -217,14 +217,14 @@ describe("reservation / charge / refund consistency", () => {
   });
 
   it("insufficient-credit check: a balance exactly equal to cost is affordable, one credit short is not", () => {
-    const cost = calculateLipsyncCostFromSourceVideo("60", null, null, "runway"); // 840
+    const cost = calculateLipsyncCostFromSourceVideo("60", null, null, "runway"); // 720
     // Mirrors routes/teasers.ts: `(credits?.creditsRemaining ?? 0) < cost` blocks the request.
     expect(cost < cost).toBe(false); // balance === cost -> not blocked
     expect(cost - 1 < cost).toBe(true); // balance === cost - 1 -> blocked
   });
 
   it("refund symmetry: debiting then crediting back the same cost nets to zero balance change", () => {
-    const cost = calculateLipsyncCostFromSourceVideo("60", "1080p", null, "runway"); // 1050
+    const cost = calculateLipsyncCostFromSourceVideo("60", "1080p", null, "runway"); // 900
     // routes/teasers.ts only reaches the charge once the affordability check
     // (creditsRemaining >= cost) has already passed, so a starting balance
     // below cost can't happen here in practice -- pick one comfortably above it.

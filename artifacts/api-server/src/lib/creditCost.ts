@@ -1,25 +1,24 @@
-// Credit cost for an AI generation. Priced above the *real* provider cost so
-// every duration is profitable. Cost tracks how many provider clips a job
-// actually generates (see getClipPlan) × the provider per-second rate. Runway
-// The Freeway rate ($1.40 per 10s clip = $0.14/s) is the (most expensive)
-// basis, so cheaper providers only widen the margin. Markup is tiered:
+// Credit cost for an AI generation. Cost tracks how many provider clips a job
+// actually generates (see getClipPlan) × the provider per-second rate.
+// Runway Gen-4.5 costs 12 API credits/s at $0.01/API credit = $0.12/s.
+// Markup is tiered:
 // single-clip (short) videos at 2× (100% margin), multi-clip (longer) videos
 // at 1.5× (50% margin) to stay competitive.
 //
-// Scale (Freeway basis, ~$0.015/credit):
-//   5s   → ~94 credits   (1 clip × 5s  = $0.70 → ×2   = $1.40)
-//   10s  → ~187 credits  (1 clip × 10s = $1.40 → ×2   = $2.80)
-//   30s  → 420 credits   (3 clips×10s  = $4.20 → ×1.5 = $6.30)
-//   60s  → 840 credits   (6 clips×10s  = $8.40 → ×1.5 = $12.60)
-//   300s → 2100 credits  (explicit "5 min": 15 clips, 720p basis)
-//   600s → 4200 credits  (explicit "10 min": 30 clips — 2× the 5-min)
-//   full → 420–2800      (3–20 clips scaled by song length, capped at 10 min)
+// Scale (Runway direct basis, $0.015/customer credit):
+//   5s   → 80 credits    (1 clip × 5s  = $0.60 → ×2   = $1.20)
+//   10s  → 160 credits   (1 clip × 10s = $1.20 → ×2   = $2.40)
+//   30s  → 360 credits   (3 clips×10s  = $3.60 → ×1.5 = $5.40)
+//   60s  → 720 credits   (6 clips×10s  = $7.20 → ×1.5 = $10.80)
+//   300s → 3600 credits  (explicit "5 min": 30 clips, 720p basis)
+//   600s → 7200 credits  (explicit "10 min": 60 clips — 2× the 5-min)
+//   full → 360–7200      (clips scale with song length, capped at 10 min)
 // Resolution scales the charge on top: 720p ×1, 1080p ×1.25, 4K ×5.0 (4K is a
 // premium tier — genuinely ~3× the provider compute).
 
-// Real provider cost basis: Freeway = $1.40 per 10-second clip = $0.14/s.
+// Real provider cost basis: Runway Gen-4.5 = 12 API credits/s × $0.01 = $0.12/s.
 import { kling4Plan, kling4Cost } from "./kling4.js";
-const RUNWAY_USD_PER_SECOND = 0.14; // Freeway: $1.40 per 10s clip
+const RUNWAY_USD_PER_SECOND = 0.12;
 // Standard Kling via the Pixazo gateway = ~$0.07/s (the cheaper "value" engine).
 const KLING_USD_PER_SECOND = 0.07;
 function usdPerSecondFor(provider?: string | null): number {
@@ -274,8 +273,8 @@ export function calculateLipsyncCost(seconds: number | null | undefined): number
 // per-second provider rate × resolution multiplier via providerCostCredits),
 // so it's exactly reproducible from the source job's immutable fields —
 // never from job.manifest.reservedCredits or any other post-markup figure.
-//   e.g. a 60s Runway video (6 clips × 10s × $0.14/s = $8.40 real cost) →
-//   1.5× = $12.60 → ceil($12.60 / $0.015) = 840 credits.
+//   e.g. a 60s Runway video (6 clips × 10s × $0.12/s = $7.20 real cost) →
+//   1.5× = $10.80 → ceil($10.80 / $0.015) = 720 credits.
 //
 // Only meaningful for a job with well-defined generation inputs (jobType
 // "ai" or "remix", both of which set requestedDuration/resolution/aiProvider
