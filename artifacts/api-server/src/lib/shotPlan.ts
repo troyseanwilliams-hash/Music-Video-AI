@@ -42,7 +42,10 @@ export interface ShotSection {
   energy: number;
 }
 
+import { kling4Plan } from "./kling4.js";
 export interface ShotPlanInput {
+  aiProvider?: string | null;
+  endFrameImageAssetId?: string | null;
   prompt?: string | null;
   style?: string | null;
   character?: string | null;
@@ -116,6 +119,8 @@ export interface MontageTimelineEntry {
 }
 
 export interface ShotPlan {
+  aiProvider?: string | null;
+  endFrameImageAssetId?: string | null;
   generationMode: GenerationMode;
   numClips: number;
   clipDurationSec: number;
@@ -139,6 +144,7 @@ export type ApprovedShotPlanResult =
 export function shotPlanFingerprint(plan: ShotPlan): string {
   return createHash("sha256")
     .update(JSON.stringify({
+      ...(plan.aiProvider === "kling_v4" ? { aiProvider: plan.aiProvider, endFrameImageAssetId: plan.endFrameImageAssetId ?? null } : {}),
       generationMode: plan.generationMode,
       numClips: plan.numClips,
       clipDurationSec: plan.clipDurationSec,
@@ -275,12 +281,17 @@ function planCount(
   requestedDuration: string | null | undefined,
   durationSec: number,
   generationMode: GenerationMode,
+  provider?: string | null,
 ): {
   numClips: number;
   clipDurationSec: number;
   target: number;
 } {
   const dur = requestedDuration ?? "full";
+  if (provider === "kling_v4") {
+    const target = dur === "full" ? Math.min(durationSec || MAX_FULL_SECONDS, MAX_FULL_SECONDS) : Number(dur);
+    return { ...kling4Plan(target), target };
+  }
   if (generationMode === "narrative") {
     const target = dur === "full"
       ? Math.min(durationSec > 0 ? durationSec : MAX_FULL_SECONDS, MAX_FULL_SECONDS)
@@ -676,6 +687,7 @@ export function planShots(input: ShotPlanInput): ShotPlan {
     input.requestedDuration,
     durationSec,
     generationMode,
+    input.aiProvider,
   );
   const hasReal = !!(input.analysis?.sections && input.analysis.sections.length > 0);
   const sections = hasReal ? input.analysis!.sections! : fallbackSections(target || durationSec || 60);
@@ -759,6 +771,8 @@ export function planShots(input: ShotPlanInput): ShotPlan {
     });
     return {
       generationMode,
+      aiProvider: input.aiProvider,
+      endFrameImageAssetId: input.endFrameImageAssetId,
       numClips,
       clipDurationSec,
       targetOutputDuration: target,
@@ -803,6 +817,8 @@ export function planShots(input: ShotPlanInput): ShotPlan {
   const timeline = buildMontageTimeline(shots, sections, target, clipDurationSec);
   return {
     generationMode,
+    aiProvider: input.aiProvider,
+    endFrameImageAssetId: input.endFrameImageAssetId,
     numClips,
     clipDurationSec,
     targetOutputDuration: target,

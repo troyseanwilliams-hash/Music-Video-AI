@@ -1894,7 +1894,7 @@ components:
           description: Processing flow used for this job, such as editor_render for a Remix Lab export or image_pack for a reusable still set
         aiProvider:
           type: [string, 'null']
-          enum: [runway, kling, kling_direct, luma, null]
+          enum: [runway, kling, kling_v4, kling_direct, luma, null]
         resolution:
           type: [string, 'null']
           enum: ['720p', '1080p', '4k', null]
@@ -1936,7 +1936,7 @@ components:
           description: Object storage path for an optional reference image
         requestedDuration:
           type: [string, 'null']
-          enum: ['5', '8', '10', '30', '45', '60', '90', '120', '300', '600', 'full', null]
+          enum: ['3', '5', '8', '10', '30', '45', '60', '90', '120', '300', '600', 'full', null]
           description: Requested output video length
         clipStartTime:
           type: [number, 'null']
@@ -2474,11 +2474,11 @@ components:
           description: Object storage path for an optional reference image used as Runway starting frame
         requestedDuration:
           type: [string, 'null']
-          enum: ['5', '8', '10', '30', '45', '60', '90', '120', '300', '600', 'full', null]
+          enum: ['3', '5', '8', '10', '30', '45', '60', '90', '120', '300', '600', 'full', null]
           description: Requested output video length. '5'/'8'/'10' = short clip, '30'/'60'/'90'/'120' = multi-clip stitch, 'full' = full audio length (default; not valid when audioSourceType is "none", since there is no audio to derive a length from)
         silentFilmDurationSeconds:
           type: [integer, 'null']
-          minimum: 5
+          minimum: 3
           maximum: 600
           description: Configurable output duration in seconds for a no-audio video. Used instead of requestedDuration when audioSourceType is none.
         generationMode:
@@ -2502,8 +2502,12 @@ components:
           description: Pre-computed audio analysis from POST /audio/analyze. The server verifies its signed receipt against audioObjectPath before using it for planning or billing.
         aiProvider:
           type: [string, 'null']
-          enum: ['runway', 'kling', 'luma', null]
+          enum: ['runway', 'kling', 'kling_v4', 'luma', null]
           description: Preferred AI video generation provider; falls back to the server-configured active provider if not set or unavailable
+        endFrameImageAssetId:
+          type: [string, 'null']
+          maxLength: 64
+          description: Optional owned gallery image used as the final scene's ending frame for Kling 4.0 only.
         fullTrackLipSyncEnabled:
           type: boolean
           default: false

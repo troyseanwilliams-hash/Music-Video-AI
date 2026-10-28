@@ -15,6 +15,7 @@ export type JobAiProvider = typeof JobAiProvider[keyof typeof JobAiProvider] | n
 export const JobAiProvider = {
   runway: 'runway',
   kling: 'kling',
+  kling_v4: 'kling_v4',
   kling_direct: 'kling_direct',
   luma: 'luma',
 } as const;

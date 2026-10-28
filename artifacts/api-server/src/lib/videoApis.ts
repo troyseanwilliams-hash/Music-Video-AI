@@ -1,12 +1,14 @@
 import { sanitizeGeneratedMediaPrompt } from "./promptSafety.js";
 import { withResourceLease } from "@workspace/db";
 import { createHmac } from "node:crypto";
+import { buildKling4Request, kling4Available } from "./kling4.js";
 export interface ClipRequest {
   prompt: string;
   durationSeconds: number;
   aspectRatio?: string;
   /** HTTPS URL of the reference image (GCS signed URL). When absent, text_to_video is used. */
   imageUrl?: string;
+  endImageUrl?: string;
   /** Preferred engine chosen by the user (e.g. "runway", "kling"); pinned first in the chain. */
   provider?: string;
   /** Requested output resolution ("720p" | "1080p" | "4k"). Selects the Kling model tier + gateway hint. */
@@ -46,11 +48,12 @@ export interface ClipResult {
   provider: string;
 }
 
-type Provider = "runway" | "luma" | "kling" | "kling_direct" | "pixazo";
+type Provider = "runway" | "luma" | "kling" | "kling_v4" | "kling_direct" | "pixazo";
 const PIXAZO_SUBMIT_TIMEOUT_MS = 90_000;
 const RUNWAY_VIDEO_MODEL = "gen4.5";
 
 function providerAvailable(p: Provider): boolean {
+  if (p === "kling_v4") return kling4Available();
   if (p === "luma") return !!process.env.LUMA_API_KEY;
   // Only Kling runs through the Pixazo gateway.
   if (p === "kling") return !!process.env.PIXAZO_API_KEY;
@@ -148,6 +151,7 @@ function getProvider(): Provider | null {
 }
 
 export function getActiveProvider(hint?: string | null): string {
+  if (hint === "kling_v4") return "kling_v4"; // Never reinterpret a persisted model.
   const h = hint?.toLowerCase() as Provider | undefined;
   if (h === "runway" && providerAvailable("runway")) return "runway";
   if (h === "kling" && process.env.PIXAZO_API_KEY) return "kling";
@@ -685,8 +689,8 @@ async function generateWithPixazo(
     model = t2vOverride || process.env.PIXAZO_MODEL?.trim() || "kling-video-v3-turbo-pro-text-to-video";
   }
 
-  const body: Record<string, unknown> = { prompt: sanitizeGeneratedMediaPrompt(req.prompt).prompt.slice(0, 2500) };
-  const endpoint = `https://gateway.pixazo.ai/${model}/v1/${model}-request`;
+  let body: Record<string, unknown> = { prompt: sanitizeGeneratedMediaPrompt(req.prompt).prompt.slice(0, 2500) };
+  let endpoint = `https://gateway.pixazo.ai/${model}/v1/${model}-request`;
   body.duration = duration;
   if (hasImage) {
     body.image_url = req.imageUrl;
@@ -697,6 +701,11 @@ async function generateWithPixazo(
     else if (r === "720p") body.resolution = "720p";
   }
 
+  if (req.provider === "kling_v4") {
+    const request = buildKling4Request({ ...req, prompt: String(body.prompt) });
+    body = request.body;
+    endpoint = request.endpoint;
+  }
   const uncertainProvider = req.provider ?? "pixazo";
   let submit: Response;
   try {
@@ -843,6 +852,8 @@ async function callProvider(provider: Provider, req: ClipRequest): Promise<strin
     case "kling":
       // Kling runs through the Pixazo gateway; the model tier tracks resolution.
       return generateWithPixazo(req, klingModel(req.resolution));
+    case "kling_v4":
+      return generateWithPixazo(req);
     case "kling_direct":
       return generateWithKlingDirect(req);
     case "pixazo":

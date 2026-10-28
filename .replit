@@ -69,6 +69,7 @@ channel = "stable-25_05"
 [userenv.shared]
 ADMIN_NAME = "Troy Williams"
 PIXAZO_RUNWAY_MODEL = "runway-gen-4-5"
+KLING4_VERIFIED = "true"
 
 [userenv.development]
 VITE_LYRICSYNC_PUBLIC = "true"

@@ -1531,8 +1531,11 @@ export default function JobStatus() {
         )}
 
         {/* ── Remix clips ── */}
-        {isComplete && job.videoId && (
+        {isComplete && job.videoId && job.aiProvider !== "kling_v4" && (
           <RemixPanel jobId={job.id} requestedDuration={job.requestedDuration} />
+        )}
+        {isComplete && job.videoId && job.aiProvider === "kling_v4" && (
+          <p className="text-sm text-muted-foreground">Clip regeneration is not yet available for Kling 4.0. You can still edit or export this video.</p>
         )}
 
         {/* ── Social exports (TikTok/Shorts teasers + Spotify Canvas) ── */}

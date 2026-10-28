@@ -1,4 +1,6 @@
 import { Router } from "express";
+import { validateKling4Frame } from "../lib/kling4Frames.js";
+import { kling4Available, KLING4_MODEL } from "../lib/kling4.js";
 import https from "https";
 import { Client } from "pg";
 import { db, lockActiveCredits, splitCreditDebit, debitCreditColumns, activeWelcomeRefund, refundCreditColumns } from "@workspace/db";
@@ -186,6 +188,7 @@ async function findUnreadableReviewScenes(
 // Only meaningful for the AI generation pipeline -- editor/remix jobs render
 // differently and don't have this kind of clip plan.
 function resolveScenePlan(job: {
+  aiProvider?: string | null;
   jobType?: string | null;
   requestedDuration?: string | null;
   audioAnalysis?: unknown;
@@ -198,7 +201,7 @@ function resolveScenePlan(job: {
     ? job.manifest as { generationMode?: unknown }
     : {};
   const generationMode = manifest.generationMode === "narrative" ? "narrative" : "montage";
-  const { numClips } = getClipPlan(job.requestedDuration, songDurationSec, generationMode);
+  const { numClips } = getClipPlan(job.requestedDuration, songDurationSec, generationMode, job.aiProvider);
   return { numClips };
 }
 
@@ -325,6 +328,8 @@ router.post("/jobs/preview-shots", async (req, res) => {
       character,
       requestedDuration,
       silentFilmDurationSeconds,
+      aiProvider,
+      endFrameImageAssetId,
       generationMode,
       hasReferenceImage,
       audioAnalysis,
@@ -353,6 +358,8 @@ router.post("/jobs/preview-shots", async (req, res) => {
       return;
     }
     const basePlan = planShots({
+      aiProvider: typeof aiProvider === "string" ? aiProvider : null,
+      endFrameImageAssetId: typeof endFrameImageAssetId === "string" ? endFrameImageAssetId : null,
       prompt: prompt as string | null,
       style: style as string | null,
       character: character as string | null,
@@ -429,6 +436,7 @@ router.get("/jobs/video-capabilities", async (req, res) => {
     tier,
     isAdmin,
     can4k: isAdmin || canRender4k(tier),
+    kling4Available: kling4Available(),
     maxDurationSeconds: 600,
   });
 });
@@ -504,10 +512,23 @@ router.post("/jobs", async (req, res) => {
     approvedScenePlanFingerprint,
     selectedSceneSources,
     scriptApproved,
+    endFrameImageAssetId,
   } =
     parseResult.data;
   const normalizedGenerationMode =
     generationMode === "narrative" ? "narrative" : "montage";
+  if (aiProvider === "kling_v4" && (!kling4Available() || !["720p", "1080p"].includes(resolution ?? "720p") || normalizedGenerationMode !== "narrative")) {
+    res.status(422).json({ error: "Kling 4.0 is not available for these settings. Choose another engine.", code: "KLING4_UNAVAILABLE" });
+    return;
+  }
+  if (endFrameImageAssetId && aiProvider !== "kling_v4") {
+    res.status(422).json({ error: "An ending frame requires Kling 4.0." });
+    return;
+  }
+  if (silentFilmDurationSeconds != null && silentFilmDurationSeconds < 5 && aiProvider !== "kling_v4") {
+    res.status(422).json({ error: "This engine requires at least 5 seconds." });
+    return;
+  }
   const effectiveReferenceImagePath = referenceImagePath ?? null;
   // Every ordinary AI video starts from its planned stills. Keep the submitted
   // value in the request contract for old clients, but image packs remain a
@@ -529,6 +550,10 @@ router.post("/jobs", async (req, res) => {
   const resolvedRequestedDuration = noAudio
     ? String(silentFilmDurationSeconds ?? requestedDuration ?? "30")
     : requestedDuration;
+  if (resolvedRequestedDuration === "3" && aiProvider !== "kling_v4") {
+    res.status(422).json({ error: "Three-second videos require Kling 4.0." });
+    return;
+  }
   const analysisReceipt = audioAnalysis && typeof audioAnalysis === "object"
     ? (audioAnalysis as Record<string, unknown>).analysisReceipt
     : null;
@@ -712,6 +737,8 @@ router.post("/jobs", async (req, res) => {
   // chosen engine. Only "kling" is offered as an alternative for now.
   const engine = resolveNewJobVideoProvider(aiProvider);
   const plannedStoryboard = planShots({
+    aiProvider: engine,
+    endFrameImageAssetId,
     prompt,
     style,
     character,
@@ -796,6 +823,35 @@ router.post("/jobs", async (req, res) => {
     return;
   }
   const reusedSourceImageCount = selectedSourceRows.length;
+  if (engine === "kling_v4") {
+    try {
+      for (const asset of selectedAssets) {
+        const buffer = await new ObjectStorageService().downloadObjectBuffer(asset.objectPath);
+        await validateKling4Frame(buffer);
+      }
+    } catch {
+      res.status(422).json({ error: "Kling 4.0 scene images must be PNG or JPEG under 30 MB, at least 300 pixels on each side, with an aspect ratio between 2:5 and 5:2." });
+      return;
+    }
+  }
+  let endFrameObjectPath: string | undefined;
+  if (endFrameImageAssetId) {
+    const [asset] = await db.select().from(imageAssetsTable).where(and(
+      eq(imageAssetsTable.id, endFrameImageAssetId), eq(imageAssetsTable.userId, req.user.id), isNull(imageAssetsTable.deletedAt),
+    ));
+    if (!asset) {
+      res.status(422).json({ error: "The ending frame is unavailable or does not belong to this account." });
+      return;
+    }
+    try {
+      const buffer = await new ObjectStorageService().downloadObjectBuffer(asset.objectPath);
+      await validateKling4Frame(buffer);
+      endFrameObjectPath = asset.objectPath;
+    } catch {
+      res.status(422).json({ error: "Choose a PNG or JPEG ending frame under 30 MB, at least 300 pixels on each side, with an aspect ratio between 2:5 and 5:2." });
+      return;
+    }
+  }
   // Karaoke lyric burn is a paid add-on: generating with lyrics costs the same
   // LYRIC_OVERLAY_COST as burning lyrics onto a finished video, so there's no
   // free path to the same output. Mirror in creditPricing.ts (generate page).
@@ -805,6 +861,7 @@ router.post("/jobs", async (req, res) => {
     songDurationSec,
     normalizedGenerationMode,
     normalizedNarrativeVisualSource,
+    engine,
   );
   const imageCreditCost = Math.max(
     0,
@@ -919,6 +976,14 @@ router.post("/jobs", async (req, res) => {
         bundledLipSyncReservedWelcomeCredits: lipSyncWelcomeDebit,
         bundledLipSyncReservedTopupCredits: lipSyncTopupDebit,
         generationMode: normalizedGenerationMode,
+        ...(engine === "kling_v4" ? {
+          videoModel: KLING4_MODEL,
+          videoApi: "gateway",
+          endFrameObjectPath: endFrameObjectPath
+            ? await new ObjectStorageService().copyObjectEntityToNarrativeImage(endFrameObjectPath, jobId, -1)
+            : undefined,
+          endFrameImageAssetId,
+        } : {}),
         narrativeVisualSource: normalizedNarrativeVisualSource,
         imageFirstVersion: 1,
         strictUniqueSourcesVersion: 1,
@@ -1941,6 +2006,10 @@ router.post("/jobs/:id/remix", async (req, res) => {
   }
   if (job.status !== "ready" || !job.videoId) {
     res.status(400).json({ error: "Only completed videos can be remixed." });
+    return;
+  }
+  if (job.aiProvider === "kling_v4") {
+    res.status(422).json({ error: "Clip regeneration is not yet available for Kling 4.0. You can edit the finished video or create a new generation.", code: "KLING4_REMIX_UNAVAILABLE" });
     return;
   }
 

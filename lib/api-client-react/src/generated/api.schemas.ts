@@ -358,6 +358,7 @@ export type JobAiProvider = typeof JobAiProvider[keyof typeof JobAiProvider] | n
 export const JobAiProvider = {
   runway: 'runway',
   kling: 'kling',
+  kling_v4: 'kling_v4',
   kling_direct: 'kling_direct',
   luma: 'luma',
 } as const;
@@ -409,6 +410,7 @@ export type JobRequestedDuration = typeof JobRequestedDuration[keyof typeof JobR
 
 
 export const JobRequestedDuration = {
+  NUMBER_3: '3',
   NUMBER_5: '5',
   NUMBER_8: '8',
   NUMBER_10: '10',
@@ -1012,6 +1014,7 @@ export type CreateJobRequestRequestedDuration = typeof CreateJobRequestRequested
 
 
 export const CreateJobRequestRequestedDuration = {
+  NUMBER_3: '3',
   NUMBER_5: '5',
   NUMBER_8: '8',
   NUMBER_10: '10',
@@ -1057,6 +1060,7 @@ export type CreateJobRequestAiProvider = typeof CreateJobRequestAiProvider[keyof
 export const CreateJobRequestAiProvider = {
   runway: 'runway',
   kling: 'kling',
+  kling_v4: 'kling_v4',
   luma: 'luma',
 } as const;
 
@@ -1129,7 +1133,7 @@ export interface CreateJobRequest {
   requestedDuration?: CreateJobRequestRequestedDuration;
   /**
      * Configurable output duration in seconds for a no-audio video. Used instead of requestedDuration when audioSourceType is none.
-     * @minimum 5
+     * @minimum 3
      * @maximum 600
      * @nullable
      */
@@ -1151,6 +1155,12 @@ export interface CreateJobRequest {
      * @nullable
      */
   aiProvider?: CreateJobRequestAiProvider;
+  /**
+     * Optional owned gallery image used as the final scene's ending frame for Kling 4.0 only.
+     * @maxLength 64
+     * @nullable
+     */
+  endFrameImageAssetId?: string | null;
   /** When true, reserve the Lip Sync add-on with the source video and automatically create a separate Lip Sync video */
   fullTrackLipSyncEnabled?: boolean;
   /**

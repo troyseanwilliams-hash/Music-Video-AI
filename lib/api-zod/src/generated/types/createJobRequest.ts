@@ -64,7 +64,7 @@ export interface CreateJobRequest {
   requestedDuration?: CreateJobRequestRequestedDuration;
   /**
      * Configurable output duration in seconds for a no-audio video. Used instead of requestedDuration when audioSourceType is none.
-     * @minimum 5
+     * @minimum 3
      * @maximum 600
      * @nullable
      */
@@ -86,6 +86,12 @@ export interface CreateJobRequest {
      * @nullable
      */
   aiProvider?: CreateJobRequestAiProvider;
+  /**
+     * Optional owned gallery image used as the final scene's ending frame for Kling 4.0 only.
+     * @maxLength 64
+     * @nullable
+     */
+  endFrameImageAssetId?: string | null;
   /** When true, reserve the Lip Sync add-on with the source video and automatically create a separate Lip Sync video */
   fullTrackLipSyncEnabled?: boolean;
   /**

@@ -16,6 +16,9 @@ function fontsDirOpt(): string {
 
 
 export interface StitchInput {
+  // Retime the final chronological clip to its remaining timeline slot so an
+  // explicit ending frame survives whole-second provider-duration rounding.
+  preserveEndFrame?: boolean;
   clips: { buffer: Buffer; targetDuration: number }[];
   // Optional montage edit order. Each entry points at one item in `clips`.
   // Reusing indexes lets a small paid clip library recur across the timeline
@@ -151,11 +154,32 @@ async function trimOrLoopClip(
   inputPath: string,
   outputPath: string,
   targetSeconds: number,
+  timing?: { normalize: boolean; preserveEnd: boolean },
 ): Promise<void> {
+  let filter = "scale='min(iw,1920)':-2";
+  if (timing?.preserveEnd) {
+    const sourceSeconds = await new Promise<number>((resolve, reject) => {
+      ffmpeg.ffprobe(inputPath, (error, data) => {
+        if (error) return reject(error);
+        const video = data.streams.find((stream) => stream.codec_type === "video");
+        const duration = Number(video?.duration ?? data.format.duration);
+        if (!Number.isFinite(duration) || duration <= 0) return reject(new Error("Cannot verify ending-frame clip duration."));
+        resolve(duration);
+      });
+    });
+    // Leave a brief final-frame hold; pad before fps conversion so sampling
+    // cannot drop the final source frame. -t still enforces the exact slot.
+    const scale = Math.max(0.001, targetSeconds - Math.min(0.1, targetSeconds / 10)) / sourceSeconds;
+    filter = `setpts=${scale}*(PTS-STARTPTS),tpad=stop_mode=clone:stop_duration=${targetSeconds},${filter}`;
+  }
+  if (timing?.normalize) filter += ",setpts=PTS-STARTPTS,fps=30";
+  // fps can end at the retimed stream's EOF timestamp; pad in the normalized
+  // timebase as well to fill the exact slot with the preserved final frame.
+  if (timing?.preserveEnd) filter += `,tpad=stop_mode=clone:stop_duration=${targetSeconds}`;
   await runFfmpegWithTimeout(
     ffmpeg()
       .input(inputPath)
-      .inputOptions(["-stream_loop", "-1"])
+      .inputOptions(timing?.preserveEnd ? [] : ["-stream_loop", "-1"])
       .outputOptions([
         "-t", String(targetSeconds),
         "-c:v", "libx264",
@@ -163,7 +187,8 @@ async function trimOrLoopClip(
         // Kling/Pixazo (3840×2160) at native resolution take 30–60 min on a
         // small VM; scaling to 1920×1080 reduces pixel count 4× and makes the
         // encode feasible. The -2 keeps the height divisible by 2.
-        "-vf", "scale='min(iw,1920)':-2",
+        "-vf", filter,
+        ...(timing?.normalize ? ["-video_track_timescale", "90000"] : []),
         "-preset", "ultrafast",
         "-crf", "23",
         "-threads", "2",
@@ -226,6 +251,7 @@ function buildLyricsFilter(lyricsText: string, totalDuration: number): string {
 }
 
 export async function stitchVideoClips(input: StitchInput): Promise<StitchResult> {
+  if (input.preserveEndFrame && !input.strictSequence) throw new Error("Ending-frame preservation requires a strict chronological sequence.");
   const tmpDir = join(tmpdir(), `bv_stitch_${randomUUID()}`);
   await mkdir(tmpDir, { recursive: true });
 
@@ -248,7 +274,12 @@ export async function stitchVideoClips(input: StitchInput): Promise<StitchResult
       const trimmed = join(tmpDir, `clip_${i}.mp4`);
       try {
         await writeFile(rawPath, input.clips[i]!.buffer);
-        await trimOrLoopClip(rawPath, trimmed, input.clips[i]!.targetDuration);
+        const preserveEnd = !!input.preserveEndFrame && i === input.clips.length - 1;
+        const targetDuration = preserveEnd
+          ? input.totalDuration - input.clips.slice(0, i).reduce((sum, clip) => sum + clip.targetDuration, 0)
+          : input.clips[i]!.targetDuration;
+        if (targetDuration <= 0) throw new Error("Ending-frame timeline has no remaining duration.");
+        await trimOrLoopClip(rawPath, trimmed, targetDuration, input.preserveEndFrame ? { normalize: true, preserveEnd } : undefined);
         trimmedPaths.push(trimmed);
       } catch (err) {
         skippedClips++;

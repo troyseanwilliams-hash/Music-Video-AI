@@ -16,5 +16,6 @@ export type CreateJobRequestAiProvider = typeof CreateJobRequestAiProvider[keyof
 export const CreateJobRequestAiProvider = {
   runway: 'runway',
   kling: 'kling',
+  kling_v4: 'kling_v4',
   luma: 'luma',
 } as const;

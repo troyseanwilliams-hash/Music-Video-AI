@@ -374,12 +374,16 @@ export default function Generate() {
   const [resolution, setResolution] = useState<CreateJobRequestResolution>(CreateJobRequestResolution["720p"]);
   // 4K is a Pro/Studio-only tier — fetch what this user can render.
   const [can4k, setCan4k] = useState(false);
+  const [kling4Available, setKling4Available] = useState(false);
+  const [endFrameAsset, setEndFrameAsset] = useState<ReferenceGalleryAsset | null>(null);
+  const [pickingEndFrame, setPickingEndFrame] = useState(false);
   useEffect(() => {
     let active = true;
     fetch("/api/jobs/video-capabilities", { credentials: "include" })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (active && data) setCan4k(!!data.can4k);
+        if (active && data) setKling4Available(!!data.kling4Available);
       })
       .catch(() => {});
     return () => {
@@ -590,6 +594,14 @@ export default function Generate() {
   };
 
   const handleGalleryReferenceSelect = (asset: ReferenceGalleryAsset) => {
+    if (pickingEndFrame) {
+      setEndFrameAsset(asset);
+      setPickingEndFrame(false);
+      setGalleryPickerOpen(false);
+      setScriptApproved(false);
+      setShotPlan(null);
+      return;
+    }
     if (sceneSourcePickerIndex !== null) {
       setSelectedSceneSources((current) => ({ ...current, [sceneSourcePickerIndex]: asset }));
       setScriptApproved(false);
@@ -1027,6 +1039,7 @@ export default function Generate() {
     songDurationSec,
     generationMode as GenerationMode,
     narrativeVisualSource === CreateJobRequestNarrativeVisualSource.generated_images ? "generated_images" : "video",
+    aiProvider,
   );
   const reusedSceneSourceCount = imagePackMode ? 0 : Object.keys(selectedSceneSources).length;
   const generatedImageCost = Math.max(
@@ -1128,6 +1141,8 @@ export default function Generate() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt: sourcePrompt,
+          aiProvider,
+          endFrameImageAssetId: aiProvider === "kling_v4" ? endFrameAsset?.id : null,
           style: selectedStyle,
           generationMode,
           character,
@@ -1186,6 +1201,8 @@ export default function Generate() {
     imagePackMode,
     prompt,
     requiredPromptCount,
+    aiProvider,
+    endFrameAsset,
     selectedStyle,
     generationMode,
     character,
@@ -1208,6 +1225,8 @@ export default function Generate() {
     setReviewedShotIndexes([]);
     setScriptApproved(false);
   }, [
+    aiProvider,
+    endFrameAsset,
     prompt,
     selectedStyle,
     generationMode,
@@ -1417,6 +1436,7 @@ export default function Generate() {
           generationMode,
           narrativeVisualSource,
           aiProvider,
+          endFrameImageAssetId: aiProvider === "kling_v4" ? endFrameAsset?.id : null,
           fullTrackLipSyncEnabled: fullTrackSelected && fullTrackLipSyncEnabled,
           fullTrackLipSyncSeconds,
           fullTrackLipSyncStartTime: clipStartTime,
@@ -1702,9 +1722,9 @@ export default function Generate() {
     }
     if (
       !imagePackMode && sourceType === CreateJobRequestAudioSourceType.none
-      && (!Number.isInteger(silentFilmDurationSeconds) || silentFilmDurationSeconds < 5 || silentFilmDurationSeconds > MAX_FULL_SECONDS)
+      && (!Number.isInteger(silentFilmDurationSeconds) || silentFilmDurationSeconds < (aiProvider === "kling_v4" ? 3 : 5) || silentFilmDurationSeconds > MAX_FULL_SECONDS)
     ) {
-      errors.audio = `Choose a silent-film length between 5 and ${MAX_FULL_SECONDS} seconds.`;
+      errors.audio = `Choose a silent-film length between ${aiProvider === "kling_v4" ? 3 : 5} and ${MAX_FULL_SECONDS} seconds.`;
     }
     if (!imagePackMode && fullTrackNeedsAnalysis) {
       errors.audio = "Wait for audio analysis to finish before creating a full-track video.";
@@ -2195,15 +2215,24 @@ export default function Generate() {
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-64">
-                  {(["runway", "kling"] as const).map((p) => (
+                  {(["runway", "kling", "kling_v4"] as const).map((p) => (
                     <DropdownMenuItem
                       key={p}
-                      onClick={() => setAiProvider(p)}
+                      disabled={p === "kling_v4" && !kling4Available}
+                      onClick={() => {
+                        setAiProvider(p);
+                        if (p === "kling_v4" && (resolution as string) === "4k") setResolution(CreateJobRequestResolution["1080p"]);
+                        if (p !== "kling_v4") {
+                          if ((requestedDuration as string) === "3") setRequestedDuration(CreateJobRequestRequestedDuration.NUMBER_5);
+                          setSilentFilmDurationSeconds((seconds) => Math.max(5, seconds));
+                        }
+                        setEndFrameAsset(null);
+                      }}
                       className={`flex items-center justify-between gap-3 ${aiProvider === p ? "text-primary font-medium" : ""}`}
                     >
                       <span>
                         {PROVIDER_LABELS[p]}
-                        <span className="text-muted-foreground"> · {p === "runway" ? "premium quality" : "value price"}</span>
+                        <span className="text-muted-foreground"> · {p === "kling_v4" ? (kling4Available ? "up to 30s scenes" : "awaiting verification") : p === "runway" ? "premium quality" : "value price"}</span>
                       </span>
                       <span className="text-xs text-muted-foreground shrink-0">{estimateCreditCost(effectiveRequestedDuration, p, resolution, songDurationSec, generationMode as GenerationMode) + lyricAddon} cr</span>
                     </DropdownMenuItem>
@@ -2212,6 +2241,15 @@ export default function Generate() {
               </DropdownMenu>
 
               <div className="hidden sm:block h-5 w-px bg-border/40 mx-0.5" />
+
+              {aiProvider === "kling_v4" && (
+                <div className="flex items-center gap-2 text-xs">
+                  <button type="button" className="rounded-lg border border-border/50 px-3 py-2 hover:bg-secondary" onClick={() => { setPickingEndFrame(true); setSceneSourcePickerIndex(null); setGalleryPickerOpen(true); }}>
+                    {endFrameAsset ? "Change final scene ending frame" : "Choose final scene ending frame"}
+                  </button>
+                  {endFrameAsset && <button type="button" aria-label="Remove ending frame" onClick={() => { setEndFrameAsset(null); setShotPlan(null); setScriptApproved(false); }}><X className="h-4 w-4" /></button>}
+                </div>
+              )}
 
               {/* Duration */}
               <DropdownMenu>
@@ -2247,6 +2285,7 @@ export default function Generate() {
                     </span>
                   </DropdownMenuItem>
                   {([
+                    ...(aiProvider === "kling_v4" ? [{ value: "3" as CreateJobRequestRequestedDuration, label: "3 seconds" }] : []),
                     { value: CreateJobRequestRequestedDuration.NUMBER_5, label: "5 seconds" },
                     { value: CreateJobRequestRequestedDuration.NUMBER_10, label: "10 seconds" },
                     { value: CreateJobRequestRequestedDuration.NUMBER_30, label: "30 seconds" },
@@ -2316,7 +2355,7 @@ export default function Generate() {
                 <DropdownMenuContent align="start" className="w-44">
                   {RESOLUTIONS.map((r) => {
                     const is4k = (r as string) === "4k";
-                    const locked = is4k && !can4k;
+                    const locked = is4k && (!can4k || aiProvider === "kling_v4");
                     return (
                       <DropdownMenuItem
                         key={r}
@@ -2903,7 +2942,7 @@ export default function Generate() {
                   <Input
                     id="silent-film-duration"
                     type="number"
-                    min={5}
+                    min={aiProvider === "kling_v4" ? 3 : 5}
                     max={MAX_FULL_SECONDS}
                     step={1}
                     value={silentFilmDurationSeconds}
@@ -3048,12 +3087,12 @@ export default function Generate() {
                  <div className="mb-3 flex items-center justify-between gap-3">
                    <div>
                       <p className="text-sm font-medium">
-                        {sceneSourcePickerIndex === null
+                        {pickingEndFrame ? "Choose the final scene's ending frame" : sceneSourcePickerIndex === null
                           ? "Choose from your image gallery"
                           : `Choose the exact source for scene ${sceneSourcePickerIndex + 1}`}
                       </p>
                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        {sceneSourcePickerIndex === null
+                        {pickingEndFrame ? "Optional: guide how the last scene ends. Your starting images are selected in the storyboard." : sceneSourcePickerIndex === null
                           ? "Select a generated image to reuse as the visual reference."
                           : "This saved image will be animated directly and will not be regenerated."}
                      </p>
@@ -3063,6 +3102,7 @@ export default function Generate() {
                       onClick={() => {
                         setGalleryPickerOpen(false);
                         setSceneSourcePickerIndex(null);
+                        setPickingEndFrame(false);
                       }}
                      className="rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
                      aria-label="Close image gallery picker"

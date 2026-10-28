@@ -215,7 +215,7 @@ export const ListJobsResponse = zod.object({
   "id": zod.string(),
   "userId": zod.string(),
   "jobType": zod.string().nullish().describe('Processing flow used for this job, such as editor_render for a Remix Lab export or image_pack for a reusable still set'),
-  "aiProvider": zod.union([zod.literal('runway'),zod.literal('kling'),zod.literal('kling_direct'),zod.literal('luma'),zod.literal(null)]).nullish(),
+  "aiProvider": zod.union([zod.literal('runway'),zod.literal('kling'),zod.literal('kling_v4'),zod.literal('kling_direct'),zod.literal('luma'),zod.literal(null)]).nullish(),
   "resolution": zod.union([zod.literal('720p'),zod.literal('1080p'),zod.literal('4k'),zod.literal(null)]).nullish(),
   "status": zod.enum(['pending_approval', 'queued', 'analyzing', 'generating', 'stitching', 'ready', 'failed']),
   "audioSourceType": zod.union([zod.literal('upload'),zod.literal('youtube'),zod.literal('suno'),zod.literal('none'),zod.literal(null)]).nullish(),
@@ -254,7 +254,7 @@ export const ListJobsResponse = zod.object({
 })).optional().describe('Per-clip metadata for the finished video (present when status is ready). Used by the remix UI to list individual clips.'),
   "lyricsText": zod.string().nullish(),
   "referenceImagePath": zod.string().nullish().describe('Object storage path for an optional reference image'),
-  "requestedDuration": zod.union([zod.literal('5'),zod.literal('8'),zod.literal('10'),zod.literal('30'),zod.literal('45'),zod.literal('60'),zod.literal('90'),zod.literal('120'),zod.literal('300'),zod.literal('600'),zod.literal('full'),zod.literal(null)]).nullish().describe('Requested output video length'),
+  "requestedDuration": zod.union([zod.literal('3'),zod.literal('5'),zod.literal('8'),zod.literal('10'),zod.literal('30'),zod.literal('45'),zod.literal('60'),zod.literal('90'),zod.literal('120'),zod.literal('300'),zod.literal('600'),zod.literal('full'),zod.literal(null)]).nullish().describe('Requested output video length'),
   "clipStartTime": zod.number().min(listJobsResponseJobsItemClipStartTimeMin).nullish().describe('Audio clip start time in seconds; null means start from the beginning'),
   "claimedAt": zod.coerce.date().nullish().describe('Time a worker claimed the job; null while the job is queued'),
   "manifest": zod.union([zod.object({
@@ -338,7 +338,7 @@ export const createJobBodyLyricsTextMax = 50000;
 
 export const createJobBodyCharacterMax = 100;
 
-export const createJobBodySilentFilmDurationSecondsMin = 5;
+export const createJobBodySilentFilmDurationSecondsMin = 3;
 export const createJobBodySilentFilmDurationSecondsMax = 600;
 
 export const createJobBodyGenerationModeDefault = `montage`;
@@ -346,6 +346,8 @@ export const createJobBodyNarrativeVisualSourceDefault = `video`;
 export const createJobBodyClipStartTimeMin = 0;
 
 export const createJobBodyAudioAnalysisOneAnalysisReceiptMax = 512;
+
+export const createJobBodyEndFrameImageAssetIdMax = 64;
 
 export const createJobBodyFullTrackLipSyncEnabledDefault = false;
 export const createJobBodyFullTrackLipSyncSecondsDefault = 15;
@@ -381,7 +383,7 @@ export const CreateJobBody = zod.object({
   "resolution": zod.union([zod.literal('720p'),zod.literal('1080p'),zod.literal('4k'),zod.literal(null)]).nullish().describe('Output video resolution (defaults to 720p)'),
   "character": zod.string().max(createJobBodyCharacterMax).nullish().describe('Optional character type to feature in the video'),
   "referenceImagePath": zod.string().nullish().describe('Object storage path for an optional reference image used as Runway starting frame'),
-  "requestedDuration": zod.union([zod.literal('5'),zod.literal('8'),zod.literal('10'),zod.literal('30'),zod.literal('45'),zod.literal('60'),zod.literal('90'),zod.literal('120'),zod.literal('300'),zod.literal('600'),zod.literal('full'),zod.literal(null)]).nullish().describe('Requested output video length. \'5\'\/\'8\'\/\'10\' = short clip, \'30\'\/\'60\'\/\'90\'\/\'120\' = multi-clip stitch, \'full\' = full audio length (default; not valid when audioSourceType is \"none\", since there is no audio to derive a length from)'),
+  "requestedDuration": zod.union([zod.literal('3'),zod.literal('5'),zod.literal('8'),zod.literal('10'),zod.literal('30'),zod.literal('45'),zod.literal('60'),zod.literal('90'),zod.literal('120'),zod.literal('300'),zod.literal('600'),zod.literal('full'),zod.literal(null)]).nullish().describe('Requested output video length. \'5\'\/\'8\'\/\'10\' = short clip, \'30\'\/\'60\'\/\'90\'\/\'120\' = multi-clip stitch, \'full\' = full audio length (default; not valid when audioSourceType is \"none\", since there is no audio to derive a length from)'),
   "silentFilmDurationSeconds": zod.number().min(createJobBodySilentFilmDurationSecondsMin).max(createJobBodySilentFilmDurationSecondsMax).nullish().describe('Configurable output duration in seconds for a no-audio video. Used instead of requestedDuration when audioSourceType is none.'),
   "generationMode": zod.enum(['montage', 'narrative']).default(createJobBodyGenerationModeDefault).describe('Montage intentionally reuses a smaller visual library; Narrative renders one unique chronological scene per timeline slot.'),
   "narrativeVisualSource": zod.enum(['video', 'generated_images']).default(createJobBodyNarrativeVisualSourceDefault).describe('Narrative-only visual source. generated_images creates one persisted AI still per chronological scene and animates it into the final video.'),
@@ -402,7 +404,8 @@ export const CreateJobBody = zod.object({
   "energy": zod.number()
 })).optional()
 }),zod.null()]).optional().describe('Pre-computed audio analysis from POST \/audio\/analyze. The server verifies its signed receipt against audioObjectPath before using it for planning or billing.'),
-  "aiProvider": zod.union([zod.literal('runway'),zod.literal('kling'),zod.literal('luma'),zod.literal(null)]).nullish().describe('Preferred AI video generation provider; falls back to the server-configured active provider if not set or unavailable'),
+  "aiProvider": zod.union([zod.literal('runway'),zod.literal('kling'),zod.literal('kling_v4'),zod.literal('luma'),zod.literal(null)]).nullish().describe('Preferred AI video generation provider; falls back to the server-configured active provider if not set or unavailable'),
+  "endFrameImageAssetId": zod.string().max(createJobBodyEndFrameImageAssetIdMax).nullish().describe('Optional owned gallery image used as the final scene\'s ending frame for Kling 4.0 only.'),
   "fullTrackLipSyncEnabled": zod.boolean().default(createJobBodyFullTrackLipSyncEnabledDefault).describe('When true, reserve the Lip Sync add-on with the source video and automatically create a separate Lip Sync video'),
   "fullTrackLipSyncSeconds": zod.number().min(createJobBodyFullTrackLipSyncSecondsMin).max(createJobBodyFullTrackLipSyncSecondsMax).default(createJobBodyFullTrackLipSyncSecondsDefault).describe('Duration of the bundled Lip Sync performance'),
   "fullTrackLipSyncStartTime": zod.number().min(createJobBodyFullTrackLipSyncStartTimeMin).default(createJobBodyFullTrackLipSyncStartTimeDefault).describe('Start time of the bundled Lip Sync song segment'),
@@ -457,7 +460,7 @@ export const CreateJobResponse = zod.object({
   "id": zod.string(),
   "userId": zod.string(),
   "jobType": zod.string().nullish().describe('Processing flow used for this job, such as editor_render for a Remix Lab export or image_pack for a reusable still set'),
-  "aiProvider": zod.union([zod.literal('runway'),zod.literal('kling'),zod.literal('kling_direct'),zod.literal('luma'),zod.literal(null)]).nullish(),
+  "aiProvider": zod.union([zod.literal('runway'),zod.literal('kling'),zod.literal('kling_v4'),zod.literal('kling_direct'),zod.literal('luma'),zod.literal(null)]).nullish(),
   "resolution": zod.union([zod.literal('720p'),zod.literal('1080p'),zod.literal('4k'),zod.literal(null)]).nullish(),
   "status": zod.enum(['pending_approval', 'queued', 'analyzing', 'generating', 'stitching', 'ready', 'failed']),
   "audioSourceType": zod.union([zod.literal('upload'),zod.literal('youtube'),zod.literal('suno'),zod.literal('none'),zod.literal(null)]).nullish(),
@@ -496,7 +499,7 @@ export const CreateJobResponse = zod.object({
 })).optional().describe('Per-clip metadata for the finished video (present when status is ready). Used by the remix UI to list individual clips.'),
   "lyricsText": zod.string().nullish(),
   "referenceImagePath": zod.string().nullish().describe('Object storage path for an optional reference image'),
-  "requestedDuration": zod.union([zod.literal('5'),zod.literal('8'),zod.literal('10'),zod.literal('30'),zod.literal('45'),zod.literal('60'),zod.literal('90'),zod.literal('120'),zod.literal('300'),zod.literal('600'),zod.literal('full'),zod.literal(null)]).nullish().describe('Requested output video length'),
+  "requestedDuration": zod.union([zod.literal('3'),zod.literal('5'),zod.literal('8'),zod.literal('10'),zod.literal('30'),zod.literal('45'),zod.literal('60'),zod.literal('90'),zod.literal('120'),zod.literal('300'),zod.literal('600'),zod.literal('full'),zod.literal(null)]).nullish().describe('Requested output video length'),
   "clipStartTime": zod.number().min(createJobResponseClipStartTimeMin).nullish().describe('Audio clip start time in seconds; null means start from the beginning'),
   "claimedAt": zod.coerce.date().nullish().describe('Time a worker claimed the job; null while the job is queued'),
   "manifest": zod.union([zod.object({
@@ -633,7 +636,7 @@ export const CreateImagePackResponse = zod.object({
   "id": zod.string(),
   "userId": zod.string(),
   "jobType": zod.string().nullish().describe('Processing flow used for this job, such as editor_render for a Remix Lab export or image_pack for a reusable still set'),
-  "aiProvider": zod.union([zod.literal('runway'),zod.literal('kling'),zod.literal('kling_direct'),zod.literal('luma'),zod.literal(null)]).nullish(),
+  "aiProvider": zod.union([zod.literal('runway'),zod.literal('kling'),zod.literal('kling_v4'),zod.literal('kling_direct'),zod.literal('luma'),zod.literal(null)]).nullish(),
   "resolution": zod.union([zod.literal('720p'),zod.literal('1080p'),zod.literal('4k'),zod.literal(null)]).nullish(),
   "status": zod.enum(['pending_approval', 'queued', 'analyzing', 'generating', 'stitching', 'ready', 'failed']),
   "audioSourceType": zod.union([zod.literal('upload'),zod.literal('youtube'),zod.literal('suno'),zod.literal('none'),zod.literal(null)]).nullish(),
@@ -672,7 +675,7 @@ export const CreateImagePackResponse = zod.object({
 })).optional().describe('Per-clip metadata for the finished video (present when status is ready). Used by the remix UI to list individual clips.'),
   "lyricsText": zod.string().nullish(),
   "referenceImagePath": zod.string().nullish().describe('Object storage path for an optional reference image'),
-  "requestedDuration": zod.union([zod.literal('5'),zod.literal('8'),zod.literal('10'),zod.literal('30'),zod.literal('45'),zod.literal('60'),zod.literal('90'),zod.literal('120'),zod.literal('300'),zod.literal('600'),zod.literal('full'),zod.literal(null)]).nullish().describe('Requested output video length'),
+  "requestedDuration": zod.union([zod.literal('3'),zod.literal('5'),zod.literal('8'),zod.literal('10'),zod.literal('30'),zod.literal('45'),zod.literal('60'),zod.literal('90'),zod.literal('120'),zod.literal('300'),zod.literal('600'),zod.literal('full'),zod.literal(null)]).nullish().describe('Requested output video length'),
   "clipStartTime": zod.number().min(createImagePackResponseClipStartTimeMin).nullish().describe('Audio clip start time in seconds; null means start from the beginning'),
   "claimedAt": zod.coerce.date().nullish().describe('Time a worker claimed the job; null while the job is queued'),
   "manifest": zod.union([zod.object({
@@ -1084,7 +1087,7 @@ export const GetJobResponse = zod.object({
   "id": zod.string(),
   "userId": zod.string(),
   "jobType": zod.string().nullish().describe('Processing flow used for this job, such as editor_render for a Remix Lab export or image_pack for a reusable still set'),
-  "aiProvider": zod.union([zod.literal('runway'),zod.literal('kling'),zod.literal('kling_direct'),zod.literal('luma'),zod.literal(null)]).nullish(),
+  "aiProvider": zod.union([zod.literal('runway'),zod.literal('kling'),zod.literal('kling_v4'),zod.literal('kling_direct'),zod.literal('luma'),zod.literal(null)]).nullish(),
   "resolution": zod.union([zod.literal('720p'),zod.literal('1080p'),zod.literal('4k'),zod.literal(null)]).nullish(),
   "status": zod.enum(['pending_approval', 'queued', 'analyzing', 'generating', 'stitching', 'ready', 'failed']),
   "audioSourceType": zod.union([zod.literal('upload'),zod.literal('youtube'),zod.literal('suno'),zod.literal('none'),zod.literal(null)]).nullish(),
@@ -1123,7 +1126,7 @@ export const GetJobResponse = zod.object({
 })).optional().describe('Per-clip metadata for the finished video (present when status is ready). Used by the remix UI to list individual clips.'),
   "lyricsText": zod.string().nullish(),
   "referenceImagePath": zod.string().nullish().describe('Object storage path for an optional reference image'),
-  "requestedDuration": zod.union([zod.literal('5'),zod.literal('8'),zod.literal('10'),zod.literal('30'),zod.literal('45'),zod.literal('60'),zod.literal('90'),zod.literal('120'),zod.literal('300'),zod.literal('600'),zod.literal('full'),zod.literal(null)]).nullish().describe('Requested output video length'),
+  "requestedDuration": zod.union([zod.literal('3'),zod.literal('5'),zod.literal('8'),zod.literal('10'),zod.literal('30'),zod.literal('45'),zod.literal('60'),zod.literal('90'),zod.literal('120'),zod.literal('300'),zod.literal('600'),zod.literal('full'),zod.literal(null)]).nullish().describe('Requested output video length'),
   "clipStartTime": zod.number().min(getJobResponseClipStartTimeMin).nullish().describe('Audio clip start time in seconds; null means start from the beginning'),
   "claimedAt": zod.coerce.date().nullish().describe('Time a worker claimed the job; null while the job is queued'),
   "manifest": zod.union([zod.object({
@@ -1301,7 +1304,7 @@ export const ApproveImageReviewResponse = zod.object({
   "id": zod.string(),
   "userId": zod.string(),
   "jobType": zod.string().nullish().describe('Processing flow used for this job, such as editor_render for a Remix Lab export or image_pack for a reusable still set'),
-  "aiProvider": zod.union([zod.literal('runway'),zod.literal('kling'),zod.literal('kling_direct'),zod.literal('luma'),zod.literal(null)]).nullish(),
+  "aiProvider": zod.union([zod.literal('runway'),zod.literal('kling'),zod.literal('kling_v4'),zod.literal('kling_direct'),zod.literal('luma'),zod.literal(null)]).nullish(),
   "resolution": zod.union([zod.literal('720p'),zod.literal('1080p'),zod.literal('4k'),zod.literal(null)]).nullish(),
   "status": zod.enum(['pending_approval', 'queued', 'analyzing', 'generating', 'stitching', 'ready', 'failed']),
   "audioSourceType": zod.union([zod.literal('upload'),zod.literal('youtube'),zod.literal('suno'),zod.literal('none'),zod.literal(null)]).nullish(),
@@ -1340,7 +1343,7 @@ export const ApproveImageReviewResponse = zod.object({
 })).optional().describe('Per-clip metadata for the finished video (present when status is ready). Used by the remix UI to list individual clips.'),
   "lyricsText": zod.string().nullish(),
   "referenceImagePath": zod.string().nullish().describe('Object storage path for an optional reference image'),
-  "requestedDuration": zod.union([zod.literal('5'),zod.literal('8'),zod.literal('10'),zod.literal('30'),zod.literal('45'),zod.literal('60'),zod.literal('90'),zod.literal('120'),zod.literal('300'),zod.literal('600'),zod.literal('full'),zod.literal(null)]).nullish().describe('Requested output video length'),
+  "requestedDuration": zod.union([zod.literal('3'),zod.literal('5'),zod.literal('8'),zod.literal('10'),zod.literal('30'),zod.literal('45'),zod.literal('60'),zod.literal('90'),zod.literal('120'),zod.literal('300'),zod.literal('600'),zod.literal('full'),zod.literal(null)]).nullish().describe('Requested output video length'),
   "clipStartTime": zod.number().min(approveImageReviewResponseClipStartTimeMin).nullish().describe('Audio clip start time in seconds; null means start from the beginning'),
   "claimedAt": zod.coerce.date().nullish().describe('Time a worker claimed the job; null while the job is queued'),
   "manifest": zod.union([zod.object({
@@ -1476,7 +1479,7 @@ export const RemixJobResponse = zod.object({
   "id": zod.string(),
   "userId": zod.string(),
   "jobType": zod.string().nullish().describe('Processing flow used for this job, such as editor_render for a Remix Lab export or image_pack for a reusable still set'),
-  "aiProvider": zod.union([zod.literal('runway'),zod.literal('kling'),zod.literal('kling_direct'),zod.literal('luma'),zod.literal(null)]).nullish(),
+  "aiProvider": zod.union([zod.literal('runway'),zod.literal('kling'),zod.literal('kling_v4'),zod.literal('kling_direct'),zod.literal('luma'),zod.literal(null)]).nullish(),
   "resolution": zod.union([zod.literal('720p'),zod.literal('1080p'),zod.literal('4k'),zod.literal(null)]).nullish(),
   "status": zod.enum(['pending_approval', 'queued', 'analyzing', 'generating', 'stitching', 'ready', 'failed']),
   "audioSourceType": zod.union([zod.literal('upload'),zod.literal('youtube'),zod.literal('suno'),zod.literal('none'),zod.literal(null)]).nullish(),
@@ -1515,7 +1518,7 @@ export const RemixJobResponse = zod.object({
 })).optional().describe('Per-clip metadata for the finished video (present when status is ready). Used by the remix UI to list individual clips.'),
   "lyricsText": zod.string().nullish(),
   "referenceImagePath": zod.string().nullish().describe('Object storage path for an optional reference image'),
-  "requestedDuration": zod.union([zod.literal('5'),zod.literal('8'),zod.literal('10'),zod.literal('30'),zod.literal('45'),zod.literal('60'),zod.literal('90'),zod.literal('120'),zod.literal('300'),zod.literal('600'),zod.literal('full'),zod.literal(null)]).nullish().describe('Requested output video length'),
+  "requestedDuration": zod.union([zod.literal('3'),zod.literal('5'),zod.literal('8'),zod.literal('10'),zod.literal('30'),zod.literal('45'),zod.literal('60'),zod.literal('90'),zod.literal('120'),zod.literal('300'),zod.literal('600'),zod.literal('full'),zod.literal(null)]).nullish().describe('Requested output video length'),
   "clipStartTime": zod.number().min(remixJobResponseJobClipStartTimeMin).nullish().describe('Audio clip start time in seconds; null means start from the beginning'),
   "claimedAt": zod.coerce.date().nullish().describe('Time a worker claimed the job; null while the job is queued'),
   "manifest": zod.union([zod.object({
@@ -2517,7 +2520,7 @@ export const GetDashboardStatsResponse = zod.object({
   "id": zod.string(),
   "userId": zod.string(),
   "jobType": zod.string().nullish().describe('Processing flow used for this job, such as editor_render for a Remix Lab export or image_pack for a reusable still set'),
-  "aiProvider": zod.union([zod.literal('runway'),zod.literal('kling'),zod.literal('kling_direct'),zod.literal('luma'),zod.literal(null)]).nullish(),
+  "aiProvider": zod.union([zod.literal('runway'),zod.literal('kling'),zod.literal('kling_v4'),zod.literal('kling_direct'),zod.literal('luma'),zod.literal(null)]).nullish(),
   "resolution": zod.union([zod.literal('720p'),zod.literal('1080p'),zod.literal('4k'),zod.literal(null)]).nullish(),
   "status": zod.enum(['pending_approval', 'queued', 'analyzing', 'generating', 'stitching', 'ready', 'failed']),
   "audioSourceType": zod.union([zod.literal('upload'),zod.literal('youtube'),zod.literal('suno'),zod.literal('none'),zod.literal(null)]).nullish(),
@@ -2556,7 +2559,7 @@ export const GetDashboardStatsResponse = zod.object({
 })).optional().describe('Per-clip metadata for the finished video (present when status is ready). Used by the remix UI to list individual clips.'),
   "lyricsText": zod.string().nullish(),
   "referenceImagePath": zod.string().nullish().describe('Object storage path for an optional reference image'),
-  "requestedDuration": zod.union([zod.literal('5'),zod.literal('8'),zod.literal('10'),zod.literal('30'),zod.literal('45'),zod.literal('60'),zod.literal('90'),zod.literal('120'),zod.literal('300'),zod.literal('600'),zod.literal('full'),zod.literal(null)]).nullish().describe('Requested output video length'),
+  "requestedDuration": zod.union([zod.literal('3'),zod.literal('5'),zod.literal('8'),zod.literal('10'),zod.literal('30'),zod.literal('45'),zod.literal('60'),zod.literal('90'),zod.literal('120'),zod.literal('300'),zod.literal('600'),zod.literal('full'),zod.literal(null)]).nullish().describe('Requested output video length'),
   "clipStartTime": zod.number().min(getDashboardStatsResponseRecentJobsItemClipStartTimeMin).nullish().describe('Audio clip start time in seconds; null means start from the beginning'),
   "claimedAt": zod.coerce.date().nullish().describe('Time a worker claimed the job; null while the job is queued'),
   "manifest": zod.union([zod.object({

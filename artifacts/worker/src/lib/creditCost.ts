@@ -18,6 +18,7 @@
 // premium tier — genuinely ~3× the provider compute).
 
 // Real provider cost basis: Freeway = $1.40 per 10-second clip = $0.14/s.
+import { kling4Plan, kling4Cost } from "./kling4.js";
 const RUNWAY_USD_PER_SECOND = 0.14; // Freeway: $1.40 per 10s clip
 // Standard Kling via the Pixazo gateway = ~$0.07/s (the cheaper "value" engine).
 const KLING_USD_PER_SECOND = 0.07;
@@ -76,7 +77,9 @@ export function getClipPlan(
   requestedDuration: string | null | undefined,
   songDurationSec?: number | null,
   generationMode: GenerationMode = "montage",
-): { numClips: number; clipDurationSec: 5 | 10 } {
+  provider?: string | null,
+): { numClips: number; clipDurationSec: number } {
+  if (provider === "kling_v4") return kling4Plan(targetDurationSeconds(requestedDuration, songDurationSec));
   if (generationMode === "narrative") {
     const target = targetDurationSeconds(requestedDuration, songDurationSec);
     const clipDurationSec: 5 | 10 = target <= 5 ? 5 : 10;
@@ -163,6 +166,7 @@ export function calculateCreditCost(
   provider?: string | null,
   generationMode: GenerationMode = "montage",
 ): number {
+  if (provider === "kling_v4") return kling4Cost(targetDurationSeconds(requestedDuration, songDurationSec), resolution);
   return Math.ceil(
     providerCostCredits(requestedDuration, songDurationSec, provider, generationMode) *
       markupFor(requestedDuration, songDurationSec, provider, generationMode) *
@@ -265,6 +269,7 @@ export function calculateLipsyncCostFromSourceVideo(
   provider?: string | null,
   generationMode: GenerationMode = "montage",
 ): number {
+  if (provider === "kling_v4") return Math.ceil(kling4Cost(targetDurationSeconds(requestedDuration, songDurationSec), resolution, false) * LIPSYNC_MARKUP);
   return Math.ceil(
     providerCostCredits(requestedDuration, songDurationSec, provider, generationMode) *
       resolutionMultiplier(resolution) *

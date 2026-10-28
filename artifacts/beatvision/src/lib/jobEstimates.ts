@@ -34,7 +34,7 @@ export function getGenerationTimeEstimate(
   songDurationSec?: number | null,
   generationMode: GenerationMode = "montage",
 ): JobTimeEstimate & { plan: GenerationClipPlan } {
-  const plan = getGenerationClipPlan(requestedDuration, songDurationSec, generationMode);
+  const plan = getGenerationClipPlan(requestedDuration, songDurationSec, generationMode, provider as AiProvider);
   const providerFactor = provider === "kling" ? 1.15 : provider === "luma" ? 1.1 : 1;
   const resolutionFactor =
     resolution === "4k" || resolution === "2160p" ? 1.3 : resolution === "1080p" ? 1.08 : 1;

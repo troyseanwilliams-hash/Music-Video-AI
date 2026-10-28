@@ -389,6 +389,7 @@ type AiJobMeta = {
   bundledLipSyncReservedWelcomeCredits?: number;
   bundledLipSyncActivated?: boolean;
   selectedSceneSources?: Record<string, { sourceImageAssetId?: string }>;
+  endFrameObjectPath?: string;
   photoAnimation?: {
     version: 1;
     approved: true;
@@ -2455,6 +2456,7 @@ async function generateClips(
     requestedDur,
     analysis.durationSeconds,
     generationMode,
+    job.aiProvider,
   );
   const photoAnimation = approvedPhotoAnimation(job);
   if (
@@ -2808,6 +2810,8 @@ async function generateClips(
           durationSeconds: clipDuration,
           aspectRatio: job.aspectRatio ?? "16:9",
           imageUrl: narrativeImageUrl,
+          endImageUrl: provider === "kling_v4" && i === maxClips - 1 && aiMetaOf(job).endFrameObjectPath
+            ? await storageService.getObjectEntitySignedUrl(aiMetaOf(job).endFrameObjectPath!, 3600) : undefined,
           // Pin the user's chosen engine (so "Kling" actually renders on Kling)
           // and do not submit paid fallback requests to unrelated engines.
           provider,
@@ -4282,6 +4286,7 @@ async function processJobInner(job: JobRow, supervisor: JobRunSupervisor): Promi
         clips,
         sequence: requestedSequence,
         strictSequence: strictUniqueSources || generationMode === "narrative",
+        preserveEndFrame: job.aiProvider === "kling_v4" && !!aiMetaOf(job).endFrameObjectPath,
         audioBuffer: audioData.buffer,
         audioExt: audioData.ext,
         totalDuration: outputDuration,
@@ -4299,6 +4304,7 @@ async function processJobInner(job: JobRow, supervisor: JobRunSupervisor): Promi
         clips,
         sequence: requestedSequence,
         strictSequence: strictUniqueSources || generationMode === "narrative",
+        preserveEndFrame: job.aiProvider === "kling_v4" && !!aiMetaOf(job).endFrameObjectPath,
         totalDuration: outputDuration,
         lyricsText, // captions burn onto silent videos too
       });

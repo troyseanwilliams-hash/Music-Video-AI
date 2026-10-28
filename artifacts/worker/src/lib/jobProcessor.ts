@@ -116,7 +116,7 @@ async function extractAudioClip(
 
 interface GenerationPlan {
   sections: AudioSection[];
-  clipDurationSec: 5 | 10;
+  clipDurationSec: number;
   targetOutputDuration: number;
 }
 
@@ -417,6 +417,7 @@ type AiJobMeta = {
   bundledLipSyncReservedWelcomeCredits?: number;
   bundledLipSyncActivated?: boolean;
   selectedSceneSources?: Record<string, { sourceImageAssetId?: string }>;
+  endFrameObjectPath?: string;
   photoAnimation?: {
     version: 1;
     approved: true;
@@ -1562,7 +1563,10 @@ async function validateStrictSourceFoundation(
 function narrativeGenerationPlanOf(job: JobRow): GenerationPlan {
   const storyboard = aiMetaOf(job).storyboard;
   const shots = storyboardShotsOf(job);
-  const clipDurationSec = storyboard?.clipDurationSec === 5
+  const clipDurationSec = job.aiProvider === "kling_v4" && Number.isInteger(storyboard?.clipDurationSec)
+    && storyboard!.clipDurationSec! >= 3 && storyboard!.clipDurationSec! <= 30
+    ? storyboard!.clipDurationSec
+    : storyboard?.clipDurationSec === 5
     ? 5
     : storyboard?.clipDurationSec === 10
       ? 10
@@ -2896,6 +2900,8 @@ async function generateClips(
           durationSeconds: clipDuration,
           aspectRatio: job.aspectRatio ?? "16:9",
           imageUrl: narrativeImageUrl,
+          endImageUrl: provider === "kling_v4" && i === sections.length - 1 && aiMetaOf(job).endFrameObjectPath
+            ? await storageService.getObjectEntitySignedUrl(aiMetaOf(job).endFrameObjectPath!, 3600) : undefined,
           // Pin the user's chosen engine (so "Kling" actually renders on Kling)
           // and do not submit paid fallback requests to unrelated engines.
           provider,
@@ -4378,6 +4384,7 @@ async function processJobInner(job: JobRow, supervisor: JobRunSupervisor): Promi
         clips,
         sequence: requestedSequence,
         strictSequence: strictUniqueSources || generationMode === "narrative",
+        preserveEndFrame: job.aiProvider === "kling_v4" && !!aiMetaOf(job).endFrameObjectPath,
         audioBuffer: audioData.buffer,
         audioExt: audioData.ext,
         totalDuration: plan.targetOutputDuration,
@@ -4395,6 +4402,7 @@ async function processJobInner(job: JobRow, supervisor: JobRunSupervisor): Promi
         clips,
         sequence: requestedSequence,
         strictSequence: strictUniqueSources || generationMode === "narrative",
+        preserveEndFrame: job.aiProvider === "kling_v4" && !!aiMetaOf(job).endFrameObjectPath,
         totalDuration: plan.targetOutputDuration,
         lyricsText,
       });

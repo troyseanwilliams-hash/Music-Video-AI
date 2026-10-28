@@ -1,11 +1,12 @@
 import type { CreateJobRequestRequestedDuration } from "@workspace/api-client-react";
 
-export type AiProvider = "runway" | "kling" | "luma";
+export type AiProvider = "runway" | "kling" | "kling_v4" | "luma";
 export type GenerationMode = "montage" | "narrative";
 
 export const PROVIDER_LABELS: Record<AiProvider, string> = {
   runway: "Runway Gen-4",
   kling: "Kling",
+  kling_v4: "Kling 4.0",
   luma: "Luma Dream Machine",
 };
 
@@ -58,6 +59,10 @@ export function calculateLipsyncCostFromSourceVideo(
   songDurationSec?: number | null,
   provider?: AiProvider | string | null,
 ): number {
+  if (provider === "kling_v4") {
+    const { numClips, clipDurationSec } = getGenerationClipPlan(requestedDuration, songDurationSec, "narrative", provider);
+    return Math.ceil(Math.ceil(numClips * clipDurationSec * (resolution === "1080p" ? 0.235 : 0.157) / 0.015 - 1e-9) * LIPSYNC_MARKUP);
+  }
   const { numClips, clipDurationSec } = getGenerationClipPlan(requestedDuration, songDurationSec);
   const costCredits = (numClips * clipDurationSec * usdPerSecondFor(provider as AiProvider | undefined)) / USD_PER_CREDIT;
   return Math.ceil(costCredits * resolutionMultiplier(resolution) * LIPSYNC_MARKUP);
@@ -103,7 +108,7 @@ export function resolutionMultiplier(resolution?: string | null): number {
 
 export interface GenerationClipPlan {
   numClips: number;
-  clipDurationSec: 5 | 10;
+  clipDurationSec: number;
   targetDurationSec: number;
 }
 
@@ -111,8 +116,14 @@ export function getGenerationClipPlan(
   requestedDuration: string | null | undefined,
   songDurationSec?: number | null,
   generationMode: GenerationMode = "montage",
+  provider?: AiProvider,
 ): GenerationClipPlan {
   const dur = requestedDuration ?? "full";
+  if (provider === "kling_v4") {
+    const targetDurationSec = dur === "full" ? Math.min(songDurationSec || MAX_FULL_SECONDS, MAX_FULL_SECONDS) : Math.max(3, Number(dur) || 10);
+    const numClips = Math.ceil(targetDurationSec / 30);
+    return { numClips, clipDurationSec: Math.max(3, Math.ceil(targetDurationSec / numClips)), targetDurationSec };
+  }
   if (generationMode === "narrative") {
     const targetDurationSec = dur === "full"
       ? Math.min(
@@ -163,7 +174,9 @@ export function estimateCreditCost(
     (requestedDuration ?? "full") as string,
     songDurationSec,
     generationMode,
+    provider,
   );
+  if (provider === "kling_v4") return Math.ceil(numClips * clipDurationSec * (resolution === "1080p" ? 0.235 : 0.157) * (numClips === 1 ? 2 : 1.75) / 0.015 - 1e-9);
   const costCredits = (numClips * clipDurationSec * usdPerSecondFor(provider)) / USD_PER_CREDIT;
   const markup = numClips <= 1 ? SHORT_MARKUP : provider === "kling" ? KLING_LONG_MARKUP : LONG_MARKUP;
   return Math.ceil(costCredits * markup * resolutionMultiplier(resolution));
@@ -174,8 +187,9 @@ export function estimateGeneratedImageCost(
   songDurationSec: number | null | undefined,
   generationMode: GenerationMode,
   _visualSource?: "video" | "generated_images",
+  provider?: AiProvider,
 ): number {
-  return getGenerationClipPlan(requestedDuration, songDurationSec, generationMode).numClips
+  return getGenerationClipPlan(requestedDuration, songDurationSec, generationMode, provider).numClips
     * GENERATED_IMAGE_CREDITS_PER_VISUAL;
 }
 
