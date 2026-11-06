@@ -35,6 +35,7 @@ import ReferEarnCard from "@/components/ReferEarnCard";
 import GenerationFiller from "@/components/GenerationFiller";
 import GenerationStoryboard from "@/components/GenerationStoryboard";
 import { PhotoAnimationDialog } from "@/components/PhotoAnimationDialog";
+import { FirstResultNextSteps } from "@/components/FirstResultNextSteps";
 import { PhotoNextActions } from "@/components/PhotoNextActions";
 import { shouldShowVideoScenePreviews } from "@/lib/jobStatusDisplay";
 import { trackEvent } from "@/lib/analytics";
@@ -1481,6 +1482,8 @@ export default function JobStatus() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {isComplete && job.videoId && isGenerateJob && <FirstResultNextSteps />}
 
         {isComplete && job.videoId && (
           <div className="flex flex-col items-center gap-2">

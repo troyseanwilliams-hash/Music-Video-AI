@@ -62,6 +62,13 @@ export interface AnalyticsEventMap {
   export_completed: { export_type: "montage" };
   export_downloaded: { export_type: "video" | "soundtrack" | "podcast" };
   soundtrack_sent_to_video: { destination: "generate" | "montage" };
+  starter_video_step: {
+    step: "opened" | "audio_ready" | "visual_ready" | "review" | "storyboard_opened" | "submitted" | "customize";
+    entry?: "default" | "dashboard" | "guide";
+    audio_choice?: "upload" | "library" | "silent";
+    affordable?: boolean;
+  };
+  first_result_next_step: { next: "starter_video" | "images" | "montage" };
 }
 
 declare global {

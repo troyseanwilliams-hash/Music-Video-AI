@@ -107,7 +107,7 @@ export function CreationGuide() {
               title="Generate Video"
               icon={<PlaySquare className="w-5 h-5 sm:w-6 sm:h-6" />}
               description={`Create AI scenes and visuals using credits, subject to plan rules. ${FREE_OFFER_COPY.short} ${FREE_OFFER_COPY.example} ${FREE_OFFER_COPY.expiry}`}
-              onClick={() => handleSelect("generate", "/generate", true)}
+              onClick={() => handleSelect("generate", "/generate?guide=starter", true)}
               testId="goal-generate"
             />
             <GoalCard

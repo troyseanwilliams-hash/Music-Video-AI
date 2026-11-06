@@ -62,6 +62,14 @@ describe("unique-scene provider work and pricing", () => {
 });
 
 describe("image-first video pricing", () => {
+  it("fits the complete five-second starter plus its image within 150 welcome credits", () => {
+    const video = calculateCreditCost("5", "720p", null, "kling", "narrative");
+    const image = calculateGeneratedImageCost("5", null, "narrative", "generated_images", "kling");
+    expect(video).toBe(47);
+    expect(image).toBe(7);
+    expect(video + image).toBe(54);
+    expect(video + image).toBeLessThanOrEqual(150);
+  });
   it("prices each source image from its $0.07 provider cost at a 1.5× markup", () => {
     expect(GENERATED_IMAGE_CREDITS_PER_VISUAL).toBe(7);
   });

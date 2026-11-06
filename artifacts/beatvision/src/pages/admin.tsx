@@ -1080,6 +1080,10 @@ function RecoverStrandedPanel() {
 /* ─── Analytics dashboard ─── */
 interface AnalyticsOverview {
   days: number;
+  firstVideoActivation?: {
+    signups: number; completed: number; matureSignups: number; matureCompleted: number;
+    steps: { step: string; users: number }[];
+  };
   funnel: { visitors: number; signups: number; activated: number; paid: number };
   timePerPage: { path: string; views: number; avgSeconds: number; totalMinutes: number }[];
   featureUsage: {
@@ -1221,6 +1225,24 @@ function AnalyticsPanel() {
             </div>
           </div>
 
+          {data.firstVideoActivation && (
+            <section className="space-y-3">
+              <h3 className="text-sm font-semibold">First video within seven days of signup</h3>
+              <p className="text-xs text-muted-foreground">All accounts created in this window. Completed videos come from saved results, not browser events. The mature rate excludes accounts still in their first seven days. Permanently deleted results are not counted.</p>
+              <div className="grid grid-cols-2 gap-3">
+                <StatCard icon={Film} label="Accounts with a first video" value={`${data.firstVideoActivation.completed} / ${data.firstVideoActivation.signups}`} />
+                <StatCard icon={CheckCircle2} label="Mature seven-day completion rate" value={pct(data.firstVideoActivation.matureCompleted, data.firstVideoActivation.matureSignups)} sub={`${data.firstVideoActivation.matureCompleted} of ${data.firstVideoActivation.matureSignups} mature accounts`} />
+              </div>
+              <p className="text-xs text-muted-foreground">Starter steps: distinct signed-in accounts during their first seven days. Browser delivery gaps and users switching paths can affect these counts.</p>
+              <div className="flex flex-wrap gap-3 text-sm">
+                {["opened", "audio_ready", "visual_ready", "review", "storyboard_opened", "submitted", "customize"].map(step => (
+                  <span key={step} className="rounded-lg border p-2">
+                    {step.replaceAll("_", " ")}: <strong>{data.firstVideoActivation?.steps.find(s => s.step === step)?.users ?? 0}</strong>
+                  </span>
+                ))}
+              </div>
+            </section>
+          )}
           {/* Feature usage */}
           <div>
             <h3 className="text-sm font-semibold flex items-center gap-2 mb-3">

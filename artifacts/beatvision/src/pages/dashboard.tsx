@@ -6,6 +6,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { useGetDashboardStats, getGetDashboardStatsQueryKey } from "@workspace/api-client-react";
 import { LYRIC_OVERLAY_COST } from "@/lib/creditPricing";
 import { FREE_OFFER_COPY } from "@/lib/freeOffer";
+import { getStarterCost } from "@/lib/starterVideo";
+
+const STARTER_TOTAL = getStarterCost().total;
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Plus, Film, CheckCircle2, Clock, AlertCircle, Crown, Play, Coins, Trash2, Zap, Mail, X, Wand2, Music2, Sparkles, Smile, Quote, Lightbulb, Scissors, type LucideIcon } from "lucide-react";
@@ -16,7 +19,8 @@ import { useQuery } from "@tanstack/react-query";
 import { getDailyContent, type DailyItemType } from "@/lib/dailyContent";
 import { useToast } from "@/hooks/use-toast";
 
-const LOW_CREDIT_THRESHOLD = 60; // ≈ one 10s video left
+// Below the shared 5s starter estimate, a user cannot make another starter video.
+const LOW_CREDIT_THRESHOLD = getStarterCost().total;
 
 const DAILY_ICONS: Record<DailyItemType, LucideIcon> = {
   pun: Smile,
@@ -290,10 +294,10 @@ export default function Dashboard() {
                   <p className="text-sm font-semibold">Montage Studio</p>
                   <p className="text-xs text-muted-foreground">Clean exports of your uploaded clips & music within your trial or post-trial limits.</p>
                 </Link>
-                <Link href="/generate" className="rounded-xl border border-border bg-background/40 p-4 transition-colors hover:border-primary/50">
+                <Link href="/generate?guide=starter&from=dashboard" className="rounded-xl border border-primary/40 bg-primary/[0.06] p-4 transition-colors hover:border-primary/70" data-testid="link-dashboard-starter">
                   <Wand2 className="mb-2 h-5 w-5 text-primary" />
-                  <p className="text-sm font-semibold">Generate AI Video</p>
-                  <p className="text-xs text-muted-foreground">Turn any song into a beat-synced AI video (uses credits).</p>
+                  <p className="text-sm font-semibold">Make your first video</p>
+                  <p className="text-xs text-muted-foreground">A 5s vertical clip synced to your track: {STARTER_TOTAL} credits, approved by you before anything is made.</p>
                 </Link>
                 <Link href="/soundtracks" className="rounded-xl border border-border bg-background/40 p-4 transition-colors hover:border-primary/50">
                   <Music2 className="mb-2 h-5 w-5 text-primary" />
@@ -347,7 +351,7 @@ export default function Dashboard() {
                 <span>
                   {stats.creditsRemaining === 0
                     ? "AI generation needs credits — top up or upgrade to generate more. Clean Montage Studio exports remain available within applicable limits."
-                    : <>Running low — <strong>{stats.creditsRemaining}</strong> credit{stats.creditsRemaining === 1 ? "" : "s"} left (a 10s video costs 60).</>}
+                    : <>Running low — <strong>{stats.creditsRemaining}</strong> credit{stats.creditsRemaining === 1 ? "" : "s"} left (a 5s starter video costs {STARTER_TOTAL}).</>}
                 </span>
               </div>
               <Link href="/pricing">

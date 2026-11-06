@@ -21,7 +21,8 @@ const SENSITIVE_ROUTES = [
   "/reset-password",
   "/pricing", 
   "/redeem", 
-  "/editor"
+  "/editor",
+  "/generate"
 ];
 
 export function shouldAutoOpen(

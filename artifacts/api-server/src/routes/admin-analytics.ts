@@ -167,8 +167,41 @@ router.get("/admin/analytics/overview", async (req, res) => {
       GROUP BY event_type
     `);
 
-    const [funnel, time, feature, sources, landing, vTrend, sTrend, actions] = await Promise.all([
+    // All accounts, not only browser-attributed signups. Video creation time is
+    // the completion authority; mutable job.updated_at is not a completion date.
+    const activationQ = db.execute(sql`
+      WITH cohort AS (
+        SELECT id, created_at FROM users
+        WHERE created_at >= NOW() - make_interval(days => ${days})
+      ), outcomes AS (
+        SELECT c.*,
+          EXISTS (
+            SELECT 1 FROM videos v JOIN jobs j ON j.id = v.job_id
+            WHERE v.user_id = c.id AND j.job_type = 'ai'
+              AND v.created_at >= c.created_at
+              AND v.created_at < c.created_at + interval '7 days'
+          ) AS completed
+        FROM cohort c
+      )
+      SELECT COUNT(*) AS signups,
+        COUNT(*) FILTER (WHERE completed) AS completed,
+        COUNT(*) FILTER (WHERE created_at <= NOW() - interval '7 days') AS mature_signups,
+        COUNT(*) FILTER (WHERE completed AND created_at <= NOW() - interval '7 days') AS mature_completed
+      FROM outcomes
+    `);
+    const starterStepsQ = db.execute(sql`
+      SELECT ae.meta->>'step' AS step, COUNT(DISTINCT ae.user_id) AS users
+      FROM analytics_events ae JOIN users u ON u.id = ae.user_id
+      WHERE ae.event_type = 'starter_video_step'
+        AND u.created_at >= NOW() - make_interval(days => ${days})
+        AND ae.created_at >= u.created_at
+        AND ae.created_at < u.created_at + interval '7 days'
+        AND ae.meta->>'step' IN ('opened','audio_ready','visual_ready','review','storyboard_opened','submitted','customize')
+      GROUP BY ae.meta->>'step'
+    `);
+    const [funnel, time, feature, sources, landing, vTrend, sTrend, actions, activation, starterSteps] = await Promise.all([
       funnelQ, timeQ, featureQ, sourcesQ, landingQ, visitorTrendQ, signupTrendQ, actionsQ,
+      activationQ, starterStepsQ,
     ]);
 
     const actionMap = new Map<string, number>();
@@ -195,6 +228,13 @@ router.get("/admin/analytics/overview", async (req, res) => {
 
     res.json({
       days,
+      firstVideoActivation: {
+        signups: num(activation.rows[0]?.signups),
+        completed: num(activation.rows[0]?.completed),
+        matureSignups: num(activation.rows[0]?.mature_signups),
+        matureCompleted: num(activation.rows[0]?.mature_completed),
+        steps: starterSteps.rows.map((row) => ({ step: String(row.step), users: num(row.users) })),
+      },
       funnel: {
         visitors: num(f.visitors),
         signups: num(f.signups),

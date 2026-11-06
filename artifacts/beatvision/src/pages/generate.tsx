@@ -46,6 +46,20 @@ import { detectNamedSubject } from "@/lib/promptWarnings";
 import { consumeSceneScriptHandoff } from "@/lib/sceneScriptHandoff";
 import { trackEvent, track } from "@/lib/analytics";
 import {
+  STARTER_CONFIG,
+  STARTER_DIRECTIONS,
+  advancedDraftItems,
+  formatExpiry,
+  getStarterCost,
+  hasGenerateHandoff,
+  isStarterDismissed,
+  markStarterDismissed,
+  pickStarterPath,
+  type StarterAudioChoice,
+} from "@/lib/starterVideo";
+import { FREE_OFFER_COPY } from "@/lib/freeOffer";
+import { StarterRightsGate, resolveAcceptCopyright } from "@/components/starter/StarterRightsGate";
+import {
   compactGeneratedImagePromptScript,
   MAX_CREATIVE_PROMPT_LENGTH,
 } from "@/lib/scenePromptScript";
@@ -307,24 +321,38 @@ export default function Generate() {
   const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const styleRef = useRef<HTMLDivElement>(null);
 
-  const [guidedDismissed, setGuidedDismissed] = useState(() => {
-    try {
-      const dismissed = localStorage.getItem("bv-release-guided-dismissed") === "true";
-      const params = new URLSearchParams(window.location.search);
-      // Skip guide if handing off from another page
-      if (params.get("audioObjectPath") || params.get("prompt")) return true;
-      return dismissed;
-    } catch {
-      return false;
-    }
-  });
+  // Handoffs from other pages (song, prompt, reference, Prompt Studio) always
+  // skip the starter so their settings are never overridden.
+  const handoffRef = useRef(hasGenerateHandoff(window.location.search));
+  // Closed until the signed-in user is known; then per-user dismissal decides.
+  const [guidedDismissed, setGuidedDismissed] = useState(true);
+  const [starterMode, setStarterMode] = useState(false);
+  const [explicitStarter, setExplicitStarter] = useState(false);
+  const [starterError, setStarterError] = useState<string | null>(null);
+  const starterSubmitRef = useRef(false);
+  const starterFileRef = useRef<HTMLInputElement>(null);
+  const uploadTokenRef = useRef(0);
   const [guidedStep, setGuidedStep] = useState(0);
+  const [starterAudio, setStarterAudio] = useState<StarterAudioChoice>("upload");
+  const [starterDirection, setStarterDirection] = useState<string | null>(null);
+  const starterOpenedRef = useRef(false);
+
+  useEffect(() => {
+    // Reset on account switch: each user gets their own first-run state.
+    starterOpenedRef.current = false;
+    starterSubmitRef.current = false;
+    setStarterMode(false);
+    setGuidedStep(0);
+    setGuidedDismissed(handoffRef.current || isStarterDismissed(user?.id));
+  }, [user?.id]);
 
   const dismissGuide = useCallback(() => {
-    try { localStorage.setItem("bv-release-guided-dismissed", "true"); } catch {}
+    markStarterDismissed(user?.id);
+    starterSubmitRef.current = false;
+    setStarterMode(false);
     setGuidedDismissed(true);
     track("guided_release_dismissed", { step: guidedStep });
-  }, [guidedStep]);
+  }, [guidedStep, user?.id]);
 
   const [sourceType, setSourceType] = useState<CreateJobRequestAudioSourceType | "narration">(
     CreateJobRequestAudioSourceType.upload,
@@ -417,6 +445,8 @@ export default function Generate() {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [errorDialog, setErrorDialog] = useState<ErrorDialogState>({ open: false, title: "", message: "" });
   const [copyrightAcknowledged, setCopyrightAcknowledged] = useState(false);
+  // The rights confirmation belongs to one specific track: clear it whenever
+  // the audio source or object changes (upload, library, silence, Suno).
   const [durationWarningOpen, setDurationWarningOpen] = useState(false);
   const [referenceChoiceOpen, setReferenceChoiceOpen] = useState(false);
   const [subjectReplacementBusy, setSubjectReplacementBusy] = useState(false);
@@ -507,17 +537,31 @@ export default function Generate() {
 
   // Handoff from the AI Song Generator: /generate?audioObjectPath=<path>&title=<name>
   // preloads that song as the uploaded audio source, ready to generate a video.
+  // Explicit beginner entry: /generate?guide=starter (dashboard / CreationGuide).
+  useEffect(() => {
+    const params = new URLSearchParams(guideSearch);
+    if (params.get("guide") !== "starter") return;
+    if (handoffRef.current || hasGenerateHandoff(guideSearch) || !user?.id) return;
+    setStarterMode(false);
+    setGuidedStep(0);
+    setExplicitStarter(true);
+    setGuidedDismissed(false);
+  }, [guideSearch, user?.id]);
+
+
   useEffect(() => {
     const params = new URLSearchParams(guideSearch);
     if (params.get("guide") !== "narration" || params.has("audioObjectPath")) return;
+    handoffRef.current = true;
+    setGuidedDismissed(true);
     setSourceType("narration");
-    setGuidedStep(1);
   }, [guideSearch]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const op = params.get("audioObjectPath");
     if (!op) return;
+    handoffRef.current = true;
     setSourceType(CreateJobRequestAudioSourceType.upload);
     setObjectPath(op);
     setUploadedFileName(params.get("title") || "AI Song");
@@ -532,6 +576,8 @@ export default function Generate() {
     const sceneScript = consumeSceneScriptHandoff();
     const referenceImagePath = params.get("referenceImagePath");
     if (sceneScript) {
+      handoffRef.current = true;
+      setGuidedDismissed(true);
       setPrompt(sceneScript.script);
       // Prompt Studio only hands over an object path after its analysis
       // succeeded. We deliberately trigger Generate's normal analysis again:
@@ -673,6 +719,9 @@ export default function Generate() {
 
   const handleFileSelect = async (file: File) => {
     if (!file) return;
+    // Switching to silence/library mid-upload bumps the token so a late
+    // upload completion can never restore stale audio.
+    const uploadToken = ++uploadTokenRef.current;
     const extension = file.name.toLowerCase().split(".").pop() ?? "";
     // Some browsers report an empty or generic MIME type for local files.
     // Preserve the extension so the upload service and ffmpeg can still
@@ -713,23 +762,40 @@ export default function Generate() {
         xhr.send(file);
       });
 
+      if (uploadToken !== uploadTokenRef.current) return;
       setObjectPath(data.objectPath);
       setUploadProgress(100);
       toast({ title: "Audio ready", description: `${file.name} uploaded successfully.` });
     } catch (err) {
+      if (uploadToken !== uploadTokenRef.current) return;
       const msg = err instanceof Error ? err.message : "Upload failed";
       setUploadError(msg);
       setUploadedFileName(null);
       setObjectPath(null);
       toast({ title: "Upload failed", description: msg, variant: "destructive" });
     } finally {
-      setIsUploading(false);
+      if (uploadToken === uploadTokenRef.current) setIsUploading(false);
     }
   };
 
   const { toast } = useToast();
   const createJob = useCreateJob();
+  useEffect(() => {
+    setCopyrightAcknowledged(false);
+  }, [sourceType, objectPath, sunoResolved?.shareUrl]);
+
   const { data: statsData } = useGetDashboardStats({});
+  // Default for brand-new accounts only (no jobs yet); explicit ?guide=starter always opens it.
+  const starterVisible = !guidedDismissed && !!user && (explicitStarter || statsData?.totalJobs === 0);
+  useEffect(() => {
+    if (!starterVisible || starterOpenedRef.current) return;
+    starterOpenedRef.current = true;
+    const g = new URLSearchParams(guideSearch).get("guide");
+    trackEvent("starter_video_step", {
+      step: "opened",
+      entry: g === "starter" ? (new URLSearchParams(guideSearch).get("from") === "dashboard" ? "dashboard" : "guide") : "default",
+    });
+  }, [starterVisible, guideSearch]);
   const analyzeAudio = useAnalyzeAudio();
   // Track which objectPath the current analysis result belongs to. This prevents
   // an old upload's duration from sizing or billing a newly uploaded track.
@@ -1471,12 +1537,16 @@ export default function Generate() {
           // not applicable to a silent "no audio" render, so it's implicitly
           // satisfied for that mode.
           acceptCopyright:
-            sourceType === CreateJobRequestAudioSourceType.none ? true : copyrightAcknowledged,
+            resolveAcceptCopyright(sourceType !== CreateJobRequestAudioSourceType.none, copyrightAcknowledged),
         } as unknown as CreateJobRequest,
       },
       {
         onSuccess: (job) => {
           trackEvent("creation_accepted", { creation_type: "video" });
+          if (starterSubmitRef.current) {
+            starterSubmitRef.current = false;
+            trackEvent("starter_video_step", { step: "submitted", audio_choice: starterAudio });
+          }
           setLocation(`/jobs/${job.id}`);
         },
         onError: async (err: unknown) => {
@@ -1781,204 +1851,331 @@ export default function Generate() {
   };
 
   const finishGuide = useCallback(() => {
+    setStarterError(null);
     const reviewOpened = handleGenerate();
     if (!reviewOpened) {
-      // Reveal the underlying advanced flow and any blocking dialog without
-      // permanently completing the guide. Reloading resumes first-run guidance.
-      setGuidedDismissed(true);
+      // Keep the beginner flow open; never drop the user into the full form.
+      setStarterError("Check your audio and topic, then try again. If your topic needs a character reference or another setting, choose Customize to resolve it.");
       return;
     }
-    try { localStorage.setItem("bv-release-guided-dismissed", "true"); } catch {}
+    markStarterDismissed(user?.id);
+    starterSubmitRef.current = true;
+    setStarterMode(true);
     setGuidedDismissed(true);
-    track("guided_release_completed", { step: guidedStep });
-  }, [guidedStep, handleGenerate]);
+    trackEvent("starter_video_step", { step: "storyboard_opened", audio_choice: starterAudio });
+  }, [handleGenerate, starterAudio, user?.id]);
+
+  // Apply the recommended starter configuration only from inside the explicit
+  // beginner flow; the full generator keeps whatever the user chose.
+  const applyStarterConfig = () => {
+    const direction = STARTER_DIRECTIONS.find((d) => d.id === starterDirection);
+    setAiProvider(STARTER_CONFIG.provider);
+    setResolution(CreateJobRequestResolution["720p"]);
+    setSelectedStyle((direction?.style ?? VideoStyle.cinematic) as VideoStyle);
+    setCharacter("none");
+    if (refImagePreviewUrl?.startsWith("blob:")) URL.revokeObjectURL(refImagePreviewUrl);
+    setRefImageObjectPath(null);
+    setRefImagePreviewUrl(null);
+    setEndFrameAsset(null);
+    setSelectedSceneSources({});
+    setClipStartTime(0);
+    setAspectRatio(CreateJobRequestAspectRatio["9:16"]);
+    if (sourceType === CreateJobRequestAudioSourceType.none) {
+      setSilentFilmDurationSeconds(STARTER_CONFIG.durationSeconds);
+    } else {
+      handleDurationChange(CreateJobRequestRequestedDuration.NUMBER_5);
+    }
+    setLyricsEnabled(false);
+    setLyricsText("");
+    setFullTrackLipSyncEnabled(false);
+    setShotPlan(null);
+    setScriptApproved(false);
+    setReviewedShotIndexes([]);
+  };
+
+  const goStarterStep = (next: 1 | 2, audio?: StarterAudioChoice) => {
+    if (next === 1) {
+      trackEvent("starter_video_step", { step: "audio_ready", audio_choice: audio ?? starterAudio });
+    } else {
+      applyStarterConfig();
+      trackEvent("starter_video_step", { step: "visual_ready" });
+      trackEvent("starter_video_step", {
+        step: "review",
+        affordable: pickStarterPath(balance, isAdmin) === "starter",
+      });
+    }
+    setGuidedStep(next);
+  };
+
+  const customizeStarter = () => {
+    trackEvent("starter_video_step", { step: "customize" });
+    dismissGuide();
+    toast({ title: "All controls unlocked", description: "Your choices so far are kept. Check the cost summary before generating." });
+  };
+
+  const starterPath = pickStarterPath(balance, isAdmin);
+  const starterCost = getStarterCost();
+  const starterDraftItems = advancedDraftItems({
+    lyrics: lyricsText.trim().length > 0,
+    lipSync: fullTrackLipSyncEnabled,
+    reference: !!refImageObjectPath,
+    endFrame: !!endFrameAsset,
+    sceneSources: Object.keys(selectedSceneSources).length,
+    character: character !== "none",
+  });
+  const starterExpiry = formatExpiry(statsData?.welcomeExpiresAt ?? null);
 
   return (
     <>
-    {!guidedDismissed && !imagePackMode && isAuthenticated && (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-background/95 p-4 backdrop-blur-xl sm:p-6">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="w-full max-w-2xl rounded-2xl border border-primary/20 bg-card/60 p-6 sm:p-10 shadow-2xl"
-        >
-          <div className="mb-8 flex items-center justify-between">
-            <div>
-              <div className="mb-2 flex gap-2">
-                {[0, 1, 2].map((stepIdx) => (
-                  <div key={stepIdx} className={`h-1.5 w-12 rounded-full ${guidedStep >= stepIdx ? "bg-primary" : "bg-primary/20"}`} />
-                ))}
-              </div>
-              <h2 className="text-2xl font-bold">New Release Project</h2>
-              <p className="text-muted-foreground">Let's set up your first video.</p>
+    <Dialog
+      open={starterVisible && !imagePackMode && isAuthenticated}
+      onOpenChange={(open) => { if (!open) dismissGuide(); }}
+    >
+      <DialogContent className="max-w-xl border-primary/20 bg-card p-5 sm:p-8" data-testid="starter-video-flow">
+        <input
+          ref={starterFileRef}
+          type="file"
+          accept="audio/*,video/mp4,.mp3,.mp4,.wav,.flac,.ogg,.m4a,.aac"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (f) { setStarterAudio("upload"); setSourceType(CreateJobRequestAudioSourceType.upload); void handleFileSelect(f); }
+          }}
+          data-testid="input-starter-file"
+        />
+        <DialogHeader className="text-left">
+          <div className="mb-2 flex gap-1.5" aria-hidden="true">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className={`h-1.5 w-10 rounded-full transition-colors ${guidedStep >= i ? "bg-gradient-electric" : "bg-primary/15"}`} />
+            ))}
+          </div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-primary">Your first video · step {guidedStep + 1} of 3</p>
+          <DialogTitle className="text-2xl font-bold leading-tight">
+            {guidedStep === 0 ? "Pick the sound" : guidedStep === 1 ? "Pick the look" : "Check the cost"}
+          </DialogTitle>
+          <DialogDescription>
+            {guidedStep === 0
+              ? `A 5-second vertical clip synced to your music, made from one AI scene image. It uses ${starterCost.total} credits.`
+              : guidedStep === 1
+                ? "Choose a direction, then tweak the words if you like."
+                : "Nothing is charged until you approve the storyboard."}
+          </DialogDescription>
+        </DialogHeader>
+
+        {guidedStep === 0 && (
+          <div className="space-y-3">
+            <div className="rounded-xl border border-primary/25 bg-primary/[0.05] p-3 text-xs leading-relaxed" data-testid="text-starter-offer">
+              <strong className="text-foreground">{FREE_OFFER_COPY.short}</strong>{" "}
+              <span className="text-muted-foreground">{FREE_OFFER_COPY.expiry} This first video uses {starterCost.total}; the rest stays in your balance.</span>
             </div>
-            <Button variant="ghost" onClick={dismissGuide} className="text-muted-foreground">
-              Skip to advanced
+            {objectPath && uploadedFileName && sourceType === CreateJobRequestAudioSourceType.upload && !isUploading ? (
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4" data-testid="status-starter-audio">
+                <div className="flex min-w-0 items-center gap-3">
+                  <CheckCircle2 className="h-5 w-5 shrink-0 text-primary" />
+                  <span className="truncate font-medium">{uploadedFileName}</span>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => { uploadTokenRef.current += 1; setObjectPath(null); setUploadedFileName(null); setUploadedFile(null); }} data-testid="button-starter-change-audio">Change</Button>
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => starterFileRef.current?.click()}
+                  disabled={isUploading}
+                  className="flex min-h-14 items-center gap-3 rounded-xl border border-border/60 bg-background/50 p-4 text-left transition-colors hover:border-primary/50 hover:bg-primary/5 disabled:opacity-70"
+                  data-testid="button-starter-upload"
+                >
+                  {isUploading ? <Loader2 className="h-5 w-5 animate-spin text-primary" /> : <Upload className="h-5 w-5 text-primary" />}
+                  <span><span className="block font-semibold">{isUploading ? "Uploading…" : "Upload a track"}</span><span className="text-xs text-muted-foreground">{isUploading ? `${uploadProgress}%` : "MP3 or MP4 up to 50MB"}</span></span>
+                </button>
+                <SoundtrackPickerDialog
+                  onSelect={(t) => {
+                    uploadTokenRef.current += 1;
+                    setIsUploading(false);
+                    setUploadError(null);
+                    setStarterAudio("library");
+                    setSourceType(CreateJobRequestAudioSourceType.upload);
+                    setObjectPath(t.objectPath);
+                    setUploadedFileName(t.title);
+                    setUploadedFile(null);
+                  }}
+                >
+                  <button type="button" className="flex min-h-14 items-center gap-3 rounded-xl border border-border/60 bg-background/50 p-4 text-left transition-colors hover:border-primary/50 hover:bg-primary/5" data-testid="button-starter-library">
+                    <Music className="h-5 w-5 text-primary" />
+                    <span><span className="block font-semibold">From My Music</span><span className="text-xs text-muted-foreground">Tracks you already have</span></span>
+                  </button>
+                </SoundtrackPickerDialog>
+              </div>
+            )}
+            {uploadError && <p className="text-sm text-destructive" role="alert">{uploadError}</p>}
+            <button
+              type="button"
+              onClick={() => {
+                uploadTokenRef.current += 1;
+                setIsUploading(false);
+                setUploadError(null);
+                setStarterAudio("silent");
+                setSourceType(CreateJobRequestAudioSourceType.none);
+                setSilentFilmDurationSeconds(STARTER_CONFIG.durationSeconds);
+                setObjectPath(null);
+                setUploadedFileName(null);
+                setUploadedFile(null);
+                goStarterStep(1, "silent");
+              }}
+              className="w-full rounded-lg py-2 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+              data-testid="button-starter-silent"
+            >
+              No track yet? Make a silent 5-second clip
+            </button>
+            <p className="text-xs text-muted-foreground">Your own upload or a library track adds no audio charge.</p>
+            <div className="flex justify-end border-t border-border/40 pt-4">
+              <Button
+                onClick={() => goStarterStep(1, starterAudio)}
+                disabled={!objectPath || isUploading || sourceType !== CreateJobRequestAudioSourceType.upload}
+                className="min-h-11 w-full sm:w-auto"
+                data-testid="button-starter-next-audio"
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {guidedStep === 1 && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Visual direction">
+              {STARTER_DIRECTIONS.map((d) => (
+                <button
+                  key={d.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={starterDirection === d.id}
+                  onClick={() => { setStarterDirection(d.id); setPrompt(d.prompt); }}
+                  className={`min-h-11 rounded-xl border p-3 text-left text-sm font-semibold transition-colors ${starterDirection === d.id ? "border-primary bg-primary/10 text-primary" : "border-border/60 bg-background/50 hover:border-primary/40"}`}
+                  data-testid={`button-starter-direction-${d.id}`}
+                >
+                  {d.label}
+                </button>
+              ))}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="starter-topic">Topic (edit freely)</Label>
+              <Textarea
+                id="starter-topic"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                className="min-h-[96px] resize-none"
+                placeholder="What should the video show?"
+                data-testid="input-starter-topic"
+              />
+            </div>
+            {starterDraftItems.length > 0 && (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/[0.07] p-3 text-xs text-amber-800 dark:text-amber-200" role="status" data-testid="text-starter-draft-warning">
+                <AlertTriangle className="mr-1 inline h-3.5 w-3.5" />
+                Continuing replaces your current {starterDraftItems.join(", ")} with the starter settings. Choose Customize below to keep them.
+              </div>
+            )}
+            <div className="flex justify-between gap-3 border-t border-border/40 pt-4">
+              <Button variant="outline" onClick={() => setGuidedStep(0)}>Back</Button>
+              <Button onClick={() => goStarterStep(2)} disabled={prompt.trim().length < 5} className="min-h-11" data-testid="button-starter-next-visual">
+                {starterDraftItems.length > 0 ? "Use starter settings" : "Review cost"}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {guidedStep === 2 && (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-border/60 bg-background/50 p-4" data-testid="card-starter-cost">
+              <p className="mb-3 text-xs text-muted-foreground">Kling · 5s · 720p · vertical · 1 scene image · no lyrics or Lip Sync</p>
+              <dl className="space-y-1.5 text-sm">
+                <div className="flex justify-between"><dt className="text-muted-foreground">Video clip</dt><dd>{videoAnimationCost}</dd></div>
+                <div className="flex justify-between"><dt className="text-muted-foreground">Scene image</dt><dd>{generatedImageCost}</dd></div>
+                <div className="flex justify-between"><dt className="text-muted-foreground">Audio</dt><dd>0</dd></div>
+                <div className="flex justify-between border-t border-border/40 pt-2 font-semibold"><dt>Total</dt><dd className="flex items-center gap-1" data-testid="text-starter-total"><Coins className="h-4 w-4 text-accent" />{activeCost} credits</dd></div>
+              </dl>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <span data-testid="text-starter-balance">
+                {starterPath === "unknown"
+                  ? <span className="inline-block h-4 w-32 animate-pulse rounded bg-muted align-middle" aria-label="Checking balance" />
+                  : <>Balance: <strong>{isAdmin ? "Admin" : balance}</strong> credits</>}
+              </span>
+              {starterExpiry && <span className="flex items-center gap-1 text-xs text-muted-foreground" data-testid="text-starter-expiry"><Clock className="h-3.5 w-3.5" />{starterExpiry}</span>}
+            </div>
+            {starterPath === "starter" && canAfford && (
+              <p className="text-xs text-muted-foreground">Next you'll see the storyboard. You approve it, and then the scene image, before any video is made. Credits are reserved on approval and refunded for unfinished work.</p>
+            )}
+            {(starterPath === "images" || starterPath === "montage" || (starterPath === "starter" && !canAfford)) && (
+              <div className="rounded-xl border border-accent/40 bg-accent/5 p-4 text-sm" data-testid="card-starter-alternative">
+                <p className="font-semibold">This video needs {activeCost} credits.</p>
+                <p className="mt-1 text-muted-foreground">Try a lower-cost option instead:</p>
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                  {starterPath === "images" && (
+                    <Link href="/images" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-border px-3 text-sm font-medium hover:border-primary/50" data-testid="link-starter-images">
+                      <ImageIcon className="h-4 w-4" /> Images ({GENERATED_IMAGE_CREDITS_PER_VISUAL} credits each)
+                    </Link>
+                  )}
+                  <Link href="/editor" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-border px-3 text-sm font-medium hover:border-primary/50" data-testid="link-starter-montage">
+                    <Film className="h-4 w-4" /> Montage Studio
+                  </Link>
+                  <Link href="/pricing" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium text-primary" data-testid="link-starter-pricing">
+                    <CreditCard className="h-4 w-4" /> Get credits
+                  </Link>
+                </div>
+              </div>
+            )}
+            {starterError && <p className="text-sm text-destructive" role="alert" data-testid="text-starter-error">{starterError}</p>}
+            <div className="flex flex-col-reverse gap-2 border-t border-border/40 pt-4 sm:flex-row sm:justify-between">
+              <Button variant="outline" onClick={() => setGuidedStep(1)}>Back</Button>
+              <StarterRightsGate
+                audio={starterAudio}
+                rightsAccepted={copyrightAcknowledged}
+                onRightsChange={setCopyrightAcknowledged}
+                otherwiseReady={starterPath === "starter" && canAfford && prompt.trim().length >= 5}
+                onProceed={finishGuide}
+              >
+                <Sparkles className="h-4 w-4" />
+                Preview storyboard
+              </StarterRightsGate>
+            </div>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={customizeStarter}
+          className="flex min-h-11 w-full items-center justify-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+          data-testid="button-starter-customize"
+        >
+          <Wand2 className="h-4 w-4" /> Customize with all controls
+        </button>
+      </DialogContent>
+    </Dialog>
+
+    {starterMode && guidedDismissed && (
+      <div className="container mx-auto max-w-xl px-4 py-10" data-testid="card-starter-summary">
+        <div className="rounded-2xl border border-primary/25 bg-card/70 p-6">
+          <p className="text-xs font-semibold uppercase tracking-wider text-primary">Your first video</p>
+          <h1 className="mt-1 text-2xl font-bold">Review your storyboard</h1>
+          <p className="mt-2 text-sm text-muted-foreground">Kling · 5s · 720p · vertical · {activeCost} credits. Approve the storyboard to start; nothing is charged before that.</p>
+          <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+            <Button className="min-h-11 border-0 bg-gradient-electric text-white" onClick={() => openGenerationReview()} data-testid="button-starter-reopen-review">
+              <Sparkles className="mr-2 h-4 w-4" /> Open storyboard
+            </Button>
+            <Button variant="outline" className="min-h-11" onClick={() => { setStarterMode(false); setGuidedStep(1); setGuidedDismissed(false); }} data-testid="button-starter-edit">
+              Change look or sound
+            </Button>
+            <Button variant="ghost" className="min-h-11" onClick={customizeStarter} data-testid="button-starter-summary-customize">
+              <Wand2 className="mr-2 h-4 w-4" /> Customize
             </Button>
           </div>
-
-          {guidedStep === 0 && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold">What are you releasing?</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {INTENTS.map((intent) => (
-                  <button
-                    key={intent.id}
-                    onClick={() => {
-                      setAspectRatio(intent.aspect);
-                      setSelectedStyle(intent.style);
-                      handleDurationChange(intent.duration);
-                      setPrompt(intent.prompt);
-                      setQuickStartTemplateId(intent.id);
-                      setGuidedStep(1);
-                    }}
-                    className="flex flex-col items-start gap-3 rounded-xl border border-border/50 bg-background/50 p-4 text-left transition-colors hover:border-primary/50 hover:bg-primary/5"
-                  >
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                      <intent.icon className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <div className="font-semibold">{intent.label}</div>
-                      <div className="mt-1 text-xs text-muted-foreground">{intent.desc}</div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {guidedStep === 1 && (
-            <div className="space-y-6">
-              <h3 className="text-lg font-semibold">Add your audio or narration</h3>
-
-              <Tabs value={sourceType} onValueChange={(v) => { if (v !== sourceType) invalidateSunoImport(); setSourceType(v as CreateJobRequestAudioSourceType | "narration"); }}>
-                <TabsList className="mb-4 grid w-full grid-cols-2 sm:grid-cols-4">
-                  <TabsTrigger value={CreateJobRequestAudioSourceType.upload} className="flex gap-2"><Upload className="h-4 w-4"/> Upload</TabsTrigger>
-                  <TabsTrigger value="narration" className="flex gap-2"><Mic className="h-4 w-4"/> Narration</TabsTrigger>
-                  <TabsTrigger value={CreateJobRequestAudioSourceType.suno} className="flex gap-2"><MonitorPlay className="h-4 w-4 text-[#1DB954]"/> Suno Link</TabsTrigger>
-                  <TabsTrigger value={CreateJobRequestAudioSourceType.none} className="flex gap-2"><VideoOff className="h-4 w-4"/> Silent</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value={CreateJobRequestAudioSourceType.upload} className="space-y-4">
-                  {uploadedFileName ? (
-                    <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 p-4">
-                      <div className="flex items-center gap-3">
-                        <CheckCircle2 className="h-5 w-5 text-primary" />
-                        <span className="font-medium">{uploadedFileName}</span>
-                      </div>
-                      <Button variant="ghost" size="sm" onClick={() => { setObjectPath(null); setUploadedFileName(null); setUploadedFile(null); }}>Change</Button>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border/60 bg-background/30 p-8 text-center">
-                      <div className="rounded-full bg-primary/10 p-4">
-                        <Upload className="h-6 w-6 text-primary" />
-                      </div>
-                      <div>
-                        <p className="font-medium">Upload your track</p>
-                        <p className="text-xs text-muted-foreground">MP3 or MP4 up to 50MB</p>
-                      </div>
-                      <Button onClick={() => fileInputRef.current?.click()} disabled={isUploading}>
-                        {isUploading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : "Select File"}
-                      </Button>
-                    </div>
-                  )}
-                </TabsContent>
-
-                <TabsContent value="narration" className="space-y-4">
-                  <NarrationGenerator onHandoff={handleNarrationHandoff} onExit={() => setSourceType(CreateJobRequestAudioSourceType.upload)} onCostError={(error) => setErrorDialog({
-                    open: true,
-                    title: "Not Enough Credits",
-                    message: error.message,
-                    code: error.code,
-                    creditsRequired: error.creditsRequired,
-                    creditsRemaining: error.creditsRemaining
-                  })} />
-                </TabsContent>
-
-                <TabsContent value={CreateJobRequestAudioSourceType.suno} className="space-y-4">
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Paste a Suno song link..."
-                      value={sunoInputUrl}
-                      onChange={(e) => {
-                        setSunoInputUrl(e.target.value);
-                        invalidateSunoImport();
-                      }}
-                    />
-                    <Button type="button" variant="outline" className="min-h-11" onClick={() => void handleSunoResolve()} disabled={sunoImporting || !sunoInputUrl.trim()}>
-                      {sunoImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Import"}
-                    </Button>
-                  </div>
-                  {sunoImporting && <p role="status" className="text-sm text-muted-foreground">Resolving and importing track…</p>}
-                  {sunoResolved && (
-                    <div className="flex items-center gap-2 rounded-lg bg-[#1DB954]/10 p-3 text-sm">
-                      <CheckCircle2 className="h-4 w-4 text-[#1DB954]" />
-                      <span className="font-medium">{sunoResolved.title}</span>
-                    </div>
-                  )}
-                  {sunoError && (
-                    <p className="flex items-center gap-1.5 text-sm text-destructive">
-                      <XCircle className="h-4 w-4 shrink-0" /> {sunoError}
-                    </p>
-                  )}
-                </TabsContent>
-
-                <TabsContent value={CreateJobRequestAudioSourceType.none}>
-                  <div className="rounded-lg border border-border/60 bg-background/30 p-4 text-sm text-muted-foreground">
-                    Your video will have no audio. You can add music later in the Editor.
-                  </div>
-                </TabsContent>
-              </Tabs>
-
-              <div className="flex justify-between border-t border-border/40 pt-6">
-                <Button variant="outline" onClick={() => setGuidedStep(0)}>Back</Button>
-                <Button onClick={() => setGuidedStep(2)} disabled={
-                  (sourceType === CreateJobRequestAudioSourceType.upload && !objectPath) ||
-                  (sourceType === CreateJobRequestAudioSourceType.suno && !sunoResolved) ||
-                  sourceType === "narration"
-                }>
-                  Next step
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {guidedStep === 2 && (
-            <div className="space-y-6">
-              <h3 className="text-lg font-semibold">Describe the visual direction</h3>
-
-              <div className="space-y-2">
-                <Label>Prompt</Label>
-                <Textarea
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  className="min-h-[120px] resize-none"
-                  placeholder="Describe what happens in your video..."
-                />
-              </div>
-
-              <div className="rounded-lg border border-border/50 bg-secondary/30 p-4 text-sm text-muted-foreground">
-                <p><strong>Advanced controls</strong> (Aspect ratio, Engine, Lip Sync, Custom Character) are available in the full editor if needed.</p>
-              </div>
-
-              <div className="flex justify-between border-t border-border/40 pt-6">
-                <Button variant="outline" onClick={() => setGuidedStep(1)}>Back</Button>
-                <Button
-                  className="bg-gradient-electric text-white shadow-glow border-0"
-                  onClick={finishGuide}
-                  disabled={prompt.trim().length < 5}
-                >
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  Preview Storyboard
-                </Button>
-              </div>
-            </div>
-          )}
-        </motion.div>
+        </div>
       </div>
     )}
 
-    <div className="container mx-auto px-4 py-6 sm:py-12 max-w-4xl">
+    <div className={`container mx-auto px-4 py-6 sm:py-12 max-w-4xl ${starterMode || starterVisible ? "hidden" : ""}`} aria-hidden={starterMode || starterVisible}>
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

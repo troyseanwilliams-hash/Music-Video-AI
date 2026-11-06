@@ -14,3 +14,9 @@ Welcome credits must stay separate from purchased and subscription credits, expi
 **Why:** The user changed the offer from 110 non-expiring credits to 150 expiring credits. Retroactively confiscating old grants or purchased credits was not authorized.
 
 **How to apply:** Maintain source-aware reservation and refund metadata through all API and worker generation paths. Consume expiring welcome credits before paid credits; account and balance reads must exclude expired balances.
+
+Prioritize a simple first-video experience that helps new users spend their existing welcome credits, while keeping advanced creation available.
+
+**Why:** The user said Generate Video is too complex and requested a simple version to promote usage of free credits, not a larger giveaway.
+
+**How to apply:** Recommend an affordable complete configuration, including image costs, and preserve explicit approval before spending. Do not add entitlements to simplify onboarding.
