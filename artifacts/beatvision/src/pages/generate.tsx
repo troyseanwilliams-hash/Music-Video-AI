@@ -58,7 +58,6 @@ import {
   type StarterAudioChoice,
 } from "@/lib/starterVideo";
 import { FREE_OFFER_COPY } from "@/lib/freeOffer";
-import { StarterRightsGate, resolveAcceptCopyright } from "@/components/starter/StarterRightsGate";
 import {
   compactGeneratedImagePromptScript,
   MAX_CREATIVE_PROMPT_LENGTH,
@@ -445,8 +444,6 @@ export default function Generate() {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [errorDialog, setErrorDialog] = useState<ErrorDialogState>({ open: false, title: "", message: "" });
   const [copyrightAcknowledged, setCopyrightAcknowledged] = useState(false);
-  // The rights confirmation belongs to one specific track: clear it whenever
-  // the audio source or object changes (upload, library, silence, Suno).
   const [durationWarningOpen, setDurationWarningOpen] = useState(false);
   const [referenceChoiceOpen, setReferenceChoiceOpen] = useState(false);
   const [subjectReplacementBusy, setSubjectReplacementBusy] = useState(false);
@@ -780,10 +777,6 @@ export default function Generate() {
 
   const { toast } = useToast();
   const createJob = useCreateJob();
-  useEffect(() => {
-    setCopyrightAcknowledged(false);
-  }, [sourceType, objectPath, sunoResolved?.shareUrl]);
-
   const { data: statsData } = useGetDashboardStats({});
   // Default for brand-new accounts only (no jobs yet); explicit ?guide=starter always opens it.
   const starterVisible = !guidedDismissed && !!user && (explicitStarter || statsData?.totalJobs === 0);
@@ -1537,7 +1530,7 @@ export default function Generate() {
           // not applicable to a silent "no audio" render, so it's implicitly
           // satisfied for that mode.
           acceptCopyright:
-            resolveAcceptCopyright(sourceType !== CreateJobRequestAudioSourceType.none, copyrightAcknowledged),
+            sourceType === CreateJobRequestAudioSourceType.none ? true : copyrightAcknowledged,
         } as unknown as CreateJobRequest,
       },
       {
@@ -2129,16 +2122,15 @@ export default function Generate() {
             {starterError && <p className="text-sm text-destructive" role="alert" data-testid="text-starter-error">{starterError}</p>}
             <div className="flex flex-col-reverse gap-2 border-t border-border/40 pt-4 sm:flex-row sm:justify-between">
               <Button variant="outline" onClick={() => setGuidedStep(1)}>Back</Button>
-              <StarterRightsGate
-                audio={starterAudio}
-                rightsAccepted={copyrightAcknowledged}
-                onRightsChange={setCopyrightAcknowledged}
-                otherwiseReady={starterPath === "starter" && canAfford && prompt.trim().length >= 5}
-                onProceed={finishGuide}
+              <Button
+                className="min-h-11 border-0 bg-gradient-electric text-white shadow-glow"
+                onClick={finishGuide}
+                disabled={starterPath !== "starter" || !canAfford || prompt.trim().length < 5}
+                data-testid="button-starter-storyboard"
               >
-                <Sparkles className="h-4 w-4" />
+                <Sparkles className="mr-2 h-4 w-4" />
                 Preview storyboard
-              </StarterRightsGate>
+              </Button>
             </div>
           </div>
         )}
