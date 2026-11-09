@@ -480,17 +480,23 @@ export default function Home() {
               For content creators &amp; podcasters
             </p>
             <h2 id="creator-heading" className="max-w-3xl text-3xl font-bold tracking-tight text-white md:text-4xl">
-              Turn your podcast and commentary footage into finished videos
+              Layer videos, images, and commentary—right on cue
             </h2>
             <p className="mt-6 max-w-3xl text-lg leading-relaxed text-white/70">
               Build reaction videos, video-podcast episodes, and commentary content in Montage Studio.
-              Keep your main footage on the timeline, add supporting clips with Commentary or Reaction
-              layouts, and highlight key points with timed text cards. Adjust each overlay&apos;s audio
-              independently, save your project, and export in 1080p—with Montage timelines up to 30 minutes.
+              Add multiple video clips, static images, and text cards over your main video.
+              Give each overlay its own start time and duration—for reactions, screenshots, product
+              photos, and supporting visuals that appear exactly when you need them.
+              Your time slots stay saved with the project and carry through to the final 1080p export.
             </p>
+            <ul className="mt-6 flex flex-wrap gap-3 text-sm font-medium text-white/90" aria-label="Overlay features">
+              {["Video + image overlays", "Individual start times & durations", "Up to 4 overlays on screen", "Saved timing in every export"].map((feature) => (
+                <li key={feature} className="rounded-full border border-primary/30 bg-primary/10 px-4 py-2">{feature}</li>
+              ))}
+            </ul>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Link
-                href={isAuthenticated ? "/editor" : buildAuthUrl("/register", { returnTo: "/editor" })}
+                href={isAuthenticated ? "/editor?guide=commentary" : buildAuthUrl("/register", { returnTo: "/editor?guide=commentary" })}
                 onClick={() => trackCTA("creators_podcasters", "start_commentary", "Start a commentary video")}
                 className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-primary px-6 py-3 font-semibold text-primary-foreground transition-opacity hover:opacity-90"
                 data-testid="link-start-commentary"

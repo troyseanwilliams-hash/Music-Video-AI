@@ -17,11 +17,11 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     id: "2026-11-09-montage-commentary",
     date: "November 9, 2026",
     isoDate: "2026-11-09",
-    title: "Commentary and reaction overlays in Montage Studio",
+    title: "Timed video and image overlays in Montage Studio",
     summary:
-      "Podcast and commentary creators can now layer a second clip and on-screen text cards over a main video, without leaving Montage Studio. Simple single-track editing works exactly as before; overlays are optional.",
+      "Layer multiple video clips, static images, and text cards over your main video. Each overlay has its own start time and duration, saved with the project and used in the final render. Simple single-track editing works exactly as before; overlays are optional.",
     items: [
-      { heading: "Overlay clips", body: "Open Overlays & text cards, then Upload overlay clip or Use existing clip from this project or your Gallery. New items start at the playhead." },
+      { heading: "Video and image overlays", body: "Open Overlays & text cards, then Upload overlay clip, Upload image, or Use existing media. Images support PNG, JPEG, and WebP. Add up to 100 overlays per project, with up to 4 visible at once. New items start at the playhead." },
       { heading: "Commentary or Reaction layouts", body: "Commentary fills the frame with the clip centred and a blurred copy behind it. Reaction right and Reaction left place a smaller window you can drag to move and resize from its corner handle in the preview." },
       { heading: "Exact timing", body: "Set Starts at, Duration and Skip into clip, snap a clip to the playhead with At playhead, or use End with main video. Overlay bars can also be dragged along the layer timeline." },
       { heading: "Independent overlay sound", body: "Each overlay has its own volume, so you can manually lower or mute a reaction clip without changing your main video's volume." },

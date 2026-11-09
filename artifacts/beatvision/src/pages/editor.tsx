@@ -1847,6 +1847,17 @@ export default function Editor() {
           Turn your photos and clips into a polished video — the easy, AI-powered
           alternative to CapCut. Made for weddings, work, social — or just for fun.
         </p>
+        <div className="mt-4 rounded-lg border border-primary/30 bg-primary/5 p-4" data-testid="overlay-feature-callout">
+          <p className="font-semibold">Multiple overlays. Your timing.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Layer video clips, static images, and text over your main video. Set each item&apos;s start
+            time and duration—your saved time slots carry through to the final export.
+            Add your main footage, then open Overlays &amp; text cards below the preview.
+          </p>
+          <button type="button" className="mt-2 text-sm font-semibold text-primary underline underline-offset-4" onClick={() => setCommentaryGuide(true)}>
+            Show me how
+          </button>
+        </div>
         <div className="mt-4 flex flex-wrap items-center gap-2" data-commentary-guide="save">
           <Button size="sm" onClick={() => void saveProject()} disabled={savingProject}>
             {savingProject ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
