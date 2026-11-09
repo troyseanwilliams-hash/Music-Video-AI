@@ -51,6 +51,7 @@ import Comparison from "@/pages/comparison";
 import Podcast from "@/pages/podcast";
 
 import TutorialScriptToVideo from "@/pages/tutorial-script-to-video";
+import WhatsNew from "@/pages/whats-new";
 import { useAuth } from "@/hooks/useAuth";
 import { RouteMetadata } from "@/components/RouteMetadata";
 import { Loader2 } from "lucide-react";
@@ -157,6 +158,7 @@ function Router() {
           <Route path="/instrumental-generator" component={InstrumentalLanding} />
           <Route path="/suno-to-video" component={SunoToVideoLanding} />
           <Route path="/tutorial/script-to-video" component={TutorialScriptToVideo} />
+          <Route path="/whats-new" component={WhatsNew} />
           <Route path="/podcast-to-video" component={PodcastToVideoLanding} />
           <Route path="/hip-hop-music-video-generator" component={HipHopMusicVideoLanding} />
           <Route path="/edm-music-video-generator" component={EdmMusicVideoLanding} />

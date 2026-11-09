@@ -180,7 +180,7 @@ export function OverlayPanel({
   const fmt = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`;
 
   return (
-    <section className="mb-6 rounded-lg border border-border bg-card" data-testid="overlay-panel">
+    <section className="mb-6 rounded-lg border border-border bg-card" data-testid="overlay-panel" data-commentary-guide="overlays">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}

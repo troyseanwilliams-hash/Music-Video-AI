@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { track } from "@/lib/analytics";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { PlaySquare, Film, Music, BookOpen, Sparkles, Image as ImageIcon } from "lucide-react";
+import { PlaySquare, Film, Music, BookOpen, Sparkles, Image as ImageIcon, Mic2 } from "lucide-react";
 import { shouldAutoOpen, setGuideDismissed } from "./utils";
 import { buildAuthUrl } from "@/lib/authIntent";
 import { FREE_OFFER_COPY } from "@/lib/freeOffer";
@@ -61,6 +61,8 @@ export function CreationGuide() {
        currentParams.set("guide", "montage");
        window.history.replaceState({}, "", `${window.location.pathname}?${currentParams.toString()}`);
        window.dispatchEvent(new CustomEvent("aibeatsync:resume-montage-guide"));
+    } else if (goal === "commentary" && location === "/editor") {
+       window.dispatchEvent(new CustomEvent("aibeatsync:open-commentary-guide"));
     } else {
       setLocation(path);
     }
@@ -102,6 +104,14 @@ export function CreationGuide() {
               description={`${FREE_OFFER_COPY.headline} ${FREE_OFFER_COPY.expiry} Bring your own media; clean exports during your active trial within trial limits. Lyric burns and Auto-sync use credits. After trial: 10 clean exports/month, then 15 credits each.`}
               onClick={() => handleSelect("montage", "/editor?guide=montage", true)}
               testId="goal-montage"
+            />
+            <GoalCard
+              title="Commentary or Podcast Video"
+              badge="New"
+              icon={<Mic2 className="w-5 h-5 sm:w-6 sm:h-6" />}
+              description="Add a reaction or commentary clip and text cards over your main video in Montage Studio. An optional walkthrough points to each control; it never saves, exports, or spends credits for you."
+              onClick={() => handleSelect("commentary", "/editor?guide=commentary", true)}
+              testId="goal-commentary"
             />
             <GoalCard 
               title="Generate Video"

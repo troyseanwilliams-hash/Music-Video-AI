@@ -51,6 +51,17 @@ const EXAMPLE_NARRATIVE_SCRIPT = [
   "20. In the present day, young women study aviation beneath a suspended vintage aircraft, carrying Amelia's courage forward into a hopeful future.",
 ].join("\n");
 
+export const COMMENTARY_STEPS = [
+  { title: "Add your main video", body: "Open Montage Studio and add your episode or source video as the main track. Overlays & text cards appears below the preview once the timeline has media." },
+  { title: "Add an overlay clip", body: "In Overlays & text cards, choose Upload overlay clip or Use existing clip (from this project or your Gallery). New items start at the playhead." },
+  { title: "Commentary or Reaction", body: "Commentary fills the frame with your clip centred over a blurred copy. Reaction right or Reaction left makes a smaller window: drag it in the preview to move it, and drag its corner handle to resize." },
+  { title: "Set the timing", body: "Use Starts at, Duration and Skip into clip, or press At playhead. If an overlay runs too long, End with main video shortens it to fit the timeline. You can also drag bars along the layer timeline." },
+  { title: "Balance the sound", body: "Each overlay has its own Overlay sound volume, with quick presets and a slider. The main video's audio is never changed." },
+  { title: "Add text cards", body: "Add text card for titles and fact cards. Text does not wrap automatically: press Enter where you want each new line, and the export matches the preview." },
+  { title: "Save your project", body: "Save or Save as keeps overlays and text cards with the project, so you can reopen it later." },
+  { title: "Review and export", body: "Choose 720p or 1080p, check the export estimate, confirm content rights, then Export & render MP4." },
+];
+
 function ExampleScriptCard({
   kind,
   title,
@@ -72,7 +83,7 @@ function ExampleScriptCard({
         <div>
           <div className="flex items-center gap-2 text-primary font-semibold">
             <Sparkles className="h-5 w-5" />
-            {kind === "montage" ? "Visual Montage" : "Narrative Story"}
+            {kind === "montage" ? "Still-image montage" : "Narrative Story"}
           </div>
           <h3 className="mt-2 text-xl font-bold">{title}</h3>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{description}</p>
@@ -97,9 +108,19 @@ function ExampleScriptCard({
         </pre>
       </details>
       <div className="mt-5 grid gap-3 text-sm text-muted-foreground">
-        <p><strong className="text-foreground">1.</strong> Select {kind === "montage" ? "Visual Montage" : "Narrative Story"} in Generate.</p>
-        <p><strong className="text-foreground">2.</strong> Paste one numbered line for each analyzed segment.</p>
-        <p><strong className="text-foreground">3.</strong> Confirm the required prompt count before submitting.</p>
+        {kind === "montage" ? (
+          <>
+            <p><strong className="text-foreground">1.</strong> Paste the numbered list into <Link href="/images" className="text-primary underline-offset-4 hover:underline">Create Images</Link> and review the credit estimate before creating.</p>
+            <p><strong className="text-foreground">2.</strong> In <Link href="/editor" className="text-primary underline-offset-4 hover:underline">Montage Studio</Link>, choose Generated images and add the pack.</p>
+            <p><strong className="text-foreground">3.</strong> Add your track, then set each still's hold time on the timeline.</p>
+          </>
+        ) : (
+          <>
+            <p><strong className="text-foreground">1.</strong> Open <Link href="/generate" className="text-primary underline-offset-4 hover:underline">Generate Video</Link>; every video there is a narrative story.</p>
+            <p><strong className="text-foreground">2.</strong> Paste one numbered line for each analyzed segment.</p>
+            <p><strong className="text-foreground">3.</strong> Confirm the required prompt count and credit estimate before submitting.</p>
+          </>
+        )}
       </div>
     </div>
   );
@@ -122,7 +143,7 @@ export default function TutorialScriptToVideo() {
     <div className="flex flex-col min-h-[calc(100vh-4rem)]">
       <Helmet>
         <title>How to Turn a Script into a Video | AIBeatSync</title>
-        <meta name="description" content="Learn how to break down your script into numbered scene lists, generate consistent image sequences, and assemble them in Montage Studio to create intentional vertical videos." />
+        <meta name="description" content="Learn how to break down your script into numbered scene lists, create consistent image sequences, assemble them in Montage Studio, and add commentary overlays and text cards." />
         <meta property="og:title" content="How to Turn a Script into a Video | AIBeatSync" />
         <meta property="og:description" content="Learn how to break down your script into numbered scene lists, generate consistent image sequences, and assemble them in Montage Studio to create intentional vertical videos." />
       </Helmet>
@@ -143,10 +164,10 @@ export default function TutorialScriptToVideo() {
               Learn how to break down any story, script, or podcast into a sequence of generated images, and assemble them into a compelling video in Montage Studio.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link href="/generate">
+              <Link href="/images">
                 <Button size="lg" className="w-full sm:w-auto h-12 px-8 bg-gradient-electric text-white shadow-glow hover:opacity-90 border-0 transition-all group" data-testid="tutorial-cta-generate">
                   <ImagePlus className="mr-2 h-5 w-5" />
-                  Generate Images
+                  Create Images
                 </Button>
               </Link>
               <Link href="/editor">
@@ -156,6 +177,10 @@ export default function TutorialScriptToVideo() {
                 </Button>
               </Link>
             </div>
+            <p className="mt-6 text-sm text-muted-foreground">
+              New: <a href="#commentary-overlays" className="text-primary underline-offset-4 hover:underline" data-testid="link-tutorial-commentary">commentary and reaction overlays</a>{" "}
+              &middot; <Link href="/whats-new" className="text-primary underline-offset-4 hover:underline" data-testid="link-tutorial-whats-new">What's New, November 9, 2026</Link>
+            </p>
           </div>
         </section>
 
@@ -204,35 +229,36 @@ export default function TutorialScriptToVideo() {
             <div className="mb-6 rounded-2xl border border-accent/25 bg-accent/[0.06] p-6 md:p-8">
               <div className="flex items-center gap-2 text-accent font-semibold">
                 <Layers className="h-5 w-5" />
-                Choose the right generation mode
+                Pick the right place for your script
               </div>
-              <h3 className="mt-2 text-xl font-bold">Both modes use numbered prompts, but they tell different kinds of stories</h3>
+              <h3 className="mt-2 text-xl font-bold">Both use numbered prompts, but they live in different tools</h3>
               <div className="mt-5 grid gap-5 md:grid-cols-2">
                 <div className="rounded-xl border border-border/60 bg-background/40 p-4">
-                  <p className="font-semibold text-foreground">Visual Montage</p>
+                  <p className="font-semibold text-foreground">Still-image montage: Create Images, then Montage Studio</p>
                   <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                    Each line is an independent visual idea. The app uses variety, camera changes, and music energy
-                    to create a dynamic sequence. The scenes do not need to form a plot.
+                    Each line is an independent visual idea. Create the stills in Create Images, then add them in
+                    Montage Studio with Generated images and cut them to your music or narration. The scenes do not need to form a plot.
                   </p>
                 </div>
                 <div className="rounded-xl border border-border/60 bg-background/40 p-4">
-                  <p className="font-semibold text-foreground">Narrative Story</p>
+                  <p className="font-semibold text-foreground">Narrative Story: Generate Video</p>
                   <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                    Each line is the next beat in one chronological story. Repeat important character traits, keep
+                    Generate creates one cohesive narrative video; there is no montage option inside it. Each line is the next beat in one chronological story. Repeat important character traits, keep
                     locations and actions connected, and write an ending that resolves the journey.
                   </p>
                 </div>
               </div>
               <p className="mt-5 text-sm text-muted-foreground">
-                For either mode, the uploaded track is analyzed first. If the analysis says the video needs 20
-                segments, provide exactly 20 numbered lines to control every segment.
+                In Generate, the uploaded track is analyzed first. If the analysis says the video needs 20
+                segments, provide exactly 20 numbered lines to control every segment. AI generation uses credits;
+                review the estimate shown before you submit.
               </p>
             </div>
 
             <div className="grid gap-6 lg:grid-cols-2">
               <ExampleScriptCard
                 kind="montage"
-                title="Visual Montage example"
+                title="Still-image montage example"
                 description="Use this for a beat-driven Amelia Earhart music video. The images are varied and visually independent rather than written as one continuous plot."
                 script={EXAMPLE_MONTAGE_SCRIPT}
                 copied={copiedExample === "montage"}
@@ -250,8 +276,9 @@ export default function TutorialScriptToVideo() {
 
             <div className="mt-6 rounded-xl border border-border/50 bg-card p-5 text-sm text-muted-foreground">
               <strong className="text-foreground">How to use either example:</strong>{" "}
-              Upload the full track, select the matching generation mode, paste one script into Creative Prompt,
-              and wait for the page to confirm the required prompt count before submitting.
+              For the montage script, paste it into Create Images, then assemble the stills in Montage Studio.
+              For the narrative script, upload the full track in Generate, paste it into Creative Prompt,
+              and wait for the page to confirm the required prompt count and estimate before submitting.
             </div>
           </section>
 
@@ -271,7 +298,7 @@ export default function TutorialScriptToVideo() {
                   <ImagePlus className="h-5 w-5 text-muted-foreground" />
                 </div>
                 <h3 className="font-bold mb-2">Upload a Reference</h3>
-                <p className="text-sm text-muted-foreground">In the Generator, toggle "Images only" and upload a face or style reference image to anchor the AI.</p>
+                <p className="text-sm text-muted-foreground">In Create Images or the Character Reference section of Generate, add a face or style reference image to anchor the AI.</p>
               </div>
               <div className="rounded-xl border border-border/50 bg-card p-5">
                 <div className="h-10 w-10 rounded-lg bg-secondary flex items-center justify-center mb-4">
@@ -359,14 +386,14 @@ export default function TutorialScriptToVideo() {
                     <Layers className="h-5 w-5 text-accent" />
                     <h3 className="font-bold">2. Drop Images</h3>
                   </div>
-                  <p className="text-sm text-muted-foreground">Select your generated images from your Gallery and add them to the timeline in sequence.</p>
+                  <p className="text-sm text-muted-foreground">Choose Generated images in Montage Studio, select the pack you made in Create Images, and add it in sequence.</p>
                 </div>
                 <div>
                   <div className="flex items-center gap-3 mb-3">
                     <Wand2 className="h-5 w-5 text-accent" />
                     <h3 className="font-bold">3. Time & Transition</h3>
                   </div>
-                  <p className="text-sm text-muted-foreground">Drag the edges of each image to match the spoken words. Add smooth crossfades between clips, then Export.</p>
+                  <p className="text-sm text-muted-foreground">Drag images into order, then select each one to set its hold time to match the spoken words. Add a transition, review the estimate, then Export.</p>
                 </div>
               </div>
 
@@ -377,6 +404,41 @@ export default function TutorialScriptToVideo() {
                   </Button>
                 </Link>
               </div>
+            </div>
+          </section>
+
+          {/* Step 5: Commentary overlays */}
+          <section id="commentary-overlays" data-testid="section-commentary-overlays">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary font-bold text-lg">5</div>
+              <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Commentary and Reaction Overlays</h2>
+            </div>
+            <p className="text-lg text-muted-foreground mb-8">
+              For podcasts and commentary videos, keep your episode as the main track and layer a second clip and text cards on top.
+              It is optional: if you only need one track, nothing changes.
+            </p>
+            <ol className="grid gap-4 md:grid-cols-2">
+              {COMMENTARY_STEPS.map((item, i) => (
+                <li key={item.title} className="rounded-xl border border-border/50 bg-card p-5">
+                  <h3 className="font-bold"><span className="mr-2 text-primary">{i + 1}.</span>{item.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{item.body}</p>
+                </li>
+              ))}
+            </ol>
+            <div className="mt-6 rounded-xl border border-accent/25 bg-accent/[0.06] p-5 text-sm text-muted-foreground">
+              <strong className="text-foreground">Limits and rights:</strong> Montage Studio exports at up to 1080p and supports
+              timelines up to 30 minutes. That 30-minute limit is for Montage Studio only, not AI video generation.
+              Clips are shown in full, so any watermark already in a source clip stays visible. Only use footage you own or are licensed to use, and confirm rights before exporting.
+            </div>
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              <Link href="/editor?guide=commentary">
+                <Button className="w-full sm:w-auto bg-gradient-electric text-white border-0 hover:opacity-90" data-testid="tutorial-cta-commentary-guide">
+                  Start the commentary walkthrough <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </Link>
+              <Link href="/whats-new">
+                <Button variant="outline" className="w-full sm:w-auto" data-testid="tutorial-cta-whats-new">Read the release notes</Button>
+              </Link>
             </div>
           </section>
 

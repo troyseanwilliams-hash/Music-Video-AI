@@ -8,7 +8,18 @@ import { useLocation } from "wouter";
 export function ScrollToTop() {
   const [location] = useLocation();
   useEffect(() => {
+    if (window.location.hash) {
+      const frame = requestAnimationFrame(() => {
+        let id = window.location.hash.slice(1);
+        try { id = decodeURIComponent(id); } catch { /* Keep malformed anchors literal. */ }
+        const target = document.getElementById(id);
+        if (target) target.scrollIntoView({ block: "start" });
+        else window.scrollTo(0, 0);
+      });
+      return () => cancelAnimationFrame(frame);
+    }
     window.scrollTo(0, 0);
+    return undefined;
   }, [location]);
   return null;
 }

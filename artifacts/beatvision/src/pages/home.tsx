@@ -237,7 +237,7 @@ export default function Home() {
                   { title: "Audio & Vocals", desc: "Generate tracks & instrumentals.", icon: Music, color: "text-primary", bg: "bg-primary/10", border: "border-primary/20" },
                    { title: "Narration Studio", desc: "Turn scripts into mixed, video-ready voiceovers.", icon: Mic2, color: "text-cyan-400", bg: "bg-cyan-500/10", border: "border-cyan-500/20" },
                   { title: "Visual Control", desc: "Storyboard before animating.", icon: Eye, color: "text-pink-400", bg: "bg-pink-500/10", border: "border-pink-500/20" },
-                  { title: "Timeline Editor", desc: "Trim and export up to 4K.", icon: Scissors, color: "text-white", bg: "bg-white/10", border: "border-white/20" }
+                  { title: "Timeline Editor", desc: "Trim and export up to 1080p.", icon: Scissors, color: "text-white", bg: "bg-white/10", border: "border-white/20" }
                 ].map((item, i) => (
                   <motion.div
                     key={i}
@@ -464,8 +464,8 @@ export default function Home() {
                     <p className="text-sm text-white/50 leading-relaxed">A built-in timeline editor to trim, transition, and finalize your own clips and photos. No AI generation required.</p>
                   </div>
                   <div>
-                    <h4 className="text-white font-semibold mb-2">Up to 4K Quality</h4>
-                    <p className="text-sm text-white/50 leading-relaxed">Go beyond quick clips: render crisp 4K and full-length videos up to ten minutes.</p>
+                    <h4 className="text-white font-semibold mb-2">1080p Exports, 30-Minute Timelines</h4>
+                    <p className="text-sm text-white/50 leading-relaxed">Montage Studio exports at up to 1080p with timelines up to 30 minutes, including commentary overlays and text cards. The 30-minute limit is for Montage Studio only; AI video generation keeps its own separate length limits.</p>
                   </div>
                 </div>
               </div>
@@ -550,6 +550,9 @@ export default function Home() {
             </h2>
             <p className="text-xl text-white/50 mb-12">
               Generate new AI visuals with credits, or edit your own footage in Montage Studio.
+            </p>
+            <p className="text-sm text-white/60 mb-4">
+              <Link href="/whats-new" className="underline underline-offset-4 hover:text-white" data-testid="link-home-whats-new">What's new (November 9, 2026): commentary and reaction overlays in Montage Studio</Link>
             </p>
             <p className="text-sm text-white/60 mb-6">{FREE_OFFER_COPY.short} {FREE_OFFER_COPY.example} {FREE_OFFER_COPY.expiry} {FREE_OFFER_COPY.credits}</p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-5">

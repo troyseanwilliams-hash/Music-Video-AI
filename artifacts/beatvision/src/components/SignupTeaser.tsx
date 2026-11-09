@@ -44,7 +44,7 @@ const CONTENT: Record<"generate" | "remix", Content> = {
   },
 };
 
-export default function SignupTeaser({ variant }: { variant: "generate" | "remix" }) {
+export default function SignupTeaser({ variant, returnTo }: { variant: "generate" | "remix"; returnTo?: string }) {
   const c = CONTENT[variant];
   return (
     <div className="relative overflow-hidden">
@@ -60,7 +60,7 @@ export default function SignupTeaser({ variant }: { variant: "generate" | "remix
           <p className="text-sm text-muted-foreground mb-5">{FREE_OFFER_COPY.example} {FREE_OFFER_COPY.expiry}</p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">
             <Link
-              href={buildAuthUrl("/register", { returnTo: variant === "remix" ? "/editor" : "/generate" })}
+              href={buildAuthUrl("/register", { returnTo: returnTo ?? (variant === "remix" ? "/editor" : "/generate") })}
               onClick={() => trackEvent("teaser_cta_clicked", { source: variant, destination: "register" })}
               className="w-full sm:w-auto"
             >
@@ -80,7 +80,7 @@ export default function SignupTeaser({ variant }: { variant: "generate" | "remix
           </div>
           <p className="text-sm text-muted-foreground">
             Already have an account?{" "}
-            <Link href={buildAuthUrl("/login", { returnTo: variant === "remix" ? "/editor" : "/generate" })} className="text-primary underline underline-offset-4">Log in</Link>
+            <Link href={buildAuthUrl("/login", { returnTo: returnTo ?? (variant === "remix" ? "/editor" : "/generate") })} className="text-primary underline underline-offset-4">Log in</Link>
           </p>
         </div>
 
@@ -123,7 +123,7 @@ export default function SignupTeaser({ variant }: { variant: "generate" | "remix
 
         <div className="text-center mt-12">
           <Link
-            href={buildAuthUrl("/register", { returnTo: variant === "remix" ? "/editor" : "/generate" })}
+            href={buildAuthUrl("/register", { returnTo: returnTo ?? (variant === "remix" ? "/editor" : "/generate") })}
             onClick={() => trackEvent("teaser_cta_clicked", { source: variant, destination: "register" })}
           >
             <Button size="lg" className="max-w-full whitespace-normal h-auto min-h-12 bg-gradient-electric text-white shadow-glow border-0 hover:opacity-90">

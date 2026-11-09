@@ -16,6 +16,8 @@ import { PhotoAnimationDialog } from "@/components/PhotoAnimationDialog";
 import TopUpRequiredDialog from "@/components/TopUpRequiredDialog";
 import { TutorialTip } from "@/components/TutorialTip";
 import { MontageWalkthrough } from "@/components/creation-guide/MontageWalkthrough";
+import { CommentaryWalkthrough } from "@/components/creation-guide/CommentaryWalkthrough";
+import { COMMENTARY_GUIDE_PARAM, editorReturnTo, isCommentaryGuideRequested } from "@/components/creation-guide/commentaryGuide";
 import {
   getListVideosQueryKey,
   useGetDashboardStats,
@@ -52,7 +54,7 @@ import {
   Check,
   Clock,
   Save,
-  FolderOpen,
+  FolderOpen, Layers,
   Pencil,
   Trash2,
   Wand2,
@@ -507,6 +509,21 @@ export default function Editor() {
   const [progress, setProgress] = useState(0);
   const [guideArranged, setGuideArranged] = useState(false);
   const [guidePreviewPlayed, setGuidePreviewPlayed] = useState(false);
+  const [commentaryGuideOpen, setCommentaryGuideOpen] = useState(() => isCommentaryGuideRequested(window.location.search));
+  const setCommentaryGuide = (open: boolean) => {
+    setCommentaryGuideOpen(open);
+    const params = new URLSearchParams(window.location.search);
+    if (open) params.set("guide", COMMENTARY_GUIDE_PARAM);
+    else if (params.get("guide") === COMMENTARY_GUIDE_PARAM) params.delete("guide");
+    const qs = params.toString();
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
+  };
+  useEffect(() => {
+    const open = () => setCommentaryGuide(true);
+    window.addEventListener("aibeatsync:open-commentary-guide", open);
+    return () => window.removeEventListener("aibeatsync:open-commentary-guide", open);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const musicInputRef = useRef<HTMLInputElement>(null);
@@ -1782,7 +1799,7 @@ export default function Editor() {
     }
   }
 
-  if (!isAuthenticated) return isAuthLoading ? null : <SignupTeaser variant="remix" />;
+  if (!isAuthenticated) return isAuthLoading ? null : <SignupTeaser variant="remix" returnTo={editorReturnTo(window.location.search)} />;
 
   return (
     <>
@@ -1830,7 +1847,7 @@ export default function Editor() {
           Turn your photos and clips into a polished video — the easy, AI-powered
           alternative to CapCut. Made for weddings, work, social — or just for fun.
         </p>
-        <div className="mt-4 flex flex-wrap items-center gap-2">
+        <div className="mt-4 flex flex-wrap items-center gap-2" data-commentary-guide="save">
           <Button size="sm" onClick={() => void saveProject()} disabled={savingProject}>
             {savingProject ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
             Save
@@ -1840,6 +1857,9 @@ export default function Editor() {
           </Button>
           <Button size="sm" variant="outline" onClick={openProjects}>
             <FolderOpen className="mr-2 h-4 w-4" /> Open project
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setCommentaryGuide(true)} aria-pressed={commentaryGuideOpen} data-testid="button-open-commentary-guide">
+            <Layers className="mr-2 h-4 w-4" /> Commentary guide
           </Button>
           <span className={hasUnsavedChanges ? "text-xs font-medium text-amber-600" : "text-xs font-medium text-emerald-600"}>
             {hasUnsavedChanges ? "Unsaved changes" : currentProject ? "Saved" : "No changes yet"}
@@ -1912,6 +1932,8 @@ export default function Editor() {
           for unlimited exports.
         </Card>
       )}
+
+      {commentaryGuideOpen && <CommentaryWalkthrough onClose={() => setCommentaryGuide(false)} />}
 
       {user && (
         <MontageWalkthrough
@@ -2045,7 +2067,11 @@ export default function Editor() {
         <TutorialTip id="remixlab" title="Montage Studio basics">
           Add your clips and photos, add music (upload, Suno, or from My Music), then arrange them on the
           timeline. To turn a narrated podcast or story into a still-image video, add the full audio, arrange your images in story order,
-          and set each image&apos;s hold time to match the narration. Detect the beat to auto-sync photo cuts, set a transition, and export —
+          and set each image&apos;s hold time to match the narration. Making a commentary or reaction video? Add an overlay clip or text cards in
+          Overlays &amp; text cards, or{" "}
+          <button type="button" className="font-medium text-primary underline-offset-4 hover:underline" onClick={() => setCommentaryGuide(true)} data-testid="button-start-commentary-guide">
+            start the commentary walkthrough
+          </button>. Detect the beat to auto-sync photo cuts, set a transition, and export —
           free on trial and for subscribers.
         </TutorialTip>
       </div>
