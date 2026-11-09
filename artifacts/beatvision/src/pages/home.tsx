@@ -473,6 +473,45 @@ export default function Home() {
           </div>
         </section>
 
+        <section id="creators-and-podcasters" aria-labelledby="creator-heading" className="border-y border-white/5 bg-primary/5 py-16 md:py-20">
+          <div className="container mx-auto max-w-5xl px-4">
+            <p className="mb-4 flex items-center gap-2 text-sm font-semibold text-primary">
+              <Mic2 className="h-5 w-5" aria-hidden="true" />
+              For content creators &amp; podcasters
+            </p>
+            <h2 id="creator-heading" className="max-w-3xl text-3xl font-bold tracking-tight text-white md:text-4xl">
+              Turn your podcast and commentary footage into finished videos
+            </h2>
+            <p className="mt-6 max-w-3xl text-lg leading-relaxed text-white/70">
+              Build reaction videos, video-podcast episodes, and commentary content in Montage Studio.
+              Keep your main footage on the timeline, add supporting clips with Commentary or Reaction
+              layouts, and highlight key points with timed text cards. Adjust each overlay&apos;s audio
+              independently, save your project, and export in 1080p—with Montage timelines up to 30 minutes.
+            </p>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <Link
+                href={isAuthenticated ? "/editor" : buildAuthUrl("/register", { returnTo: "/editor" })}
+                onClick={() => trackCTA("creators_podcasters", "start_commentary", "Start a commentary video")}
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-primary px-6 py-3 font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+                data-testid="link-start-commentary"
+              >
+                Start a commentary video <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </Link>
+              <Link
+                href="/tutorial/script-to-video#commentary-overlays"
+                onClick={() => trackCTA("creators_podcasters", "view_commentary_walkthrough", "See the walkthrough")}
+                className="inline-flex min-h-12 items-center justify-center rounded-lg border border-white/20 px-6 py-3 font-semibold text-white transition-colors hover:bg-white/5"
+                data-testid="link-commentary-walkthrough"
+              >
+                See the walkthrough
+              </Link>
+            </div>
+            <p className="mt-4 text-sm text-white/50">
+              The 30-minute limit applies to Montage Studio only. AI video generation has separate limits.
+            </p>
+          </div>
+        </section>
+
         {/* Karaoke Spotlight */}
         <section className="py-24 border-t border-white/5 relative overflow-hidden bg-black">
           <div className="absolute inset-0 bg-gradient-to-br from-pink-500/10 via-transparent to-primary/10 pointer-events-none z-0" />
