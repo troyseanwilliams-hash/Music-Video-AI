@@ -886,6 +886,28 @@ export interface ImageAssetListResponse {
   limit: number;
 }
 
+export interface AdminImageAsset {
+  id: string;
+  userId: string;
+  /** @nullable */
+  email: string | null;
+  jobId: string;
+  assetIndex: number;
+  objectPath: string;
+  prompt: string;
+  isPublic: boolean;
+  /** @nullable */
+  style: string | null;
+  createdAt: string;
+}
+
+export interface AdminImageAssetListResponse {
+  assets: AdminImageAsset[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 /**
  * Stable public generated-image data. Private generation prompts and owner IDs are intentionally omitted.
  */
@@ -1609,6 +1631,23 @@ export interface DashboardStats {
  * Opaque session token — `Bearer <sid>`.
  */
 export type AuthorizationSessionHeaderParameter = string;
+
+export type ListAdminImagesParams = {
+/**
+ * @minimum 1
+ */
+page?: number;
+/**
+ * @minimum 1
+ * @maximum 60
+ */
+limit?: number;
+/**
+ * Search image prompts and creator email addresses.
+ * @maxLength 160
+ */
+search?: string;
+};
 
 export type ListJobsParams = {
 /**

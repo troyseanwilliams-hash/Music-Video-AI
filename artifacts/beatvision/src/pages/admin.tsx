@@ -13,12 +13,14 @@ import {
   CircleDot, Clock, CheckCircle2, XCircle, RotateCcw, AlertTriangle, RefreshCw,
   Film, Ban, Trash2, Play, Music2, Sparkles, Scissors, Download, Mail,
   BarChart3, TrendingUp, Clock3, MousePointerClick, DollarSign, Share2, Gift, Copy, Mic2, Upload,
+  Image as ImageIcon,
 } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip,
   CartesianGrid, LineChart, Line, Legend,
 } from "recharts";
 import { useToast } from "@/hooks/use-toast";
+import AdminImagesPanel from "@/components/admin/AdminImagesPanel";
 
 /* ─── User management types ─── */
 interface AdminUser {
@@ -810,7 +812,7 @@ function AdminMusicPanel() {
 }
 
 /* ─── Main admin page ─── */
-type Tab = "analytics" | "users" | "support" | "jobs" | "deleted";
+type Tab = "analytics" | "users" | "images" | "support" | "jobs" | "deleted";
 
 interface DeletedVideo {
   id: string;
@@ -1887,6 +1889,17 @@ export default function AdminPage() {
           Users
         </button>
         <button
+          onClick={() => setTab("images")}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap ${
+            tab === "images"
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <ImageIcon className="h-4 w-4" />
+          Images
+        </button>
+        <button
           onClick={() => setTab("support")}
           className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
             tab === "support"
@@ -1927,6 +1940,7 @@ export default function AdminPage() {
       </div>
 
       {tab === "analytics" && <AnalyticsPanel />}
+      {tab === "images" && <AdminImagesPanel />}
 
       {/* ── Users tab ── */}
       {tab === "users" && (

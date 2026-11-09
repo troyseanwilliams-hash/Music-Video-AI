@@ -18,6 +18,48 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
+ * Returns non-deleted generated images and owner context to administrators only.
+ * @summary List generated images for community-guideline review
+ */
+export const listAdminImagesQueryPageDefault = 1;
+
+export const listAdminImagesQueryLimitDefault = 24;
+export const listAdminImagesQueryLimitMax = 60;
+
+export const listAdminImagesQuerySearchMax = 160;
+
+
+
+export const ListAdminImagesQueryParams = zod.object({
+  "page": zod.coerce.number().min(1).default(listAdminImagesQueryPageDefault),
+  "limit": zod.coerce.number().min(1).max(listAdminImagesQueryLimitMax).default(listAdminImagesQueryLimitDefault),
+  "search": zod.coerce.string().max(listAdminImagesQuerySearchMax).optional().describe('Search image prompts and creator email addresses.')
+})
+
+export const ListAdminImagesHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const ListAdminImagesResponse = zod.object({
+  "assets": zod.array(zod.object({
+  "id": zod.string(),
+  "userId": zod.string(),
+  "email": zod.string().nullable(),
+  "jobId": zod.string(),
+  "assetIndex": zod.number(),
+  "objectPath": zod.string(),
+  "prompt": zod.string(),
+  "isPublic": zod.boolean(),
+  "style": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
+})
+
+
+/**
  * @summary Get the currently authenticated user
  */
 export const GetCurrentAuthUserHeader = zod.object({

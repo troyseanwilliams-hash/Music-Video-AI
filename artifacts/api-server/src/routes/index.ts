@@ -30,6 +30,7 @@ import adminEmailCampaignsRouter from "./admin-email-campaigns.js";
 import podcastRouter from "./podcast.js";
 import narrationRouter from "./narration.js";
 import photoAnimationsRouter from "./photo-animations.js";
+import adminImagesRouter from "./admin-images.js";
 
 const router: IRouter = Router();
 
@@ -64,5 +65,6 @@ router.use(adminEmailCampaignsRouter);
 router.use(podcastRouter);
 router.use(narrationRouter);
 router.use(photoAnimationsRouter);
+router.use(adminImagesRouter);
 
 export default router;

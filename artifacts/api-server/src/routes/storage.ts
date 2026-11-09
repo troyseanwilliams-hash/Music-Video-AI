@@ -13,6 +13,14 @@ import { extensionForUploadContentType } from "../lib/uploadMime.js";
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
 
+function isAdminEmail(email: string | null | undefined): boolean {
+  return Boolean(
+    process.env.ADMIN_EMAIL
+      && email
+      && email.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase(),
+  );
+}
+
 /**
  * POST /storage/uploads/request-url
  *
@@ -127,7 +135,9 @@ router.get("/storage/objects/*path", async (req: Request, res: Response) => {
           or(
             eq(imageAssetsTable.isPublic, true),
             req.isAuthenticated()
-              ? eq(imageAssetsTable.userId, req.user.id)
+              ? isAdminEmail(req.user.email)
+                ? undefined
+                : eq(imageAssetsTable.userId, req.user.id)
               : undefined,
           ),
         ))
@@ -204,6 +214,12 @@ router.get("/storage/objects/*path", async (req: Request, res: Response) => {
 
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
+    if (
+      wildcardPath.startsWith("image-packs/")
+      || wildcardPath.startsWith("narrative-images/")
+    ) {
+      res.setHeader("Cache-Control", "private, no-store");
+    }
 
     if (response.body) {
       const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);

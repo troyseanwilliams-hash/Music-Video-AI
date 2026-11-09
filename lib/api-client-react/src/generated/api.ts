@@ -20,6 +20,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AdminImageAssetListResponse,
   AudioAnalysis,
   AudioAnalyzeRequest,
   AuthUserEnvelope,
@@ -49,6 +50,7 @@ import type {
   Job,
   JobListResponse,
   LikeResponse,
+  ListAdminImagesParams,
   ListGalleryParams,
   ListImageAssetsParams,
   ListJobsParams,
@@ -176,6 +178,91 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getHealthCheckQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListAdminImagesUrl = (params?: ListAdminImagesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/images?${stringifiedParams}` : `/api/admin/images`
+}
+
+/**
+ * Returns non-deleted generated images and owner context to administrators only.
+ * @summary List generated images for community-guideline review
+ */
+export const listAdminImages = async (params?: ListAdminImagesParams, options?: RequestInit): Promise<AdminImageAssetListResponse> => {
+
+  return customFetch<AdminImageAssetListResponse>(getListAdminImagesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAdminImagesQueryKey = (params?: ListAdminImagesParams,) => {
+    return [
+    `/api/admin/images`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListAdminImagesQueryOptions = <TData = Awaited<ReturnType<typeof listAdminImages>>, TError = ErrorType<ErrorEnvelope>>(params?: ListAdminImagesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAdminImages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAdminImagesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAdminImages>>> = ({ signal }) => listAdminImages(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAdminImages>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAdminImagesQueryResult = NonNullable<Awaited<ReturnType<typeof listAdminImages>>>
+export type ListAdminImagesQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary List generated images for community-guideline review
+ */
+
+export function useListAdminImages<TData = Awaited<ReturnType<typeof listAdminImages>>, TError = ErrorType<ErrorEnvelope>>(
+ params?: ListAdminImagesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAdminImages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAdminImagesQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

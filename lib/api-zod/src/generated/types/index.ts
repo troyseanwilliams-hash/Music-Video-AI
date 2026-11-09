@@ -6,6 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './adminImageAsset';
+export * from './adminImageAssetListResponse';
 export * from './audioAnalysis';
 export * from './audioAnalysisSectionsItem';
 export * from './audioAnalyzeRequest';
@@ -83,6 +85,7 @@ export * from './jobStoryboard';
 export * from './jobStoryboardGenerationMode';
 export * from './jobStoryboardShot';
 export * from './likeResponse';
+export * from './listAdminImagesParams';
 export * from './listGalleryParams';
 export * from './listImageAssetsParams';
 export * from './listJobsParams';
