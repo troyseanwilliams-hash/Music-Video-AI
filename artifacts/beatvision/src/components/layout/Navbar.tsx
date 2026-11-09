@@ -89,7 +89,7 @@ export function Navbar() {
                 <Link
                   key={l.href}
                   href={l.href}
-                  className={`text-sm font-medium transition-colors hover:text-primary ${location === l.href ? 'text-foreground' : 'text-muted-foreground'}`}
+                  className={`whitespace-nowrap text-sm font-medium transition-colors hover:text-primary ${location === l.href ? 'text-foreground' : 'text-muted-foreground'}`}
                 >
                   {l.label}
                 </Link>
