@@ -1705,6 +1705,18 @@ components:
         fontSize: { type: number, minimum: 0.01, maximum: 0.15 }
         color: { type: string, pattern: '^#[0-9a-fA-F]{6}$' }
         backgroundColor: { type: string, pattern: '^#[0-9a-fA-F]{6}$' }
+    StudioAudioClip:
+      type: object
+      additionalProperties: false
+      required: [id, name, objectPath, startSec, durationSec, trimStart, volume]
+      properties:
+        id: { type: string, minLength: 1, maxLength: 100 }
+        name: { type: string, minLength: 1, maxLength: 120 }
+        objectPath: { type: string, minLength: 1 }
+        startSec: { type: number, minimum: 0, maximum: 1800 }
+        durationSec: { type: number, exclusiveMinimum: 0, maximum: 1800 }
+        trimStart: { type: number, minimum: 0, maximum: 1800 }
+        volume: { type: number, minimum: 0, maximum: 1 }
     StudioMusic:
       type: object
       additionalProperties: false
@@ -1729,6 +1741,10 @@ components:
       required: [version, segments, transition, resolution, orientation, videoName, sourceVideoId, karaokeEnabled, lyricsText, lyricsSyncSource, beatsPerPhoto]
       properties:
         version: { type: integer, const: 1 }
+        audioClips:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/StudioAudioClip' }
         overlays:
           type: array
           maxItems: 100

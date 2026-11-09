@@ -149,6 +149,7 @@ async function validateOwnedEditorMedia(
   userId: string,
   segments: EditorMediaSegment[],
   music?: EditorMusicReference | null,
+  audioClips: EditorMusicReference[] = [],
 ): Promise<string | null> {
   const imagePaths = [...new Set(segments.filter((s) => s.kind === "photo").map((s) => s.objectPath))];
   const videoPaths = [...new Set(segments.filter((s) => s.kind === "video").map((s) => s.objectPath))];
@@ -181,20 +182,21 @@ async function validateOwnedEditorMedia(
     }
   }
 
-  if (music) {
-    const musicPath = music.objectPath;
+  const audioReferences = [...(music ? [music] : []), ...audioClips];
+  for (const audio of audioReferences) {
+    const musicPath = audio.objectPath;
     const ownerScoped = musicPath.startsWith(userUploadPrefix) || musicPath.startsWith(userAudioPrefix);
     const [track] = ownerScoped ? [] : await db.select({ id: soundtracksTable.id }).from(soundtracksTable).where(and(
       eq(soundtracksTable.userId, userId),
       eq(soundtracksTable.objectPath, musicPath),
       isNull(soundtracksTable.deletedAt),
     )).limit(1);
-    if (!ownerScoped && !track) return `The music track “${music.name ?? "Selected music"}” is no longer available.`;
+    if (!ownerScoped && !track) return `The music track “${audio.name ?? "Selected music"}” is no longer available.`;
   }
 
   const paths = [...new Set([
     ...segments.map((segment) => segment.objectPath),
-    ...(music ? [music.objectPath] : []),
+    ...audioReferences.map((audio) => audio.objectPath),
   ])];
   const available = await Promise.all(paths.map(ensureStored));
   const missingIndex = available.findIndex((value) => !value);
@@ -205,7 +207,7 @@ async function validateProjectMedia(userId: string, manifest: ProjectManifest): 
   const mediaError = await validateOwnedEditorMedia(userId, [
     ...manifest.segments,
     ...(manifest.overlays ?? []).map((layer) => ({ ...layer, kind: layer.kind === "image" ? "photo" as const : "video" as const })),
-  ], manifest.music);
+  ], manifest.music, manifest.audioClips);
   if (mediaError) return mediaError;
   const sourceIds = [...new Set([
     ...manifest.segments.flatMap((segment) => segment.sourceVideoId ? [segment.sourceVideoId] : []),
@@ -395,7 +397,7 @@ router.post("/studio/render", async (req, res) => {
   const mediaError = await validateOwnedEditorMedia(req.user.id, [
     ...input.segments,
     ...(input.overlays ?? []).map((layer) => ({ ...layer, kind: layer.kind === "image" ? "photo" as const : "video" as const })),
-  ], input.music);
+  ], input.music, input.audioClips);
   if (mediaError) {
     res.status(403).json({ error: mediaError, code: "EDITOR_MEDIA_UNAVAILABLE" });
     return;
@@ -529,6 +531,7 @@ router.post("/studio/render", async (req, res) => {
       segments: input.segments,
       overlays: input.overlays,
       textCards: input.textCards,
+      audioClips: input.audioClips,
       music: input.music,
       transition,
       resolution,

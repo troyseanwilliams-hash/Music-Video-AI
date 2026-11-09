@@ -26,6 +26,7 @@ import { generateLipsync, lipsyncAvailable } from "./lipsync.js";
 import { stitchVideoClips, extractVideoThumbnail, applyWatermark, createWebPreview } from "./videoStitcher.js";
 import { stitchEditorTimeline } from "./editorStitcher.js";
 import type { EditorVideoOverlay, EditorTextCard, EditorOverlayInput } from "./editorLayers.js";
+import type { EditorAudioClip, EditorAudioClipInput } from "./editorAudioClips.js";
 import { resolveMontageSequence, resolveStrictMontageSequence } from "./montageSequence.js";
 import { assertStrictUniqueMedia, perceptualFingerprint } from "./mediaUniqueness.js";
 import {
@@ -3585,6 +3586,7 @@ function extFromObjectPath(objectPath: string, fallback: string): string {
 interface EditorManifest {
   overlays?: EditorVideoOverlay[];
   textCards?: EditorTextCard[];
+  audioClips?: EditorAudioClip[];
   segments: { objectPath: string; kind: "video" | "photo"; durationSec: number; trimStart?: number; trimEnd?: number }[];
   music?: { objectPath: string; mode: "mix" | "replace"; volume: number; loop?: boolean; fade?: boolean };
   transition?: { type: string; durationSec: number };
@@ -3636,13 +3638,19 @@ async function processEditorJob(job: JobRow): Promise<void> {
     if (segments.length === 0) {
       throw new Error("None of the timeline files could be read — nothing to render");
     }
-    if (removedFiles.length && (manifest.overlays?.length || manifest.textCards?.length)) {
+    if (removedFiles.length && (manifest.overlays?.length || manifest.textCards?.length || manifest.audioClips?.length)) {
       throw new Error("A main timeline file is missing. Restore it before exporting timed overlays.");
     }
     const overlays: EditorOverlayInput[] = [];
     for (const layer of manifest.overlays ?? []) {
       const buffer = await storageService.downloadObjectBuffer(layer.objectPath);
       overlays.push({ ...layer, buffer, ext: extFromObjectPath(layer.objectPath, layer.kind === "image" ? "png" : "mp4") });
+    }
+
+    const audioClips: EditorAudioClipInput[] = [];
+    for (const clip of manifest.audioClips ?? []) {
+      const buffer = await storageService.downloadObjectBuffer(clip.objectPath);
+      audioClips.push({ ...clip, buffer, ext: extFromObjectPath(clip.objectPath, "mp3") });
     }
 
     let music;
@@ -3691,6 +3699,7 @@ async function processEditorJob(job: JobRow): Promise<void> {
       segments,
       overlays,
       textCards: manifest.textCards,
+      audioClips,
       onLayerProgress: (done, total) => {
         const pct = 70 + Math.round(done / Math.max(1, total) * 15);
         if (pct > lastEditorPct) {

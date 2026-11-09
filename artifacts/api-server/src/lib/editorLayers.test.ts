@@ -63,6 +63,20 @@ const timingSchema = z.object({
 }).superRefine(validateEditorTiming);
 
 describe("Montage layer contracts", () => {
+  it("round-trips timed music and rejects invalid, out-of-bounds or overcrowded slots", () => {
+    const clip = { id: "intro", name: "Intro", objectPath: "/objects/audio/intro",
+      startSec: 0, durationSec: 5, trimStart: 1.25, volume: 0.25 };
+    const input = { segments: [{ kind: "video", durationSec: 20 }], audioClips: [
+      clip, { ...clip, id: "later", startSec: 12.5 },
+    ] };
+    expect(timingSchema.parse(JSON.parse(JSON.stringify(input)))).toEqual(input);
+    for (const patch of [{ durationSec: 0 }, { startSec: -1 }, { trimStart: -1 },
+      { volume: 2 }, { startSec: 19 }, { startSec: NaN }]) {
+      expect(timingSchema.safeParse({ ...input, audioClips: [{ ...clip, ...patch }] }).success).toBe(false);
+    }
+    expect(timingSchema.safeParse({ ...input, audioClips: Array.from({ length: 5 }, (_, i) => ({ ...clip, id: String(i) })) }).success).toBe(false);
+    expect(timingSchema.safeParse({ ...input, audioClips: Array.from({ length: 101 }, (_, i) => ({ ...clip, id: String(i) })) }).success).toBe(false);
+  });
   it("preserves multiple mixed-media time slots through saved JSON and validation", () => {
     const { buffer: _, ...video } = layer(Buffer.alloc(0));
     const input = { segments: [{ kind: "video", durationSec: 20 }], overlays: [
@@ -93,6 +107,65 @@ describe("Montage layer contracts", () => {
 });
 
 describe("Montage layer exports", () => {
+  it("keeps soundtrack and overlay sound while timed music clips overlap", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "music-mix-test-"));
+    try {
+      const main = await fixture(3, "blue", 440);
+      const overlay = await fixture(2, "red", 880, true);
+      const song = await fixture(3, "black", 1320);
+      const background = await fixture(3, "black", 220);
+      const clip = { id: "one", name: "Song", objectPath: "/objects/audio/song",
+        startSec: 0.5, durationSec: 1, trimStart: 0, volume: 0.25, buffer: song, ext: "mp4" };
+      const result = await stitchEditorTimeline({
+        segments: [{ buffer: main, kind: "video", durationSec: 3 }], width: 320, height: 180,
+        overlays: [layer(overlay, { durationSec: 1.5, volume: 0.25 })],
+        music: { buffer: background, ext: "mp4", mode: "mix", volume: 0.25 },
+        audioClips: [clip, { ...clip, id: "two", startSec: 1, volume: 0.25 }],
+      });
+      const path = join(dir, "out.mp4");
+      await writeFile(path, result.videoBuffer);
+      for (const frequency of [220, 440, 880, 1320])
+        expect(await amplitude(path, 1.1, frequency)).toBeGreaterThan(0.006);
+      expect(await amplitude(path, 2.3, 1320)).toBeLessThan(0.005);
+      expect(await amplitude(path, 2.3, 220)).toBeGreaterThan(0.006);
+      expect(pixel(await frame(path, 1.1), 260, 80)[0]).toBeGreaterThan(200);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  }, 120_000);
+
+  it("mixes repeated timed music with source offsets, silence between slots and independent volume", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "timed-music-test-"));
+    try {
+      const main = await fixture(6, "blue", 440);
+      const song = await command("ffmpeg", ["-v", "error", "-f", "lavfi", "-i",
+        "aevalsrc=0.125*sin(2*PI*if(lt(t\\,1.5)\\,880\\,1320)*t):s=48000:d=4",
+        "-f", "wav", "pipe:1"]);
+      const clip = { id: "intro", name: "Music", objectPath: "/objects/audio/track",
+        startSec: 0.5, durationSec: 1, trimStart: 0, volume: 0.25, buffer: song, ext: "wav" };
+      const result = await stitchEditorTimeline({
+        segments: [{ buffer: main, kind: "video", durationSec: 6 }], width: 320, height: 180,
+        audioClips: [clip, { ...clip, id: "later", startSec: 2, trimStart: 2, volume: 1 },
+          { ...clip, id: "muted", startSec: 4, volume: 0 }],
+      });
+      const path = join(dir, "out.mp4");
+      await writeFile(path, result.videoBuffer);
+      expect(await amplitude(path, 0.7, 880)).toBeGreaterThan(0.008);
+      expect(await amplitude(path, 0.7, 880)).toBeLessThan(0.025);
+      expect(await amplitude(path, 2.3, 1320)).toBeGreaterThan(0.035);
+      expect(await amplitude(path, 2.3, 880)).toBeLessThan(0.005);
+      for (const time of [0.1, 1.7, 3.3, 4.3, 5.5]) {
+        expect(await amplitude(path, time, 880)).toBeLessThan(0.005);
+        expect(await amplitude(path, time, 1320)).toBeLessThan(0.005);
+        expect(await amplitude(path, time, 440)).toBeGreaterThan(0.035);
+      }
+      expect(pixel(await frame(path, 5.5), 100, 80)[2]).toBeGreaterThan(200);
+      expect(result.durationSeconds).toBeCloseTo(6, 1);
+      await expect(stitchEditorTimeline({
+        segments: [{ buffer: main, kind: "video", durationSec: 6 }], width: 320, height: 180,
+        audioClips: [{ ...clip, trimStart: 3.5 }],
+      })).rejects.toThrow("shorter than its selected time slot");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  }, 120_000);
+
   it("renders multiple video and static-image slots at saved times, including overlap", async () => {
     const dir = await mkdtemp(join(tmpdir(), "layers-mixed-"));
     try {

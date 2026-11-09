@@ -11,6 +11,12 @@ The user confirmed the overlay workflow works well and wants multiple video and 
 
 **How to apply:** Keep the existing overlay workflow; treat static images as timed layers alongside clips, not additional main-timeline segments.
 
+Music also needs independent, reusable time slots (for example, a five-second intro and another clip later), saved for final rendering. Keep these separate from the continuous soundtrack.
+
+**Why:** The user wants music at specific moments like visual overlays, rather than having to replace the whole video's music.
+
+**How to apply:** Preserve the continuous soundtrack's behavior and source audio while mixing timed music; validate each slot against both the song and main timeline.
+
 **Why:** The user approved this approach to the attached commentary-video punch list, specifically to avoid needing a separate editor.
 
 **How to apply:** Preserve legacy projects and existing billing when extending Montage. Keep complete source clips visible by default, including embedded creator watermarks; rounding and borders are explicit choices, not default cropping.

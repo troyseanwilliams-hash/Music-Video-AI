@@ -5,6 +5,7 @@
  * BeatVision AI API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { StudioAudioClip } from './studioAudioClip';
 import type { StudioMusic } from './studioMusic';
 import type { StudioProjectManifestLyricsSyncSource } from './studioProjectManifestLyricsSyncSource';
 import type { StudioProjectManifestOrientation } from './studioProjectManifestOrientation';
@@ -16,6 +17,8 @@ import type { StudioVideoOverlay } from './studioVideoOverlay';
 
 export interface StudioProjectManifest {
   version: 1;
+  /** @maxItems 100 */
+  audioClips?: StudioAudioClip[];
   /** @maxItems 100 */
   overlays?: StudioVideoOverlay[];
   /** @maxItems 100 */

@@ -2113,6 +2113,25 @@ export const CreateStudioProjectHeader = zod.object({
 
 export const createStudioProjectBodyNameMax = 120;
 
+export const createStudioProjectBodyManifestAudioClipsItemIdMax = 100;
+
+export const createStudioProjectBodyManifestAudioClipsItemNameMax = 120;
+
+
+export const createStudioProjectBodyManifestAudioClipsItemStartSecMin = 0;
+export const createStudioProjectBodyManifestAudioClipsItemStartSecMax = 1800;
+
+export const createStudioProjectBodyManifestAudioClipsItemDurationSecExclusiveMin = 0;
+export const createStudioProjectBodyManifestAudioClipsItemDurationSecMax = 1800;
+
+export const createStudioProjectBodyManifestAudioClipsItemTrimStartMin = 0;
+export const createStudioProjectBodyManifestAudioClipsItemTrimStartMax = 1800;
+
+export const createStudioProjectBodyManifestAudioClipsItemVolumeMin = 0;
+export const createStudioProjectBodyManifestAudioClipsItemVolumeMax = 1;
+
+export const createStudioProjectBodyManifestAudioClipsMax = 100;
+
 export const createStudioProjectBodyManifestOverlaysItemIdMax = 100;
 
 export const createStudioProjectBodyManifestOverlaysItemNameMax = 120;
@@ -2210,6 +2229,15 @@ export const CreateStudioProjectBody = zod.object({
   "name": zod.string().min(1).max(createStudioProjectBodyNameMax),
   "manifest": zod.object({
   "version": zod.number(),
+  "audioClips": zod.array(zod.object({
+  "id": zod.string().min(1).max(createStudioProjectBodyManifestAudioClipsItemIdMax),
+  "name": zod.string().min(1).max(createStudioProjectBodyManifestAudioClipsItemNameMax),
+  "objectPath": zod.string().min(1),
+  "startSec": zod.number().min(createStudioProjectBodyManifestAudioClipsItemStartSecMin).max(createStudioProjectBodyManifestAudioClipsItemStartSecMax),
+  "durationSec": zod.number().gt(createStudioProjectBodyManifestAudioClipsItemDurationSecExclusiveMin).max(createStudioProjectBodyManifestAudioClipsItemDurationSecMax),
+  "trimStart": zod.number().min(createStudioProjectBodyManifestAudioClipsItemTrimStartMin).max(createStudioProjectBodyManifestAudioClipsItemTrimStartMax),
+  "volume": zod.number().min(createStudioProjectBodyManifestAudioClipsItemVolumeMin).max(createStudioProjectBodyManifestAudioClipsItemVolumeMax)
+})).max(createStudioProjectBodyManifestAudioClipsMax).optional(),
   "overlays": zod.array(zod.object({
   "kind": zod.enum(['video', 'image']).optional().describe('Omitted for legacy video overlays. Images display for durationSec with no audio or source trim.'),
   "id": zod.string().min(1).max(createStudioProjectBodyManifestOverlaysItemIdMax),
@@ -2270,6 +2298,25 @@ export const CreateStudioProjectBody = zod.object({
   "beatsPerPhoto": zod.number().gt(createStudioProjectBodyManifestBeatsPerPhotoExclusiveMin).max(createStudioProjectBodyManifestBeatsPerPhotoMax)
 })
 })
+
+export const createStudioProjectResponseManifestAudioClipsItemIdMax = 100;
+
+export const createStudioProjectResponseManifestAudioClipsItemNameMax = 120;
+
+
+export const createStudioProjectResponseManifestAudioClipsItemStartSecMin = 0;
+export const createStudioProjectResponseManifestAudioClipsItemStartSecMax = 1800;
+
+export const createStudioProjectResponseManifestAudioClipsItemDurationSecExclusiveMin = 0;
+export const createStudioProjectResponseManifestAudioClipsItemDurationSecMax = 1800;
+
+export const createStudioProjectResponseManifestAudioClipsItemTrimStartMin = 0;
+export const createStudioProjectResponseManifestAudioClipsItemTrimStartMax = 1800;
+
+export const createStudioProjectResponseManifestAudioClipsItemVolumeMin = 0;
+export const createStudioProjectResponseManifestAudioClipsItemVolumeMax = 1;
+
+export const createStudioProjectResponseManifestAudioClipsMax = 100;
 
 export const createStudioProjectResponseManifestOverlaysItemIdMax = 100;
 
@@ -2369,6 +2416,15 @@ export const CreateStudioProjectResponse = zod.object({
   "name": zod.string(),
   "manifest": zod.object({
   "version": zod.number(),
+  "audioClips": zod.array(zod.object({
+  "id": zod.string().min(1).max(createStudioProjectResponseManifestAudioClipsItemIdMax),
+  "name": zod.string().min(1).max(createStudioProjectResponseManifestAudioClipsItemNameMax),
+  "objectPath": zod.string().min(1),
+  "startSec": zod.number().min(createStudioProjectResponseManifestAudioClipsItemStartSecMin).max(createStudioProjectResponseManifestAudioClipsItemStartSecMax),
+  "durationSec": zod.number().gt(createStudioProjectResponseManifestAudioClipsItemDurationSecExclusiveMin).max(createStudioProjectResponseManifestAudioClipsItemDurationSecMax),
+  "trimStart": zod.number().min(createStudioProjectResponseManifestAudioClipsItemTrimStartMin).max(createStudioProjectResponseManifestAudioClipsItemTrimStartMax),
+  "volume": zod.number().min(createStudioProjectResponseManifestAudioClipsItemVolumeMin).max(createStudioProjectResponseManifestAudioClipsItemVolumeMax)
+})).max(createStudioProjectResponseManifestAudioClipsMax).optional(),
   "overlays": zod.array(zod.object({
   "kind": zod.enum(['video', 'image']).optional().describe('Omitted for legacy video overlays. Images display for durationSec with no audio or source trim.'),
   "id": zod.string().min(1).max(createStudioProjectResponseManifestOverlaysItemIdMax),
@@ -2444,6 +2500,25 @@ export const GetStudioProjectParams = zod.object({
 export const GetStudioProjectHeader = zod.object({
   "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
 })
+
+export const getStudioProjectResponseManifestAudioClipsItemIdMax = 100;
+
+export const getStudioProjectResponseManifestAudioClipsItemNameMax = 120;
+
+
+export const getStudioProjectResponseManifestAudioClipsItemStartSecMin = 0;
+export const getStudioProjectResponseManifestAudioClipsItemStartSecMax = 1800;
+
+export const getStudioProjectResponseManifestAudioClipsItemDurationSecExclusiveMin = 0;
+export const getStudioProjectResponseManifestAudioClipsItemDurationSecMax = 1800;
+
+export const getStudioProjectResponseManifestAudioClipsItemTrimStartMin = 0;
+export const getStudioProjectResponseManifestAudioClipsItemTrimStartMax = 1800;
+
+export const getStudioProjectResponseManifestAudioClipsItemVolumeMin = 0;
+export const getStudioProjectResponseManifestAudioClipsItemVolumeMax = 1;
+
+export const getStudioProjectResponseManifestAudioClipsMax = 100;
 
 export const getStudioProjectResponseManifestOverlaysItemIdMax = 100;
 
@@ -2543,6 +2618,15 @@ export const GetStudioProjectResponse = zod.object({
   "name": zod.string(),
   "manifest": zod.object({
   "version": zod.number(),
+  "audioClips": zod.array(zod.object({
+  "id": zod.string().min(1).max(getStudioProjectResponseManifestAudioClipsItemIdMax),
+  "name": zod.string().min(1).max(getStudioProjectResponseManifestAudioClipsItemNameMax),
+  "objectPath": zod.string().min(1),
+  "startSec": zod.number().min(getStudioProjectResponseManifestAudioClipsItemStartSecMin).max(getStudioProjectResponseManifestAudioClipsItemStartSecMax),
+  "durationSec": zod.number().gt(getStudioProjectResponseManifestAudioClipsItemDurationSecExclusiveMin).max(getStudioProjectResponseManifestAudioClipsItemDurationSecMax),
+  "trimStart": zod.number().min(getStudioProjectResponseManifestAudioClipsItemTrimStartMin).max(getStudioProjectResponseManifestAudioClipsItemTrimStartMax),
+  "volume": zod.number().min(getStudioProjectResponseManifestAudioClipsItemVolumeMin).max(getStudioProjectResponseManifestAudioClipsItemVolumeMax)
+})).max(getStudioProjectResponseManifestAudioClipsMax).optional(),
   "overlays": zod.array(zod.object({
   "kind": zod.enum(['video', 'image']).optional().describe('Omitted for legacy video overlays. Images display for durationSec with no audio or source trim.'),
   "id": zod.string().min(1).max(getStudioProjectResponseManifestOverlaysItemIdMax),
@@ -2620,6 +2704,25 @@ export const UpdateStudioProjectHeader = zod.object({
 })
 
 export const updateStudioProjectBodyNameMax = 120;
+
+export const updateStudioProjectBodyManifestAudioClipsItemIdMax = 100;
+
+export const updateStudioProjectBodyManifestAudioClipsItemNameMax = 120;
+
+
+export const updateStudioProjectBodyManifestAudioClipsItemStartSecMin = 0;
+export const updateStudioProjectBodyManifestAudioClipsItemStartSecMax = 1800;
+
+export const updateStudioProjectBodyManifestAudioClipsItemDurationSecExclusiveMin = 0;
+export const updateStudioProjectBodyManifestAudioClipsItemDurationSecMax = 1800;
+
+export const updateStudioProjectBodyManifestAudioClipsItemTrimStartMin = 0;
+export const updateStudioProjectBodyManifestAudioClipsItemTrimStartMax = 1800;
+
+export const updateStudioProjectBodyManifestAudioClipsItemVolumeMin = 0;
+export const updateStudioProjectBodyManifestAudioClipsItemVolumeMax = 1;
+
+export const updateStudioProjectBodyManifestAudioClipsMax = 100;
 
 export const updateStudioProjectBodyManifestOverlaysItemIdMax = 100;
 
@@ -2718,6 +2821,15 @@ export const UpdateStudioProjectBody = zod.object({
   "name": zod.string().min(1).max(updateStudioProjectBodyNameMax).optional(),
   "manifest": zod.object({
   "version": zod.number(),
+  "audioClips": zod.array(zod.object({
+  "id": zod.string().min(1).max(updateStudioProjectBodyManifestAudioClipsItemIdMax),
+  "name": zod.string().min(1).max(updateStudioProjectBodyManifestAudioClipsItemNameMax),
+  "objectPath": zod.string().min(1),
+  "startSec": zod.number().min(updateStudioProjectBodyManifestAudioClipsItemStartSecMin).max(updateStudioProjectBodyManifestAudioClipsItemStartSecMax),
+  "durationSec": zod.number().gt(updateStudioProjectBodyManifestAudioClipsItemDurationSecExclusiveMin).max(updateStudioProjectBodyManifestAudioClipsItemDurationSecMax),
+  "trimStart": zod.number().min(updateStudioProjectBodyManifestAudioClipsItemTrimStartMin).max(updateStudioProjectBodyManifestAudioClipsItemTrimStartMax),
+  "volume": zod.number().min(updateStudioProjectBodyManifestAudioClipsItemVolumeMin).max(updateStudioProjectBodyManifestAudioClipsItemVolumeMax)
+})).max(updateStudioProjectBodyManifestAudioClipsMax).optional(),
   "overlays": zod.array(zod.object({
   "kind": zod.enum(['video', 'image']).optional().describe('Omitted for legacy video overlays. Images display for durationSec with no audio or source trim.'),
   "id": zod.string().min(1).max(updateStudioProjectBodyManifestOverlaysItemIdMax),
@@ -2778,6 +2890,25 @@ export const UpdateStudioProjectBody = zod.object({
   "beatsPerPhoto": zod.number().gt(updateStudioProjectBodyManifestBeatsPerPhotoExclusiveMin).max(updateStudioProjectBodyManifestBeatsPerPhotoMax)
 }).optional()
 })
+
+export const updateStudioProjectResponseManifestAudioClipsItemIdMax = 100;
+
+export const updateStudioProjectResponseManifestAudioClipsItemNameMax = 120;
+
+
+export const updateStudioProjectResponseManifestAudioClipsItemStartSecMin = 0;
+export const updateStudioProjectResponseManifestAudioClipsItemStartSecMax = 1800;
+
+export const updateStudioProjectResponseManifestAudioClipsItemDurationSecExclusiveMin = 0;
+export const updateStudioProjectResponseManifestAudioClipsItemDurationSecMax = 1800;
+
+export const updateStudioProjectResponseManifestAudioClipsItemTrimStartMin = 0;
+export const updateStudioProjectResponseManifestAudioClipsItemTrimStartMax = 1800;
+
+export const updateStudioProjectResponseManifestAudioClipsItemVolumeMin = 0;
+export const updateStudioProjectResponseManifestAudioClipsItemVolumeMax = 1;
+
+export const updateStudioProjectResponseManifestAudioClipsMax = 100;
 
 export const updateStudioProjectResponseManifestOverlaysItemIdMax = 100;
 
@@ -2877,6 +3008,15 @@ export const UpdateStudioProjectResponse = zod.object({
   "name": zod.string(),
   "manifest": zod.object({
   "version": zod.number(),
+  "audioClips": zod.array(zod.object({
+  "id": zod.string().min(1).max(updateStudioProjectResponseManifestAudioClipsItemIdMax),
+  "name": zod.string().min(1).max(updateStudioProjectResponseManifestAudioClipsItemNameMax),
+  "objectPath": zod.string().min(1),
+  "startSec": zod.number().min(updateStudioProjectResponseManifestAudioClipsItemStartSecMin).max(updateStudioProjectResponseManifestAudioClipsItemStartSecMax),
+  "durationSec": zod.number().gt(updateStudioProjectResponseManifestAudioClipsItemDurationSecExclusiveMin).max(updateStudioProjectResponseManifestAudioClipsItemDurationSecMax),
+  "trimStart": zod.number().min(updateStudioProjectResponseManifestAudioClipsItemTrimStartMin).max(updateStudioProjectResponseManifestAudioClipsItemTrimStartMax),
+  "volume": zod.number().min(updateStudioProjectResponseManifestAudioClipsItemVolumeMin).max(updateStudioProjectResponseManifestAudioClipsItemVolumeMax)
+})).max(updateStudioProjectResponseManifestAudioClipsMax).optional(),
   "overlays": zod.array(zod.object({
   "kind": zod.enum(['video', 'image']).optional().describe('Omitted for legacy video overlays. Images display for durationSec with no audio or source trim.'),
   "id": zod.string().min(1).max(updateStudioProjectResponseManifestOverlaysItemIdMax),

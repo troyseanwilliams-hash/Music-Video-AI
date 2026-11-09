@@ -63,6 +63,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { OverlayStage } from "@/components/montage/OverlayStage";
 import { OverlayPanel } from "@/components/montage/OverlayPanel";
 import { OverlayTimeline } from "@/components/montage/OverlayTimeline";
+import { AudioClipPanel } from "@/components/montage/AudioClipPanel";
+import { AudioClipPlayer } from "@/components/montage/AudioClipPlayer";
+import { AudioClipTimeline } from "@/components/montage/AudioClipTimeline";
+import {
+  normalizeAudioClipList,
+  serializeAudioClips,
+  validateAudioClips,
+  type AudioClip,
+} from "@/components/montage/audioClipTypes";
 import {
   MAX_TIMELINE_SEC,
   validateLayers,
@@ -187,6 +196,7 @@ interface ProjectManifest {
   beatsPerPhoto: number;
   overlays?: VideoOverlay[];
   textCards?: TextCard[];
+  audioClips?: AudioClip[];
 }
 
 function projectError(data: unknown, fallback: string) {
@@ -411,6 +421,16 @@ export default function Editor() {
   const [overlays, setOverlays] = useState<VideoOverlay[]>([]);
   const [textCards, setTextCards] = useState<TextCard[]>([]);
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
+  const [audioClips, setAudioClips] = useState<AudioClip[]>([]);
+  const [selectedAudioClipId, setSelectedAudioClipId] = useState<string | null>(null);
+  const [audioSourceDurations, setAudioSourceDurations] = useState<Record<string, number>>({});
+  const [audioClipEpoch, setAudioClipEpoch] = useState(0);
+  const [audioClipUploadsPending, setAudioClipUploadsPending] = useState(false);
+  const [audioSourceErrors, setAudioSourceErrors] = useState<Record<string, boolean>>({});
+  const recordAudioSourceError = (objectPath: string) =>
+    setAudioSourceErrors((prev) => (prev[objectPath] ? prev : { ...prev, [objectPath]: true }));
+  const recordAudioSourceDuration = (objectPath: string, sec: number) =>
+    setAudioSourceDurations((prev) => (prev[objectPath] === sec ? prev : { ...prev, [objectPath]: sec }));
   const [music, setMusic] = useState<MusicTrack | null>(null);
   const [transition, setTransition] = useState("none");
   const [transitionDuration, setTransitionDuration] = useState(0.5);
@@ -867,7 +887,8 @@ export default function Editor() {
     hasKaraoke: karaokeEnabled && !!lyricsText.trim(),
   });
   const layerIssues = validateLayers(overlays, textCards, totalDuration);
-  const uploadsPending = segments.some((s) => s.uploading) || music?.uploading;
+  const audioClipIssues = validateAudioClips(audioClips, totalDuration, audioSourceDurations);
+  const uploadsPending = segments.some((s) => s.uploading) || music?.uploading || audioClipUploadsPending;
 
   const projectManifest: ProjectManifest = {
     version: 1,
@@ -878,11 +899,12 @@ export default function Editor() {
     transition: { type: transition, durationSec: transitionDuration },
     resolution, orientation, videoName, sourceVideoId, karaokeEnabled, lyricsText, lyricsSyncSource, beatsPerPhoto,
     overlays, textCards,
+    audioClips: serializeAudioClips(audioClips),
   };
   const serializedManifest = JSON.stringify(projectManifest);
   const hasUnsavedChanges = savedManifest !== null
     ? savedManifest !== serializedManifest
-    : segments.length > 0 || !!music || !!videoName || karaokeEnabled || !!lyricsText || overlays.length > 0 || textCards.length > 0;
+    : segments.length > 0 || !!music || !!videoName || karaokeEnabled || !!lyricsText || overlays.length > 0 || textCards.length > 0 || audioClips.length > 0;
 
   function applyProject(project: { id: string; name: string; createdAt: string; updatedAt: string; lastVideoId?: string; manifest?: unknown }) {
     const manifest = project.manifest as Partial<ProjectManifest> | undefined;
@@ -911,10 +933,14 @@ export default function Editor() {
     }
     const restoredOverlays = normalizeOverlayList(manifest.overlays);
     const restoredTextCards = normalizeTextCardList(manifest.textCards);
+    const restoredAudioClips = normalizeAudioClipList(manifest.audioClips);
     setSegments(restored);
     setOverlays(restoredOverlays);
     setTextCards(restoredTextCards);
     setSelectedOverlayId(null);
+    setAudioClips(restoredAudioClips);
+    setSelectedAudioClipId(null);
+    setAudioClipEpoch((e) => e + 1);
     setMusic(restoredMusic ? { ...restoredMusic, localUrl: `/api/storage${restoredMusic.objectPath}`, uploading: false } : null);
     const restoredTransition = typeof manifest.transition?.type === "string" ? manifest.transition.type : "none";
     const restoredTransitionDuration = typeof manifest.transition?.durationSec === "number" ? manifest.transition.durationSec : 0.5;
@@ -939,6 +965,7 @@ export default function Editor() {
       orientation: restoredOrientation, videoName: restoredVideoName, sourceVideoId: restoredSourceVideoId,
       karaokeEnabled: !!manifest.karaokeEnabled, lyricsText: restoredLyrics, lyricsSyncSource: restoredSyncSource, beatsPerPhoto: restoredBeats,
       overlays: restoredOverlays, textCards: restoredTextCards,
+      audioClips: serializeAudioClips(restoredAudioClips),
     };
     setSavedManifest(JSON.stringify(restoredManifest));
   }
@@ -988,6 +1015,9 @@ export default function Editor() {
     }
     if (layerIssues.length > 0) {
       toast({ title: "Fix overlays and text cards first", description: layerIssues[0]!.message, variant: "destructive" }); return;
+    }
+    if (audioClipIssues.length > 0) {
+      toast({ title: "Fix timed music clips first", description: audioClipIssues[0]!.message, variant: "destructive" }); return;
     }
     const name = (asNew ? projectNameDraft : currentProject?.name)?.trim();
     if (!name) { setProjectNameDraft(currentProject?.name || videoName || "Untitled remix"); setSaveAsOpen(true); return; }
@@ -1725,6 +1755,14 @@ export default function Editor() {
       toast({ title: "Fix overlays and text cards first", description: layerIssues[0]!.message, variant: "destructive" });
       return;
     }
+    if (audioClipUploadsPending) {
+      toast({ title: "Wait for uploads", description: "Finish adding music clips before exporting.", variant: "destructive" });
+      return;
+    }
+    if (audioClipIssues.length > 0) {
+      toast({ title: "Fix timed music clips first", description: audioClipIssues[0]!.message, variant: "destructive" });
+      return;
+    }
     pause();
     setSubmitting(true);
     trackEvent("export_started", {
@@ -1770,6 +1808,7 @@ export default function Editor() {
         lyricsText: karaokeEnabled ? lyricsText.trim() || undefined : undefined,
         ...(overlays.length ? { overlays } : {}),
         ...(textCards.length ? { textCards } : {}),
+        ...(audioClips.length ? { audioClips: serializeAudioClips(audioClips) } : {}),
       };
       const res = await fetch("/api/studio/render", {
         method: "POST",
@@ -2004,6 +2043,13 @@ export default function Editor() {
           onChangeOverlay={(id, patch) => setOverlays((prev) => prev.map((o) => (o.id === id ? { ...o, ...patch } : o)))}
           onChangeText={(id, patch) => setTextCards((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)))}
         />
+        <AudioClipPlayer
+          clips={audioClips}
+          timeSec={progress * totalDuration}
+          playing={playing}
+          onSourceDuration={recordAudioSourceDuration}
+          onSourceError={recordAudioSourceError}
+        />
         {segments.length > 0 && (
           <button onClick={togglePlay} className="absolute inset-0 z-10 flex items-center justify-center" aria-label="Play/Pause">
             {!playing && (
@@ -2076,6 +2122,25 @@ export default function Editor() {
             }))}
           uploadFile={presignAndUpload}
           issues={layerIssues}
+        />
+      )}
+
+      {(segments.length > 0 || audioClips.length > 0) && (
+        <AudioClipPanel
+          clips={audioClips}
+          setClips={setAudioClips}
+          selectedId={selectedAudioClipId}
+          setSelectedId={setSelectedAudioClipId}
+          playheadSec={progress * totalDuration}
+          totalDuration={totalDuration}
+          sourceDurations={audioSourceDurations}
+          onSourceDuration={recordAudioSourceDuration}
+          uploadFile={presignAndUpload}
+          issues={audioClipIssues}
+          epoch={audioClipEpoch}
+          sourceErrors={audioSourceErrors}
+          onPendingChange={setAudioClipUploadsPending}
+          soundtrack={music?.objectPath && !music.uploading ? { name: music.name, objectPath: music.objectPath } : null}
         />
       )}
 
@@ -2412,6 +2477,14 @@ export default function Editor() {
           onSeek={seekPreview}
           onMoveOverlay={(id, startSec) => setOverlays((prev) => prev.map((o) => (o.id === id ? { ...o, startSec } : o)))}
           onMoveText={(id, startSec) => setTextCards((prev) => prev.map((t) => (t.id === id ? { ...t, startSec } : t)))}
+        />
+        <AudioClipTimeline
+          clips={audioClips}
+          totalDuration={totalDuration}
+          playheadSec={progress * totalDuration}
+          selectedId={selectedAudioClipId}
+          onSelect={setSelectedAudioClipId}
+          onSeek={seekPreview}
         />
         {segments.length === 0 ? (
           <div className="text-muted-foreground flex h-24 items-center justify-center text-sm">

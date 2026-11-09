@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { buildTimedLines, buildAssKaraoke, karaokeFontsDir } from "./lyricTiming.js";
 import { renderEditorLayers, type EditorOverlayInput, type EditorTextCard } from "./editorLayers.js";
+import { renderEditorAudioClips, type EditorAudioClipInput } from "./editorAudioClips.js";
 
 // `:fontsdir=` option pointing libass at the bundled karaoke font (Archivo
 // Black); empty string when the font directory is missing.
@@ -45,6 +46,7 @@ export interface EditorStitchInput {
   segments: EditorSegmentInput[];
   overlays?: EditorOverlayInput[];
   textCards?: EditorTextCard[];
+  audioClips?: EditorAudioClipInput[];
   onLayerProgress?: (done: number, total: number) => void;
   music?: EditorMusicInput;
   transition?: { type: string; durationSec: number }; // type "none" => hard cut
@@ -243,12 +245,12 @@ function run(args: string[]): Promise<void> {
 // a corrupt file can never hang the render.
 const FFPROBE_TIMEOUT_MS = 60 * 1000;
 
-function probeVideoDuration(file: string): Promise<number> {
+function probeVideoDuration(file: string, stream = "v:0"): Promise<number> {
   return withResourceLease("ffmpeg_light", ({ signal }) => new Promise<number>((resolve) => {
     const p = spawn("ffprobe", [
       "-v", "error",
-      "-select_streams", "v:0",
-      "-show_entries", "stream=duration",
+      "-select_streams", stream,
+      "-show_entries", stream === "a:0" ? "stream=duration:format=duration" : "stream=duration",
       "-of", "csv=p=0",
       file,
     ]);
@@ -262,7 +264,7 @@ function probeVideoDuration(file: string): Promise<number> {
     });
     p.on("close", () => {
       clearTimeout(timer);
-      resolve(parseFloat(s.trim()) || 0);
+      resolve(s.trim().split(/\s+/).map(Number).find((value) => Number.isFinite(value) && value > 0) ?? 0);
     });
   }));
 }
@@ -722,6 +724,8 @@ export async function stitchEditorTimeline(
 
     const mainDuration = await probeVideoDuration(current);
     if (mainDuration > 1800.1) throw new Error("Montage projects can be at most 30 minutes. Shorten the main timeline.");
+    if (skipped.length && input.audioClips?.length)
+      throw new Error("A main timeline clip could not be rendered. Replace it before exporting timed music.");
     if (input.overlays?.length || input.textCards?.length) {
       // Missing/skipped main clips would silently move every absolute overlay.
       // Fail layered exports instead of delivering incorrectly timed content.
@@ -730,6 +734,13 @@ export async function stitchEditorTimeline(
         current, dir, width: W, height: H, fps: FPS,
         duration: mainDuration, overlays: input.overlays ?? [], textCards: input.textCards ?? [],
         run, hasAudio, probeDuration: probeVideoDuration, onProgress: input.onLayerProgress,
+      });
+    }
+
+    if (input.audioClips?.length) {
+      current = await renderEditorAudioClips({
+        current, dir, duration: mainDuration, clips: input.audioClips,
+        run, hasAudio, probeDuration: (path) => probeVideoDuration(path, "a:0"),
       });
     }
 

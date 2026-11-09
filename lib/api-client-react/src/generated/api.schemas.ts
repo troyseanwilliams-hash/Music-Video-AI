@@ -173,6 +173,41 @@ export interface StudioTextCard {
   backgroundColor: string;
 }
 
+export interface StudioAudioClip {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  id: string;
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  name: string;
+  /** @minLength 1 */
+  objectPath: string;
+  /**
+     * @minimum 0
+     * @maximum 1800
+     */
+  startSec: number;
+  /**
+     * @maximum 1800
+     * @exclusiveMinimum 0
+     */
+  durationSec: number;
+  /**
+     * @minimum 0
+     * @maximum 1800
+     */
+  trimStart: number;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  volume: number;
+}
+
 export type StudioMusicMode = typeof StudioMusicMode[keyof typeof StudioMusicMode];
 
 
@@ -261,6 +296,8 @@ export const StudioProjectManifestLyricsSyncSource = {
 
 export interface StudioProjectManifest {
   version: 1;
+  /** @maxItems 100 */
+  audioClips?: StudioAudioClip[];
   /** @maxItems 100 */
   overlays?: StudioVideoOverlay[];
   /** @maxItems 100 */

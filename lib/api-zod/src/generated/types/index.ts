@@ -110,6 +110,7 @@ export * from './referralInfoResponse';
 export * from './registerRequest';
 export * from './remixJobRequest';
 export * from './remixJobResponse';
+export * from './studioAudioClip';
 export * from './studioMusic';
 export * from './studioMusicMode';
 export * from './studioProject';

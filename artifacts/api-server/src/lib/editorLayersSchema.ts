@@ -38,7 +38,15 @@ export const TextCardSchema = z.object({
   color,
   backgroundColor: color,
 }).strict();
+export const AudioClipSchema = z.object({
+  ...timing,
+  name: z.string().min(1).max(120),
+  objectPath: z.string().min(1),
+  trimStart: z.number().finite().min(0).max(MAX_EDITOR_SECONDS),
+  volume: unit,
+}).strict();
 export const editorLayersShape = {
+  audioClips: z.array(AudioClipSchema).max(100).optional(),
   overlays: z.array(VideoOverlaySchema).max(100).optional(),
   textCards: z.array(TextCardSchema).max(100).optional(),
 };
@@ -47,7 +55,7 @@ export type TextCard = z.infer<typeof TextCardSchema>;
 
 export function validateEditorTiming(
   input: { segments: { kind: string; durationSec: number; trimStart?: number; trimEnd?: number }[];
-    overlays?: VideoOverlay[]; textCards?: TextCard[] },
+    overlays?: VideoOverlay[]; textCards?: TextCard[]; audioClips?: z.infer<typeof AudioClipSchema>[] },
   ctx: z.RefinementCtx,
 ) {
   const total = input.segments.reduce((sum, s) => {
@@ -65,7 +73,15 @@ export function validateEditorTiming(
       break;
     }
   }
-  for (const [kind, layers] of [["overlays", input.overlays], ["textCards", input.textCards]] as const) {
+  for (const clip of input.audioClips ?? []) {
+    const active = (input.audioClips ?? []).filter((other) =>
+      other.startSec <= clip.startSec && other.startSec + other.durationSec > clip.startSec);
+    if (active.length > 4) {
+      ctx.addIssue({ code: "custom", path: ["audioClips"], message: "Use no more than four timed music clips at once." });
+      break;
+    }
+  }
+  for (const [kind, layers] of [["overlays", input.overlays], ["textCards", input.textCards], ["audioClips", input.audioClips]] as const) {
     for (const [index, layer] of (layers ?? []).entries()) {
       if (layer.startSec + layer.durationSec > total + 0.05)
         ctx.addIssue({ code: "custom", path: [kind, index], message: "Layers must fit within the main timeline." });
