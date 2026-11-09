@@ -204,7 +204,7 @@ async function validateOwnedEditorMedia(
 async function validateProjectMedia(userId: string, manifest: ProjectManifest): Promise<string | null> {
   const mediaError = await validateOwnedEditorMedia(userId, [
     ...manifest.segments,
-    ...(manifest.overlays ?? []).map((layer) => ({ ...layer, kind: "video" as const })),
+    ...(manifest.overlays ?? []).map((layer) => ({ ...layer, kind: layer.kind === "image" ? "photo" as const : "video" as const })),
   ], manifest.music);
   if (mediaError) return mediaError;
   const sourceIds = [...new Set([
@@ -394,7 +394,7 @@ router.post("/studio/render", async (req, res) => {
   // must enforce the same ownership rules as project saving and browser reads.
   const mediaError = await validateOwnedEditorMedia(req.user.id, [
     ...input.segments,
-    ...(input.overlays ?? []).map((layer) => ({ ...layer, kind: "video" as const })),
+    ...(input.overlays ?? []).map((layer) => ({ ...layer, kind: layer.kind === "image" ? "photo" as const : "video" as const })),
   ], input.music);
   if (mediaError) {
     res.status(403).json({ error: mediaError, code: "EDITOR_MEDIA_UNAVAILABLE" });

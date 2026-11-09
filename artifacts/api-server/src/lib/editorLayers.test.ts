@@ -63,6 +63,16 @@ const timingSchema = z.object({
 }).superRefine(validateEditorTiming);
 
 describe("Montage layer contracts", () => {
+  it("preserves multiple mixed-media time slots through saved JSON and validation", () => {
+    const { buffer: _, ...video } = layer(Buffer.alloc(0));
+    const input = { segments: [{ kind: "video", durationSec: 20 }], overlays: [
+      { ...video, id: "first", startSec: 1.25, durationSec: 2.5 },
+      { ...video, id: "second", startSec: 8.5, durationSec: 4 },
+      { ...video, kind: "image", id: "still", startSec: 8.5, durationSec: 4 },
+    ] };
+    expect(timingSchema.parse(JSON.parse(JSON.stringify(input)))).toEqual(input);
+    expect(timingSchema.safeParse({ ...input, overlays: [{ ...input.overlays[2], volume: 1 }] }).success).toBe(false);
+  });
   it("accepts legacy projects and exactly thirty minutes, rejects longer projects", () => {
     expect(timingSchema.safeParse({ segments: [{ kind: "video", durationSec: 1800 }] }).success).toBe(true);
     expect(timingSchema.safeParse({ segments: [{ kind: "video", durationSec: 1801 }] }).success).toBe(false);
@@ -83,6 +93,35 @@ describe("Montage layer contracts", () => {
 });
 
 describe("Montage layer exports", () => {
+  it("renders multiple video and static-image slots at saved times, including overlap", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "layers-mixed-"));
+    try {
+      const main = await fixture(4, "blue", 440);
+      const clip = await fixture(1.5, "red", 880, true);
+      const image = await command("ffmpeg", ["-v", "error", "-f", "lavfi", "-i",
+        "color=c=lime:s=90x160", "-frames:v", "1", "-threads", "2", "-f", "image2pipe", "-c:v", "png", "pipe:1"]);
+      const result = await stitchEditorTimeline({
+        segments: [{ buffer: main, kind: "video", durationSec: 4 }], width: 320, height: 180,
+        overlays: [
+          layer(clip, { id: "first", startSec: 0.5, durationSec: 1 }),
+          layer(clip, { id: "second", startSec: 2, durationSec: 1 }),
+          layer(image, { kind: "image", id: "still", startSec: 1, durationSec: 2.5, x: 0.1, ext: "png" }),
+        ],
+      });
+      const path = join(dir, "out.mp4");
+      await writeFile(path, result.videoBuffer);
+      for (const t of [0.2, 1.8, 3.7])
+        expect(pixel(await frame(path, t), 260, 80)[2]).toBeGreaterThan(200);
+      for (const t of [0.8, 2.3])
+        expect(pixel(await frame(path, t), 260, 80)[0]).toBeGreaterThan(200);
+      for (const t of [1.2, 1.8, 2.3, 3.3])
+        expect(pixel(await frame(path, t), 70, 80)[1]).toBeGreaterThan(200);
+      for (const t of [0.8, 3.7])
+        expect(pixel(await frame(path, t), 70, 80)[2]).toBeGreaterThan(200);
+      expect(await amplitude(path, 2.3, 440)).toBeGreaterThan(0.035);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  }, 120_000);
+
   it("exports a reaction clip with preserved main video, source watermark, rounding and border", async () => {
     const dir = await mkdtemp(join(tmpdir(), "layers-test-"));
     try {

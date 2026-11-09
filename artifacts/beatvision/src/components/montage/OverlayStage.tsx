@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { clamp, containPosition, isActiveAt, storageUrl, type TextCard, type VideoOverlay } from "./overlayTypes";
+import { clamp, containPosition, isActiveAt, isImageOverlay, storageUrl, type TextCard, type VideoOverlay } from "./overlayTypes";
 
 // Keeps a <video> element locked to the editor's timeline clock. The editor's
 // clock (progress * totalDuration) is the single source of truth: seek, pause
@@ -60,6 +60,7 @@ function OverlayBox({
   stageRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const active = isActiveAt(overlay, timeSec);
+  const isImage = isImageOverlay(overlay);
   const mainRef = useRef<HTMLVideoElement>(null);
   const blurRef = useRef<HTMLVideoElement>(null);
   const drag = useRef<null | { mode: DragMode; px: number; py: number; o: VideoOverlay }>(null);
@@ -109,7 +110,17 @@ function OverlayBox({
 
   return (
     <>
-      {overlay.layout === "commentary" && (
+      {overlay.layout === "commentary" && isImage && (
+        <img
+          src={storageUrl(overlay.objectPath)}
+          alt=""
+          aria-hidden="true"
+          draggable={false}
+          className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover blur-xl"
+          style={{ visibility: active ? "visible" : "hidden" }}
+        />
+      )}
+      {overlay.layout === "commentary" && !isImage && (
         <video
           ref={blurRef}
           src={src}
@@ -142,13 +153,23 @@ function OverlayBox({
         onPointerCancel={up}
         data-testid={`preview-overlay-${overlay.id}`}
       >
-        <video
-          ref={mainRef}
-          src={src}
-          playsInline
-          preload="metadata"
-          className="pointer-events-none absolute inset-0 h-full w-full object-contain"
-        />
+        {isImage ? (
+          <img
+            src={src}
+            alt={overlay.name}
+            draggable={false}
+            className="pointer-events-none absolute inset-0 h-full w-full object-contain"
+            data-testid={`preview-overlay-image-${overlay.id}`}
+          />
+        ) : (
+          <video
+            ref={mainRef}
+            src={src}
+            playsInline
+            preload="metadata"
+            className="pointer-events-none absolute inset-0 h-full w-full object-contain"
+          />
+        )}
         {border > 0 && (
           <div className="pointer-events-none absolute inset-0" style={{ borderRadius: radius, boxShadow: `inset 0 0 0 ${border}px ${overlay.borderColor}` }} />
         )}

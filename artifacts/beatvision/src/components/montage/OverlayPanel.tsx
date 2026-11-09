@@ -8,11 +8,11 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  ArrowDown, ArrowUp, ChevronDown, Film, Layers, Loader2, PanelRight, PanelLeft, RectangleVertical,
+  ArrowDown, ArrowUp, ChevronDown, Film, ImagePlus, Image as ImageIcon, Layers, Loader2, PanelRight, PanelLeft, RectangleVertical,
   Trash2, Type, Upload, Clock,
 } from "lucide-react";
 import {
-  clamp, LAYOUT_PRESETS, type LayerIssue, MAX_OVERLAYS, MAX_TEXT_CARDS, MAX_TEXT_LENGTH, MAX_TIMELINE_SEC, overlayId,
+  clamp, IMAGE_OVERLAY_TYPES, isImageOverlay, LAYOUT_PRESETS, type LayerIssue, MAX_OVERLAYS, MAX_TEXT_CARDS, MAX_TEXT_LENGTH, MAX_TIMELINE_SEC, overlayId,
   type TextCard, type VideoOverlay,
 } from "./overlayTypes";
 
@@ -20,6 +20,37 @@ export interface OverlaySourceClip {
   name: string;
   objectPath: string;
   durationSec: number;
+  /** Omitted means video. Images default to a 5s display duration. */
+  kind?: "video" | "image";
+}
+
+const DEFAULT_IMAGE_SEC = 5;
+
+// Decodes a local image before upload so broken or unsupported files are
+// rejected up front. Always revokes the object URL.
+export async function probeImageFile(file: File, timeoutMs = 15_000): Promise<{ width: number; height: number }> {
+  if (!(IMAGE_OVERLAY_TYPES as readonly string[]).includes(file.type)) {
+    throw new Error("Use a PNG, JPEG or WebP image.");
+  }
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  let timer = 0;
+  try {
+    return await new Promise((resolve, reject) => {
+      timer = window.setTimeout(() => reject(new Error("Timed out reading this image. Try a different file.")), timeoutMs);
+      img.onload = () => {
+        if (img.naturalWidth > 0 && img.naturalHeight > 0) resolve({ width: img.naturalWidth, height: img.naturalHeight });
+        else reject(new Error("This image has no readable pixels."));
+      };
+      img.onerror = () => reject(new Error("This image can't be decoded. Try re-saving it as PNG or JPEG."));
+      img.src = url;
+    });
+  } finally {
+    window.clearTimeout(timer);
+    img.onload = null;
+    img.onerror = null;
+    URL.revokeObjectURL(url);
+  }
 }
 
 // Reads a local file's duration before upload. Rejects on decode errors or a
@@ -103,6 +134,7 @@ export function OverlayPanel({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [sourceDur, setSourceDur] = useState<Record<string, number>>({});
   const fileRef = useRef<HTMLInputElement>(null);
+  const imageRef = useRef<HTMLInputElement>(null);
   const isOpen = open || overlays.length > 0 || textCards.length > 0;
 
   const library = useListVideos(
@@ -115,16 +147,18 @@ export function OverlayPanel({
 
   function addOverlay(clip: OverlaySourceClip) {
     if (overlays.length >= MAX_OVERLAYS) {
-      toast({ title: "Overlay limit reached", description: `A project can hold up to ${MAX_OVERLAYS} overlay clips.`, variant: "destructive" });
+      toast({ title: "Overlay limit reached", description: `A project can hold up to ${MAX_OVERLAYS} overlays (clips and images).`, variant: "destructive" });
       return;
     }
     const id = overlayId();
-    const dur = clamp(Math.min(clip.durationSec || 5, timelineEnd - start), 0.3, MAX_TIMELINE_SEC);
+    const image = clip.kind === "image";
+    const dur = clamp(Math.min(image ? DEFAULT_IMAGE_SEC : clip.durationSec || 5, timelineEnd - start), 0.3, MAX_TIMELINE_SEC);
     const o: VideoOverlay = {
+      ...(image ? { kind: "image" as const } : {}),
       id, name: clip.name, objectPath: clip.objectPath, startSec: start, durationSec: dur, trimStart: 0,
-      ...LAYOUT_PRESETS.reactionRight, volume: 0.25, borderWidth: 0, borderColor: "#ffffff",
+      ...LAYOUT_PRESETS.reactionRight, volume: image ? 0 : 0.25, borderWidth: 0, borderColor: "#ffffff",
     };
-    setSourceDur((m) => ({ ...m, [id]: clip.durationSec }));
+    if (!image) setSourceDur((m) => ({ ...m, [id]: clip.durationSec }));
     setOverlays((prev) => [...prev, o]);
     setSelectedId(id);
     setOpen(true);
@@ -147,6 +181,22 @@ export function OverlayPanel({
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  async function onUploadImage(files: FileList | null) {
+    const file = files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      await probeImageFile(file);
+      const objectPath = await uploadFile(file);
+      addOverlay({ name: file.name, objectPath, durationSec: DEFAULT_IMAGE_SEC, kind: "image" });
+    } catch (err) {
+      toast({ title: "Image overlay failed", description: String((err as Error).message), variant: "destructive" });
+    } finally {
+      setUploading(false);
+      if (imageRef.current) imageRef.current.value = "";
     }
   }
 
@@ -202,7 +252,10 @@ export function OverlayPanel({
       {isOpen && (
         <div className="border-t border-border px-4 pb-4 pt-3">
           <p className="mb-3 text-xs text-muted-foreground">
-            Play a clip on top of your main video for commentary or reactions, or add a title card. New items start at the playhead ({fmt(start)}). Your main video's sound is never changed.
+            Play a clip or show a still image on top of your main video for commentary or reactions, or add a title card. New items start at the playhead ({fmt(start)}). Your main video's sound is never changed.
+          </p>
+          <p className="mb-3 text-xs text-muted-foreground" data-testid="text-overlay-timing-help">
+            Add as many items as you need (up to {MAX_OVERLAYS}, with 4 on screen at once). Each one has its own start time and duration, saved exactly as you set them.
           </p>
           <div className="mb-4 flex flex-wrap gap-2">
             <input ref={fileRef} type="file" accept="video/*" hidden onChange={(e) => onUpload(e.target.files)} data-testid="input-overlay-file" />
@@ -210,8 +263,12 @@ export function OverlayPanel({
               {uploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
               {uploading ? "Uploading…" : "Upload overlay clip"}
             </Button>
+            <input ref={imageRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => onUploadImage(e.target.files)} data-testid="input-overlay-image-file" />
+            <Button size="sm" variant="outline" onClick={() => imageRef.current?.click()} disabled={uploading} data-testid="button-overlay-image-upload">
+              <ImagePlus className="mr-2 h-4 w-4 text-primary" /> Upload image
+            </Button>
             <Button size="sm" variant="outline" onClick={() => setPickerOpen(true)} data-testid="button-overlay-pick">
-              <Film className="mr-2 h-4 w-4 text-primary" /> Use existing clip
+              <Film className="mr-2 h-4 w-4 text-primary" /> Use existing media
             </Button>
             <Button size="sm" variant="outline" onClick={addText} data-testid="button-add-textcard">
               <Type className="mr-2 h-4 w-4 text-primary" /> Add text card
@@ -244,7 +301,7 @@ export function OverlayPanel({
                     className={`flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm ${selectedId === o.id ? "border-primary bg-primary/[0.06]" : "border-border hover:bg-muted/50"}`}
                     data-testid={`row-overlay-${o.id}`}
                   >
-                    <Film className="h-3.5 w-3.5 shrink-0 text-primary" />
+                    {isImageOverlay(o) ? <ImageIcon className="h-3.5 w-3.5 shrink-0 text-primary" /> : <Film className="h-3.5 w-3.5 shrink-0 text-primary" />}
                     <span className="min-w-0 flex-1 truncate">{o.name}</span>
                     {issues.some((x) => x.id === o.id) && <span className="shrink-0 text-[11px] font-medium text-destructive">Fix timing</span>}
                     <span className="shrink-0 text-[11px] capitalize text-muted-foreground">{o.layout} · layer {i + 1}</span>
@@ -273,6 +330,7 @@ export function OverlayPanel({
           {selO && (() => {
             const maxTrim = Math.max(0, (sourceDur[selO.id] ?? MAX_TIMELINE_SEC) - 0.3);
             const ends = selO.startSec + selO.durationSec;
+            const selImage = isImageOverlay(selO);
             return (
               <div className="space-y-4 rounded-lg border border-primary/25 bg-primary/[0.04] p-3" data-testid="editor-overlay-selected">
                 <div className="flex items-center justify-between gap-2">
@@ -293,7 +351,7 @@ export function OverlayPanel({
                   </div>
                   <p className="mt-1.5 text-[11px] text-muted-foreground">
                     {selO.layout === "commentary"
-                      ? "Clip sits full-height in the centre with a blurred copy filling the sides."
+                      ? selImage ? "Image sits full-height in the centre with a blurred copy filling the sides." : "Clip sits full-height in the centre with a blurred copy filling the sides."
                       : "Drag the clip in the preview to move it; drag the corner handle to resize."}
                   </p>
                 </div>
@@ -301,7 +359,11 @@ export function OverlayPanel({
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <NumField label="Starts at" suffix="s" value={selO.startSec} min={0} max={Math.max(0, MAX_TIMELINE_SEC - 0.3)} onChange={(v) => patchO(selO.id, { startSec: v })} testId="input-overlay-start" />
                   <NumField label="Duration" suffix="s" value={selO.durationSec} min={0.3} max={MAX_TIMELINE_SEC} onChange={(v) => patchO(selO.id, { durationSec: v })} testId="input-overlay-duration" />
-                  <NumField label="Skip into clip" suffix="s" value={selO.trimStart} min={0} max={maxTrim} onChange={(v) => patchO(selO.id, { trimStart: v })} testId="input-overlay-trim" />
+                  {selImage ? (
+                    <p className="self-end text-[11px] text-muted-foreground">Still image, shown for the full duration. No sound.</p>
+                  ) : (
+                    <NumField label="Skip into clip" suffix="s" value={selO.trimStart} min={0} max={maxTrim} onChange={(v) => patchO(selO.id, { trimStart: v })} testId="input-overlay-trim" />
+                  )}
                   <div className="flex items-end">
                     <Button size="sm" variant="outline" className="w-full" onClick={() => patchO(selO.id, { startSec: start })} data-testid="button-overlay-at-playhead"><Clock className="mr-1.5 h-3.5 w-3.5" />At playhead</Button>
                   </div>
@@ -314,13 +376,13 @@ export function OverlayPanel({
                     )}
                   </div>
                 )}
-                {sourceDur[selO.id] === undefined ? (
+                {selImage ? null : sourceDur[selO.id] === undefined ? (
                   <p className="text-[11px] text-muted-foreground">Clip length isn't known in this session. If skip + duration is longer than the clip, the export checks it against the real file and may hold the last frame or reject it.</p>
                 ) : selO.trimStart + selO.durationSec > sourceDur[selO.id]! + 0.05 ? (
                   <p className="text-[11px] text-amber-600">Skip + duration ({(selO.trimStart + selO.durationSec).toFixed(1)}s) is longer than this clip ({sourceDur[selO.id]!.toFixed(1)}s).</p>
                 ) : null}
 
-                <div>
+                {!selImage && <div>
                   <div className="mb-1.5 flex items-center justify-between text-[11px] font-medium text-muted-foreground">
                     <span>Overlay sound</span><span className="tabular-nums">{Math.round(selO.volume * 100)}%</span>
                   </div>
@@ -330,11 +392,11 @@ export function OverlayPanel({
                     ))}
                   </div>
                   <Slider min={0} max={1} step={0.05} value={[selO.volume]} onValueChange={([v]) => patchO(selO.id, { volume: v ?? 0 })} aria-label="Overlay volume" />
-                </div>
+                </div>}
 
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                   {selO.layout === "commentary" ? (
-                    <p className="col-span-full text-[11px] text-muted-foreground">Commentary always fills the frame. Pick a Reaction layout to move or resize this clip.</p>
+                    <p className="col-span-full text-[11px] text-muted-foreground">Commentary always fills the frame. Pick a Reaction layout to move or resize this {selImage ? "image" : "clip"}.</p>
                   ) : (<>
                   <NumField label="Left" suffix="%" value={pct(selO.x)} min={0} max={pct(1 - selO.width)} step={1} onChange={(v) => patchO(selO.id, { x: v / 100, layout: "custom" })} testId="input-overlay-x" />
                   <NumField label="Top" suffix="%" value={pct(selO.y)} min={0} max={pct(1 - selO.height)} step={1} onChange={(v) => patchO(selO.id, { y: v / 100, layout: "custom" })} testId="input-overlay-y" />
@@ -403,21 +465,21 @@ export function OverlayPanel({
       <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
         <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Use an existing clip as an overlay</DialogTitle>
-            <DialogDescription>Pick a video already in this project or from your Gallery.</DialogDescription>
+            <DialogTitle>Use existing media as an overlay</DialogTitle>
+            <DialogDescription>Pick a video or image already in this project, or a video from your Gallery.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
               <div className="mb-2 text-xs font-semibold text-muted-foreground">In this project</div>
               {projectClips.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No uploaded video clips on the timeline yet.</p>
+                <p className="text-xs text-muted-foreground">No uploaded clips or images on the timeline yet.</p>
               ) : (
                 <ul className="space-y-1.5">
                   {projectClips.map((c, i) => (
                     <li key={`${c.objectPath}-${i}`}>
                       <button type="button" className="flex w-full items-center gap-2 rounded-md border border-border px-3 py-2 text-left text-sm hover:bg-muted/50" onClick={() => { addOverlay(c); setPickerOpen(false); }} data-testid={`button-pick-project-clip-${i}`}>
-                        <Film className="h-3.5 w-3.5 text-primary" /><span className="flex-1 truncate">{c.name}</span>
-                        <span className="text-[11px] text-muted-foreground">{c.durationSec.toFixed(1)}s</span>
+                        {c.kind === "image" ? <ImageIcon className="h-3.5 w-3.5 text-primary" /> : <Film className="h-3.5 w-3.5 text-primary" />}<span className="flex-1 truncate">{c.name}</span>
+                        <span className="text-[11px] text-muted-foreground">{c.kind === "image" ? "Image" : `${c.durationSec.toFixed(1)}s`}</span>
                       </button>
                     </li>
                   ))}

@@ -23,6 +23,25 @@ describe("manifest load", () => {
     expect(normalizeOverlayList(JSON.parse(JSON.stringify(o)))).toEqual(o);
     expect(normalizeTextCardList(JSON.parse(JSON.stringify(t)))).toEqual(t);
   });
+  it("round-trips mixed video and image overlays with exact timing", () => {
+    const mixed: VideoOverlay[] = [ov("a", 1.237, 2.5), { ...ov("b", 4.105, 3.333), kind: "image", trimStart: 0, volume: 0 }];
+    const back = normalizeOverlayList(JSON.parse(JSON.stringify(mixed)));
+    expect(back).toEqual(mixed);
+    expect(back[0]!.kind).toBeUndefined();
+    expect(back[1]!.startSec).toBe(4.105);
+    expect(back[1]!.durationSec).toBe(3.333);
+  });
+  it("forces image overlays to trimStart 0 and volume 0, and treats unknown kinds as video", () => {
+    const [img, vid] = normalizeOverlayList([{ ...ov("i", 0, 2), kind: "image", trimStart: 7, volume: 1 }, { ...ov("v", 0, 2), kind: "gif", volume: 1 }]);
+    expect(img).toMatchObject({ kind: "image", trimStart: 0, volume: 0 });
+    expect(vid!.kind).toBeUndefined();
+    expect(vid!.volume).toBe(1);
+  });
+  it("counts images toward the simultaneous overlay limit", () => {
+    const list = [ov("a", 0, 5), ov("b", 0, 5), { ...ov("c", 0, 5), kind: "image" as const }, { ...ov("d", 0, 5), kind: "image" as const }];
+    expect(validateLayers(list, [], 10)).toEqual([]);
+    expect(validateLayers([...list, { ...ov("e", 1, 1), kind: "image" as const }], [], 10).length).toBe(1);
+  });
   it("preserves over-long text on load and flags it", () => {
     const long = "x".repeat(600);
     const [card] = normalizeTextCardList([{ ...tc("t", 0, 1), text: long }]);

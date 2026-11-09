@@ -2,6 +2,7 @@ import { writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 export interface EditorVideoOverlay {
+  kind?: "video" | "image";
   id: string; name: string; objectPath: string;
   startSec: number; durationSec: number; trimStart: number;
   x: number; y: number; width: number; height: number;
@@ -49,14 +50,24 @@ export async function renderEditorLayers(options: {
   const sources: { path: string; audio: boolean }[] = [];
   for (const [i, overlay] of overlays.entries()) {
     const ext = overlay.ext && /^[a-z0-9]{1,10}$/i.test(overlay.ext) ? overlay.ext : "mp4";
-    const path = join(dir, `overlay-source-${i}.${ext}`);
+    let path = join(dir, `overlay-source-${i}.${ext}`);
     await writeFile(path, overlay.buffer);
-    const sourceDuration = await options.probeDuration(path);
-    if (overlay.trimStart + overlay.durationSec > sourceDuration + 0.1)
-      throw new Error(`Overlay “${overlay.name}” is shorter than its selected duration. Trim or shorten the overlay.`);
+    if (overlay.kind === "image") {
+      // Decode once to a bounded, static PNG. This also rejects corrupt images
+      // and avoids relying on a filename extension or image duration metadata.
+      const decoded = join(dir, `overlay-image-${i}.png`);
+      await run(["-y", "-threads", "2", "-filter_threads", "1", "-i", path,
+        "-frames:v", "1", "-vf", `scale=${W}:${H}:force_original_aspect_ratio=decrease`,
+        "-threads", "2", decoded]);
+      path = decoded;
+    } else {
+      const sourceDuration = await options.probeDuration(path);
+      if (overlay.trimStart + overlay.durationSec > sourceDuration + 0.1)
+        throw new Error(`Overlay “${overlay.name}” is shorter than its selected duration. Trim or shorten the overlay.`);
+    }
     if (overlay.startSec + overlay.durationSec > duration + 0.1)
       throw new Error("An overlay extends past the rendered main timeline. Restore missing clips or shorten the overlay.");
-    sources.push({ path, audio: await options.hasAudio(path) });
+    sources.push({ path, audio: overlay.kind !== "image" && await options.hasAudio(path) });
   }
   for (const [i, card] of textCards.entries()) {
     if (card.startSec + card.durationSec > duration + 0.1)
@@ -75,10 +86,13 @@ export async function renderEditorLayers(options: {
     const active = overlays.map((layer, index) => ({ layer, index }))
       .filter(({ layer }) => layer.startSec < end - 0.000001 && layer.startSec + layer.durationSec > start + 0.000001);
     // Guard resource use even for saved manifests authored by an older client.
-    if (active.length > 4) throw new Error("Use no more than four overlapping video overlays at once.");
+    if (active.length > 4) throw new Error("Use no more than four overlapping overlays at once.");
     const args = ["-y", "-filter_complex_threads", "1", "-ss", n(start), "-i", current];
     for (const { layer, index } of active) {
-      args.push("-threads", "2", "-ss", n(layer.trimStart + start - layer.startSec), "-i", sources[index]!.path);
+      if (layer.kind === "image")
+        args.push("-threads", "2", "-loop", "1", "-framerate", String(fps), "-i", sources[index]!.path);
+      else
+        args.push("-threads", "2", "-ss", n(layer.trimStart + start - layer.startSec), "-i", sources[index]!.path);
     }
     const graph = [
       `[0:v]trim=duration=${n(length)},setpts=PTS-STARTPTS,fps=${fps},setsar=1[v0]`,

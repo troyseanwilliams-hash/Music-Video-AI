@@ -5,9 +5,12 @@
  * BeatVision AI API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { StudioVideoOverlayKind } from './studioVideoOverlayKind';
 import type { StudioVideoOverlayLayout } from './studioVideoOverlayLayout';
 
 export interface StudioVideoOverlay {
+  /** Omitted for legacy video overlays. Images display for durationSec with no audio or source trim. */
+  kind?: StudioVideoOverlayKind;
   /**
      * @minLength 1
      * @maxLength 100

@@ -10,6 +10,7 @@ const timing = {
 };
 export const VideoOverlaySchema = z.object({
   ...timing,
+  kind: z.enum(["video", "image"]).optional(),
   name: z.string().min(1).max(120),
   objectPath: z.string().min(1),
   trimStart: z.number().finite().min(0).max(MAX_EDITOR_SECONDS).default(0),
@@ -22,6 +23,8 @@ export const VideoOverlaySchema = z.object({
   borderWidth: z.number().finite().min(0).max(0.02).default(0),
   borderColor: color.default("#ffffff"),
 }).strict().superRefine((layer, ctx) => {
+  if (layer.kind === "image" && (layer.trimStart !== 0 || layer.volume !== 0))
+    ctx.addIssue({ code: "custom", message: "Static image overlays cannot have source trimming or audio." });
   if (layer.layout !== "commentary" && (layer.x + layer.width > 1.001 || layer.y + layer.height > 1.001))
     ctx.addIssue({ code: "custom", message: "Keep the complete overlay inside the frame." });
   if (layer.startSec + layer.durationSec > MAX_EDITOR_SECONDS)
@@ -58,7 +61,7 @@ export function validateEditorTiming(
     const active = (input.overlays ?? []).filter((other) =>
       other.startSec <= layer.startSec && other.startSec + other.durationSec > layer.startSec);
     if (active.length > 4) {
-      ctx.addIssue({ code: "custom", path: ["overlays"], message: "Use no more than four overlapping video overlays at once." });
+      ctx.addIssue({ code: "custom", path: ["overlays"], message: "Use no more than four overlapping overlays at once." });
       break;
     }
   }

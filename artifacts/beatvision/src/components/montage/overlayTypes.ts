@@ -5,8 +5,15 @@ export const MAX_TEXT_LENGTH = 500;
 
 export type OverlayLayout = "custom" | "reaction" | "commentary";
 
+export type OverlayKind = "video" | "image";
+
+/** Image overlay MIME types accepted for upload. */
+export const IMAGE_OVERLAY_TYPES = ["image/png", "image/jpeg", "image/webp"] as const;
+
 export interface VideoOverlay {
   id: string;
+  /** Omitted means "video" (legacy manifests). Images hold a still for durationSec. */
+  kind?: OverlayKind;
   name: string;
   objectPath: string;
   startSec: number;
@@ -63,19 +70,21 @@ export function normalizeOverlay(raw: unknown): VideoOverlay | null {
   const width = clamp(num(o.width, 0.33), 0.05, 1);
   const height = clamp(num(o.height, 0.5), 0.05, 1);
   const layout: OverlayLayout = o.layout === "reaction" || o.layout === "commentary" ? o.layout : "custom";
+  const isImage = o.kind === "image";
   return {
+    ...(isImage ? { kind: "image" as const } : {}),
     id: typeof o.id === "string" && o.id ? o.id : overlayId(),
     name: typeof o.name === "string" ? o.name : "Overlay clip",
     objectPath: o.objectPath,
     startSec: clamp(num(o.startSec, 0), 0, MAX_TIMELINE_SEC),
     durationSec: clamp(num(o.durationSec, 5), 0.3, MAX_TIMELINE_SEC),
-    trimStart: clamp(num(o.trimStart, 0), 0, MAX_TIMELINE_SEC),
+    trimStart: isImage ? 0 : clamp(num(o.trimStart, 0), 0, MAX_TIMELINE_SEC),
     x: clamp(num(o.x, 0), 0, 1 - width),
     y: clamp(num(o.y, 0), 0, 1 - height),
     width,
     height,
     layout,
-    volume: clamp(num(o.volume, 0.25), 0, 1),
+    volume: isImage ? 0 : clamp(num(o.volume, 0.25), 0, 1),
     cornerRadius: clamp(num(o.cornerRadius, 0), 0, 0.25),
     borderWidth: clamp(num(o.borderWidth, 0), 0, 0.02),
     borderColor: hex(o.borderColor, "#ffffff"),
@@ -107,6 +116,8 @@ export function normalizeTextCardList(raw: unknown): TextCard[] {
   return Array.isArray(raw) ? raw.map(normalizeTextCard).filter((o): o is TextCard => !!o) : [];
 }
 
+export const isImageOverlay = (o: Pick<VideoOverlay, "kind">) => o.kind === "image";
+
 export function isActiveAt(item: { startSec: number; durationSec: number }, t: number) {
   return t >= item.startSec && t < item.startSec + item.durationSec;
 }
@@ -125,7 +136,7 @@ const fmt = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toFixed(2).padStart
 // the editor instead of failing on submit. Nothing is truncated silently.
 export function validateLayers(overlays: VideoOverlay[], textCards: TextCard[], totalSec: number): LayerIssue[] {
   const issues: LayerIssue[] = [];
-  if (overlays.length > MAX_OVERLAYS) issues.push({ id: null, message: `${overlays.length} overlay clips — the limit is ${MAX_OVERLAYS}. Remove ${overlays.length - MAX_OVERLAYS}.` });
+  if (overlays.length > MAX_OVERLAYS) issues.push({ id: null, message: `${overlays.length} overlays — the limit is ${MAX_OVERLAYS}. Remove ${overlays.length - MAX_OVERLAYS}.` });
   if (textCards.length > MAX_TEXT_CARDS) issues.push({ id: null, message: `${textCards.length} text cards — the limit is ${MAX_TEXT_CARDS}. Remove ${textCards.length - MAX_TEXT_CARDS}.` });
   const limit = totalSec + END_TOLERANCE_SEC;
   overlays.forEach((o, i) => {
@@ -146,7 +157,7 @@ export function validateLayers(overlays: VideoOverlay[], textCards: TextCard[], 
   for (const [t, d] of events) {
     live += d;
     if (live > MAX_SIMULTANEOUS_OVERLAYS) {
-      issues.push({ id: null, message: `${live} overlay clips play at the same time around ${fmt(t)} — at most ${MAX_SIMULTANEOUS_OVERLAYS} can overlap.` });
+      issues.push({ id: null, message: `${live} overlays (clips and images) show at the same time around ${fmt(t)} — at most ${MAX_SIMULTANEOUS_OVERLAYS} can overlap.` });
       break;
     }
   }

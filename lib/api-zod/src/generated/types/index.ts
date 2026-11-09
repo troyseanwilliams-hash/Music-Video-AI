@@ -126,6 +126,7 @@ export * from './studioTextCard';
 export * from './studioTransition';
 export * from './studioTransitionType';
 export * from './studioVideoOverlay';
+export * from './studioVideoOverlayKind';
 export * from './studioVideoOverlayLayout';
 export * from './successResponse';
 export * from './suiteBillingUrlResponse';

@@ -51,6 +51,24 @@ describe("Montage preview layers", () => {
     await render(base, 2.5);
     expect(video.currentTime).toBeCloseTo(4.5, 2);
   });
+  it("shows mixed image and video overlays only inside their own exact windows", async () => {
+    const img: VideoOverlay = { ...base, id: "still", kind: "image", startSec: 2.25, durationSec: 1.5, trimStart: 0, volume: 0 };
+    const renderBoth = (t: number) => act(async () => root.render(
+      <OverlayStage overlays={[base, img]} textCards={[]} timeSec={t} playing={false}
+        selectedId={null} onSelect={() => {}} onChangeOverlay={() => {}} onChangeText={() => {}} />,
+    ));
+    const vis = (id: string) => (host.querySelector(`[data-testid='preview-overlay-${id}']`) as HTMLElement).style.visibility;
+    await renderBoth(1.5);
+    expect([vis("clip"), vis("still")]).toEqual(["visible", "hidden"]);
+    await renderBoth(2.5);
+    expect([vis("clip"), vis("still")]).toEqual(["visible", "visible"]);
+    await renderBoth(3.5);
+    expect([vis("clip"), vis("still")]).toEqual(["hidden", "visible"]);
+    await renderBoth(3.75);
+    expect(vis("still")).toBe("hidden");
+    expect(host.querySelectorAll("video").length).toBe(1);
+    expect(host.querySelector("[data-testid='preview-overlay-image-still']")?.tagName).toBe("IMG");
+  });
   it("hides overlays before and after their chosen interval", async () => {
     await render(base, 0);
     expect((host.querySelector("[data-testid='preview-overlay-clip']") as HTMLElement).style.visibility).toBe("hidden");

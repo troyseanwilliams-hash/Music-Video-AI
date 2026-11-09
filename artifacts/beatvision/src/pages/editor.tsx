@@ -2056,8 +2056,13 @@ export default function Editor() {
           playheadSec={progress * totalDuration}
           totalDuration={totalDuration}
           projectClips={segments
-            .filter((s) => s.kind === "video" && s.objectPath)
-            .map((s) => ({ name: s.name, objectPath: s.objectPath!, durationSec: s.durationSec }))}
+            .filter((s) => s.objectPath && !s.uploading)
+            .map((s) => ({
+              name: s.name,
+              objectPath: s.objectPath!,
+              durationSec: s.durationSec,
+              kind: s.kind === "photo" ? ("image" as const) : ("video" as const),
+            }))}
           uploadFile={presignAndUpload}
           issues={layerIssues}
         />

@@ -1675,6 +1675,7 @@ components:
       additionalProperties: false
       required: [id, name, objectPath, startSec, durationSec, trimStart, x, y, width, height, layout, volume, cornerRadius, borderWidth, borderColor]
       properties:
+        kind: { type: string, enum: [video, image], description: "Omitted for legacy video overlays. Images display for durationSec with no audio or source trim." }
         id: { type: string, minLength: 1, maxLength: 100 }
         name: { type: string, minLength: 1, maxLength: 120 }
         objectPath: { type: string, minLength: 1 }

@@ -41,6 +41,17 @@ export interface StudioSegment {
   sourceVideoId?: string | null;
 }
 
+/**
+ * Omitted for legacy video overlays. Images display for durationSec with no audio or source trim.
+ */
+export type StudioVideoOverlayKind = typeof StudioVideoOverlayKind[keyof typeof StudioVideoOverlayKind];
+
+
+export const StudioVideoOverlayKind = {
+  video: 'video',
+  image: 'image',
+} as const;
+
 export type StudioVideoOverlayLayout = typeof StudioVideoOverlayLayout[keyof typeof StudioVideoOverlayLayout];
 
 
@@ -51,6 +62,8 @@ export const StudioVideoOverlayLayout = {
 } as const;
 
 export interface StudioVideoOverlay {
+  /** Omitted for legacy video overlays. Images display for durationSec with no audio or source trim. */
+  kind?: StudioVideoOverlayKind;
   /**
      * @minLength 1
      * @maxLength 100

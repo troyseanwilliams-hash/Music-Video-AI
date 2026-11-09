@@ -3565,7 +3565,7 @@ async function processEditorJob(job: JobRow): Promise<void> {
     const overlays: EditorOverlayInput[] = [];
     for (const layer of manifest.overlays ?? []) {
       const buffer = await storageService.downloadObjectBuffer(layer.objectPath);
-      overlays.push({ ...layer, buffer, ext: extFromObjectPath(layer.objectPath, "mp4") });
+      overlays.push({ ...layer, buffer, ext: extFromObjectPath(layer.objectPath, layer.kind === "image" ? "png" : "mp4") });
     }
 
     let music;

@@ -2211,6 +2211,7 @@ export const CreateStudioProjectBody = zod.object({
   "manifest": zod.object({
   "version": zod.number(),
   "overlays": zod.array(zod.object({
+  "kind": zod.enum(['video', 'image']).optional().describe('Omitted for legacy video overlays. Images display for durationSec with no audio or source trim.'),
   "id": zod.string().min(1).max(createStudioProjectBodyManifestOverlaysItemIdMax),
   "name": zod.string().min(1).max(createStudioProjectBodyManifestOverlaysItemNameMax),
   "objectPath": zod.string().min(1),
@@ -2369,6 +2370,7 @@ export const CreateStudioProjectResponse = zod.object({
   "manifest": zod.object({
   "version": zod.number(),
   "overlays": zod.array(zod.object({
+  "kind": zod.enum(['video', 'image']).optional().describe('Omitted for legacy video overlays. Images display for durationSec with no audio or source trim.'),
   "id": zod.string().min(1).max(createStudioProjectResponseManifestOverlaysItemIdMax),
   "name": zod.string().min(1).max(createStudioProjectResponseManifestOverlaysItemNameMax),
   "objectPath": zod.string().min(1),
@@ -2542,6 +2544,7 @@ export const GetStudioProjectResponse = zod.object({
   "manifest": zod.object({
   "version": zod.number(),
   "overlays": zod.array(zod.object({
+  "kind": zod.enum(['video', 'image']).optional().describe('Omitted for legacy video overlays. Images display for durationSec with no audio or source trim.'),
   "id": zod.string().min(1).max(getStudioProjectResponseManifestOverlaysItemIdMax),
   "name": zod.string().min(1).max(getStudioProjectResponseManifestOverlaysItemNameMax),
   "objectPath": zod.string().min(1),
@@ -2716,6 +2719,7 @@ export const UpdateStudioProjectBody = zod.object({
   "manifest": zod.object({
   "version": zod.number(),
   "overlays": zod.array(zod.object({
+  "kind": zod.enum(['video', 'image']).optional().describe('Omitted for legacy video overlays. Images display for durationSec with no audio or source trim.'),
   "id": zod.string().min(1).max(updateStudioProjectBodyManifestOverlaysItemIdMax),
   "name": zod.string().min(1).max(updateStudioProjectBodyManifestOverlaysItemNameMax),
   "objectPath": zod.string().min(1),
@@ -2874,6 +2878,7 @@ export const UpdateStudioProjectResponse = zod.object({
   "manifest": zod.object({
   "version": zod.number(),
   "overlays": zod.array(zod.object({
+  "kind": zod.enum(['video', 'image']).optional().describe('Omitted for legacy video overlays. Images display for durationSec with no audio or source trim.'),
   "id": zod.string().min(1).max(updateStudioProjectResponseManifestOverlaysItemIdMax),
   "name": zod.string().min(1).max(updateStudioProjectResponseManifestOverlaysItemNameMax),
   "objectPath": zod.string().min(1),
