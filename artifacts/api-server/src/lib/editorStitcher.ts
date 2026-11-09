@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { buildTimedLines, buildAssKaraoke, karaokeFontsDir } from "./lyricTiming.js";
+import { renderEditorLayers, type EditorOverlayInput, type EditorTextCard } from "./editorLayers.js";
 
 // `:fontsdir=` option pointing libass at the bundled karaoke font (Archivo
 // Black); empty string when the font directory is missing.
@@ -42,6 +43,9 @@ export interface EditorMusicInput {
 
 export interface EditorStitchInput {
   segments: EditorSegmentInput[];
+  overlays?: EditorOverlayInput[];
+  textCards?: EditorTextCard[];
+  onLayerProgress?: (done: number, total: number) => void;
   music?: EditorMusicInput;
   transition?: { type: string; durationSec: number }; // type "none" => hard cut
   width?: number;
@@ -189,15 +193,22 @@ const XFADE: Record<string, string> = {
 const FFMPEG_STEP_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 
 function run(args: string[]): Promise<void> {
+  const durationArg = args.lastIndexOf("-t");
+  const duration = durationArg >= 0 ? Number(args[durationArg + 1]) : 0;
+  // Unavoidable long-clip normalization gets a bounded duration-aware budget.
+  // Windowed overlays still use the ten-minute floor, never an infinite wait.
+  const timeoutMs = Number.isFinite(duration)
+    ? Math.max(FFMPEG_STEP_TIMEOUT_MS, Math.min(45 * 60_000, 120_000 + duration * 1500))
+    : FFMPEG_STEP_TIMEOUT_MS;
   return withResourceLease("ffmpeg_heavy", (lease) => new Promise<void>((resolve, reject) => {
     // -threads 2: caps ffmpeg worker threads to limit peak RAM (prevents OOM in production VMs).
-    const p = spawn("ffmpeg", ["-threads", "2", ...args]);
+    const p = spawn("ffmpeg", ["-threads", "2", "-filter_threads", "1", "-filter_complex_threads", "1", ...args]);
     let stderr = "";
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
       p.kill("SIGKILL");
-    }, FFMPEG_STEP_TIMEOUT_MS);
+    }, timeoutMs);
     lease.signal.addEventListener("abort", () => {
       if (timedOut) return;
       timedOut = true; clearTimeout(timer); p.kill("SIGKILL"); reject(lease.signal.reason);
@@ -214,7 +225,7 @@ function run(args: string[]): Promise<void> {
       if (timedOut) {
         return reject(
           new Error(
-            `ffmpeg step timed out after ${FFMPEG_STEP_TIMEOUT_MS / 60000} minutes and was killed (file may be corrupt or too large to process)`,
+            `ffmpeg step timed out after ${Math.round(timeoutMs / 60000)} minutes and was killed (file may be corrupt or too large to process)`,
           ),
         );
       }
@@ -283,10 +294,9 @@ function hasAudio(file: string): Promise<boolean> {
 export async function stitchEditorTimeline(
   input: EditorStitchInput,
 ): Promise<EditorStitchResult> {
-  // Hard-cap total pixels at ~720p worth (1280×720) — 1080p encoding exhausts
-  // RAM on the production VM — but preserve the requested aspect ratio so
-  // portrait (9:16) renders as 720×1280, not a cropped landscape frame.
-  const MAX_PIXELS = 1280 * 720;
+  // Bounded input/filter threads and windowed overlays allow true 1080p.
+  // Keep a 1080p ceiling: accepting arbitrary dimensions can exhaust memory.
+  const MAX_PIXELS = 1920 * 1080;
   let W = input.width ?? 1280;
   let H = input.height ?? 720;
   if (W * H > MAX_PIXELS) {
@@ -316,6 +326,8 @@ export async function stitchEditorTimeline(
         await writeFile(raw, seg.buffer);
         if (seg.kind === "photo") {
           const dur = Math.max(0.5, seg.durationSec || 3);
+          if (plannedDurations.reduce((sum, value) => sum + value, 0) + dur > 1800.1)
+            throw new RangeError("Montage projects can be at most 30 minutes.");
           await run([
             "-y",
             "-loop", "1", "-t", String(dur), "-i", raw,
@@ -360,6 +372,8 @@ export async function stitchEditorTimeline(
             trimEnd = Math.min(requestedTrimEnd, Math.max(0, maximumTotalTrim - trimStart));
             keepDur = Math.max(minimumKept, origDur - trimStart - trimEnd);
           }
+          if (plannedDurations.reduce((sum, value) => sum + value, 0) + (keepDur ?? sourceDuration) > 1800.1)
+            throw new RangeError("The actual video duration exceeds the 30-minute project limit. Trim the clip before exporting.");
           const args = ["-y"];
           if (trimStart > 0) args.push("-ss", String(trimStart));
           args.push("-i", raw);
@@ -385,6 +399,7 @@ export async function stitchEditorTimeline(
         }
         parts.push(out);
       } catch (err) {
+        if (err instanceof RangeError) throw err;
         skipped.push({ index: i, error: String((err as Error).message || err).slice(-300) });
       }
       // Report after each segment (processed or skipped) so the caller can show
@@ -703,6 +718,19 @@ export async function stitchEditorTimeline(
       args.push("-avoid_negative_ts", "make_zero", withMusic);
       await run(args);
       current = withMusic;
+    }
+
+    const mainDuration = await probeVideoDuration(current);
+    if (mainDuration > 1800.1) throw new Error("Montage projects can be at most 30 minutes. Shorten the main timeline.");
+    if (input.overlays?.length || input.textCards?.length) {
+      // Missing/skipped main clips would silently move every absolute overlay.
+      // Fail layered exports instead of delivering incorrectly timed content.
+      if (skipped.length) throw new Error("A main timeline clip could not be rendered. Replace it before exporting overlays.");
+      current = await renderEditorLayers({
+        current, dir, width: W, height: H, fps: FPS,
+        duration: mainDuration, overlays: input.overlays ?? [], textCards: input.textCards ?? [],
+        run, hasAudio, probeDuration: probeVideoDuration, onProgress: input.onLayerProgress,
+      });
     }
 
     // 4. Free-tier watermark (drawtext, bottom-right).

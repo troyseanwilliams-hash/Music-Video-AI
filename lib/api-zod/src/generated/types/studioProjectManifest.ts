@@ -10,10 +10,16 @@ import type { StudioProjectManifestLyricsSyncSource } from './studioProjectManif
 import type { StudioProjectManifestOrientation } from './studioProjectManifestOrientation';
 import type { StudioProjectManifestResolution } from './studioProjectManifestResolution';
 import type { StudioSegment } from './studioSegment';
+import type { StudioTextCard } from './studioTextCard';
 import type { StudioTransition } from './studioTransition';
+import type { StudioVideoOverlay } from './studioVideoOverlay';
 
 export interface StudioProjectManifest {
   version: 1;
+  /** @maxItems 100 */
+  overlays?: StudioVideoOverlay[];
+  /** @maxItems 100 */
+  textCards?: StudioTextCard[];
   /**
      * @minItems 1
      * @maxItems 500

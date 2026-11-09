@@ -74,3 +74,4 @@
 - [Free offer positioning](free-offer-positioning.md) — 150 signup credits expire with trial; source-aware refunds must preserve paid funds and never revive expired grants.
 - [Generate checkout preservation](generate-checkout-preservation.md) — keep the original Generate tab open during checkout; balance refresh must not reset or auto-submit the draft.
 - [Equal scene billing](equal-scene-billing.md) — equal paid shot lengths keep scene-count partial refunds accurate; shorter final requests need duration-weighted settlement.
+- [Montage commentary workflow](montage-commentary-workflow.md) — optional commentary layers preserve source watermarks and absolute timing; missing main media must not shift overlays.

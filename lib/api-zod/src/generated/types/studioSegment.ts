@@ -17,18 +17,18 @@ export interface StudioSegment {
   /** @minLength 1 */
   objectPath: string;
   /**
-     * @maximum 600
+     * @maximum 1800
      * @exclusiveMinimum 0
      */
   durationSec: number;
   /**
      * @minimum 0
-     * @maximum 600
+     * @maximum 1800
      */
   trimStart?: number;
   /**
      * @minimum 0
-     * @maximum 600
+     * @maximum 1800
      */
   trimEnd?: number;
   /** @nullable */

@@ -2113,17 +2113,78 @@ export const CreateStudioProjectHeader = zod.object({
 
 export const createStudioProjectBodyNameMax = 120;
 
+export const createStudioProjectBodyManifestOverlaysItemIdMax = 100;
+
+export const createStudioProjectBodyManifestOverlaysItemNameMax = 120;
+
+
+export const createStudioProjectBodyManifestOverlaysItemStartSecMin = 0;
+export const createStudioProjectBodyManifestOverlaysItemStartSecMax = 1800;
+
+export const createStudioProjectBodyManifestOverlaysItemDurationSecExclusiveMin = 0;
+export const createStudioProjectBodyManifestOverlaysItemDurationSecMax = 1800;
+
+export const createStudioProjectBodyManifestOverlaysItemTrimStartMin = 0;
+export const createStudioProjectBodyManifestOverlaysItemTrimStartMax = 1800;
+
+export const createStudioProjectBodyManifestOverlaysItemXMin = 0;
+export const createStudioProjectBodyManifestOverlaysItemXMax = 1;
+
+export const createStudioProjectBodyManifestOverlaysItemYMin = 0;
+export const createStudioProjectBodyManifestOverlaysItemYMax = 1;
+
+export const createStudioProjectBodyManifestOverlaysItemWidthExclusiveMin = 0;
+export const createStudioProjectBodyManifestOverlaysItemWidthMax = 1;
+
+export const createStudioProjectBodyManifestOverlaysItemHeightExclusiveMin = 0;
+export const createStudioProjectBodyManifestOverlaysItemHeightMax = 1;
+
+export const createStudioProjectBodyManifestOverlaysItemVolumeMin = 0;
+export const createStudioProjectBodyManifestOverlaysItemVolumeMax = 1;
+
+export const createStudioProjectBodyManifestOverlaysItemCornerRadiusMin = 0;
+export const createStudioProjectBodyManifestOverlaysItemCornerRadiusMax = 0.25;
+
+export const createStudioProjectBodyManifestOverlaysItemBorderWidthMin = 0;
+export const createStudioProjectBodyManifestOverlaysItemBorderWidthMax = 0.02;
+
+export const createStudioProjectBodyManifestOverlaysItemBorderColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+export const createStudioProjectBodyManifestOverlaysMax = 100;
+
+export const createStudioProjectBodyManifestTextCardsItemIdMax = 100;
+
+export const createStudioProjectBodyManifestTextCardsItemTextMax = 500;
+
+export const createStudioProjectBodyManifestTextCardsItemStartSecMin = 0;
+export const createStudioProjectBodyManifestTextCardsItemStartSecMax = 1800;
+
+export const createStudioProjectBodyManifestTextCardsItemDurationSecExclusiveMin = 0;
+export const createStudioProjectBodyManifestTextCardsItemDurationSecMax = 1800;
+
+export const createStudioProjectBodyManifestTextCardsItemXMin = 0;
+export const createStudioProjectBodyManifestTextCardsItemXMax = 1;
+
+export const createStudioProjectBodyManifestTextCardsItemYMin = 0;
+export const createStudioProjectBodyManifestTextCardsItemYMax = 1;
+
+export const createStudioProjectBodyManifestTextCardsItemFontSizeMin = 0.01;
+export const createStudioProjectBodyManifestTextCardsItemFontSizeMax = 0.15;
+
+export const createStudioProjectBodyManifestTextCardsItemColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+export const createStudioProjectBodyManifestTextCardsItemBackgroundColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+export const createStudioProjectBodyManifestTextCardsMax = 100;
+
 export const createStudioProjectBodyManifestSegmentsItemNameMax = 120;
 
 
 export const createStudioProjectBodyManifestSegmentsItemDurationSecExclusiveMin = 0;
-export const createStudioProjectBodyManifestSegmentsItemDurationSecMax = 600;
+export const createStudioProjectBodyManifestSegmentsItemDurationSecMax = 1800;
 
 export const createStudioProjectBodyManifestSegmentsItemTrimStartMin = 0;
-export const createStudioProjectBodyManifestSegmentsItemTrimStartMax = 600;
+export const createStudioProjectBodyManifestSegmentsItemTrimStartMax = 1800;
 
 export const createStudioProjectBodyManifestSegmentsItemTrimEndMin = 0;
-export const createStudioProjectBodyManifestSegmentsItemTrimEndMax = 600;
+export const createStudioProjectBodyManifestSegmentsItemTrimEndMax = 1800;
 
 export const createStudioProjectBodyManifestSegmentsMax = 500;
 
@@ -2149,6 +2210,34 @@ export const CreateStudioProjectBody = zod.object({
   "name": zod.string().min(1).max(createStudioProjectBodyNameMax),
   "manifest": zod.object({
   "version": zod.number(),
+  "overlays": zod.array(zod.object({
+  "id": zod.string().min(1).max(createStudioProjectBodyManifestOverlaysItemIdMax),
+  "name": zod.string().min(1).max(createStudioProjectBodyManifestOverlaysItemNameMax),
+  "objectPath": zod.string().min(1),
+  "startSec": zod.number().min(createStudioProjectBodyManifestOverlaysItemStartSecMin).max(createStudioProjectBodyManifestOverlaysItemStartSecMax),
+  "durationSec": zod.number().gt(createStudioProjectBodyManifestOverlaysItemDurationSecExclusiveMin).max(createStudioProjectBodyManifestOverlaysItemDurationSecMax),
+  "trimStart": zod.number().min(createStudioProjectBodyManifestOverlaysItemTrimStartMin).max(createStudioProjectBodyManifestOverlaysItemTrimStartMax),
+  "x": zod.number().min(createStudioProjectBodyManifestOverlaysItemXMin).max(createStudioProjectBodyManifestOverlaysItemXMax),
+  "y": zod.number().min(createStudioProjectBodyManifestOverlaysItemYMin).max(createStudioProjectBodyManifestOverlaysItemYMax),
+  "width": zod.number().gt(createStudioProjectBodyManifestOverlaysItemWidthExclusiveMin).max(createStudioProjectBodyManifestOverlaysItemWidthMax),
+  "height": zod.number().gt(createStudioProjectBodyManifestOverlaysItemHeightExclusiveMin).max(createStudioProjectBodyManifestOverlaysItemHeightMax),
+  "layout": zod.enum(['custom', 'reaction', 'commentary']),
+  "volume": zod.number().min(createStudioProjectBodyManifestOverlaysItemVolumeMin).max(createStudioProjectBodyManifestOverlaysItemVolumeMax),
+  "cornerRadius": zod.number().min(createStudioProjectBodyManifestOverlaysItemCornerRadiusMin).max(createStudioProjectBodyManifestOverlaysItemCornerRadiusMax),
+  "borderWidth": zod.number().min(createStudioProjectBodyManifestOverlaysItemBorderWidthMin).max(createStudioProjectBodyManifestOverlaysItemBorderWidthMax),
+  "borderColor": zod.string().regex(createStudioProjectBodyManifestOverlaysItemBorderColorRegExp)
+})).max(createStudioProjectBodyManifestOverlaysMax).optional(),
+  "textCards": zod.array(zod.object({
+  "id": zod.string().min(1).max(createStudioProjectBodyManifestTextCardsItemIdMax),
+  "text": zod.string().min(1).max(createStudioProjectBodyManifestTextCardsItemTextMax),
+  "startSec": zod.number().min(createStudioProjectBodyManifestTextCardsItemStartSecMin).max(createStudioProjectBodyManifestTextCardsItemStartSecMax),
+  "durationSec": zod.number().gt(createStudioProjectBodyManifestTextCardsItemDurationSecExclusiveMin).max(createStudioProjectBodyManifestTextCardsItemDurationSecMax),
+  "x": zod.number().min(createStudioProjectBodyManifestTextCardsItemXMin).max(createStudioProjectBodyManifestTextCardsItemXMax),
+  "y": zod.number().min(createStudioProjectBodyManifestTextCardsItemYMin).max(createStudioProjectBodyManifestTextCardsItemYMax),
+  "fontSize": zod.number().min(createStudioProjectBodyManifestTextCardsItemFontSizeMin).max(createStudioProjectBodyManifestTextCardsItemFontSizeMax),
+  "color": zod.string().regex(createStudioProjectBodyManifestTextCardsItemColorRegExp),
+  "backgroundColor": zod.string().regex(createStudioProjectBodyManifestTextCardsItemBackgroundColorRegExp)
+})).max(createStudioProjectBodyManifestTextCardsMax).optional(),
   "segments": zod.array(zod.object({
   "name": zod.string().min(1).max(createStudioProjectBodyManifestSegmentsItemNameMax),
   "kind": zod.enum(['video', 'photo']),
@@ -2181,17 +2270,78 @@ export const CreateStudioProjectBody = zod.object({
 })
 })
 
+export const createStudioProjectResponseManifestOverlaysItemIdMax = 100;
+
+export const createStudioProjectResponseManifestOverlaysItemNameMax = 120;
+
+
+export const createStudioProjectResponseManifestOverlaysItemStartSecMin = 0;
+export const createStudioProjectResponseManifestOverlaysItemStartSecMax = 1800;
+
+export const createStudioProjectResponseManifestOverlaysItemDurationSecExclusiveMin = 0;
+export const createStudioProjectResponseManifestOverlaysItemDurationSecMax = 1800;
+
+export const createStudioProjectResponseManifestOverlaysItemTrimStartMin = 0;
+export const createStudioProjectResponseManifestOverlaysItemTrimStartMax = 1800;
+
+export const createStudioProjectResponseManifestOverlaysItemXMin = 0;
+export const createStudioProjectResponseManifestOverlaysItemXMax = 1;
+
+export const createStudioProjectResponseManifestOverlaysItemYMin = 0;
+export const createStudioProjectResponseManifestOverlaysItemYMax = 1;
+
+export const createStudioProjectResponseManifestOverlaysItemWidthExclusiveMin = 0;
+export const createStudioProjectResponseManifestOverlaysItemWidthMax = 1;
+
+export const createStudioProjectResponseManifestOverlaysItemHeightExclusiveMin = 0;
+export const createStudioProjectResponseManifestOverlaysItemHeightMax = 1;
+
+export const createStudioProjectResponseManifestOverlaysItemVolumeMin = 0;
+export const createStudioProjectResponseManifestOverlaysItemVolumeMax = 1;
+
+export const createStudioProjectResponseManifestOverlaysItemCornerRadiusMin = 0;
+export const createStudioProjectResponseManifestOverlaysItemCornerRadiusMax = 0.25;
+
+export const createStudioProjectResponseManifestOverlaysItemBorderWidthMin = 0;
+export const createStudioProjectResponseManifestOverlaysItemBorderWidthMax = 0.02;
+
+export const createStudioProjectResponseManifestOverlaysItemBorderColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+export const createStudioProjectResponseManifestOverlaysMax = 100;
+
+export const createStudioProjectResponseManifestTextCardsItemIdMax = 100;
+
+export const createStudioProjectResponseManifestTextCardsItemTextMax = 500;
+
+export const createStudioProjectResponseManifestTextCardsItemStartSecMin = 0;
+export const createStudioProjectResponseManifestTextCardsItemStartSecMax = 1800;
+
+export const createStudioProjectResponseManifestTextCardsItemDurationSecExclusiveMin = 0;
+export const createStudioProjectResponseManifestTextCardsItemDurationSecMax = 1800;
+
+export const createStudioProjectResponseManifestTextCardsItemXMin = 0;
+export const createStudioProjectResponseManifestTextCardsItemXMax = 1;
+
+export const createStudioProjectResponseManifestTextCardsItemYMin = 0;
+export const createStudioProjectResponseManifestTextCardsItemYMax = 1;
+
+export const createStudioProjectResponseManifestTextCardsItemFontSizeMin = 0.01;
+export const createStudioProjectResponseManifestTextCardsItemFontSizeMax = 0.15;
+
+export const createStudioProjectResponseManifestTextCardsItemColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+export const createStudioProjectResponseManifestTextCardsItemBackgroundColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+export const createStudioProjectResponseManifestTextCardsMax = 100;
+
 export const createStudioProjectResponseManifestSegmentsItemNameMax = 120;
 
 
 export const createStudioProjectResponseManifestSegmentsItemDurationSecExclusiveMin = 0;
-export const createStudioProjectResponseManifestSegmentsItemDurationSecMax = 600;
+export const createStudioProjectResponseManifestSegmentsItemDurationSecMax = 1800;
 
 export const createStudioProjectResponseManifestSegmentsItemTrimStartMin = 0;
-export const createStudioProjectResponseManifestSegmentsItemTrimStartMax = 600;
+export const createStudioProjectResponseManifestSegmentsItemTrimStartMax = 1800;
 
 export const createStudioProjectResponseManifestSegmentsItemTrimEndMin = 0;
-export const createStudioProjectResponseManifestSegmentsItemTrimEndMax = 600;
+export const createStudioProjectResponseManifestSegmentsItemTrimEndMax = 1800;
 
 export const createStudioProjectResponseManifestSegmentsMax = 500;
 
@@ -2218,6 +2368,34 @@ export const CreateStudioProjectResponse = zod.object({
   "name": zod.string(),
   "manifest": zod.object({
   "version": zod.number(),
+  "overlays": zod.array(zod.object({
+  "id": zod.string().min(1).max(createStudioProjectResponseManifestOverlaysItemIdMax),
+  "name": zod.string().min(1).max(createStudioProjectResponseManifestOverlaysItemNameMax),
+  "objectPath": zod.string().min(1),
+  "startSec": zod.number().min(createStudioProjectResponseManifestOverlaysItemStartSecMin).max(createStudioProjectResponseManifestOverlaysItemStartSecMax),
+  "durationSec": zod.number().gt(createStudioProjectResponseManifestOverlaysItemDurationSecExclusiveMin).max(createStudioProjectResponseManifestOverlaysItemDurationSecMax),
+  "trimStart": zod.number().min(createStudioProjectResponseManifestOverlaysItemTrimStartMin).max(createStudioProjectResponseManifestOverlaysItemTrimStartMax),
+  "x": zod.number().min(createStudioProjectResponseManifestOverlaysItemXMin).max(createStudioProjectResponseManifestOverlaysItemXMax),
+  "y": zod.number().min(createStudioProjectResponseManifestOverlaysItemYMin).max(createStudioProjectResponseManifestOverlaysItemYMax),
+  "width": zod.number().gt(createStudioProjectResponseManifestOverlaysItemWidthExclusiveMin).max(createStudioProjectResponseManifestOverlaysItemWidthMax),
+  "height": zod.number().gt(createStudioProjectResponseManifestOverlaysItemHeightExclusiveMin).max(createStudioProjectResponseManifestOverlaysItemHeightMax),
+  "layout": zod.enum(['custom', 'reaction', 'commentary']),
+  "volume": zod.number().min(createStudioProjectResponseManifestOverlaysItemVolumeMin).max(createStudioProjectResponseManifestOverlaysItemVolumeMax),
+  "cornerRadius": zod.number().min(createStudioProjectResponseManifestOverlaysItemCornerRadiusMin).max(createStudioProjectResponseManifestOverlaysItemCornerRadiusMax),
+  "borderWidth": zod.number().min(createStudioProjectResponseManifestOverlaysItemBorderWidthMin).max(createStudioProjectResponseManifestOverlaysItemBorderWidthMax),
+  "borderColor": zod.string().regex(createStudioProjectResponseManifestOverlaysItemBorderColorRegExp)
+})).max(createStudioProjectResponseManifestOverlaysMax).optional(),
+  "textCards": zod.array(zod.object({
+  "id": zod.string().min(1).max(createStudioProjectResponseManifestTextCardsItemIdMax),
+  "text": zod.string().min(1).max(createStudioProjectResponseManifestTextCardsItemTextMax),
+  "startSec": zod.number().min(createStudioProjectResponseManifestTextCardsItemStartSecMin).max(createStudioProjectResponseManifestTextCardsItemStartSecMax),
+  "durationSec": zod.number().gt(createStudioProjectResponseManifestTextCardsItemDurationSecExclusiveMin).max(createStudioProjectResponseManifestTextCardsItemDurationSecMax),
+  "x": zod.number().min(createStudioProjectResponseManifestTextCardsItemXMin).max(createStudioProjectResponseManifestTextCardsItemXMax),
+  "y": zod.number().min(createStudioProjectResponseManifestTextCardsItemYMin).max(createStudioProjectResponseManifestTextCardsItemYMax),
+  "fontSize": zod.number().min(createStudioProjectResponseManifestTextCardsItemFontSizeMin).max(createStudioProjectResponseManifestTextCardsItemFontSizeMax),
+  "color": zod.string().regex(createStudioProjectResponseManifestTextCardsItemColorRegExp),
+  "backgroundColor": zod.string().regex(createStudioProjectResponseManifestTextCardsItemBackgroundColorRegExp)
+})).max(createStudioProjectResponseManifestTextCardsMax).optional(),
   "segments": zod.array(zod.object({
   "name": zod.string().min(1).max(createStudioProjectResponseManifestSegmentsItemNameMax),
   "kind": zod.enum(['video', 'photo']),
@@ -2265,17 +2443,78 @@ export const GetStudioProjectHeader = zod.object({
   "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
 })
 
+export const getStudioProjectResponseManifestOverlaysItemIdMax = 100;
+
+export const getStudioProjectResponseManifestOverlaysItemNameMax = 120;
+
+
+export const getStudioProjectResponseManifestOverlaysItemStartSecMin = 0;
+export const getStudioProjectResponseManifestOverlaysItemStartSecMax = 1800;
+
+export const getStudioProjectResponseManifestOverlaysItemDurationSecExclusiveMin = 0;
+export const getStudioProjectResponseManifestOverlaysItemDurationSecMax = 1800;
+
+export const getStudioProjectResponseManifestOverlaysItemTrimStartMin = 0;
+export const getStudioProjectResponseManifestOverlaysItemTrimStartMax = 1800;
+
+export const getStudioProjectResponseManifestOverlaysItemXMin = 0;
+export const getStudioProjectResponseManifestOverlaysItemXMax = 1;
+
+export const getStudioProjectResponseManifestOverlaysItemYMin = 0;
+export const getStudioProjectResponseManifestOverlaysItemYMax = 1;
+
+export const getStudioProjectResponseManifestOverlaysItemWidthExclusiveMin = 0;
+export const getStudioProjectResponseManifestOverlaysItemWidthMax = 1;
+
+export const getStudioProjectResponseManifestOverlaysItemHeightExclusiveMin = 0;
+export const getStudioProjectResponseManifestOverlaysItemHeightMax = 1;
+
+export const getStudioProjectResponseManifestOverlaysItemVolumeMin = 0;
+export const getStudioProjectResponseManifestOverlaysItemVolumeMax = 1;
+
+export const getStudioProjectResponseManifestOverlaysItemCornerRadiusMin = 0;
+export const getStudioProjectResponseManifestOverlaysItemCornerRadiusMax = 0.25;
+
+export const getStudioProjectResponseManifestOverlaysItemBorderWidthMin = 0;
+export const getStudioProjectResponseManifestOverlaysItemBorderWidthMax = 0.02;
+
+export const getStudioProjectResponseManifestOverlaysItemBorderColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+export const getStudioProjectResponseManifestOverlaysMax = 100;
+
+export const getStudioProjectResponseManifestTextCardsItemIdMax = 100;
+
+export const getStudioProjectResponseManifestTextCardsItemTextMax = 500;
+
+export const getStudioProjectResponseManifestTextCardsItemStartSecMin = 0;
+export const getStudioProjectResponseManifestTextCardsItemStartSecMax = 1800;
+
+export const getStudioProjectResponseManifestTextCardsItemDurationSecExclusiveMin = 0;
+export const getStudioProjectResponseManifestTextCardsItemDurationSecMax = 1800;
+
+export const getStudioProjectResponseManifestTextCardsItemXMin = 0;
+export const getStudioProjectResponseManifestTextCardsItemXMax = 1;
+
+export const getStudioProjectResponseManifestTextCardsItemYMin = 0;
+export const getStudioProjectResponseManifestTextCardsItemYMax = 1;
+
+export const getStudioProjectResponseManifestTextCardsItemFontSizeMin = 0.01;
+export const getStudioProjectResponseManifestTextCardsItemFontSizeMax = 0.15;
+
+export const getStudioProjectResponseManifestTextCardsItemColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+export const getStudioProjectResponseManifestTextCardsItemBackgroundColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+export const getStudioProjectResponseManifestTextCardsMax = 100;
+
 export const getStudioProjectResponseManifestSegmentsItemNameMax = 120;
 
 
 export const getStudioProjectResponseManifestSegmentsItemDurationSecExclusiveMin = 0;
-export const getStudioProjectResponseManifestSegmentsItemDurationSecMax = 600;
+export const getStudioProjectResponseManifestSegmentsItemDurationSecMax = 1800;
 
 export const getStudioProjectResponseManifestSegmentsItemTrimStartMin = 0;
-export const getStudioProjectResponseManifestSegmentsItemTrimStartMax = 600;
+export const getStudioProjectResponseManifestSegmentsItemTrimStartMax = 1800;
 
 export const getStudioProjectResponseManifestSegmentsItemTrimEndMin = 0;
-export const getStudioProjectResponseManifestSegmentsItemTrimEndMax = 600;
+export const getStudioProjectResponseManifestSegmentsItemTrimEndMax = 1800;
 
 export const getStudioProjectResponseManifestSegmentsMax = 500;
 
@@ -2302,6 +2541,34 @@ export const GetStudioProjectResponse = zod.object({
   "name": zod.string(),
   "manifest": zod.object({
   "version": zod.number(),
+  "overlays": zod.array(zod.object({
+  "id": zod.string().min(1).max(getStudioProjectResponseManifestOverlaysItemIdMax),
+  "name": zod.string().min(1).max(getStudioProjectResponseManifestOverlaysItemNameMax),
+  "objectPath": zod.string().min(1),
+  "startSec": zod.number().min(getStudioProjectResponseManifestOverlaysItemStartSecMin).max(getStudioProjectResponseManifestOverlaysItemStartSecMax),
+  "durationSec": zod.number().gt(getStudioProjectResponseManifestOverlaysItemDurationSecExclusiveMin).max(getStudioProjectResponseManifestOverlaysItemDurationSecMax),
+  "trimStart": zod.number().min(getStudioProjectResponseManifestOverlaysItemTrimStartMin).max(getStudioProjectResponseManifestOverlaysItemTrimStartMax),
+  "x": zod.number().min(getStudioProjectResponseManifestOverlaysItemXMin).max(getStudioProjectResponseManifestOverlaysItemXMax),
+  "y": zod.number().min(getStudioProjectResponseManifestOverlaysItemYMin).max(getStudioProjectResponseManifestOverlaysItemYMax),
+  "width": zod.number().gt(getStudioProjectResponseManifestOverlaysItemWidthExclusiveMin).max(getStudioProjectResponseManifestOverlaysItemWidthMax),
+  "height": zod.number().gt(getStudioProjectResponseManifestOverlaysItemHeightExclusiveMin).max(getStudioProjectResponseManifestOverlaysItemHeightMax),
+  "layout": zod.enum(['custom', 'reaction', 'commentary']),
+  "volume": zod.number().min(getStudioProjectResponseManifestOverlaysItemVolumeMin).max(getStudioProjectResponseManifestOverlaysItemVolumeMax),
+  "cornerRadius": zod.number().min(getStudioProjectResponseManifestOverlaysItemCornerRadiusMin).max(getStudioProjectResponseManifestOverlaysItemCornerRadiusMax),
+  "borderWidth": zod.number().min(getStudioProjectResponseManifestOverlaysItemBorderWidthMin).max(getStudioProjectResponseManifestOverlaysItemBorderWidthMax),
+  "borderColor": zod.string().regex(getStudioProjectResponseManifestOverlaysItemBorderColorRegExp)
+})).max(getStudioProjectResponseManifestOverlaysMax).optional(),
+  "textCards": zod.array(zod.object({
+  "id": zod.string().min(1).max(getStudioProjectResponseManifestTextCardsItemIdMax),
+  "text": zod.string().min(1).max(getStudioProjectResponseManifestTextCardsItemTextMax),
+  "startSec": zod.number().min(getStudioProjectResponseManifestTextCardsItemStartSecMin).max(getStudioProjectResponseManifestTextCardsItemStartSecMax),
+  "durationSec": zod.number().gt(getStudioProjectResponseManifestTextCardsItemDurationSecExclusiveMin).max(getStudioProjectResponseManifestTextCardsItemDurationSecMax),
+  "x": zod.number().min(getStudioProjectResponseManifestTextCardsItemXMin).max(getStudioProjectResponseManifestTextCardsItemXMax),
+  "y": zod.number().min(getStudioProjectResponseManifestTextCardsItemYMin).max(getStudioProjectResponseManifestTextCardsItemYMax),
+  "fontSize": zod.number().min(getStudioProjectResponseManifestTextCardsItemFontSizeMin).max(getStudioProjectResponseManifestTextCardsItemFontSizeMax),
+  "color": zod.string().regex(getStudioProjectResponseManifestTextCardsItemColorRegExp),
+  "backgroundColor": zod.string().regex(getStudioProjectResponseManifestTextCardsItemBackgroundColorRegExp)
+})).max(getStudioProjectResponseManifestTextCardsMax).optional(),
   "segments": zod.array(zod.object({
   "name": zod.string().min(1).max(getStudioProjectResponseManifestSegmentsItemNameMax),
   "kind": zod.enum(['video', 'photo']),
@@ -2351,17 +2618,78 @@ export const UpdateStudioProjectHeader = zod.object({
 
 export const updateStudioProjectBodyNameMax = 120;
 
+export const updateStudioProjectBodyManifestOverlaysItemIdMax = 100;
+
+export const updateStudioProjectBodyManifestOverlaysItemNameMax = 120;
+
+
+export const updateStudioProjectBodyManifestOverlaysItemStartSecMin = 0;
+export const updateStudioProjectBodyManifestOverlaysItemStartSecMax = 1800;
+
+export const updateStudioProjectBodyManifestOverlaysItemDurationSecExclusiveMin = 0;
+export const updateStudioProjectBodyManifestOverlaysItemDurationSecMax = 1800;
+
+export const updateStudioProjectBodyManifestOverlaysItemTrimStartMin = 0;
+export const updateStudioProjectBodyManifestOverlaysItemTrimStartMax = 1800;
+
+export const updateStudioProjectBodyManifestOverlaysItemXMin = 0;
+export const updateStudioProjectBodyManifestOverlaysItemXMax = 1;
+
+export const updateStudioProjectBodyManifestOverlaysItemYMin = 0;
+export const updateStudioProjectBodyManifestOverlaysItemYMax = 1;
+
+export const updateStudioProjectBodyManifestOverlaysItemWidthExclusiveMin = 0;
+export const updateStudioProjectBodyManifestOverlaysItemWidthMax = 1;
+
+export const updateStudioProjectBodyManifestOverlaysItemHeightExclusiveMin = 0;
+export const updateStudioProjectBodyManifestOverlaysItemHeightMax = 1;
+
+export const updateStudioProjectBodyManifestOverlaysItemVolumeMin = 0;
+export const updateStudioProjectBodyManifestOverlaysItemVolumeMax = 1;
+
+export const updateStudioProjectBodyManifestOverlaysItemCornerRadiusMin = 0;
+export const updateStudioProjectBodyManifestOverlaysItemCornerRadiusMax = 0.25;
+
+export const updateStudioProjectBodyManifestOverlaysItemBorderWidthMin = 0;
+export const updateStudioProjectBodyManifestOverlaysItemBorderWidthMax = 0.02;
+
+export const updateStudioProjectBodyManifestOverlaysItemBorderColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+export const updateStudioProjectBodyManifestOverlaysMax = 100;
+
+export const updateStudioProjectBodyManifestTextCardsItemIdMax = 100;
+
+export const updateStudioProjectBodyManifestTextCardsItemTextMax = 500;
+
+export const updateStudioProjectBodyManifestTextCardsItemStartSecMin = 0;
+export const updateStudioProjectBodyManifestTextCardsItemStartSecMax = 1800;
+
+export const updateStudioProjectBodyManifestTextCardsItemDurationSecExclusiveMin = 0;
+export const updateStudioProjectBodyManifestTextCardsItemDurationSecMax = 1800;
+
+export const updateStudioProjectBodyManifestTextCardsItemXMin = 0;
+export const updateStudioProjectBodyManifestTextCardsItemXMax = 1;
+
+export const updateStudioProjectBodyManifestTextCardsItemYMin = 0;
+export const updateStudioProjectBodyManifestTextCardsItemYMax = 1;
+
+export const updateStudioProjectBodyManifestTextCardsItemFontSizeMin = 0.01;
+export const updateStudioProjectBodyManifestTextCardsItemFontSizeMax = 0.15;
+
+export const updateStudioProjectBodyManifestTextCardsItemColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+export const updateStudioProjectBodyManifestTextCardsItemBackgroundColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+export const updateStudioProjectBodyManifestTextCardsMax = 100;
+
 export const updateStudioProjectBodyManifestSegmentsItemNameMax = 120;
 
 
 export const updateStudioProjectBodyManifestSegmentsItemDurationSecExclusiveMin = 0;
-export const updateStudioProjectBodyManifestSegmentsItemDurationSecMax = 600;
+export const updateStudioProjectBodyManifestSegmentsItemDurationSecMax = 1800;
 
 export const updateStudioProjectBodyManifestSegmentsItemTrimStartMin = 0;
-export const updateStudioProjectBodyManifestSegmentsItemTrimStartMax = 600;
+export const updateStudioProjectBodyManifestSegmentsItemTrimStartMax = 1800;
 
 export const updateStudioProjectBodyManifestSegmentsItemTrimEndMin = 0;
-export const updateStudioProjectBodyManifestSegmentsItemTrimEndMax = 600;
+export const updateStudioProjectBodyManifestSegmentsItemTrimEndMax = 1800;
 
 export const updateStudioProjectBodyManifestSegmentsMax = 500;
 
@@ -2387,6 +2715,34 @@ export const UpdateStudioProjectBody = zod.object({
   "name": zod.string().min(1).max(updateStudioProjectBodyNameMax).optional(),
   "manifest": zod.object({
   "version": zod.number(),
+  "overlays": zod.array(zod.object({
+  "id": zod.string().min(1).max(updateStudioProjectBodyManifestOverlaysItemIdMax),
+  "name": zod.string().min(1).max(updateStudioProjectBodyManifestOverlaysItemNameMax),
+  "objectPath": zod.string().min(1),
+  "startSec": zod.number().min(updateStudioProjectBodyManifestOverlaysItemStartSecMin).max(updateStudioProjectBodyManifestOverlaysItemStartSecMax),
+  "durationSec": zod.number().gt(updateStudioProjectBodyManifestOverlaysItemDurationSecExclusiveMin).max(updateStudioProjectBodyManifestOverlaysItemDurationSecMax),
+  "trimStart": zod.number().min(updateStudioProjectBodyManifestOverlaysItemTrimStartMin).max(updateStudioProjectBodyManifestOverlaysItemTrimStartMax),
+  "x": zod.number().min(updateStudioProjectBodyManifestOverlaysItemXMin).max(updateStudioProjectBodyManifestOverlaysItemXMax),
+  "y": zod.number().min(updateStudioProjectBodyManifestOverlaysItemYMin).max(updateStudioProjectBodyManifestOverlaysItemYMax),
+  "width": zod.number().gt(updateStudioProjectBodyManifestOverlaysItemWidthExclusiveMin).max(updateStudioProjectBodyManifestOverlaysItemWidthMax),
+  "height": zod.number().gt(updateStudioProjectBodyManifestOverlaysItemHeightExclusiveMin).max(updateStudioProjectBodyManifestOverlaysItemHeightMax),
+  "layout": zod.enum(['custom', 'reaction', 'commentary']),
+  "volume": zod.number().min(updateStudioProjectBodyManifestOverlaysItemVolumeMin).max(updateStudioProjectBodyManifestOverlaysItemVolumeMax),
+  "cornerRadius": zod.number().min(updateStudioProjectBodyManifestOverlaysItemCornerRadiusMin).max(updateStudioProjectBodyManifestOverlaysItemCornerRadiusMax),
+  "borderWidth": zod.number().min(updateStudioProjectBodyManifestOverlaysItemBorderWidthMin).max(updateStudioProjectBodyManifestOverlaysItemBorderWidthMax),
+  "borderColor": zod.string().regex(updateStudioProjectBodyManifestOverlaysItemBorderColorRegExp)
+})).max(updateStudioProjectBodyManifestOverlaysMax).optional(),
+  "textCards": zod.array(zod.object({
+  "id": zod.string().min(1).max(updateStudioProjectBodyManifestTextCardsItemIdMax),
+  "text": zod.string().min(1).max(updateStudioProjectBodyManifestTextCardsItemTextMax),
+  "startSec": zod.number().min(updateStudioProjectBodyManifestTextCardsItemStartSecMin).max(updateStudioProjectBodyManifestTextCardsItemStartSecMax),
+  "durationSec": zod.number().gt(updateStudioProjectBodyManifestTextCardsItemDurationSecExclusiveMin).max(updateStudioProjectBodyManifestTextCardsItemDurationSecMax),
+  "x": zod.number().min(updateStudioProjectBodyManifestTextCardsItemXMin).max(updateStudioProjectBodyManifestTextCardsItemXMax),
+  "y": zod.number().min(updateStudioProjectBodyManifestTextCardsItemYMin).max(updateStudioProjectBodyManifestTextCardsItemYMax),
+  "fontSize": zod.number().min(updateStudioProjectBodyManifestTextCardsItemFontSizeMin).max(updateStudioProjectBodyManifestTextCardsItemFontSizeMax),
+  "color": zod.string().regex(updateStudioProjectBodyManifestTextCardsItemColorRegExp),
+  "backgroundColor": zod.string().regex(updateStudioProjectBodyManifestTextCardsItemBackgroundColorRegExp)
+})).max(updateStudioProjectBodyManifestTextCardsMax).optional(),
   "segments": zod.array(zod.object({
   "name": zod.string().min(1).max(updateStudioProjectBodyManifestSegmentsItemNameMax),
   "kind": zod.enum(['video', 'photo']),
@@ -2419,17 +2775,78 @@ export const UpdateStudioProjectBody = zod.object({
 }).optional()
 })
 
+export const updateStudioProjectResponseManifestOverlaysItemIdMax = 100;
+
+export const updateStudioProjectResponseManifestOverlaysItemNameMax = 120;
+
+
+export const updateStudioProjectResponseManifestOverlaysItemStartSecMin = 0;
+export const updateStudioProjectResponseManifestOverlaysItemStartSecMax = 1800;
+
+export const updateStudioProjectResponseManifestOverlaysItemDurationSecExclusiveMin = 0;
+export const updateStudioProjectResponseManifestOverlaysItemDurationSecMax = 1800;
+
+export const updateStudioProjectResponseManifestOverlaysItemTrimStartMin = 0;
+export const updateStudioProjectResponseManifestOverlaysItemTrimStartMax = 1800;
+
+export const updateStudioProjectResponseManifestOverlaysItemXMin = 0;
+export const updateStudioProjectResponseManifestOverlaysItemXMax = 1;
+
+export const updateStudioProjectResponseManifestOverlaysItemYMin = 0;
+export const updateStudioProjectResponseManifestOverlaysItemYMax = 1;
+
+export const updateStudioProjectResponseManifestOverlaysItemWidthExclusiveMin = 0;
+export const updateStudioProjectResponseManifestOverlaysItemWidthMax = 1;
+
+export const updateStudioProjectResponseManifestOverlaysItemHeightExclusiveMin = 0;
+export const updateStudioProjectResponseManifestOverlaysItemHeightMax = 1;
+
+export const updateStudioProjectResponseManifestOverlaysItemVolumeMin = 0;
+export const updateStudioProjectResponseManifestOverlaysItemVolumeMax = 1;
+
+export const updateStudioProjectResponseManifestOverlaysItemCornerRadiusMin = 0;
+export const updateStudioProjectResponseManifestOverlaysItemCornerRadiusMax = 0.25;
+
+export const updateStudioProjectResponseManifestOverlaysItemBorderWidthMin = 0;
+export const updateStudioProjectResponseManifestOverlaysItemBorderWidthMax = 0.02;
+
+export const updateStudioProjectResponseManifestOverlaysItemBorderColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+export const updateStudioProjectResponseManifestOverlaysMax = 100;
+
+export const updateStudioProjectResponseManifestTextCardsItemIdMax = 100;
+
+export const updateStudioProjectResponseManifestTextCardsItemTextMax = 500;
+
+export const updateStudioProjectResponseManifestTextCardsItemStartSecMin = 0;
+export const updateStudioProjectResponseManifestTextCardsItemStartSecMax = 1800;
+
+export const updateStudioProjectResponseManifestTextCardsItemDurationSecExclusiveMin = 0;
+export const updateStudioProjectResponseManifestTextCardsItemDurationSecMax = 1800;
+
+export const updateStudioProjectResponseManifestTextCardsItemXMin = 0;
+export const updateStudioProjectResponseManifestTextCardsItemXMax = 1;
+
+export const updateStudioProjectResponseManifestTextCardsItemYMin = 0;
+export const updateStudioProjectResponseManifestTextCardsItemYMax = 1;
+
+export const updateStudioProjectResponseManifestTextCardsItemFontSizeMin = 0.01;
+export const updateStudioProjectResponseManifestTextCardsItemFontSizeMax = 0.15;
+
+export const updateStudioProjectResponseManifestTextCardsItemColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+export const updateStudioProjectResponseManifestTextCardsItemBackgroundColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+export const updateStudioProjectResponseManifestTextCardsMax = 100;
+
 export const updateStudioProjectResponseManifestSegmentsItemNameMax = 120;
 
 
 export const updateStudioProjectResponseManifestSegmentsItemDurationSecExclusiveMin = 0;
-export const updateStudioProjectResponseManifestSegmentsItemDurationSecMax = 600;
+export const updateStudioProjectResponseManifestSegmentsItemDurationSecMax = 1800;
 
 export const updateStudioProjectResponseManifestSegmentsItemTrimStartMin = 0;
-export const updateStudioProjectResponseManifestSegmentsItemTrimStartMax = 600;
+export const updateStudioProjectResponseManifestSegmentsItemTrimStartMax = 1800;
 
 export const updateStudioProjectResponseManifestSegmentsItemTrimEndMin = 0;
-export const updateStudioProjectResponseManifestSegmentsItemTrimEndMax = 600;
+export const updateStudioProjectResponseManifestSegmentsItemTrimEndMax = 1800;
 
 export const updateStudioProjectResponseManifestSegmentsMax = 500;
 
@@ -2456,6 +2873,34 @@ export const UpdateStudioProjectResponse = zod.object({
   "name": zod.string(),
   "manifest": zod.object({
   "version": zod.number(),
+  "overlays": zod.array(zod.object({
+  "id": zod.string().min(1).max(updateStudioProjectResponseManifestOverlaysItemIdMax),
+  "name": zod.string().min(1).max(updateStudioProjectResponseManifestOverlaysItemNameMax),
+  "objectPath": zod.string().min(1),
+  "startSec": zod.number().min(updateStudioProjectResponseManifestOverlaysItemStartSecMin).max(updateStudioProjectResponseManifestOverlaysItemStartSecMax),
+  "durationSec": zod.number().gt(updateStudioProjectResponseManifestOverlaysItemDurationSecExclusiveMin).max(updateStudioProjectResponseManifestOverlaysItemDurationSecMax),
+  "trimStart": zod.number().min(updateStudioProjectResponseManifestOverlaysItemTrimStartMin).max(updateStudioProjectResponseManifestOverlaysItemTrimStartMax),
+  "x": zod.number().min(updateStudioProjectResponseManifestOverlaysItemXMin).max(updateStudioProjectResponseManifestOverlaysItemXMax),
+  "y": zod.number().min(updateStudioProjectResponseManifestOverlaysItemYMin).max(updateStudioProjectResponseManifestOverlaysItemYMax),
+  "width": zod.number().gt(updateStudioProjectResponseManifestOverlaysItemWidthExclusiveMin).max(updateStudioProjectResponseManifestOverlaysItemWidthMax),
+  "height": zod.number().gt(updateStudioProjectResponseManifestOverlaysItemHeightExclusiveMin).max(updateStudioProjectResponseManifestOverlaysItemHeightMax),
+  "layout": zod.enum(['custom', 'reaction', 'commentary']),
+  "volume": zod.number().min(updateStudioProjectResponseManifestOverlaysItemVolumeMin).max(updateStudioProjectResponseManifestOverlaysItemVolumeMax),
+  "cornerRadius": zod.number().min(updateStudioProjectResponseManifestOverlaysItemCornerRadiusMin).max(updateStudioProjectResponseManifestOverlaysItemCornerRadiusMax),
+  "borderWidth": zod.number().min(updateStudioProjectResponseManifestOverlaysItemBorderWidthMin).max(updateStudioProjectResponseManifestOverlaysItemBorderWidthMax),
+  "borderColor": zod.string().regex(updateStudioProjectResponseManifestOverlaysItemBorderColorRegExp)
+})).max(updateStudioProjectResponseManifestOverlaysMax).optional(),
+  "textCards": zod.array(zod.object({
+  "id": zod.string().min(1).max(updateStudioProjectResponseManifestTextCardsItemIdMax),
+  "text": zod.string().min(1).max(updateStudioProjectResponseManifestTextCardsItemTextMax),
+  "startSec": zod.number().min(updateStudioProjectResponseManifestTextCardsItemStartSecMin).max(updateStudioProjectResponseManifestTextCardsItemStartSecMax),
+  "durationSec": zod.number().gt(updateStudioProjectResponseManifestTextCardsItemDurationSecExclusiveMin).max(updateStudioProjectResponseManifestTextCardsItemDurationSecMax),
+  "x": zod.number().min(updateStudioProjectResponseManifestTextCardsItemXMin).max(updateStudioProjectResponseManifestTextCardsItemXMax),
+  "y": zod.number().min(updateStudioProjectResponseManifestTextCardsItemYMin).max(updateStudioProjectResponseManifestTextCardsItemYMax),
+  "fontSize": zod.number().min(updateStudioProjectResponseManifestTextCardsItemFontSizeMin).max(updateStudioProjectResponseManifestTextCardsItemFontSizeMax),
+  "color": zod.string().regex(updateStudioProjectResponseManifestTextCardsItemColorRegExp),
+  "backgroundColor": zod.string().regex(updateStudioProjectResponseManifestTextCardsItemBackgroundColorRegExp)
+})).max(updateStudioProjectResponseManifestTextCardsMax).optional(),
   "segments": zod.array(zod.object({
   "name": zod.string().min(1).max(updateStudioProjectResponseManifestSegmentsItemNameMax),
   "kind": zod.enum(['video', 'photo']),

@@ -26,6 +26,7 @@ import {
 import { generateLipsync, lipsyncAvailable } from "./lipsync.js";
 import { stitchVideoClips, extractVideoThumbnail, createWebPreview } from "./videoStitcher.js";
 import { stitchEditorTimeline } from "./editorStitcher.js";
+import type { EditorVideoOverlay, EditorTextCard, EditorOverlayInput } from "./editorLayers.js";
 import { resolveMontageSequence, resolveStrictMontageSequence } from "./montageSequence.js";
 import { assertStrictUniqueMedia, perceptualFingerprint } from "./mediaUniqueness.js";
 import {
@@ -3486,6 +3487,8 @@ function extFromObjectPath(objectPath: string, fallback: string): string {
 
 // Studio (editor) render manifest stored on the job row.
 interface EditorManifest {
+  overlays?: EditorVideoOverlay[];
+  textCards?: EditorTextCard[];
   segments: {
     objectPath: string;
     kind: "video" | "photo";
@@ -3556,6 +3559,14 @@ async function processEditorJob(job: JobRow): Promise<void> {
     if (segments.length === 0) {
       throw new Error("None of the timeline files could be read — nothing to render");
     }
+    if (removedFiles.length && (manifest.overlays?.length || manifest.textCards?.length)) {
+      throw new Error("A main timeline file is missing. Restore it before exporting timed overlays.");
+    }
+    const overlays: EditorOverlayInput[] = [];
+    for (const layer of manifest.overlays ?? []) {
+      const buffer = await storageService.downloadObjectBuffer(layer.objectPath);
+      overlays.push({ ...layer, buffer, ext: extFromObjectPath(layer.objectPath, "mp4") });
+    }
 
     let music;
     if (manifest.music?.objectPath) {
@@ -3609,6 +3620,15 @@ async function processEditorJob(job: JobRow): Promise<void> {
     }
     const result = await stitchEditorTimeline({
       segments,
+      overlays,
+      textCards: manifest.textCards,
+      onLayerProgress: (done, total) => {
+        const pct = 70 + Math.round(done / Math.max(1, total) * 15);
+        if (pct > lastEditorPct) {
+          lastEditorPct = pct;
+          void updateJobStatus(job.id, { progressPercent: pct });
+        }
+      },
       music,
       transition: effectiveTransition,
       width,
@@ -3616,7 +3636,7 @@ async function processEditorJob(job: JobRow): Promise<void> {
       watermark: manifest.watermark === true,
       lyricsText: manifest.lyricsText ?? undefined,
       onProgress: (done, total) => {
-        const pct = total > 0 ? 25 + Math.round((done / total) * 55) : 25;
+        const pct = total > 0 ? 25 + Math.round((done / total) * (overlays.length || manifest.textCards?.length ? 45 : 55)) : 25;
         if (pct > lastEditorPct) {
           lastEditorPct = pct;
           void updateJobStatus(job.id, { progressPercent: pct });

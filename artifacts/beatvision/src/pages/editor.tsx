@@ -58,6 +58,17 @@ import {
   Wand2,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
+import { OverlayStage } from "@/components/montage/OverlayStage";
+import { OverlayPanel } from "@/components/montage/OverlayPanel";
+import { OverlayTimeline } from "@/components/montage/OverlayTimeline";
+import {
+  MAX_TIMELINE_SEC,
+  validateLayers,
+  normalizeOverlayList,
+  normalizeTextCardList,
+  type TextCard,
+  type VideoOverlay,
+} from "@/components/montage/overlayTypes";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -172,6 +183,8 @@ interface ProjectManifest {
   lyricsText: string;
   lyricsSyncSource: "music" | "video";
   beatsPerPhoto: number;
+  overlays?: VideoOverlay[];
+  textCards?: TextCard[];
 }
 
 function projectError(data: unknown, fallback: string) {
@@ -393,6 +406,9 @@ export default function Editor() {
   const [, setLocation] = useLocation();
 
   const [segments, setSegments] = useState<Segment[]>([]);
+  const [overlays, setOverlays] = useState<VideoOverlay[]>([]);
+  const [textCards, setTextCards] = useState<TextCard[]>([]);
+  const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
   const [music, setMusic] = useState<MusicTrack | null>(null);
   const [transition, setTransition] = useState("none");
   const [transitionDuration, setTransitionDuration] = useState(0.5);
@@ -833,6 +849,7 @@ export default function Editor() {
     hasTransition: transition !== "none",
     hasKaraoke: karaokeEnabled && !!lyricsText.trim(),
   });
+  const layerIssues = validateLayers(overlays, textCards, totalDuration);
   const uploadsPending = segments.some((s) => s.uploading) || music?.uploading;
 
   const projectManifest: ProjectManifest = {
@@ -843,11 +860,12 @@ export default function Editor() {
     ...(music ? { music: { name: music.name, objectPath: music.objectPath, mode: music.mode, volume: music.volume, loop: music.loop !== false, fade: !!music.fade } } : {}),
     transition: { type: transition, durationSec: transitionDuration },
     resolution, orientation, videoName, sourceVideoId, karaokeEnabled, lyricsText, lyricsSyncSource, beatsPerPhoto,
+    overlays, textCards,
   };
   const serializedManifest = JSON.stringify(projectManifest);
   const hasUnsavedChanges = savedManifest !== null
     ? savedManifest !== serializedManifest
-    : segments.length > 0 || !!music || !!videoName || karaokeEnabled || !!lyricsText;
+    : segments.length > 0 || !!music || !!videoName || karaokeEnabled || !!lyricsText || overlays.length > 0 || textCards.length > 0;
 
   function applyProject(project: { id: string; name: string; createdAt: string; updatedAt: string; lastVideoId?: string; manifest?: unknown }) {
     const manifest = project.manifest as Partial<ProjectManifest> | undefined;
@@ -874,7 +892,12 @@ export default function Editor() {
     if (restoredMusic && (!restoredMusic.objectPath || typeof restoredMusic.objectPath !== "string")) {
       throw new Error("This project has a missing music file. Add a replacement track before saving it again.");
     }
+    const restoredOverlays = normalizeOverlayList(manifest.overlays);
+    const restoredTextCards = normalizeTextCardList(manifest.textCards);
     setSegments(restored);
+    setOverlays(restoredOverlays);
+    setTextCards(restoredTextCards);
+    setSelectedOverlayId(null);
     setMusic(restoredMusic ? { ...restoredMusic, localUrl: `/api/storage${restoredMusic.objectPath}`, uploading: false } : null);
     const restoredTransition = typeof manifest.transition?.type === "string" ? manifest.transition.type : "none";
     const restoredTransitionDuration = typeof manifest.transition?.durationSec === "number" ? manifest.transition.durationSec : 0.5;
@@ -898,6 +921,7 @@ export default function Editor() {
       transition: { type: restoredTransition, durationSec: restoredTransitionDuration }, resolution: restoredResolution,
       orientation: restoredOrientation, videoName: restoredVideoName, sourceVideoId: restoredSourceVideoId,
       karaokeEnabled: !!manifest.karaokeEnabled, lyricsText: restoredLyrics, lyricsSyncSource: restoredSyncSource, beatsPerPhoto: restoredBeats,
+      overlays: restoredOverlays, textCards: restoredTextCards,
     };
     setSavedManifest(JSON.stringify(restoredManifest));
   }
@@ -941,6 +965,12 @@ export default function Editor() {
     const missing = segments.find((segment) => !segment.objectPath);
     if (missing || (music && !music.objectPath)) {
       toast({ title: "Missing media", description: `Upload "${missing?.name || music?.name}" before saving, or remove it from the timeline.`, variant: "destructive" }); return;
+    }
+    if (totalDuration > MAX_TIMELINE_SEC) {
+      toast({ title: "Project is too long", description: `Projects can be up to 30 minutes. Your timeline is ${formatTimelineTime(totalDuration)} — trim or remove clips to save.`, variant: "destructive" }); return;
+    }
+    if (layerIssues.length > 0) {
+      toast({ title: "Fix overlays and text cards first", description: layerIssues[0]!.message, variant: "destructive" }); return;
     }
     const name = (asNew ? projectNameDraft : currentProject?.name)?.trim();
     if (!name) { setProjectNameDraft(currentProject?.name || videoName || "Untitled remix"); setSaveAsOpen(true); return; }
@@ -1666,6 +1696,18 @@ export default function Editor() {
       });
       return;
     }
+    if (totalDuration > MAX_TIMELINE_SEC) {
+      toast({
+        title: "Project is too long",
+        description: `Montage Studio exports up to 30 minutes. Your timeline is ${formatTimelineTime(totalDuration)} — trim or remove clips to export.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    if (layerIssues.length > 0) {
+      toast({ title: "Fix overlays and text cards first", description: layerIssues[0]!.message, variant: "destructive" });
+      return;
+    }
     pause();
     setSubmitting(true);
     trackEvent("export_started", {
@@ -1685,9 +1727,9 @@ export default function Editor() {
         segments: ready.map((s) => ({
           objectPath: s.objectPath,
           kind: s.kind,
-          // Clamp to the server's accepted range (0.5–600s) so a long clip
+          // Clamp to the server's accepted range (0.5–1800s) so a long clip
           // never triggers a validation error on the render request.
-          durationSec: Math.min(600, Math.max(0.5, s.durationSec || 3)),
+          durationSec: Math.min(MAX_TIMELINE_SEC, Math.max(0.5, s.durationSec || 3)),
           // Front/back trim (video only; omit when zero).
           ...(s.kind === "video" && (s.trimStart || s.trimEnd)
             ? { trimStart: s.trimStart || 0, trimEnd: s.trimEnd || 0 }
@@ -1709,6 +1751,8 @@ export default function Editor() {
         orientation,
         acceptCopyright: true,
         lyricsText: karaokeEnabled ? lyricsText.trim() || undefined : undefined,
+        ...(overlays.length ? { overlays } : {}),
+        ...(textCards.length ? { textCards } : {}),
       };
       const res = await fetch("/api/studio/render", {
         method: "POST",
@@ -1899,7 +1943,7 @@ export default function Editor() {
       <div
         ref={stageRef}
         data-montage-guide="preview"
-        className="border-border relative mb-3 aspect-video w-full overflow-hidden rounded-lg border bg-black"
+        className={`border-border relative mb-3 overflow-hidden rounded-lg border bg-black ${orientation === "portrait" ? "mx-auto aspect-[9/16] w-full max-w-[min(100%,calc(70dvh*9/16))]" : "aspect-video w-full"}`}
       >
         <img ref={transPrevRef} alt="" className="absolute inset-0 h-full w-full object-contain" style={{ display: "none", zIndex: 1 }} />
         <video
@@ -1917,6 +1961,16 @@ export default function Editor() {
             Add media to preview your video
           </div>
         )}
+        <OverlayStage
+          overlays={overlays}
+          textCards={textCards}
+          timeSec={progress * totalDuration}
+          playing={playing}
+          selectedId={selectedOverlayId}
+          onSelect={setSelectedOverlayId}
+          onChangeOverlay={(id, patch) => setOverlays((prev) => prev.map((o) => (o.id === id ? { ...o, ...patch } : o)))}
+          onChangeText={(id, patch) => setTextCards((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)))}
+        />
         {segments.length > 0 && (
           <button onClick={togglePlay} className="absolute inset-0 z-10 flex items-center justify-center" aria-label="Play/Pause">
             {!playing && (
@@ -1961,6 +2015,30 @@ export default function Editor() {
             {formatTimelineTime(progress * totalDuration)} / {formatTimelineTime(totalDuration)}
           </span>
         </div>
+      )}
+
+      {totalDuration > MAX_TIMELINE_SEC && (
+        <div role="alert" className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive" data-testid="status-timeline-too-long">
+          Your timeline is {formatTimelineTime(totalDuration)}. Montage Studio exports up to 30:00 — trim or remove clips to export.
+        </div>
+      )}
+
+      {(segments.length > 0 || overlays.length > 0 || textCards.length > 0) && (
+        <OverlayPanel
+          overlays={overlays}
+          textCards={textCards}
+          setOverlays={setOverlays}
+          setTextCards={setTextCards}
+          selectedId={selectedOverlayId}
+          setSelectedId={setSelectedOverlayId}
+          playheadSec={progress * totalDuration}
+          totalDuration={totalDuration}
+          projectClips={segments
+            .filter((s) => s.kind === "video" && s.objectPath)
+            .map((s) => ({ name: s.name, objectPath: s.objectPath!, durationSec: s.durationSec }))}
+          uploadFile={presignAndUpload}
+          issues={layerIssues}
+        />
       )}
 
       <div className="mb-4">
@@ -2282,6 +2360,17 @@ export default function Editor() {
         <div className="text-muted-foreground mb-3 text-xs font-medium uppercase tracking-wide">
           Timeline {segments.length > 0 && `· ${totalDuration.toFixed(1)}s`}
         </div>
+        <OverlayTimeline
+          overlays={overlays}
+          textCards={textCards}
+          totalDuration={totalDuration}
+          playheadSec={progress * totalDuration}
+          selectedId={selectedOverlayId}
+          onSelect={setSelectedOverlayId}
+          onSeek={seekPreview}
+          onMoveOverlay={(id, startSec) => setOverlays((prev) => prev.map((o) => (o.id === id ? { ...o, startSec } : o)))}
+          onMoveText={(id, startSec) => setTextCards((prev) => prev.map((t) => (t.id === id ? { ...t, startSec } : t)))}
+        />
         {segments.length === 0 ? (
           <div className="text-muted-foreground flex h-24 items-center justify-center text-sm">
             Add videos and photos to build your timeline.
@@ -2345,7 +2434,7 @@ export default function Editor() {
           if (!sel || sel.kind !== "photo") return null;
           const setPhotoDuration = (value: number) => {
             const safeValue = Number.isFinite(value) ? value : 3;
-            patchSegment(sel.id, { durationSec: Math.min(600, Math.max(0.5, safeValue)) });
+            patchSegment(sel.id, { durationSec: Math.min(MAX_TIMELINE_SEC, Math.max(0.5, safeValue)) });
             setGuideArranged(true);
           };
           return (
@@ -2364,7 +2453,7 @@ export default function Editor() {
                   <input
                     type="number"
                     min={0.5}
-                    max={600}
+                    max={MAX_TIMELINE_SEC}
                     step={0.5}
                     value={sel.durationSec}
                     onChange={(event) => setPhotoDuration(Number(event.target.value))}

@@ -16,6 +16,7 @@ import { FREE_EDITOR_EXPORTS_PER_MONTH, EDITOR_OVERAGE_COST, TRIAL_LYRIC_EXPORTS
 import { LYRIC_OVERLAY_COST, LYRIC_ALIGN_COST, TRIAL_FREE_ALIGNS } from "../lib/creditCost.js";
 import { MAX_LYRICS_LENGTH } from "../lib/lyricLimits.js";
 import { ObjectNotFoundError, ObjectStorageService } from "../lib/objectStorage.js";
+import { editorLayersShape, validateEditorTiming, MAX_EDITOR_SECONDS } from "../lib/editorLayersSchema.js";
 
 const router = Router();
 const storage = new ObjectStorageService();
@@ -23,10 +24,10 @@ const storage = new ObjectStorageService();
 const SegmentSchema = z.object({
   objectPath: z.string().min(1),
   kind: z.enum(["video", "photo"]),
-  durationSec: z.number().positive().max(600),
+  durationSec: z.number().positive().max(MAX_EDITOR_SECONDS),
   // Trim seconds off the front / back of a video clip (ignored for photos).
-  trimStart: z.number().min(0).max(600).optional(),
-  trimEnd: z.number().min(0).max(600).optional(),
+  trimStart: z.number().min(0).max(MAX_EDITOR_SECONDS).optional(),
+  trimEnd: z.number().min(0).max(MAX_EDITOR_SECONDS).optional(),
 });
 
 function effectiveSegmentDuration(segment: z.infer<typeof SegmentSchema>) {
@@ -40,6 +41,7 @@ function effectiveSegmentDuration(segment: z.infer<typeof SegmentSchema>) {
 }
 
 const RenderSchema = z.object({
+  ...editorLayersShape,
   name: z.string().max(120).optional(),
   segments: z.array(SegmentSchema).min(1).max(500),
   music: z
@@ -72,7 +74,7 @@ const RenderSchema = z.object({
   // Karaoke lyric burn (same engine as the generator): plain text, LRC, or
   // word-level enhanced LRC.
   lyricsText: z.string().max(MAX_LYRICS_LENGTH).optional(),
-});
+}).superRefine(validateEditorTiming);
 
 const ProjectSegmentSchema = SegmentSchema.extend({
   name: z.string().trim().min(1).max(120),
@@ -80,6 +82,7 @@ const ProjectSegmentSchema = SegmentSchema.extend({
 }).strict();
 
 const ProjectManifestSchema = z.object({
+  ...editorLayersShape,
   version: z.literal(1),
   segments: z.array(ProjectSegmentSchema).min(1).max(500),
   music: z.object({
@@ -107,7 +110,7 @@ const ProjectManifestSchema = z.object({
   lyricsText: z.string().max(MAX_LYRICS_LENGTH),
   lyricsSyncSource: z.enum(["music", "video"]),
   beatsPerPhoto: z.number().positive().max(128),
-}).strict();
+}).strict().superRefine(validateEditorTiming);
 
 const ProjectInputSchema = z.object({
   name: z.string().trim().min(1).max(120),
@@ -199,7 +202,10 @@ async function validateOwnedEditorMedia(
 }
 
 async function validateProjectMedia(userId: string, manifest: ProjectManifest): Promise<string | null> {
-  const mediaError = await validateOwnedEditorMedia(userId, manifest.segments, manifest.music);
+  const mediaError = await validateOwnedEditorMedia(userId, [
+    ...manifest.segments,
+    ...(manifest.overlays ?? []).map((layer) => ({ ...layer, kind: "video" as const })),
+  ], manifest.music);
   if (mediaError) return mediaError;
   const sourceIds = [...new Set([
     ...manifest.segments.flatMap((segment) => segment.sourceVideoId ? [segment.sourceVideoId] : []),
@@ -386,7 +392,10 @@ router.post("/studio/render", async (req, res) => {
 
   // The worker reads storage with service credentials, so the render boundary
   // must enforce the same ownership rules as project saving and browser reads.
-  const mediaError = await validateOwnedEditorMedia(req.user.id, input.segments, input.music);
+  const mediaError = await validateOwnedEditorMedia(req.user.id, [
+    ...input.segments,
+    ...(input.overlays ?? []).map((layer) => ({ ...layer, kind: "video" as const })),
+  ], input.music);
   if (mediaError) {
     res.status(403).json({ error: mediaError, code: "EDITOR_MEDIA_UNAVAILABLE" });
     return;
@@ -518,6 +527,8 @@ router.post("/studio/render", async (req, res) => {
 
     const manifest = {
       segments: input.segments,
+      overlays: input.overlays,
+      textCards: input.textCards,
       music: input.music,
       transition,
       resolution,

@@ -23,22 +23,141 @@ export interface StudioSegment {
   /** @minLength 1 */
   objectPath: string;
   /**
-     * @maximum 600
+     * @maximum 1800
      * @exclusiveMinimum 0
      */
   durationSec: number;
   /**
      * @minimum 0
-     * @maximum 600
+     * @maximum 1800
      */
   trimStart?: number;
   /**
      * @minimum 0
-     * @maximum 600
+     * @maximum 1800
      */
   trimEnd?: number;
   /** @nullable */
   sourceVideoId?: string | null;
+}
+
+export type StudioVideoOverlayLayout = typeof StudioVideoOverlayLayout[keyof typeof StudioVideoOverlayLayout];
+
+
+export const StudioVideoOverlayLayout = {
+  custom: 'custom',
+  reaction: 'reaction',
+  commentary: 'commentary',
+} as const;
+
+export interface StudioVideoOverlay {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  id: string;
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  name: string;
+  /** @minLength 1 */
+  objectPath: string;
+  /**
+     * @minimum 0
+     * @maximum 1800
+     */
+  startSec: number;
+  /**
+     * @maximum 1800
+     * @exclusiveMinimum 0
+     */
+  durationSec: number;
+  /**
+     * @minimum 0
+     * @maximum 1800
+     */
+  trimStart: number;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  x: number;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  y: number;
+  /**
+     * @maximum 1
+     * @exclusiveMinimum 0
+     */
+  width: number;
+  /**
+     * @maximum 1
+     * @exclusiveMinimum 0
+     */
+  height: number;
+  layout: StudioVideoOverlayLayout;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  volume: number;
+  /**
+     * @minimum 0
+     * @maximum 0.25
+     */
+  cornerRadius: number;
+  /**
+     * @minimum 0
+     * @maximum 0.02
+     */
+  borderWidth: number;
+  /** @pattern ^#[0-9a-fA-F]{6}$ */
+  borderColor: string;
+}
+
+export interface StudioTextCard {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  id: string;
+  /**
+     * @minLength 1
+     * @maxLength 500
+     */
+  text: string;
+  /**
+     * @minimum 0
+     * @maximum 1800
+     */
+  startSec: number;
+  /**
+     * @maximum 1800
+     * @exclusiveMinimum 0
+     */
+  durationSec: number;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  x: number;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  y: number;
+  /**
+     * @minimum 0.01
+     * @maximum 0.15
+     */
+  fontSize: number;
+  /** @pattern ^#[0-9a-fA-F]{6}$ */
+  color: string;
+  /** @pattern ^#[0-9a-fA-F]{6}$ */
+  backgroundColor: string;
 }
 
 export type StudioMusicMode = typeof StudioMusicMode[keyof typeof StudioMusicMode];
@@ -129,6 +248,10 @@ export const StudioProjectManifestLyricsSyncSource = {
 
 export interface StudioProjectManifest {
   version: 1;
+  /** @maxItems 100 */
+  overlays?: StudioVideoOverlay[];
+  /** @maxItems 100 */
+  textCards?: StudioTextCard[];
   /**
      * @minItems 1
      * @maxItems 500

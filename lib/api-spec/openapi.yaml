@@ -1666,10 +1666,44 @@ components:
         name: { type: string, minLength: 1, maxLength: 120 }
         kind: { type: string, enum: [video, photo] }
         objectPath: { type: string, minLength: 1 }
-        durationSec: { type: number, exclusiveMinimum: 0, maximum: 600 }
-        trimStart: { type: number, minimum: 0, maximum: 600 }
-        trimEnd: { type: number, minimum: 0, maximum: 600 }
+        durationSec: { type: number, exclusiveMinimum: 0, maximum: 1800 }
+        trimStart: { type: number, minimum: 0, maximum: 1800 }
+        trimEnd: { type: number, minimum: 0, maximum: 1800 }
         sourceVideoId: { type: [string, 'null'] }
+    StudioVideoOverlay:
+      type: object
+      additionalProperties: false
+      required: [id, name, objectPath, startSec, durationSec, trimStart, x, y, width, height, layout, volume, cornerRadius, borderWidth, borderColor]
+      properties:
+        id: { type: string, minLength: 1, maxLength: 100 }
+        name: { type: string, minLength: 1, maxLength: 120 }
+        objectPath: { type: string, minLength: 1 }
+        startSec: { type: number, minimum: 0, maximum: 1800 }
+        durationSec: { type: number, exclusiveMinimum: 0, maximum: 1800 }
+        trimStart: { type: number, minimum: 0, maximum: 1800 }
+        x: { type: number, minimum: 0, maximum: 1 }
+        y: { type: number, minimum: 0, maximum: 1 }
+        width: { type: number, exclusiveMinimum: 0, maximum: 1 }
+        height: { type: number, exclusiveMinimum: 0, maximum: 1 }
+        layout: { type: string, enum: [custom, reaction, commentary] }
+        volume: { type: number, minimum: 0, maximum: 1 }
+        cornerRadius: { type: number, minimum: 0, maximum: 0.25 }
+        borderWidth: { type: number, minimum: 0, maximum: 0.02 }
+        borderColor: { type: string, pattern: '^#[0-9a-fA-F]{6}$' }
+    StudioTextCard:
+      type: object
+      additionalProperties: false
+      required: [id, text, startSec, durationSec, x, y, fontSize, color, backgroundColor]
+      properties:
+        id: { type: string, minLength: 1, maxLength: 100 }
+        text: { type: string, minLength: 1, maxLength: 500 }
+        startSec: { type: number, minimum: 0, maximum: 1800 }
+        durationSec: { type: number, exclusiveMinimum: 0, maximum: 1800 }
+        x: { type: number, minimum: 0, maximum: 1 }
+        y: { type: number, minimum: 0, maximum: 1 }
+        fontSize: { type: number, minimum: 0.01, maximum: 0.15 }
+        color: { type: string, pattern: '^#[0-9a-fA-F]{6}$' }
+        backgroundColor: { type: string, pattern: '^#[0-9a-fA-F]{6}$' }
     StudioMusic:
       type: object
       additionalProperties: false
@@ -1694,6 +1728,14 @@ components:
       required: [version, segments, transition, resolution, orientation, videoName, sourceVideoId, karaokeEnabled, lyricsText, lyricsSyncSource, beatsPerPhoto]
       properties:
         version: { type: integer, const: 1 }
+        overlays:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/StudioVideoOverlay' }
+        textCards:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/StudioTextCard' }
         segments:
           type: array
           minItems: 1
