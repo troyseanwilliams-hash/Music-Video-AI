@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
 import { SoundtrackPickerDialog } from "@/components/SoundtrackPickerDialog";
-import { Clock, Copy, Library, Loader2, Music, Trash2, Upload } from "lucide-react";
+import { Clock, Copy, Library, Loader2, Music, Save, Trash2, Upload } from "lucide-react";
 import type { LayerIssue } from "./overlayTypes";
 import {
   audioClipId, DEFAULT_AUDIO_CLIP_VOLUME, fitAudioDuration, MAX_AUDIO_CLIPS, MAX_SIMULTANEOUS_AUDIO_CLIPS, MIN_AUDIO_CLIP_SEC,
@@ -53,8 +53,10 @@ interface PendingUpload { key: string; name: string }
 
 export function AudioClipPanel({
   clips, setClips, selectedId, setSelectedId, playheadSec, totalDuration, sourceDurations, onSourceDuration,
-  uploadFile, issues, epoch, onPendingChange, soundtrack, sourceErrors = {},
+  uploadFile, issues, epoch, onPendingChange, soundtrack, sourceErrors = {}, onSave, saving = false,
 }: {
+  onSave?: () => void;
+  saving?: boolean;
   /** objectPaths whose audio could not be loaded or played in the preview. */
   sourceErrors?: Record<string, boolean>;
   clips: AudioClip[];
@@ -181,6 +183,12 @@ export function AudioClipPanel({
           <span className="text-xs font-normal text-muted-foreground">{clips.length}/{MAX_AUDIO_CLIPS}</span>
         </h3>
         <div className="flex flex-wrap gap-2">
+          {onSave && (
+            <Button size="sm" onClick={onSave} disabled={saving || pending.length > 0 || clips.length === 0} data-testid="button-save-music-overlays">
+              {saving ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1 h-3.5 w-3.5" />}
+              {saving ? "Saving…" : "Save music overlays"}
+            </Button>
+          )}
           <Button size="sm" variant="outline" disabled={atLimit} onClick={() => inputRef.current?.click()} data-testid="button-upload-audio-clip">
             <Upload className="mr-1 h-3.5 w-3.5" /> Upload song
           </Button>
@@ -203,6 +211,11 @@ export function AudioClipPanel({
           <input ref={inputRef} type="file" accept="audio/*" multiple hidden onChange={(e) => { void uploadFiles(e.target.files); e.target.value = ""; }} data-testid="input-audio-clip-file" />
         </div>
       </div>
+      <p className="mb-3 text-xs text-muted-foreground">
+        Save music overlays saves the whole project, including every clip's timing, volume and fades.
+        To add another interval, choose Upload song or From My Music again, or use Add another time slot on an existing clip.
+        Each clip stays on the timeline with its own Starts at and Plays for settings. Save again after adding more.
+      </p>
       <p className="mb-3 text-xs text-muted-foreground">
         Play a song only for a set stretch, like a 5-second intro or a later musical moment. These are separate from the
         full-video soundtrack above. While a music clip plays, the video's audio, video-overlay audio and continuous
@@ -278,6 +291,9 @@ export function AudioClipPanel({
                 </div>
                 <p className="mt-1 text-[11px] text-muted-foreground">Set 0 for no fade. Fades are saved and included in the final video. Underlying audio stays muted throughout the music slot.</p>
                 <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                  <Button type="button" size="sm" variant="outline" disabled={clips.length >= MAX_AUDIO_CLIPS} onClick={(e) => { e.stopPropagation(); duplicate(c); }} data-testid={`button-another-music-slot-${c.id}`}>
+                    <Copy className="mr-1 h-3.5 w-3.5" /> Add another time slot
+                  </Button>
                   <span data-testid={`text-audio-clip-range-${c.id}`}>Timeline {fmt(c.startSec)}–{fmt(c.startSec + c.durationSec)}</span>
                   <span>Song {fmt(c.trimStart)}–{fmt(c.trimStart + c.durationSec)}{source ? ` of ${fmt(source)}` : ""}</span>
                   <button

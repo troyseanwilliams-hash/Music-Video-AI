@@ -2132,6 +2132,8 @@ export default function Editor() {
 
       {(segments.length > 0 || audioClips.length > 0) && (
         <AudioClipPanel
+          onSave={() => void saveProject()}
+          saving={savingProject}
           clips={audioClips}
           setClips={setAudioClips}
           selectedId={selectedAudioClipId}

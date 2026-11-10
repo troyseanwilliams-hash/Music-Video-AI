@@ -209,6 +209,7 @@ describe("audio clip components", () => {
 
   it("edits, duplicates and deletes clips in the panel", () => {
     let clips = [clip()];
+    const save = vi.fn();
     const setClips = (next: AudioClip[] | ((p: AudioClip[]) => AudioClip[])) => {
       clips = typeof next === "function" ? next(clips) : next;
       render();
@@ -217,6 +218,7 @@ describe("audio clip components", () => {
     const render = () => act(() => root.render(
       <QueryClientProvider client={qc}>
         <AudioClipPanel
+          onSave={save}
           clips={clips} setClips={setClips} selectedId={null} setSelectedId={() => {}}
           playheadSec={20} totalDuration={60} sourceDurations={{}} onSourceDuration={() => {}}
           uploadFile={async () => "/objects/x"} issues={[]} epoch={0}
@@ -237,6 +239,12 @@ describe("audio clip components", () => {
     expect(clips).toHaveLength(2);
     expect(clips[1]!.objectPath).toBe(clips[0]!.objectPath);
     expect(clips[1]!.startSec).toBe(25);
+    act(() => host.querySelector<HTMLButtonElement>('[data-testid="button-save-music-overlays"]')!.click());
+    expect(save).toHaveBeenCalledOnce();
+    expect(clips).toHaveLength(2);
+    act(() => host.querySelector<HTMLButtonElement>('[data-testid="button-another-music-slot-a1"]')!.click());
+    expect(clips).toHaveLength(3);
+    expect(clips[0]!.startSec).toBe(20);
     act(() => host.querySelector<HTMLButtonElement>('[data-testid="button-delete-audio-clip-a1"]')!.click());
     expect(clips.map((c) => c.id)).not.toContain("a1");
   });
