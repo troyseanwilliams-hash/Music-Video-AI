@@ -2192,7 +2192,7 @@ export default function Editor() {
         </Button>
         <input ref={musicInputRef} type="file" accept="audio/*" hidden onChange={(e) => addMusic(e.target.files)} />
         <Button variant="outline" onClick={() => musicInputRef.current?.click()} data-montage-guide="audio">
-          <Music className="mr-2 h-4 w-4" /> {music ? "Change music" : "Add music"}
+          <Music className="mr-2 h-4 w-4" /> {music ? "Change music" : "Background music"}
         </Button>
         <Button variant="outline" onClick={() => setSunoDialogOpen(true)} data-testid="add-music-from-link">
           <Link2 className="mr-2 h-4 w-4" /> Add from Suno
