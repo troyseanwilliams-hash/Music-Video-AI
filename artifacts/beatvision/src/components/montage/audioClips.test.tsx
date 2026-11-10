@@ -12,7 +12,7 @@ import { AudioClipPlayer } from "./AudioClipPlayer";
 import { AudioClipPanel } from "./AudioClipPanel";
 import { AudioClipTimeline } from "./AudioClipTimeline";
 import {
-  audioClipPlayback, fitAudioDuration, normalizeAudioClipList, serializeAudioClips, validateAudioClips, type AudioClip,
+  audioClipGain, audioClipPlayback, fitAudioDuration, normalizeAudioClipList, serializeAudioClips, validateAudioClips, type AudioClip,
 } from "./audioClipTypes";
 
 const clip = (over: Partial<AudioClip> = {}): AudioClip => ({
@@ -20,6 +20,18 @@ const clip = (over: Partial<AudioClip> = {}): AudioClip => ({
 });
 
 describe("audio clip data", () => {
+  it("preserves fade settings, validates their duration and calculates seek-aware volume", () => {
+    const c = clip({ startSec: 10, durationSec: 6, fadeInSec: 2, fadeOutSec: 2 });
+    const saved = JSON.parse(JSON.stringify(serializeAudioClips([c])));
+    expect(normalizeAudioClipList(saved)).toEqual([c]);
+    expect(audioClipGain(c, 10)).toBe(0);
+    expect(audioClipGain(c, 11)).toBeCloseTo(0.3);
+    expect(audioClipGain(c, 13)).toBeCloseTo(0.6);
+    expect(audioClipGain(c, 15)).toBeCloseTo(0.3);
+    expect(audioClipGain(c, 16)).toBe(0);
+    expect(validateAudioClips([c], 20)).toEqual([]);
+    expect(validateAudioClips([{ ...c, fadeOutSec: 5 }], 20).length).toBeGreaterThan(0);
+  });
   it("roundtrips exactly through JSON and treats legacy absent as empty", () => {
     const clips = [clip(), clip({ id: "a2", startSec: 30.25, durationSec: 8.5, trimStart: 0, volume: 1 })];
     const restored = normalizeAudioClipList(JSON.parse(JSON.stringify({ audioClips: serializeAudioClips(clips) })).audioClips);
@@ -89,6 +101,24 @@ describe("audio clip components", () => {
     host.remove();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it("mutes underlying audio across overlapping slots and restores on seek, end, or removal", () => {
+    const mute = vi.fn();
+    const clips = [clip({ startSec: 1, durationSec: 3 }), clip({ id: "b", startSec: 3, durationSec: 3 })];
+    const check = (time: number, expected: boolean, items = clips) => {
+      act(() => root.render(<AudioClipPlayer clips={items} timeSec={time} playing={false} onUnderlyingMuteChange={mute} />));
+      expect(mute).toHaveBeenLastCalledWith(expected);
+    };
+    check(0, false);
+    check(2, true);
+    check(4.5, true);
+    check(6, false);
+    check(3, true);
+    check(0, false);
+    check(3, true);
+    check(3, false, []);
+    check(3, false, [clip({ volume: 0 })]);
   });
 
   it("never plays before play, then seeks to the source offset with the clip volume", () => {

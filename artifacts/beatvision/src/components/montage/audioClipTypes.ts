@@ -34,6 +34,8 @@ export function normalizeAudioClip(raw: unknown): AudioClip | null {
     durationSec: num(o.durationSec, Number.NaN),
     trimStart: num(o.trimStart, Number.NaN),
     volume: num(o.volume, Number.NaN),
+    ...(o.fadeInSec !== undefined ? { fadeInSec: num(o.fadeInSec, Number.NaN) } : {}),
+    ...(o.fadeOutSec !== undefined ? { fadeOutSec: num(o.fadeOutSec, Number.NaN) } : {}),
   };
 }
 
@@ -44,9 +46,20 @@ export function normalizeAudioClipList(raw: unknown): AudioClip[] {
 
 /** Exact serializable shape (stable key order) for manifests and render requests. */
 export function serializeAudioClips(clips: AudioClip[]): AudioClip[] {
-  return clips.map(({ id, name, objectPath, startSec, durationSec, trimStart, volume }) => ({
+  return clips.map(({ id, name, objectPath, startSec, durationSec, trimStart, volume, fadeInSec, fadeOutSec }) => ({
     id, name, objectPath, startSec, durationSec, trimStart, volume,
+    ...(fadeInSec !== undefined ? { fadeInSec } : {}),
+    ...(fadeOutSec !== undefined ? { fadeOutSec } : {}),
   }));
+}
+
+export function audioClipGain(clip: AudioClip, timeSec: number): number {
+  const local = timeSec - clip.startSec;
+  if (local < 0 || local >= clip.durationSec) return 0;
+  const fadeIn = clip.fadeInSec ?? 0, fadeOut = clip.fadeOutSec ?? 0;
+  return clip.volume * Math.max(0, Math.min(1,
+    fadeIn > 0 ? local / fadeIn : 1,
+    fadeOut > 0 ? (clip.durationSec - local) / fadeOut : 1));
 }
 
 /** Timeline time -> whether the clip sounds, and where in the source file. */
@@ -69,7 +82,7 @@ export function validateAudioClips(
   const limit = Math.min(totalSec, MAX_TIMELINE_SEC) + END_TOLERANCE_SEC;
   clips.forEach((c, i) => {
     const label = `Music clip ${i + 1} ("${c.name}")`;
-    const values = [c.startSec, c.durationSec, c.trimStart, c.volume];
+    const values = [c.startSec, c.durationSec, c.trimStart, c.volume, c.fadeInSec ?? 0, c.fadeOutSec ?? 0];
     if (values.some((v) => typeof v !== "number" || !Number.isFinite(v))) {
       issues.push({ id: c.id, message: `${label} has an invalid number.` });
       return;
@@ -83,6 +96,9 @@ export function validateAudioClips(
     if (c.trimStart > MAX_TIMELINE_SEC) issues.push({ id: c.id, message: `${label} song offset is beyond 30:00.` });
     if (c.trimStart < 0) issues.push({ id: c.id, message: `${label} has a negative song offset.` });
     if (c.volume < 0 || c.volume > 1) issues.push({ id: c.id, message: `${label} volume must be between 0 and 100%.` });
+    if ((c.fadeInSec ?? 0) < 0 || (c.fadeOutSec ?? 0) < 0 ||
+      (c.fadeInSec ?? 0) + (c.fadeOutSec ?? 0) > c.durationSec)
+      issues.push({ id: c.id, message: `${label} fade-in and fade-out must fit within its duration.` });
     const end = c.startSec + c.durationSec;
     if (end > limit) issues.push({ id: c.id, message: `${label} ends at ${fmt(end)}, after the main video ends at ${fmt(totalSec)}.` });
     const source = sourceDurations[c.objectPath];

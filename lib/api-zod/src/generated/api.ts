@@ -2130,6 +2130,12 @@ export const createStudioProjectBodyManifestAudioClipsItemTrimStartMax = 1800;
 export const createStudioProjectBodyManifestAudioClipsItemVolumeMin = 0;
 export const createStudioProjectBodyManifestAudioClipsItemVolumeMax = 1;
 
+export const createStudioProjectBodyManifestAudioClipsItemFadeInSecMin = 0;
+export const createStudioProjectBodyManifestAudioClipsItemFadeInSecMax = 1800;
+
+export const createStudioProjectBodyManifestAudioClipsItemFadeOutSecMin = 0;
+export const createStudioProjectBodyManifestAudioClipsItemFadeOutSecMax = 1800;
+
 export const createStudioProjectBodyManifestAudioClipsMax = 100;
 
 export const createStudioProjectBodyManifestOverlaysItemIdMax = 100;
@@ -2236,7 +2242,9 @@ export const CreateStudioProjectBody = zod.object({
   "startSec": zod.number().min(createStudioProjectBodyManifestAudioClipsItemStartSecMin).max(createStudioProjectBodyManifestAudioClipsItemStartSecMax),
   "durationSec": zod.number().gt(createStudioProjectBodyManifestAudioClipsItemDurationSecExclusiveMin).max(createStudioProjectBodyManifestAudioClipsItemDurationSecMax),
   "trimStart": zod.number().min(createStudioProjectBodyManifestAudioClipsItemTrimStartMin).max(createStudioProjectBodyManifestAudioClipsItemTrimStartMax),
-  "volume": zod.number().min(createStudioProjectBodyManifestAudioClipsItemVolumeMin).max(createStudioProjectBodyManifestAudioClipsItemVolumeMax)
+  "volume": zod.number().min(createStudioProjectBodyManifestAudioClipsItemVolumeMin).max(createStudioProjectBodyManifestAudioClipsItemVolumeMax),
+  "fadeInSec": zod.number().min(createStudioProjectBodyManifestAudioClipsItemFadeInSecMin).max(createStudioProjectBodyManifestAudioClipsItemFadeInSecMax).optional(),
+  "fadeOutSec": zod.number().min(createStudioProjectBodyManifestAudioClipsItemFadeOutSecMin).max(createStudioProjectBodyManifestAudioClipsItemFadeOutSecMax).optional()
 })).max(createStudioProjectBodyManifestAudioClipsMax).optional(),
   "overlays": zod.array(zod.object({
   "kind": zod.enum(['video', 'image']).optional().describe('Omitted for legacy video overlays. Images display for durationSec with no audio or source trim.'),
@@ -2315,6 +2323,12 @@ export const createStudioProjectResponseManifestAudioClipsItemTrimStartMax = 180
 
 export const createStudioProjectResponseManifestAudioClipsItemVolumeMin = 0;
 export const createStudioProjectResponseManifestAudioClipsItemVolumeMax = 1;
+
+export const createStudioProjectResponseManifestAudioClipsItemFadeInSecMin = 0;
+export const createStudioProjectResponseManifestAudioClipsItemFadeInSecMax = 1800;
+
+export const createStudioProjectResponseManifestAudioClipsItemFadeOutSecMin = 0;
+export const createStudioProjectResponseManifestAudioClipsItemFadeOutSecMax = 1800;
 
 export const createStudioProjectResponseManifestAudioClipsMax = 100;
 
@@ -2423,7 +2437,9 @@ export const CreateStudioProjectResponse = zod.object({
   "startSec": zod.number().min(createStudioProjectResponseManifestAudioClipsItemStartSecMin).max(createStudioProjectResponseManifestAudioClipsItemStartSecMax),
   "durationSec": zod.number().gt(createStudioProjectResponseManifestAudioClipsItemDurationSecExclusiveMin).max(createStudioProjectResponseManifestAudioClipsItemDurationSecMax),
   "trimStart": zod.number().min(createStudioProjectResponseManifestAudioClipsItemTrimStartMin).max(createStudioProjectResponseManifestAudioClipsItemTrimStartMax),
-  "volume": zod.number().min(createStudioProjectResponseManifestAudioClipsItemVolumeMin).max(createStudioProjectResponseManifestAudioClipsItemVolumeMax)
+  "volume": zod.number().min(createStudioProjectResponseManifestAudioClipsItemVolumeMin).max(createStudioProjectResponseManifestAudioClipsItemVolumeMax),
+  "fadeInSec": zod.number().min(createStudioProjectResponseManifestAudioClipsItemFadeInSecMin).max(createStudioProjectResponseManifestAudioClipsItemFadeInSecMax).optional(),
+  "fadeOutSec": zod.number().min(createStudioProjectResponseManifestAudioClipsItemFadeOutSecMin).max(createStudioProjectResponseManifestAudioClipsItemFadeOutSecMax).optional()
 })).max(createStudioProjectResponseManifestAudioClipsMax).optional(),
   "overlays": zod.array(zod.object({
   "kind": zod.enum(['video', 'image']).optional().describe('Omitted for legacy video overlays. Images display for durationSec with no audio or source trim.'),
@@ -2517,6 +2533,12 @@ export const getStudioProjectResponseManifestAudioClipsItemTrimStartMax = 1800;
 
 export const getStudioProjectResponseManifestAudioClipsItemVolumeMin = 0;
 export const getStudioProjectResponseManifestAudioClipsItemVolumeMax = 1;
+
+export const getStudioProjectResponseManifestAudioClipsItemFadeInSecMin = 0;
+export const getStudioProjectResponseManifestAudioClipsItemFadeInSecMax = 1800;
+
+export const getStudioProjectResponseManifestAudioClipsItemFadeOutSecMin = 0;
+export const getStudioProjectResponseManifestAudioClipsItemFadeOutSecMax = 1800;
 
 export const getStudioProjectResponseManifestAudioClipsMax = 100;
 
@@ -2625,7 +2647,9 @@ export const GetStudioProjectResponse = zod.object({
   "startSec": zod.number().min(getStudioProjectResponseManifestAudioClipsItemStartSecMin).max(getStudioProjectResponseManifestAudioClipsItemStartSecMax),
   "durationSec": zod.number().gt(getStudioProjectResponseManifestAudioClipsItemDurationSecExclusiveMin).max(getStudioProjectResponseManifestAudioClipsItemDurationSecMax),
   "trimStart": zod.number().min(getStudioProjectResponseManifestAudioClipsItemTrimStartMin).max(getStudioProjectResponseManifestAudioClipsItemTrimStartMax),
-  "volume": zod.number().min(getStudioProjectResponseManifestAudioClipsItemVolumeMin).max(getStudioProjectResponseManifestAudioClipsItemVolumeMax)
+  "volume": zod.number().min(getStudioProjectResponseManifestAudioClipsItemVolumeMin).max(getStudioProjectResponseManifestAudioClipsItemVolumeMax),
+  "fadeInSec": zod.number().min(getStudioProjectResponseManifestAudioClipsItemFadeInSecMin).max(getStudioProjectResponseManifestAudioClipsItemFadeInSecMax).optional(),
+  "fadeOutSec": zod.number().min(getStudioProjectResponseManifestAudioClipsItemFadeOutSecMin).max(getStudioProjectResponseManifestAudioClipsItemFadeOutSecMax).optional()
 })).max(getStudioProjectResponseManifestAudioClipsMax).optional(),
   "overlays": zod.array(zod.object({
   "kind": zod.enum(['video', 'image']).optional().describe('Omitted for legacy video overlays. Images display for durationSec with no audio or source trim.'),
@@ -2721,6 +2745,12 @@ export const updateStudioProjectBodyManifestAudioClipsItemTrimStartMax = 1800;
 
 export const updateStudioProjectBodyManifestAudioClipsItemVolumeMin = 0;
 export const updateStudioProjectBodyManifestAudioClipsItemVolumeMax = 1;
+
+export const updateStudioProjectBodyManifestAudioClipsItemFadeInSecMin = 0;
+export const updateStudioProjectBodyManifestAudioClipsItemFadeInSecMax = 1800;
+
+export const updateStudioProjectBodyManifestAudioClipsItemFadeOutSecMin = 0;
+export const updateStudioProjectBodyManifestAudioClipsItemFadeOutSecMax = 1800;
 
 export const updateStudioProjectBodyManifestAudioClipsMax = 100;
 
@@ -2828,7 +2858,9 @@ export const UpdateStudioProjectBody = zod.object({
   "startSec": zod.number().min(updateStudioProjectBodyManifestAudioClipsItemStartSecMin).max(updateStudioProjectBodyManifestAudioClipsItemStartSecMax),
   "durationSec": zod.number().gt(updateStudioProjectBodyManifestAudioClipsItemDurationSecExclusiveMin).max(updateStudioProjectBodyManifestAudioClipsItemDurationSecMax),
   "trimStart": zod.number().min(updateStudioProjectBodyManifestAudioClipsItemTrimStartMin).max(updateStudioProjectBodyManifestAudioClipsItemTrimStartMax),
-  "volume": zod.number().min(updateStudioProjectBodyManifestAudioClipsItemVolumeMin).max(updateStudioProjectBodyManifestAudioClipsItemVolumeMax)
+  "volume": zod.number().min(updateStudioProjectBodyManifestAudioClipsItemVolumeMin).max(updateStudioProjectBodyManifestAudioClipsItemVolumeMax),
+  "fadeInSec": zod.number().min(updateStudioProjectBodyManifestAudioClipsItemFadeInSecMin).max(updateStudioProjectBodyManifestAudioClipsItemFadeInSecMax).optional(),
+  "fadeOutSec": zod.number().min(updateStudioProjectBodyManifestAudioClipsItemFadeOutSecMin).max(updateStudioProjectBodyManifestAudioClipsItemFadeOutSecMax).optional()
 })).max(updateStudioProjectBodyManifestAudioClipsMax).optional(),
   "overlays": zod.array(zod.object({
   "kind": zod.enum(['video', 'image']).optional().describe('Omitted for legacy video overlays. Images display for durationSec with no audio or source trim.'),
@@ -2907,6 +2939,12 @@ export const updateStudioProjectResponseManifestAudioClipsItemTrimStartMax = 180
 
 export const updateStudioProjectResponseManifestAudioClipsItemVolumeMin = 0;
 export const updateStudioProjectResponseManifestAudioClipsItemVolumeMax = 1;
+
+export const updateStudioProjectResponseManifestAudioClipsItemFadeInSecMin = 0;
+export const updateStudioProjectResponseManifestAudioClipsItemFadeInSecMax = 1800;
+
+export const updateStudioProjectResponseManifestAudioClipsItemFadeOutSecMin = 0;
+export const updateStudioProjectResponseManifestAudioClipsItemFadeOutSecMax = 1800;
 
 export const updateStudioProjectResponseManifestAudioClipsMax = 100;
 
@@ -3015,7 +3053,9 @@ export const UpdateStudioProjectResponse = zod.object({
   "startSec": zod.number().min(updateStudioProjectResponseManifestAudioClipsItemStartSecMin).max(updateStudioProjectResponseManifestAudioClipsItemStartSecMax),
   "durationSec": zod.number().gt(updateStudioProjectResponseManifestAudioClipsItemDurationSecExclusiveMin).max(updateStudioProjectResponseManifestAudioClipsItemDurationSecMax),
   "trimStart": zod.number().min(updateStudioProjectResponseManifestAudioClipsItemTrimStartMin).max(updateStudioProjectResponseManifestAudioClipsItemTrimStartMax),
-  "volume": zod.number().min(updateStudioProjectResponseManifestAudioClipsItemVolumeMin).max(updateStudioProjectResponseManifestAudioClipsItemVolumeMax)
+  "volume": zod.number().min(updateStudioProjectResponseManifestAudioClipsItemVolumeMin).max(updateStudioProjectResponseManifestAudioClipsItemVolumeMax),
+  "fadeInSec": zod.number().min(updateStudioProjectResponseManifestAudioClipsItemFadeInSecMin).max(updateStudioProjectResponseManifestAudioClipsItemFadeInSecMax).optional(),
+  "fadeOutSec": zod.number().min(updateStudioProjectResponseManifestAudioClipsItemFadeOutSecMin).max(updateStudioProjectResponseManifestAudioClipsItemFadeOutSecMax).optional()
 })).max(updateStudioProjectResponseManifestAudioClipsMax).optional(),
   "overlays": zod.array(zod.object({
   "kind": zod.enum(['video', 'image']).optional().describe('Omitted for legacy video overlays. Images display for durationSec with no audio or source trim.'),

@@ -422,6 +422,7 @@ export default function Editor() {
   const [textCards, setTextCards] = useState<TextCard[]>([]);
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
   const [audioClips, setAudioClips] = useState<AudioClip[]>([]);
+  const [musicMutesUnderlying, setMusicMutesUnderlying] = useState(false);
   const [selectedAudioClipId, setSelectedAudioClipId] = useState<string | null>(null);
   const [audioSourceDurations, setAudioSourceDurations] = useState<Record<string, number>>({});
   const [audioClipEpoch, setAudioClipEpoch] = useState(0);
@@ -1247,7 +1248,7 @@ export default function Editor() {
       } else {
         startVideo();
       }
-      video.muted = !!music && music.mode === "replace";
+      video.muted = musicMutesUnderlying || (!!music && music.mode === "replace");
     } else {
       video.pause();
       video.style.display = "none";
@@ -2020,6 +2021,7 @@ export default function Editor() {
         <img ref={transPrevRef} alt="" className="absolute inset-0 h-full w-full object-contain" style={{ display: "none", zIndex: 1 }} />
         <video
           ref={videoRef}
+          muted={musicMutesUnderlying || (!!music && music.mode === "replace")}
           playsInline
           onPlay={() => setGuidePreviewPlayed(true)}
           onEnded={() => playingRef.current && advance()}
@@ -2034,6 +2036,7 @@ export default function Editor() {
           </div>
         )}
         <OverlayStage
+          muted={musicMutesUnderlying}
           overlays={overlays}
           textCards={textCards}
           timeSec={progress * totalDuration}
@@ -2044,6 +2047,7 @@ export default function Editor() {
           onChangeText={(id, patch) => setTextCards((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)))}
         />
         <AudioClipPlayer
+          onUnderlyingMuteChange={setMusicMutesUnderlying}
           clips={audioClips}
           timeSec={progress * totalDuration}
           playing={playing}
@@ -2063,6 +2067,7 @@ export default function Editor() {
       {music?.localUrl && (
         <audio
           ref={audioRef}
+          muted={musicMutesUnderlying}
           src={music.localUrl}
           loop={music.mode === "mix" && music.loop !== false}
           onLoadedMetadata={applyPendingAudioSeek}

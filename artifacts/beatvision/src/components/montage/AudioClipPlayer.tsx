@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { clamp, storageUrl } from "./overlayTypes";
-import { audioClipPlayback, type AudioClip } from "./audioClipTypes";
+import { audioClipGain, audioClipPlayback, type AudioClip } from "./audioClipTypes";
 
 function ClipAudio({
   clip, timeSec, playing, onSourceDuration, onSourceError,
@@ -17,11 +17,12 @@ function ClipAudio({
   const errRef = useRef(onSourceError);
   errRef.current = onSourceError;
   const { active, sourceSec } = audioClipPlayback(clip, timeSec);
+  const gain = audioClipGain(clip, timeSec);
 
   useEffect(() => {
     const a = ref.current;
     if (!a) return undefined;
-    a.volume = clamp(clip.volume, 0, 1);
+    a.volume = clamp(gain, 0, 1);
     a.muted = clip.volume <= 0;
     if (!active || !playing) {
       if (!a.paused) a.pause();
@@ -50,7 +51,7 @@ function ClipAudio({
       return () => a.removeEventListener("loadedmetadata", sync);
     }
     return undefined;
-  }, [active, playing, sourceSec, clip.volume, clip.objectPath]);
+  }, [active, playing, sourceSec, gain, clip.volume, clip.objectPath]);
 
   useEffect(() => () => { ref.current?.pause(); }, []);
 
@@ -75,8 +76,9 @@ function ClipAudio({
  * truth. Interpolates between the clock's coarse ticks for tight starts.
  */
 export function AudioClipPlayer({
-  clips, timeSec, playing, onSourceDuration, onSourceError,
+  clips, timeSec, playing, onSourceDuration, onSourceError, onUnderlyingMuteChange,
 }: {
+  onUnderlyingMuteChange?: (muted: boolean) => void;
   onSourceError?: (objectPath: string) => void;
   clips: AudioClip[];
   timeSec: number;
@@ -98,6 +100,10 @@ export function AudioClipPlayer({
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
   }, [timeSec, playing]);
+  const muteUnderlying = clips.some((clip) => !!clip.objectPath && clip.volume > 0 && audioClipPlayback(clip, clock).active);
+  useEffect(() => {
+    onUnderlyingMuteChange?.(muteUnderlying);
+  }, [muteUnderlying, onUnderlyingMuteChange]);
   if (clips.length === 0) return null;
   return (
     <div className="hidden" aria-hidden="true" data-testid="audio-clip-player">

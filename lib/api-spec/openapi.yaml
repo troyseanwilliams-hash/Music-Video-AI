@@ -1717,6 +1717,8 @@ components:
         durationSec: { type: number, exclusiveMinimum: 0, maximum: 1800 }
         trimStart: { type: number, minimum: 0, maximum: 1800 }
         volume: { type: number, minimum: 0, maximum: 1 }
+        fadeInSec: { type: number, minimum: 0, maximum: 1800 }
+        fadeOutSec: { type: number, minimum: 0, maximum: 1800 }
     StudioMusic:
       type: object
       additionalProperties: false

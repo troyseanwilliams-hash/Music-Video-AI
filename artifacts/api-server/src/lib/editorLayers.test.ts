@@ -107,7 +107,33 @@ describe("Montage layer contracts", () => {
 });
 
 describe("Montage layer exports", () => {
-  it("keeps soundtrack and overlay sound while timed music clips overlap", async () => {
+  it("fades music across overlapping clip boundaries without restarting the fade", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "music-fade-test-"));
+    try {
+      const main = await fixture(6, "blue", 440);
+      const song = await fixture(6, "black", 880);
+      const clip = { id: "fade", name: "Song", objectPath: "/objects/audio/song",
+        startSec: 0, durationSec: 6, trimStart: 0, volume: 1, buffer: song, ext: "mp4",
+        fadeInSec: 2, fadeOutSec: 2 };
+      const result = await stitchEditorTimeline({
+        segments: [{ buffer: main, kind: "video", durationSec: 6 }], width: 320, height: 180,
+        audioClips: [clip, { ...clip, id: "boundary", startSec: 1, durationSec: 4, volume: 0, fadeInSec: 0, fadeOutSec: 0 }],
+      });
+      const path = join(dir, "out.mp4");
+      await writeFile(path, result.videoBuffer);
+      const full = await amplitude(path, 3, 880);
+      expect(full).toBeGreaterThan(0.035);
+      const early = await amplitude(path, 0.2, 880);
+      const middle = await amplitude(path, 1.2, 880);
+      const late = await amplitude(path, 5.6, 880);
+      expect(early / full).toBeLessThan(0.3);
+      expect(middle / full).toBeGreaterThan(0.5);
+      expect(middle / full).toBeLessThan(0.85);
+      expect(late / full).toBeLessThan(0.3);
+      expect(await amplitude(path, 1.2, 440)).toBeLessThan(0.005);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  }, 120_000);
+  it("mutes underlying audio until the last overlapping music clip ends, then restores it", async () => {
     const dir = await mkdtemp(join(tmpdir(), "music-mix-test-"));
     try {
       const main = await fixture(3, "blue", 440);
@@ -124,8 +150,13 @@ describe("Montage layer exports", () => {
       });
       const path = join(dir, "out.mp4");
       await writeFile(path, result.videoBuffer);
-      for (const frequency of [220, 440, 880, 1320])
-        expect(await amplitude(path, 1.1, frequency)).toBeGreaterThan(0.006);
+      for (const time of [0.7, 1.1, 1.7]) {
+        for (const frequency of [220, 440, 880])
+          expect(await amplitude(path, time, frequency)).toBeLessThan(0.005);
+        expect(await amplitude(path, time, 1320)).toBeGreaterThan(0.006);
+      }
+      expect(await amplitude(path, 0.1, 440)).toBeGreaterThan(0.02);
+      expect(await amplitude(path, 2.3, 440)).toBeGreaterThan(0.02);
       expect(await amplitude(path, 2.3, 1320)).toBeLessThan(0.005);
       expect(await amplitude(path, 2.3, 220)).toBeGreaterThan(0.006);
       expect(pixel(await frame(path, 1.1), 260, 80)[0]).toBeGreaterThan(200);
@@ -152,6 +183,8 @@ describe("Montage layer exports", () => {
       expect(await amplitude(path, 0.7, 880)).toBeLessThan(0.025);
       expect(await amplitude(path, 2.3, 1320)).toBeGreaterThan(0.035);
       expect(await amplitude(path, 2.3, 880)).toBeLessThan(0.005);
+      expect(await amplitude(path, 0.7, 440)).toBeLessThan(0.005);
+      expect(await amplitude(path, 2.3, 440)).toBeLessThan(0.005);
       for (const time of [0.1, 1.7, 3.3, 4.3, 5.5]) {
         expect(await amplitude(path, time, 880)).toBeLessThan(0.005);
         expect(await amplitude(path, time, 1320)).toBeLessThan(0.005);

@@ -206,6 +206,16 @@ export interface StudioAudioClip {
      * @maximum 1
      */
   volume: number;
+  /**
+     * @minimum 0
+     * @maximum 1800
+     */
+  fadeInSec?: number;
+  /**
+     * @minimum 0
+     * @maximum 1800
+     */
+  fadeOutSec?: number;
 }
 
 export type StudioMusicMode = typeof StudioMusicMode[keyof typeof StudioMusicMode];

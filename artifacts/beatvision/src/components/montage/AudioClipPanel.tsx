@@ -205,7 +205,8 @@ export function AudioClipPanel({
       </div>
       <p className="mb-3 text-xs text-muted-foreground">
         Play a song only for a set stretch, like a 5-second intro or a later musical moment. These are separate from the
-        full-video soundtrack above, which keeps playing as usual. Clips start at the playhead, play once (no loop or fade) and
+        full-video soundtrack above. While a music clip plays, the video's audio, video-overlay audio and continuous
+        soundtrack are muted, then restored when it ends. Zero-volume clips do not mute anything. Clips start at the playhead, play once and
         up to {MAX_SIMULTANEOUS_AUDIO_CLIPS} can overlap.
       </p>
 
@@ -271,6 +272,11 @@ export function AudioClipPanel({
                     />
                   </div>
                 </div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <SecondsField label="Fade in (s)" value={c.fadeInSec ?? 0} onCommit={(v) => update(c.id, { fadeInSec: Math.max(0, v) })} testId={`input-audio-clip-fade-in-${c.id}`} />
+                  <SecondsField label="Fade out (s)" value={c.fadeOutSec ?? 0} onCommit={(v) => update(c.id, { fadeOutSec: Math.max(0, v) })} testId={`input-audio-clip-fade-out-${c.id}`} />
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">Set 0 for no fade. Fades are saved and included in the final video. Underlying audio stays muted throughout the music slot.</p>
                 <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
                   <span data-testid={`text-audio-clip-range-${c.id}`}>Timeline {fmt(c.startSec)}–{fmt(c.startSec + c.durationSec)}</span>
                   <span>Song {fmt(c.trimStart)}–{fmt(c.trimStart + c.durationSec)}{source ? ` of ${fmt(source)}` : ""}</span>

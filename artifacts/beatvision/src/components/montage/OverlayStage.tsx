@@ -255,8 +255,9 @@ function TextCardBox({
 }
 
 export function OverlayStage({
-  overlays, textCards, timeSec, playing, selectedId, onSelect, onChangeOverlay, onChangeText,
+  overlays, textCards, timeSec, playing, selectedId, onSelect, onChangeOverlay, onChangeText, muted = false,
 }: {
+  muted?: boolean;
   overlays: VideoOverlay[];
   textCards: TextCard[];
   timeSec: number;
@@ -300,7 +301,7 @@ export function OverlayStage({
       {overlays.map((o) => (
         <OverlayBox
           key={o.id}
-          overlay={o}
+          overlay={muted ? { ...o, volume: 0 } : o}
           timeSec={clock}
           playing={playing}
           selected={selectedId === o.id}
