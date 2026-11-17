@@ -65,9 +65,9 @@ function OverlayBox({
   const blurRef = useRef<HTMLVideoElement>(null);
   const drag = useRef<null | { mode: DragMode; px: number; py: number; o: VideoOverlay }>(null);
   useClockSync(mainRef, overlay, timeSec, playing, active, overlay.volume);
-  useClockSync(blurRef, overlay, timeSec, playing, active && overlay.layout === "commentary", null);
+  useClockSync(blurRef, overlay, timeSec, playing, active && (overlay.layout === "commentary" || overlay.layout === "center16x9"), null);
 
-  const isCommentary = overlay.layout === "commentary";
+  const isCommentary = overlay.layout === "commentary" || overlay.layout === "center16x9";
   const down = (mode: DragMode) => (e: ReactPointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
@@ -110,7 +110,7 @@ function OverlayBox({
 
   return (
     <>
-      {overlay.layout === "commentary" && isImage && (
+      {isCommentary && isImage && (
         <img
           src={storageUrl(overlay.objectPath)}
           alt=""
@@ -120,7 +120,7 @@ function OverlayBox({
           style={{ visibility: active ? "visible" : "hidden" }}
         />
       )}
-      {overlay.layout === "commentary" && !isImage && (
+      {isCommentary && !isImage && (
         <video
           ref={blurRef}
           src={src}
@@ -135,10 +135,11 @@ function OverlayBox({
       <div
         className={`absolute touch-none ${selected ? "outline outline-2 outline-offset-2 outline-primary" : ""}`}
         style={{
-          left: `${box.x * 100}%`,
-          top: `${box.y * 100}%`,
-          width: `${box.width * 100}%`,
-          height: `${box.height * 100}%`,
+          left: overlay.layout === "center16x9" ? "50%" : `${box.x * 100}%`,
+          top: overlay.layout === "center16x9" ? "50%" : `${box.y * 100}%`,
+          width: overlay.layout === "center16x9" ? `min(100%, ${(stageRef.current?.clientHeight ?? 0) * (16 / 9)}px)` : `${box.width * 100}%`,
+          height: overlay.layout === "center16x9" ? "auto" : `${box.height * 100}%`,
+          ...(overlay.layout === "center16x9" ? { aspectRatio: "16 / 9", transform: "translate(-50%, -50%)" } : {}),
           // Rounding and border sit on the normalized box boundary (matching
           // the renderer), inset so the box geometry never changes.
           borderRadius: radius,

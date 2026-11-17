@@ -90,6 +90,16 @@ describe("Montage preview layers", () => {
     expect(videos[1]!.muted).toBe(true);
     expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
   });
+
+  it("previews a centered 16:9 overlay over blurred fill and preserves border styling", async () => {
+    const overlay = { ...base, layout: "center16x9" as const, borderWidth: 0.003, borderColor: "#f5c451" };
+    await render(overlay, 1.5, true);
+    const preview = host.querySelector<HTMLElement>("[data-testid='preview-overlay-clip']")!;
+    expect(preview.style.aspectRatio).toBe("16 / 9");
+    expect(preview.style.left).toBe("50%");
+    expect(host.querySelectorAll("video")).toHaveLength(2);
+    expect((host.querySelectorAll("video")[0] as HTMLVideoElement).muted).toBe(true);
+  });
   it("shows manual-line-break text only during its interval", async () => {
     const props = {
       overlays: [], textCards: [{

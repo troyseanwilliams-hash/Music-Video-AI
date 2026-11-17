@@ -3,7 +3,7 @@ export const MAX_OVERLAYS = 100;
 export const MAX_TEXT_CARDS = 100;
 export const MAX_TEXT_LENGTH = 500;
 
-export type OverlayLayout = "custom" | "reaction" | "commentary";
+export type OverlayLayout = "custom" | "reaction" | "commentary" | "center16x9";
 
 export type OverlayKind = "video" | "image";
 
@@ -63,13 +63,21 @@ export const LAYOUT_PRESETS: Record<"reactionRight" | "reactionLeft" | "commenta
   commentary: { x: 0, y: 0, width: 1, height: 1, layout: "commentary", cornerRadius: 0 },
 };
 
+export const OVERLAY_BORDER_PRESETS = [
+  { name: "None", color: "#ffffff", width: 0 },
+  { name: "White", color: "#ffffff", width: 0.003 },
+  { name: "Gold", color: "#f5c451", width: 0.003 },
+  { name: "Violet", color: "#a855f7", width: 0.003 },
+  { name: "Cyan", color: "#22d3ee", width: 0.003 },
+] as const;
+
 export function normalizeOverlay(raw: unknown): VideoOverlay | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
   if (typeof o.objectPath !== "string" || !o.objectPath) return null;
   const width = clamp(num(o.width, 0.33), 0.05, 1);
   const height = clamp(num(o.height, 0.5), 0.05, 1);
-  const layout: OverlayLayout = o.layout === "reaction" || o.layout === "commentary" ? o.layout : "custom";
+  const layout: OverlayLayout = o.layout === "reaction" || o.layout === "commentary" || o.layout === "center16x9" ? o.layout : "custom";
   const isImage = o.kind === "image";
   return {
     ...(isImage ? { kind: "image" as const } : {}),

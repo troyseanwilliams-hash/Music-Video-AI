@@ -17,7 +17,7 @@ export const VideoOverlaySchema = z.object({
   x: unit, y: unit,
   width: z.number().finite().positive().max(1),
   height: z.number().finite().positive().max(1),
-  layout: z.enum(["custom", "reaction", "commentary"]),
+  layout: z.enum(["custom", "reaction", "commentary", "center16x9"]),
   volume: unit.default(0),
   cornerRadius: z.number().finite().min(0).max(0.25).default(0),
   borderWidth: z.number().finite().min(0).max(0.02).default(0),
@@ -25,7 +25,7 @@ export const VideoOverlaySchema = z.object({
 }).strict().superRefine((layer, ctx) => {
   if (layer.kind === "image" && (layer.trimStart !== 0 || layer.volume !== 0))
     ctx.addIssue({ code: "custom", message: "Static image overlays cannot have source trimming or audio." });
-  if (layer.layout !== "commentary" && (layer.x + layer.width > 1.001 || layer.y + layer.height > 1.001))
+  if (layer.layout !== "commentary" && layer.layout !== "center16x9" && (layer.x + layer.width > 1.001 || layer.y + layer.height > 1.001))
     ctx.addIssue({ code: "custom", message: "Keep the complete overlay inside the frame." });
   if (layer.startSec + layer.durationSec > MAX_EDITOR_SECONDS)
     ctx.addIssue({ code: "custom", message: "Overlays must end within 30 minutes." });

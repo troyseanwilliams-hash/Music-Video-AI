@@ -17,6 +17,12 @@ Music also needs independent, reusable time slots (for example, a five-second in
 
 **How to apply:** Timed music automatically mutes underlying audio for its slot and restores it afterward, in preview and export. Overlapping slots keep audio muted until the last audible clip ends; zero-volume clips do not mute. Validate each slot against both the song and main timeline.
 
+Optional overlay presentation includes a centered 16:9 foreground over blurred fill and thin color border presets. Preserve ordinary overlay framing as the default.
+
+**Why:** These treatments are creator choices, not forced changes to existing project framing.
+
+**How to apply:** Keep decorative framing opt-in via explicit layout and border controls; keep legacy overlay manifests and defaults valid.
+
 **Why:** The user explicitly requested that video audio be muted behind music and enabled again when the music ends.
 
 **Why:** The user approved this approach to the attached commentary-video punch list, specifically to avoid needing a separate editor.

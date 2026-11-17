@@ -12,7 +12,7 @@ import {
   Trash2, Type, Upload, Clock,
 } from "lucide-react";
 import {
-  clamp, IMAGE_OVERLAY_TYPES, isImageOverlay, LAYOUT_PRESETS, type LayerIssue, MAX_OVERLAYS, MAX_TEXT_CARDS, MAX_TEXT_LENGTH, MAX_TIMELINE_SEC, overlayId,
+  clamp, IMAGE_OVERLAY_TYPES, isImageOverlay, LAYOUT_PRESETS, OVERLAY_BORDER_PRESETS, type LayerIssue, MAX_OVERLAYS, MAX_TEXT_CARDS, MAX_TEXT_LENGTH, MAX_TIMELINE_SEC, overlayId,
   type TextCard, type VideoOverlay,
 } from "./overlayTypes";
 
@@ -156,7 +156,7 @@ export function OverlayPanel({
     const o: VideoOverlay = {
       ...(image ? { kind: "image" as const } : {}),
       id, name: clip.name, objectPath: clip.objectPath, startSec: start, durationSec: dur, trimStart: 0,
-      ...LAYOUT_PRESETS.reactionRight, volume: image ? 0 : 0.25, borderWidth: 0, borderColor: "#ffffff",
+      ...LAYOUT_PRESETS.reactionRight, volume: image ? 0 : 0.25, borderWidth: 0.003, borderColor: "#ffffff",
     };
     if (!image) setSourceDur((m) => ({ ...m, [id]: clip.durationSec }));
     setOverlays((prev) => [...prev, o]);
@@ -348,9 +348,10 @@ export function OverlayPanel({
                     <Button size="sm" variant={selO.layout === "reaction" && selO.x > 0.5 ? "default" : "outline"} onClick={() => patchO(selO.id, LAYOUT_PRESETS.reactionRight)} data-testid="button-layout-reaction-right"><PanelRight className="mr-1.5 h-4 w-4" />Reaction right</Button>
                     <Button size="sm" variant={selO.layout === "reaction" && selO.x <= 0.5 ? "default" : "outline"} onClick={() => patchO(selO.id, LAYOUT_PRESETS.reactionLeft)} data-testid="button-layout-reaction-left"><PanelLeft className="mr-1.5 h-4 w-4" />Reaction left</Button>
                     <Button size="sm" variant={selO.layout === "commentary" ? "default" : "outline"} onClick={() => patchO(selO.id, LAYOUT_PRESETS.commentary)} data-testid="button-layout-commentary"><RectangleVertical className="mr-1.5 h-4 w-4" />Commentary</Button>
+                    {!selImage && <Button size="sm" variant={selO.layout === "center16x9" ? "default" : "outline"} onClick={() => patchO(selO.id, { layout: "center16x9", x: 0, y: 0, width: 1, height: 1, cornerRadius: 0 })} data-testid="button-layout-center-16x9"><RectangleVertical className="mr-1.5 h-4 w-4" />Center 16:9 · blur sides</Button>}
                   </div>
                   <p className="mt-1.5 text-[11px] text-muted-foreground">
-                    {selO.layout === "commentary"
+                    {selO.layout === "commentary" || selO.layout === "center16x9"
                       ? selImage ? "Image sits full-height in the centre with a blurred copy filling the sides." : "Clip sits full-height in the centre with a blurred copy filling the sides."
                       : "Drag the clip in the preview to move it; drag the corner handle to resize."}
                   </p>
@@ -422,6 +423,19 @@ export function OverlayPanel({
                     Border colour
                     <input type="color" value={selO.borderColor} onChange={(e) => patchO(selO.id, { borderColor: e.target.value })} className="h-8 w-10 cursor-pointer rounded border border-border bg-transparent" data-testid="input-overlay-border-color" />
                   </label>
+                </div>
+                <div>
+                  <div className="mb-2 text-[11px] font-medium text-muted-foreground">Decorative border</div>
+                  <div className="flex flex-wrap gap-2">
+                    {OVERLAY_BORDER_PRESETS.map((preset) => (
+                      <Button key={preset.name} size="sm" variant={selO.borderWidth === preset.width && selO.borderColor.toLowerCase() === preset.color ? "default" : "outline"}
+                        onClick={() => patchO(selO.id, { borderWidth: preset.width, borderColor: preset.color })}
+                        data-testid={`button-overlay-border-${preset.name.toLowerCase()}`}>
+                        {preset.name}
+                      </Button>
+                    ))}
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-muted-foreground">Thin borders frame both video and image overlays. Choose a color or customize it below.</p>
                 </div>
               </div>
             );

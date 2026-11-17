@@ -59,6 +59,7 @@ export const StudioVideoOverlayLayout = {
   custom: 'custom',
   reaction: 'reaction',
   commentary: 'commentary',
+  center16x9: 'center16x9',
 } as const;
 
 export interface StudioVideoOverlay {

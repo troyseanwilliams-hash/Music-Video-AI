@@ -63,6 +63,13 @@ const timingSchema = z.object({
 }).superRefine(validateEditorTiming);
 
 describe("Montage layer contracts", () => {
+  it("accepts and saves the centered 16:9 blur layout", () => {
+    const { buffer: _buffer, ...overlay } = layer(Buffer.alloc(0), {
+      layout: "center16x9", x: 0, y: 0, width: 1, height: 1,
+    });
+    const input = { segments: [{ kind: "video", durationSec: 3 }], overlays: [overlay] };
+    expect(timingSchema.parse(JSON.parse(JSON.stringify(input)))).toEqual(input);
+  });
   it("round-trips timed music and rejects invalid, out-of-bounds or overcrowded slots", () => {
     const clip = { id: "intro", name: "Intro", objectPath: "/objects/audio/intro",
       startSec: 0, durationSec: 5, trimStart: 1.25, volume: 0.25 };
@@ -107,6 +114,29 @@ describe("Montage layer contracts", () => {
 });
 
 describe("Montage layer exports", () => {
+  it("centers a landscape overlay in 16:9 over blurred portrait fill with a decorative border", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "layers-center-16x9-"));
+    try {
+      const main = await fixture(3, "blue", 440, true);
+      const clip = await fixture(2, "red", 880);
+      const result = await stitchEditorTimeline({
+        segments: [{ buffer: main, kind: "video", durationSec: 3 }], width: 180, height: 320,
+        overlays: [layer(clip, { layout: "center16x9", x: 0, y: 0, width: 1, height: 1,
+          startSec: 0, durationSec: 2, borderWidth: 0.012, borderColor: "#f5c451" })],
+      });
+      const path = join(dir, "out.mp4");
+      await writeFile(path, result.videoBuffer);
+      const img = await frame(path, 1, 180, 320);
+      const border = pixel(img, 90, 109, 180);
+      expect(border[0]).toBeGreaterThan(180);
+      expect(border[1]).toBeGreaterThan(120);
+      expect(border[2]).toBeLessThan(130);
+      expect(pixel(img, 90, 160, 180)[0]).toBeGreaterThan(180);
+      expect(pixel(img, 90, 50, 180)[0]).toBeGreaterThan(20);
+      expect(pixel(img, 90, 50, 180)[0]).toBeGreaterThan(pixel(img, 90, 50, 180)[2]);
+      expect(result.durationSeconds).toBeCloseTo(3, 0);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  }, 120_000);
   it("fades music across overlapping clip boundaries without restarting the fade", async () => {
     const dir = await mkdtemp(join(tmpdir(), "music-fade-test-"));
     try {

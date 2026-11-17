@@ -6,7 +6,7 @@ export interface EditorVideoOverlay {
   id: string; name: string; objectPath: string;
   startSec: number; durationSec: number; trimStart: number;
   x: number; y: number; width: number; height: number;
-  layout: "custom" | "reaction" | "commentary";
+  layout: "custom" | "reaction" | "commentary" | "center16x9";
   volume: number; cornerRadius: number; borderWidth: number; borderColor: string;
 }
 export interface EditorTextCard {
@@ -29,6 +29,7 @@ export function layerChunkBoundaries(duration: number, overlays: EditorVideoOver
 
 const even = (n: number) => Math.max(2, Math.round(n / 2) * 2);
 const n = (value: number) => value.toFixed(6);
+const ffColor = (hex: string) => `0x${hex.replace(/^#/, "")}`;
 const escapePath = (path: string) => path.replace(/([\\':])/g, "\\$1");
 
 /**
@@ -105,10 +106,15 @@ export async function renderEditorLayers(options: {
       const next = `v${j + 1}`;
       const source = `s${j}`;
       graph.push(`[${input}:v]trim=duration=${n(length)},setpts=PTS-STARTPTS,fps=${fps},setsar=1[${source}]`);
-      if (layer.layout === "commentary") {
+      if (layer.layout === "commentary" || layer.layout === "center16x9") {
         graph.push(`[${source}]split=2[bg${j}][fg${j}]`);
         graph.push(`[bg${j}]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},boxblur=20:2[blur${j}]`);
-        graph.push(`[fg${j}]scale=${W}:${H}:force_original_aspect_ratio=decrease[fit${j}]`);
+        const boxW = layer.layout === "center16x9" ? Math.min(W, even(H * 16 / 9)) : W;
+        const boxH = layer.layout === "center16x9" ? Math.min(H, even(W * 9 / 16)) : H;
+        let foreground = `[fg${j}]scale=${boxW}:${boxH}:force_original_aspect_ratio=decrease,pad=${boxW}:${boxH}:(ow-iw)/2:(oh-ih)/2:color=black@0`;
+        const border = Math.round(layer.borderWidth * H);
+        if (border > 0) foreground += `,drawbox=x=0:y=0:w=iw:h=ih:color=${ffColor(layer.borderColor)}:t=${border}`;
+        graph.push(`${foreground}[fit${j}]`);
         graph.push(`[blur${j}][fit${j}]overlay=x=(W-w)/2:y=(H-h)/2:shortest=1[full${j}]`);
         graph.push(`[${video}][full${j}]overlay=0:0:eof_action=pass[${next}]`);
       } else {
@@ -119,7 +125,7 @@ export async function renderEditorLayers(options: {
         const border = Math.round(layer.borderWidth * H);
         const radius = Math.min(w / 2, h / 2, Math.round(layer.cornerRadius * H));
         let filter = `scale=${w}:${h}:force_original_aspect_ratio=decrease,format=rgba,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=black@0`;
-        if (border > 0) filter += `,drawbox=x=0:y=0:w=iw:h=ih:color=${layer.borderColor}:t=${border}`;
+        if (border > 0) filter += `,drawbox=x=0:y=0:w=iw:h=ih:color=${ffColor(layer.borderColor)}:t=${border}`;
         if (radius > 0) {
           // Rounded rectangle alpha mask. A(X,Y) preserves contain-padding alpha.
           filter += `,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if(lte(pow(max(abs(X-W/2)-(W/2-${radius}),0),2)+pow(max(abs(Y-H/2)-(H/2-${radius}),0),2),${radius * radius}),alpha(X,Y),0)'`;
