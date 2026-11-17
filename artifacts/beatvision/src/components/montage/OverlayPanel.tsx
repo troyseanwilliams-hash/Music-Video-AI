@@ -351,7 +351,9 @@ export function OverlayPanel({
                     {!selImage && <Button size="sm" variant={selO.layout === "center16x9" ? "default" : "outline"} onClick={() => patchO(selO.id, { layout: "center16x9", x: 0, y: 0, width: 1, height: 1, cornerRadius: 0 })} data-testid="button-layout-center-16x9"><RectangleVertical className="mr-1.5 h-4 w-4" />Center 16:9 · blur sides</Button>}
                   </div>
                   <p className="mt-1.5 text-[11px] text-muted-foreground">
-                    {selO.layout === "commentary" || selO.layout === "center16x9"
+                    {selO.layout === "center16x9"
+                      ? "Clip is contained in a centered 16:9 frame without cropping, with blurred fill around it. Portrait exports also have blur above and below."
+                      : selO.layout === "commentary"
                       ? selImage ? "Image sits full-height in the centre with a blurred copy filling the sides." : "Clip sits full-height in the centre with a blurred copy filling the sides."
                       : "Drag the clip in the preview to move it; drag the corner handle to resize."}
                   </p>
@@ -396,8 +398,8 @@ export function OverlayPanel({
                 </div>}
 
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  {selO.layout === "commentary" ? (
-                    <p className="col-span-full text-[11px] text-muted-foreground">Commentary always fills the frame. Pick a Reaction layout to move or resize this {selImage ? "image" : "clip"}.</p>
+                  {selO.layout === "commentary" || selO.layout === "center16x9" ? (
+                    <p className="col-span-full text-[11px] text-muted-foreground">{selO.layout === "center16x9" ? "The 16:9 frame stays centered." : "Commentary always fills the frame."} Pick a Reaction layout to move or resize this {selImage ? "image" : "clip"}.</p>
                   ) : (<>
                   <NumField label="Left" suffix="%" value={pct(selO.x)} min={0} max={pct(1 - selO.width)} step={1} onChange={(v) => patchO(selO.id, { x: v / 100, layout: "custom" })} testId="input-overlay-x" />
                   <NumField label="Top" suffix="%" value={pct(selO.y)} min={0} max={pct(1 - selO.height)} step={1} onChange={(v) => patchO(selO.id, { y: v / 100, layout: "custom" })} testId="input-overlay-y" />
@@ -435,7 +437,7 @@ export function OverlayPanel({
                       </Button>
                     ))}
                   </div>
-                  <p className="mt-1.5 text-[11px] text-muted-foreground">Thin borders frame both video and image overlays. Choose a color or customize it below.</p>
+                  <p className="mt-1.5 text-[11px] text-muted-foreground">Thin borders frame both video and image overlays. Use Border colour above for a custom color.</p>
                 </div>
               </div>
             );

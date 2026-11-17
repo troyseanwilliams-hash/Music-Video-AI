@@ -111,9 +111,11 @@ export async function renderEditorLayers(options: {
         graph.push(`[bg${j}]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},boxblur=20:2[blur${j}]`);
         const boxW = layer.layout === "center16x9" ? Math.min(W, even(H * 16 / 9)) : W;
         const boxH = layer.layout === "center16x9" ? Math.min(H, even(W * 9 / 16)) : H;
-        let foreground = `[fg${j}]scale=${boxW}:${boxH}:force_original_aspect_ratio=decrease,pad=${boxW}:${boxH}:(ow-iw)/2:(oh-ih)/2:color=black@0`;
+        let foreground = `[fg${j}]scale=${boxW}:${boxH}:force_original_aspect_ratio=decrease,format=rgba,pad=${boxW}:${boxH}:(ow-iw)/2:(oh-ih)/2:color=black@0`;
         const border = Math.round(layer.borderWidth * H);
         if (border > 0) foreground += `,drawbox=x=0:y=0:w=iw:h=ih:color=${ffColor(layer.borderColor)}:t=${border}`;
+        const radius = Math.min(boxW / 2, boxH / 2, Math.round(layer.cornerRadius * H));
+        if (radius > 0) foreground += `,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if(lte(pow(max(abs(X-W/2)-(W/2-${radius}),0),2)+pow(max(abs(Y-H/2)-(H/2-${radius}),0),2),${radius * radius}),alpha(X,Y),0)'`;
         graph.push(`${foreground}[fit${j}]`);
         graph.push(`[blur${j}][fit${j}]overlay=x=(W-w)/2:y=(H-h)/2:shortest=1[full${j}]`);
         graph.push(`[${video}][full${j}]overlay=0:0:eof_action=pass[${next}]`);

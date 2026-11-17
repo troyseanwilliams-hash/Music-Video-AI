@@ -122,7 +122,7 @@ describe("Montage layer exports", () => {
       const result = await stitchEditorTimeline({
         segments: [{ buffer: main, kind: "video", durationSec: 3 }], width: 180, height: 320,
         overlays: [layer(clip, { layout: "center16x9", x: 0, y: 0, width: 1, height: 1,
-          startSec: 0, durationSec: 2, borderWidth: 0.012, borderColor: "#f5c451" })],
+          startSec: 0, durationSec: 2, borderWidth: 0.012, borderColor: "#f5c451", cornerRadius: 0.05 })],
       });
       const path = join(dir, "out.mp4");
       await writeFile(path, result.videoBuffer);
@@ -131,6 +131,8 @@ describe("Montage layer exports", () => {
       expect(border[0]).toBeGreaterThan(180);
       expect(border[1]).toBeGreaterThan(120);
       expect(border[2]).toBeLessThan(130);
+      // Rounded corners reveal the red blurred background, not the gold frame.
+      expect(pixel(img, 1, 109, 180)[1]).toBeLessThan(100);
       expect(pixel(img, 90, 160, 180)[0]).toBeGreaterThan(180);
       expect(pixel(img, 90, 50, 180)[0]).toBeGreaterThan(20);
       expect(pixel(img, 90, 50, 180)[0]).toBeGreaterThan(pixel(img, 90, 50, 180)[2]);
@@ -282,14 +284,14 @@ describe("Montage layer exports", () => {
     } finally { await rm(dir, { recursive: true, force: true }); }
   }, 120_000);
 
-  it("exports commentary blur fill with lowered audio and a timed text card", async () => {
+  it.each(["commentary", "center16x9"] as const)("exports %s blur fill with lowered audio and a timed text card", async (layout) => {
     const dir = await mkdtemp(join(tmpdir(), "layers-test-"));
     try {
       const main = await fixture(2, "blue", 440);
       const clip = await fixture(1.4, "red", 880, true);
       const result = await stitchEditorTimeline({
         segments: [{ buffer: main, kind: "video", durationSec: 2 }], width: 320, height: 180,
-        overlays: [layer(clip, { layout: "commentary", volume: 0.25 })],
+        overlays: [layer(clip, { layout, volume: 0.25 })],
         textCards: [{ id: "text", text: "$2,900/month: 100% 'mine'\nSecond line",
           startSec: 0.5, durationSec: 1, x: 0.02, y: 0.05, fontSize: 0.05,
           color: "#ffffff", backgroundColor: "#000000" }],
