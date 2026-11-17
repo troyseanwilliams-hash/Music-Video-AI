@@ -147,3 +147,17 @@ mtime_ms = 1791066115537
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:40c49f5e-786c-4e75-b341-440182ee3372/b2f3f17c-d6f6-4c97-a581-876efd97d1c0/189890d3-7dc4-4c21-8f7c-a3034e367124"
 storage_version_token = "1791066156193499"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "R4IpUGyCCaWqcCqikWasT"
+uri = "file://generated-artifacts/montage-studio-migration.zip"
+type = "unspecified"
+title = "Montage Studio migration kit"
+description = "Editor and renderer source, regression tests, and podcast integration instructions. Includes timed video/image overlays, music slots, fades, mute/restore, borders and centered blur framing."
+logical_id = "823708f7-2d4b-4e28-a33b-c203c5c6d6de"
+content_hash = "sha256:b68c857ee3a9a3e0f425a419ec89ca655acee68973fedf8c8f83fa0c21e67fcd"
+size = 460538
+mtime_ms = 1794934499637
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:40c49f5e-786c-4e75-b341-440182ee3372/823708f7-2d4b-4e28-a33b-c203c5c6d6de/f5669cf4-343a-4b3f-9fc2-98236bf686e0"
+storage_version_token = "1794934511195571"
+content_type = "application/octet-stream"
