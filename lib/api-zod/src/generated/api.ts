@@ -101,16 +101,8 @@ export const RegisterUserBody = zod.object({
 })
 
 export const RegisterUserResponse = zod.object({
-  "user": zod.union([zod.object({
-  "id": zod.string(),
-  "email": zod.string().email().nullable(),
-  "firstName": zod.string().nullable(),
-  "lastName": zod.string().nullable(),
-  "profileImageUrl": zod.string().nullable(),
-  "subscriptionStatus": zod.enum(['trial', 'active', 'cancelled', 'none']).describe('Current subscription state of the user'),
-  "trialEndsAt": zod.coerce.date().nullish().describe('When the free trial expires (null means no expiry set)'),
-  "isAdmin": zod.boolean().describe('Whether the user has admin\/power-user privileges')
-}),zod.null()])
+  "requiresEmailVerification": zod.boolean(),
+  "emailSent": zod.boolean()
 })
 
 
@@ -140,7 +132,32 @@ export const LoginUserResponse = zod.object({
   "trialEndsAt": zod.coerce.date().nullish().describe('When the free trial expires (null means no expiry set)'),
   "isAdmin": zod.boolean().describe('Whether the user has admin\/power-user privileges')
 }).optional(),
-  "requiresTwoFactor": zod.boolean().optional()
+  "requiresTwoFactor": zod.boolean().optional(),
+  "requiresEmailVerification": zod.boolean().optional()
+})
+
+
+/**
+ * @summary Confirm a new account email or resend its confirmation code
+ */
+export const confirmAccountEmailBodyEmailMax = 254;
+
+export const confirmAccountEmailBodyPasswordMax = 1024;
+
+export const confirmAccountEmailBodyCodeMax = 16;
+
+
+
+export const ConfirmAccountEmailBody = zod.object({
+  "action": zod.enum(['confirm', 'resend']),
+  "email": zod.string().email().max(confirmAccountEmailBodyEmailMax),
+  "password": zod.string().min(1).max(confirmAccountEmailBodyPasswordMax),
+  "code": zod.string().max(confirmAccountEmailBodyCodeMax).optional()
+})
+
+export const ConfirmAccountEmailResponse = zod.object({
+  "verified": zod.boolean(),
+  "emailSent": zod.boolean().optional()
 })
 
 

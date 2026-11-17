@@ -6,6 +6,24 @@ import { afterEach, expect, it, vi } from "vitest";
 import { AUTH_QUERY_KEY, useAuth } from "./useAuth";
 
 afterEach(() => vi.unstubAllGlobals());
+it("does not sign in after registration or an email-confirmation challenge", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  vi.stubGlobal("fetch", vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({ requiresEmailVerification: true, emailSent: false })))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ requiresEmailVerification: true }))));
+  const client = new QueryClient();
+  client.setQueryData(AUTH_QUERY_KEY, null);
+  const invalidate = vi.spyOn(client, "invalidateQueries").mockResolvedValue(undefined);
+  let auth: ReturnType<typeof useAuth>;
+  function Harness() { auth = useAuth(); return null; }
+  const root = createRoot(document.createElement("div"));
+  await act(async () => root.render(<QueryClientProvider client={client}><Harness /></QueryClientProvider>));
+  await act(async () => expect(await auth.register("Fixture", "fixture@example.invalid", "fixture-password")).toEqual({ emailSent: false }));
+  await act(async () => expect(await auth.login("fixture@example.invalid", "fixture-password")).toEqual({ requiresTwoFactor: false, requiresEmailVerification: true }));
+  expect(invalidate).not.toHaveBeenCalled();
+  await act(async () => root.unmount());
+  client.clear();
+});
 it("does not refresh authenticated state until the second factor succeeds", async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   const fetch = vi.fn()

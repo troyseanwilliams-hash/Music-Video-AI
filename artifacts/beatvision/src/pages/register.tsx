@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { isAuthTransportError, useAuth } from "@/hooks/useAuth";
 import { useSEO } from "@/hooks/useSEO";
+import { EmailConfirmation } from "@/components/EmailConfirmation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -45,6 +46,7 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [emailSent, setEmailSent] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const passwordStrong = password.length >= 8;
@@ -97,11 +99,13 @@ export default function Register() {
     setIsSubmitting(true);
     trackEvent("signup_started", { has_referral: Boolean(referralCode) });
     try {
-      await register(name.trim(), email.trim(), password, referralCode ?? undefined);
+      const result = await register(name.trim(), email.trim(), password, referralCode ?? undefined);
       // Account creation is tracked authoritatively by the server. Keep the
       // selected plan as an explicit next step; never start checkout here.
-       setIsSuccess(true);
-      setLocation(authIntent.returnTo);
+      setIsSuccess(true);
+      setEmailSent(result.emailSent);
+      setPassword("");
+      setConfirmPassword("");
     } catch (err) {
       if (isAuthTransportError(err)) {
         track("signup_transport_failed", { category: "network" });
@@ -115,6 +119,12 @@ export default function Register() {
       setIsSubmitting(false);
     }
   }
+
+  if (emailSent !== null) return <EmailConfirmation
+    email={email.trim()}
+    emailSent={emailSent}
+    onBack={() => setLocation(buildAuthUrl("/login", authIntent))}
+  />;
 
   return (
     <div className="min-h-[calc(100dvh-4rem)] flex items-center justify-center relative px-4 sm:px-6 py-6 sm:py-12">

@@ -17,6 +17,13 @@ export const usersTable = pgTable("users", {
   email: varchar("email").unique(),
   passwordHash: varchar("password_hash"),
   authVersion: integer("auth_version").notNull().default(0),
+  // Legacy accounts stay accessible. Public registration explicitly opts in.
+  emailVerificationRequired: boolean("email_verification_required").notNull().default(false),
+  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+  emailVerificationHash: varchar("email_verification_hash"),
+  emailVerificationExpiresAt: timestamp("email_verification_expires_at", { withTimezone: true }),
+  emailVerificationSentAt: timestamp("email_verification_sent_at", { withTimezone: true }),
+  pendingReferralCode: varchar("pending_referral_code"),
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),

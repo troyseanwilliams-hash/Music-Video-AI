@@ -1,9 +1,10 @@
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 import { Router, type IRouter, type Request, type Response } from "express";
-import { RegisterUserBody, LoginUserBody, GetCurrentAuthUserResponse } from "@workspace/api-zod";
+import { RegisterUserBody, RegisterUserResponse, LoginUserBody, GetCurrentAuthUserResponse } from "@workspace/api-zod";
 import { db, analyticsEventsTable, usersTable, creditsTable, creditGrantsTable, twoFactorTable } from "@workspace/db";
 import { allowAuthAttempt, authOriginGuard, verifySecondFactor } from "../lib/twoFactor.js";
+import { newEmailCode, sendEmailConfirmation } from "../lib/emailConfirmation.js";
 import { eq, sql } from "drizzle-orm";
 
 function isAdminEmail(email: string | null | undefined): boolean {
@@ -22,9 +23,8 @@ function buildUserPayload(user: typeof usersTable.$inferSelect) {
     isAdmin: isAdminEmail(user.email),
   };
 }
-import { processReferralSignup } from "../lib/referrals.js";
 import { WELCOME_CREDITS } from "../lib/welcomeOffer.js";
-import { notifyNewUser, sendWelcomeEmail } from "../lib/notifications.js";
+import { notifyNewUser } from "../lib/notifications.js";
 import { emailShell, ctaButton } from "../lib/emailTemplates.js";
 import { z } from "zod";
 import { Resend } from "resend";
@@ -42,7 +42,6 @@ import {
   deleteSession,
   SESSION_COOKIE,
   SESSION_TTL,
-  type SessionData,
 } from "../lib/auth.js";
 
 const SALT_ROUNDS = 12;
@@ -109,7 +108,7 @@ router.post("/auth/register", async (req: Request, res: Response) => {
 
   if (existing.length > 0) {
     await recordSignupFailure(req, "duplicate", anonId);
-    res.status(409).json({ error: "An account with that email already exists" });
+    res.status(409).json({ error: "An account with that email already exists. Sign in to continue or resend its confirmation code." });
     return;
   }
 
@@ -139,6 +138,8 @@ router.post("/auth/register", async (req: Request, res: Response) => {
   const nameParts = name.trim().split(/\s+/);
   const firstName = nameParts[0] ?? name.trim();
   const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : null;
+  const newUserId = crypto.randomUUID();
+  const confirmation = newEmailCode(newUserId);
 
   let user: typeof usersTable.$inferSelect;
   try {
@@ -146,15 +147,20 @@ router.post("/auth/register", async (req: Request, res: Response) => {
       const created = await tx
         .insert(usersTable)
         .values({
-          id: crypto.randomUUID(),
+          id: newUserId,
           email: normalizedEmail,
           passwordHash,
           firstName,
           lastName,
+          emailVerificationRequired: true,
+          emailVerificationHash: confirmation.hash,
+          emailVerificationExpiresAt: confirmation.expiresAt,
+          emailVerificationSentAt: new Date(),
+          pendingReferralCode: referralCode ?? null,
           // Retain the internal Editor access window, independently of welcome credits.
           subscriptionStatus: "trial",
           trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          lastLoginAt: new Date(),
+          lastLoginAt: null,
           signupIp: signupIp || null,
         })
         .returning();
@@ -203,19 +209,11 @@ router.post("/auth/register", async (req: Request, res: Response) => {
 
   // Best-effort admin notification of the new signup (never blocks signup).
   notifyNewUser({ id: user.id, email: user.email, name: [user.firstName, user.lastName].filter(Boolean).join(" ") || null });
-  // Welcome email to the user themselves (best-effort, never blocks signup).
-  sendWelcomeEmail({ id: user.id, email: user.email, name: [user.firstName, user.lastName].filter(Boolean).join(" ") || null });
-
-  // Share-to-earn: credit the referrer only; invitee already received the signup grant.
-  if (referralCode) {
-    await processReferralSignup(referralCode, user.id);
-  }
-
-  const payload = buildUserPayload(user);
-  const sessionData: SessionData = { user: payload };
-  const sid = await createSession(sessionData);
-  setSessionCookie(res, sid);
-  res.json(GetCurrentAuthUserResponse.parse({ user: payload }));
+  // No session or app access until the email is confirmed. Welcome/referral
+  // side effects wait for confirmation; the existing signup grant stays atomic.
+  const emailSent = await sendEmailConfirmation(user.id, normalizedEmail, confirmation.code);
+  res.setHeader("Cache-Control", "no-store");
+  res.json(RegisterUserResponse.parse({ requiresEmailVerification: true, emailSent }));
 });
 
 router.post("/auth/login", authOriginGuard, async (req: Request, res: Response) => {
@@ -239,6 +237,9 @@ router.post("/auth/login", authOriginGuard, async (req: Request, res: Response) 
       return { status: 401, body: { error: "Invalid email or password" } };
     }
     if (user.isDisabled) return { status: 403, body: { error: "This account has been disabled." } };
+    if (user.emailVerificationRequired && !user.emailVerifiedAt) {
+      return { status: 200, body: { requiresEmailVerification: true } };
+    }
     const [mfa] = await tx.select().from(twoFactorTable).where(eq(twoFactorTable.userId, user.id));
     if (mfa?.enabled) {
       if (!code) return { status: 200, body: { requiresTwoFactor: true } };

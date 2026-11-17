@@ -68,7 +68,7 @@ export function useAuth() {
   });
 
   const login = useCallback(
-    async (email: string, password: string, code?: string): Promise<{ requiresTwoFactor: boolean }> => {
+    async (email: string, password: string, code?: string): Promise<{ requiresTwoFactor: boolean; requiresEmailVerification?: boolean }> => {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -77,6 +77,7 @@ export function useAuth() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Login failed");
+      if (data.requiresEmailVerification === true) return { requiresTwoFactor: false, requiresEmailVerification: true };
       if (data.requiresTwoFactor === true) return { requiresTwoFactor: true };
       await queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEY });
       return { requiresTwoFactor: false };
@@ -85,7 +86,7 @@ export function useAuth() {
   );
 
   const register = useCallback(
-    async (name: string, email: string, password: string, referralCode?: string): Promise<void> => {
+    async (name: string, email: string, password: string, referralCode?: string): Promise<{ emailSent: boolean }> => {
       const anonId = getSignupAnalyticsAnonId();
       let res: Response;
       try {
@@ -106,7 +107,8 @@ export function useAuth() {
       }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Registration failed");
-      await queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEY });
+      // Registration creates no session: email ownership must be confirmed first.
+      return { emailSent: data.emailSent === true };
     },
     [queryClient],
   );

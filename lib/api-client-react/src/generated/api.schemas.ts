@@ -456,6 +456,38 @@ export interface LoginRequest {
 export interface LoginResult {
   user?: AuthUser;
   requiresTwoFactor?: boolean;
+  requiresEmailVerification?: boolean;
+}
+
+export interface RegistrationResult {
+  requiresEmailVerification: boolean;
+  emailSent: boolean;
+}
+
+export type EmailConfirmationInputAction = typeof EmailConfirmationInputAction[keyof typeof EmailConfirmationInputAction];
+
+
+export const EmailConfirmationInputAction = {
+  confirm: 'confirm',
+  resend: 'resend',
+} as const;
+
+export interface EmailConfirmationInput {
+  action: EmailConfirmationInputAction;
+  /** @maxLength 254 */
+  email: string;
+  /**
+     * @minLength 1
+     * @maxLength 1024
+     */
+  password: string;
+  /** @maxLength 16 */
+  code?: string;
+}
+
+export interface EmailConfirmationResult {
+  verified: boolean;
+  emailSent?: boolean;
 }
 
 export interface TwoFactorStatus {

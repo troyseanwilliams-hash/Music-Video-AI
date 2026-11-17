@@ -10,4 +10,5 @@ import type { AuthUser } from './authUser';
 export interface LoginResult {
   user?: AuthUser;
   requiresTwoFactor?: boolean;
+  requiresEmailVerification?: boolean;
 }

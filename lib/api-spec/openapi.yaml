@@ -125,7 +125,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthUserEnvelope'
+                $ref: '#/components/schemas/RegistrationResult'
         '400':
           description: Validation error.
           content:
@@ -180,6 +180,32 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /auth/email-confirmation:
+    post:
+      tags: [Auth]
+      operationId: confirmAccountEmail
+      summary: Confirm a new account email or resend its confirmation code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailConfirmationInput'
+      responses:
+        '200':
+          description: Confirmation completed or delivery attempted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailConfirmationResult'
+        '400':
+          description: Invalid input, invalid code or expired code
+        '401':
+          description: Invalid credentials
+        '403':
+          description: Disabled account or invalid request origin
+        '429':
+          description: Too many attempts or resend cooldown
   /auth/two-factor:
     get:
       tags: [Auth]
@@ -1957,6 +1983,42 @@ components:
         user:
           $ref: '#/components/schemas/AuthUser'
         requiresTwoFactor:
+          type: boolean
+        requiresEmailVerification:
+          type: boolean
+    RegistrationResult:
+      type: object
+      required: [requiresEmailVerification, emailSent]
+      properties:
+        requiresEmailVerification:
+          type: boolean
+        emailSent:
+          type: boolean
+    EmailConfirmationInput:
+      type: object
+      required: [action, email, password]
+      properties:
+        action:
+          type: string
+          enum: [confirm, resend]
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          minLength: 1
+          maxLength: 1024
+        code:
+          type: string
+          maxLength: 16
+    EmailConfirmationResult:
+      type: object
+      required: [verified]
+      properties:
+        verified:
+          type: boolean
+        emailSent:
           type: boolean
     TwoFactorStatus:
       type: object

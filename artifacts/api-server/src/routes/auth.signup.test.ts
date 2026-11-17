@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   notifyNewUser: vi.fn(),
   sendWelcomeEmail: vi.fn(),
   processReferralSignup: vi.fn(),
+  sendEmailConfirmation: vi.fn(),
 }));
 
 vi.mock("@workspace/db", async (importOriginal) => ({
@@ -35,6 +36,10 @@ vi.mock("../lib/notifications.js", () => ({
 vi.mock("../lib/referrals.js", () => ({
   processReferralSignup: mocks.processReferralSignup,
 }));
+vi.mock("../lib/emailConfirmation.js", () => ({
+  newEmailCode: () => ({ code: "12345678", hash: "synthetic-hash", expiresAt: new Date(Date.now() + 900_000) }),
+  sendEmailConfirmation: mocks.sendEmailConfirmation,
+}));
 
 import router from "./auth.js";
 import { analyticsEventsTable, usersTable, creditsTable, creditGrantsTable } from "@workspace/db";
@@ -44,6 +49,7 @@ type FakeResponse = {
   statusCode: number;
   body: unknown;
   cookie: ReturnType<typeof vi.fn>;
+  setHeader: ReturnType<typeof vi.fn>;
   status: (code: number) => FakeResponse;
   json: (body: unknown) => FakeResponse;
 };
@@ -53,6 +59,7 @@ function response(): FakeResponse {
     statusCode: 200,
     body: null,
     cookie: vi.fn(),
+    setHeader: vi.fn(),
     status(code) {
       this.statusCode = code;
       return this;
@@ -127,6 +134,7 @@ describe("registration signup measurement", () => {
     mocks.notifyNewUser.mockResolvedValue(undefined);
     mocks.sendWelcomeEmail.mockResolvedValue(undefined);
     mocks.processReferralSignup.mockResolvedValue(undefined);
+    mocks.sendEmailConfirmation.mockResolvedValue(true);
 
     mocks.db.select.mockImplementation(selectEmpty);
 
@@ -186,6 +194,14 @@ describe("registration signup measurement", () => {
     }));
     expect(eventBuilder.onConflictDoNothing).toHaveBeenCalledTimes(1);
     expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ requiresEmailVerification: true, emailSent: true });
+    expect(mocks.createSession).not.toHaveBeenCalled();
+    expect(mocks.sendWelcomeEmail).not.toHaveBeenCalled();
+    expect(mocks.tx.insert.mock.results[0]?.value.values).toHaveBeenCalledWith(expect.objectContaining({
+      emailVerificationRequired: true,
+      emailVerificationHash: "synthetic-hash",
+      lastLoginAt: null,
+    }));
   });
 
   it("does not commit an account when the completion event insert fails", async () => {
@@ -227,6 +243,15 @@ describe("registration signup measurement", () => {
     expect(mocks.db.insert).toHaveBeenCalledWith(analyticsEventsTable);
   });
 
+  it("reports delivery failure while preserving the pending account without a session", async () => {
+    mocks.sendEmailConfirmation.mockResolvedValueOnce(false);
+    const res = response();
+    await registrationHandler()(request({ name: "New User", email: "new@example.test", password: "password123" }), res);
+    expect(res.body).toEqual({ requiresEmailVerification: true, emailSent: false });
+    expect(mocks.createSession).not.toHaveBeenCalled();
+    expect(mocks.sendWelcomeEmail).not.toHaveBeenCalled();
+  });
+
   it("rolls back signup if the welcome grant cannot be recorded", async () => {
     mocks.tx.insert.mockImplementation((table: unknown) =>
       table === usersTable ? {
@@ -256,7 +281,8 @@ describe("registration signup measurement", () => {
       request({ name: "New User", email: "new@example.test", password: "password123", referralCode: "ABCDEFGH" }),
       response(),
     );
-    expect(mocks.processReferralSignup).toHaveBeenCalledWith("ABCDEFGH", user.id);
+    expect(mocks.processReferralSignup).not.toHaveBeenCalled();
+    expect(mocks.tx.insert.mock.results[0]?.value.values).toHaveBeenCalledWith(expect.objectContaining({ pendingReferralCode: "ABCDEFGH" }));
     expect(mocks.tx.insert.mock.results[1]?.value.values).toHaveBeenCalledWith(expect.objectContaining({
       creditsRemaining: WELCOME_CREDITS,
       welcomeCredits: WELCOME_CREDITS,

@@ -36,6 +36,8 @@ import type {
   CreditGrantsResponse,
   CreditsResponse,
   DashboardStats,
+  EmailConfirmationInput,
+  EmailConfirmationResult,
   ErrorEnvelope,
   GalleryListResponse,
   GeneratedImageVisibility,
@@ -65,6 +67,7 @@ import type {
   PublicImageAssetListResponse,
   ReferralInfoResponse,
   RegisterRequest,
+  RegistrationResult,
   RemixJobRequest,
   RemixJobResponse,
   StudioProject,
@@ -367,9 +370,9 @@ export const getRegisterUserUrl = () => {
 /**
  * @summary Register a new account with email and password
  */
-export const registerUser = async (registerRequest: RegisterRequest, options?: RequestInit): Promise<AuthUserEnvelope> => {
+export const registerUser = async (registerRequest: RegisterRequest, options?: RequestInit): Promise<RegistrationResult> => {
 
-  return customFetch<AuthUserEnvelope>(getRegisterUserUrl(),
+  return customFetch<RegistrationResult>(getRegisterUserUrl(),
   {
     ...options,
     method: 'POST',
@@ -496,6 +499,77 @@ export const useLoginUser = <TError = ErrorType<ErrorEnvelope>,
         TContext
       > => {
       return useMutation(getLoginUserMutationOptions(options));
+    }
+
+export const getConfirmAccountEmailUrl = () => {
+
+
+
+
+  return `/api/auth/email-confirmation`
+}
+
+/**
+ * @summary Confirm a new account email or resend its confirmation code
+ */
+export const confirmAccountEmail = async (emailConfirmationInput: EmailConfirmationInput, options?: RequestInit): Promise<EmailConfirmationResult> => {
+
+  return customFetch<EmailConfirmationResult>(getConfirmAccountEmailUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(emailConfirmationInput)
+  }
+);}
+
+
+
+
+
+export const getConfirmAccountEmailMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmAccountEmail>>, TError,{data: BodyType<EmailConfirmationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof confirmAccountEmail>>, TError,{data: BodyType<EmailConfirmationInput>}, TContext> => {
+
+const mutationKey = ['confirmAccountEmail'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof confirmAccountEmail>>, {data: BodyType<EmailConfirmationInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  confirmAccountEmail(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ConfirmAccountEmailMutationResult = NonNullable<Awaited<ReturnType<typeof confirmAccountEmail>>>
+    export type ConfirmAccountEmailMutationBody = BodyType<EmailConfirmationInput>
+    export type ConfirmAccountEmailMutationError = ErrorType<void>
+
+    /**
+ * @summary Confirm a new account email or resend its confirmation code
+ */
+export const useConfirmAccountEmail = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmAccountEmail>>, TError,{data: BodyType<EmailConfirmationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof confirmAccountEmail>>,
+        TError,
+        {data: BodyType<EmailConfirmationInput>},
+        TContext
+      > => {
+      return useMutation(getConfirmAccountEmailMutationOptions(options));
     }
 
 export const getGetTwoFactorUrl = () => {

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { useSEO } from "@/hooks/useSEO";
+import { EmailConfirmation } from "@/components/EmailConfirmation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,6 +61,7 @@ export default function Login() {
   const [requiresTwoFactor, setRequiresTwoFactor] = useState(false);
   const [code, setCode] = useState("");
   const [useRecovery, setUseRecovery] = useState(false);
+  const [requiresEmailVerification, setRequiresEmailVerification] = useState(false);
 
   useSEO({
     title: "Sign in",
@@ -82,6 +84,11 @@ export default function Login() {
     setIsSubmitting(true);
     try {
       const result = await login(email, password, requiresTwoFactor ? code : undefined);
+      if (result.requiresEmailVerification) {
+        setRequiresEmailVerification(true);
+        setPassword("");
+        return;
+      }
       if (result.requiresTwoFactor) {
         setRequiresTwoFactor(true);
         return;
@@ -97,6 +104,11 @@ export default function Login() {
       setIsSubmitting(false);
     }
   }
+
+  if (requiresEmailVerification) return <EmailConfirmation
+    email={email.trim()}
+    onBack={() => { setRequiresEmailVerification(false); setPassword(""); setCode(""); setError(null); }}
+  />;
 
   return (
     <div className="min-h-[calc(100dvh-4rem)] flex">
