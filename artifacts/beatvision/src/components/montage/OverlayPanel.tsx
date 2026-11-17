@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { probeVideo } from "./probeVideo";
 import { getListVideosQueryKey, useListVideos } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -57,26 +58,9 @@ export async function probeImageFile(file: File, timeoutMs = 15_000): Promise<{ 
 // 15s timeout instead of guessing, and always revokes the object URL.
 async function probeFileDuration(file: File, timeoutMs = 15_000): Promise<number> {
   const url = URL.createObjectURL(file);
-  const v = document.createElement("video");
-  let timer = 0;
   try {
-    return await new Promise<number>((resolve, reject) => {
-      timer = window.setTimeout(() => reject(new Error("Timed out reading this video. Try a different file.")), timeoutMs);
-      v.preload = "metadata";
-      v.muted = true;
-      v.onloadedmetadata = () => {
-        if (Number.isFinite(v.duration) && v.duration > 0) resolve(v.duration);
-        else reject(new Error("Couldn't read this video's length. Try exporting it as MP4."));
-      };
-      v.onerror = () => reject(new Error("This video can't be decoded in your browser. Try an MP4 (H.264) file."));
-      v.src = url;
-    });
+    return (await probeVideo(url, timeoutMs)).duration;
   } finally {
-    window.clearTimeout(timer);
-    v.onloadedmetadata = null;
-    v.onerror = null;
-    v.removeAttribute("src");
-    v.load();
     URL.revokeObjectURL(url);
   }
 }

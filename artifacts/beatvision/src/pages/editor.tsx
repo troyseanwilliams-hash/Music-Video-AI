@@ -61,6 +61,7 @@ import {
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { OverlayStage } from "@/components/montage/OverlayStage";
+import { probeVideo, VIDEO_READ_ERROR } from "@/components/montage/probeVideo";
 import { OverlayPanel } from "@/components/montage/OverlayPanel";
 import { OverlayTimeline } from "@/components/montage/OverlayTimeline";
 import { AudioClipPanel } from "@/components/montage/AudioClipPanel";
@@ -294,45 +295,6 @@ async function presignAndUpload(file: File): Promise<string> {
   );
   if (!put.ok) throw new Error(`Upload failed (${put.status})`);
   return objectPath as string;
-}
-
-function probeVideo(url: string): Promise<{ duration: number; thumb: string | null }> {
-  return new Promise((resolve) => {
-    const v = document.createElement("video");
-    v.muted = true;
-    v.preload = "auto";
-    let done = false;
-    const finish = (duration: number, thumb: string | null) => {
-      if (done) return;
-      done = true;
-      v.removeAttribute("src");
-      resolve({ duration, thumb });
-    };
-    v.onloadeddata = () => {
-      try {
-        v.currentTime = Math.min(0.1, (v.duration || 1) / 2);
-      } catch {
-        finish(v.duration || 3, null);
-      }
-    };
-    v.onseeked = () => {
-      let thumb: string | null = null;
-      try {
-        const w = 200;
-        const h = Math.max(1, Math.round(w * (v.videoHeight / v.videoWidth)) || 112);
-        const c = document.createElement("canvas");
-        c.width = w;
-        c.height = h;
-        c.getContext("2d")!.drawImage(v, 0, 0, w, h);
-        thumb = c.toDataURL("image/jpeg", 0.6);
-      } catch {
-        /* ignore */
-      }
-      finish(v.duration || 3, thumb);
-    };
-    v.onerror = () => finish(3, null);
-    v.src = url;
-  });
 }
 
 // Visual drag-to-trim bar: a thumbnail strip with two handles. Dragging the left
@@ -1448,14 +1410,17 @@ export default function Editor() {
         uploading: true,
       };
       setSegments((prev) => [...prev, seg]);
-      if (isVideo) {
-        probeVideo(localUrl).then(({ duration, thumb }) => patchSegment(id, { durationSec: duration || 3, thumb }));
-      }
-      presignAndUpload(file)
-        .then((objectPath) => patchSegment(id, { objectPath, uploading: false }))
+      // Do not mark a video ready (or save it with duration zero) just because
+      // its bytes uploaded. Validate the actual length before uploading it.
+      const preparation = isVideo ? probeVideo(localUrl) : Promise.resolve(null);
+      preparation.then(async (metadata) => {
+        const objectPath = await presignAndUpload(file);
+        patchSegment(id, { objectPath, uploading: false, ...(metadata ? { durationSec: metadata.duration, thumb: metadata.thumb } : {}) });
+      })
         .catch((err) => {
-          patchSegment(id, { uploading: false });
-          toast({ title: "Upload failed", description: String(err.message || err), variant: "destructive" });
+          setSegments((prev) => prev.filter((item) => item.id !== id));
+          URL.revokeObjectURL(localUrl);
+          toast({ title: `Couldn't add ${file.name}`, description: String(err.message || err), variant: "destructive" });
         });
     }
   }
@@ -2026,6 +1991,10 @@ export default function Editor() {
           onPlay={() => setGuidePreviewPlayed(true)}
           onEnded={() => playingRef.current && advance()}
           onTimeUpdate={onVideoTimeUpdate}
+          onError={() => {
+            pause();
+            toast({ title: "Video preview couldn't play", description: VIDEO_READ_ERROR, variant: "destructive" });
+          }}
           className="absolute inset-0 h-full w-full object-contain"
           style={{ zIndex: 2 }}
         />
