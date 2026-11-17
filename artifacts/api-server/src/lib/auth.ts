@@ -10,11 +10,12 @@ const SESSION_REFRESH_WINDOW = SESSION_TTL / 2;
 
 export interface SessionData {
   user: AuthUser;
+  authVersion?: number;
 }
 
-export async function createSession(data: SessionData): Promise<string> {
+export async function createSession(data: SessionData, executor: Pick<typeof db, "insert"> = db): Promise<string> {
   const sid = crypto.randomBytes(32).toString("hex");
-  await db.insert(sessionsTable).values({
+  await executor.insert(sessionsTable).values({
     sid,
     sess: data as unknown as Record<string, unknown>,
     expire: new Date(Date.now() + SESSION_TTL),

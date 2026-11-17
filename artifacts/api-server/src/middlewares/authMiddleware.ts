@@ -43,11 +43,11 @@ export async function authMiddleware(
 
   // Enforce account blocks immediately, even for already-active sessions.
   const [u] = await db
-    .select({ isDisabled: usersTable.isDisabled })
+    .select({ isDisabled: usersTable.isDisabled, authVersion: usersTable.authVersion })
     .from(usersTable)
     .where(eq(usersTable.id, session.user.id))
     .limit(1);
-  if (u?.isDisabled) {
+  if (!u || u.isDisabled || (session.authVersion ?? 0) !== u.authVersion) {
     await clearSession(res, sid);
     next();
     return;

@@ -68,16 +68,18 @@ export function useAuth() {
   });
 
   const login = useCallback(
-    async (email: string, password: string): Promise<void> => {
+    async (email: string, password: string, code?: string): Promise<{ requiresTwoFactor: boolean }> => {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, ...(code ? { code } : {}) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Login failed");
+      if (data.requiresTwoFactor === true) return { requiresTwoFactor: true };
       await queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEY });
+      return { requiresTwoFactor: false };
     },
     [queryClient],
   );

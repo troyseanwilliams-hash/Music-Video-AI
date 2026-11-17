@@ -151,11 +151,11 @@ paths:
               $ref: '#/components/schemas/LoginRequest'
       responses:
         '200':
-          description: Signed in successfully.
+          description: Signed in, or a second factor is required before any session is issued.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthUserEnvelope'
+                $ref: '#/components/schemas/LoginResult'
         '400':
           description: Validation error.
           content:
@@ -168,6 +168,59 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Account disabled or request origin rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '429':
+          description: Too many sign-in attempts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /auth/two-factor:
+    get:
+      tags: [Auth]
+      operationId: getTwoFactor
+      summary: Get current account two-factor status
+      responses:
+        '200':
+          description: Two-factor status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TwoFactorStatus'
+        '401':
+          description: Sign-in required
+    post:
+      tags: [Auth]
+      operationId: updateTwoFactor
+      summary: Set up, enable, disable or replace two-factor recovery codes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TwoFactorInput'
+      responses:
+        '200':
+          description: Security setting updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TwoFactorResult'
+        '400':
+          description: Invalid input or expired setup
+        '401':
+          description: Invalid password, code or session
+        '403':
+          description: Request origin rejected
+        '409':
+          description: Setting already changed
+        '429':
+          description: Too many attempts
   /logout:
     get:
       tags: [Auth]
@@ -1894,6 +1947,55 @@ components:
         password:
           type: string
           minLength: 1
+          maxLength: 1024
+        code:
+          type: string
+          maxLength: 64
+    LoginResult:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/AuthUser'
+        requiresTwoFactor:
+          type: boolean
+    TwoFactorStatus:
+      type: object
+      required: [enabled, recoveryCodesRemaining]
+      properties:
+        enabled:
+          type: boolean
+        recoveryCodesRemaining:
+          type: integer
+    TwoFactorInput:
+      type: object
+      required: [action, password]
+      properties:
+        action:
+          type: string
+          enum: [setup, enable, disable, recovery]
+        password:
+          type: string
+          minLength: 1
+          maxLength: 1024
+        code:
+          type: string
+          maxLength: 64
+    TwoFactorResult:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+        secret:
+          type: string
+        qrCode:
+          type: string
+        expiresAt:
+          type: string
+        recoveryCodes:
+          type: array
+          items:
+            type: string
     SuccessResponse:
       type: object
       required: [success]

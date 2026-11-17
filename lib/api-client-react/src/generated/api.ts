@@ -57,6 +57,7 @@ import type {
   ListPublicImageAssetsParams,
   ListVideosParams,
   LoginRequest,
+  LoginResult,
   PhotoAnimationJob,
   PhotoAnimationQuote,
   PhotoAnimationQuoteRequest,
@@ -77,6 +78,9 @@ import type {
   SuiteLinkAuthorizationResponse,
   SuitePortalInput,
   SuiteStatus,
+  TwoFactorInput,
+  TwoFactorResult,
+  TwoFactorStatus,
   UpdateVisibilityRequest,
   UploadUrlRequest,
   UploadUrlResponse,
@@ -434,9 +438,9 @@ export const getLoginUserUrl = () => {
 /**
  * @summary Sign in with email and password
  */
-export const loginUser = async (loginRequest: LoginRequest, options?: RequestInit): Promise<AuthUserEnvelope> => {
+export const loginUser = async (loginRequest: LoginRequest, options?: RequestInit): Promise<LoginResult> => {
 
-  return customFetch<AuthUserEnvelope>(getLoginUserUrl(),
+  return customFetch<LoginResult>(getLoginUserUrl(),
   {
     ...options,
     method: 'POST',
@@ -492,6 +496,154 @@ export const useLoginUser = <TError = ErrorType<ErrorEnvelope>,
         TContext
       > => {
       return useMutation(getLoginUserMutationOptions(options));
+    }
+
+export const getGetTwoFactorUrl = () => {
+
+
+
+
+  return `/api/auth/two-factor`
+}
+
+/**
+ * @summary Get current account two-factor status
+ */
+export const getTwoFactor = async ( options?: RequestInit): Promise<TwoFactorStatus> => {
+
+  return customFetch<TwoFactorStatus>(getGetTwoFactorUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTwoFactorQueryKey = () => {
+    return [
+    `/api/auth/two-factor`
+    ] as const;
+    }
+
+
+export const getGetTwoFactorQueryOptions = <TData = Awaited<ReturnType<typeof getTwoFactor>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTwoFactor>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTwoFactorQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTwoFactor>>> = ({ signal }) => getTwoFactor({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTwoFactor>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTwoFactorQueryResult = NonNullable<Awaited<ReturnType<typeof getTwoFactor>>>
+export type GetTwoFactorQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get current account two-factor status
+ */
+
+export function useGetTwoFactor<TData = Awaited<ReturnType<typeof getTwoFactor>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTwoFactor>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTwoFactorQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateTwoFactorUrl = () => {
+
+
+
+
+  return `/api/auth/two-factor`
+}
+
+/**
+ * @summary Set up, enable, disable or replace two-factor recovery codes
+ */
+export const updateTwoFactor = async (twoFactorInput: TwoFactorInput, options?: RequestInit): Promise<TwoFactorResult> => {
+
+  return customFetch<TwoFactorResult>(getUpdateTwoFactorUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(twoFactorInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateTwoFactorMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTwoFactor>>, TError,{data: BodyType<TwoFactorInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateTwoFactor>>, TError,{data: BodyType<TwoFactorInput>}, TContext> => {
+
+const mutationKey = ['updateTwoFactor'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateTwoFactor>>, {data: BodyType<TwoFactorInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateTwoFactor(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateTwoFactorMutationResult = NonNullable<Awaited<ReturnType<typeof updateTwoFactor>>>
+    export type UpdateTwoFactorMutationBody = BodyType<TwoFactorInput>
+    export type UpdateTwoFactorMutationError = ErrorType<void>
+
+    /**
+ * @summary Set up, enable, disable or replace two-factor recovery codes
+ */
+export const useUpdateTwoFactor = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTwoFactor>>, TError,{data: BodyType<TwoFactorInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateTwoFactor>>,
+        TError,
+        {data: BodyType<TwoFactorInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateTwoFactorMutationOptions(options));
     }
 
 export const getLogoutBrowserSessionUrl = () => {

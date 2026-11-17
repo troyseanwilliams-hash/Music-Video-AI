@@ -11,7 +11,10 @@ export default defineConfig({
     // placeholder connection string that's never actually dialed is enough
     // to satisfy that guard without needing a real database.
     env: {
-      DATABASE_URL: "postgres://test:test@localhost:5432/test",
+      // Explicit opt-in for the synthetic-user MFA integration suite.
+      DATABASE_URL: process.env.MFA_INTEGRATION_TESTS === "1"
+        ? process.env.DATABASE_URL!
+        : "postgres://test:test@localhost:5432/test",
     },
   },
 });

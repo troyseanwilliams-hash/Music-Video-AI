@@ -117,16 +117,20 @@ export const RegisterUserResponse = zod.object({
 /**
  * @summary Sign in with email and password
  */
+export const loginUserBodyPasswordMax = 1024;
+
+export const loginUserBodyCodeMax = 64;
 
 
 
 export const LoginUserBody = zod.object({
   "email": zod.string().email(),
-  "password": zod.string().min(1)
+  "password": zod.string().min(1).max(loginUserBodyPasswordMax),
+  "code": zod.string().max(loginUserBodyCodeMax).optional()
 })
 
 export const LoginUserResponse = zod.object({
-  "user": zod.union([zod.object({
+  "user": zod.object({
   "id": zod.string(),
   "email": zod.string().email().nullable(),
   "firstName": zod.string().nullable(),
@@ -135,7 +139,41 @@ export const LoginUserResponse = zod.object({
   "subscriptionStatus": zod.enum(['trial', 'active', 'cancelled', 'none']).describe('Current subscription state of the user'),
   "trialEndsAt": zod.coerce.date().nullish().describe('When the free trial expires (null means no expiry set)'),
   "isAdmin": zod.boolean().describe('Whether the user has admin\/power-user privileges')
-}),zod.null()])
+}).optional(),
+  "requiresTwoFactor": zod.boolean().optional()
+})
+
+
+/**
+ * @summary Get current account two-factor status
+ */
+export const GetTwoFactorResponse = zod.object({
+  "enabled": zod.boolean(),
+  "recoveryCodesRemaining": zod.number()
+})
+
+
+/**
+ * @summary Set up, enable, disable or replace two-factor recovery codes
+ */
+export const updateTwoFactorBodyPasswordMax = 1024;
+
+export const updateTwoFactorBodyCodeMax = 64;
+
+
+
+export const UpdateTwoFactorBody = zod.object({
+  "action": zod.enum(['setup', 'enable', 'disable', 'recovery']),
+  "password": zod.string().min(1).max(updateTwoFactorBodyPasswordMax),
+  "code": zod.string().max(updateTwoFactorBodyCodeMax).optional()
+})
+
+export const UpdateTwoFactorResponse = zod.object({
+  "enabled": zod.boolean(),
+  "secret": zod.string().optional(),
+  "qrCode": zod.string().optional(),
+  "expiresAt": zod.string().optional(),
+  "recoveryCodes": zod.array(zod.string()).optional()
 })
 
 

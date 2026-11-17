@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { tutorialsEnabled, setTutorialsEnabled } from "@/components/TutorialTip";
+import { TwoFactorSettings } from "@/components/TwoFactorSettings";
 import { Loader2, User, Bell, KeyRound, CreditCard, AlertTriangle, Trash2, Eye, EyeOff } from "lucide-react";
 
 function DeleteAccountDialog({ onClose }: { onClose: () => void }) {
@@ -240,6 +241,8 @@ export default function Settings() {
           </Link>
         </CardContent>
       </Card>
+
+      {user && <TwoFactorSettings key={user.id} userId={user.id} />}
 
       <Card className="border-destructive/30 bg-card/50">
         <CardContent className="pt-5">

@@ -35,6 +35,8 @@ async function buildAll() {
       "sqlite3",
       "canvas",
       "bcrypt",
+      "qrcode",
+      "otpauth",
       "argon2",
       "fsevents",
       "re2",

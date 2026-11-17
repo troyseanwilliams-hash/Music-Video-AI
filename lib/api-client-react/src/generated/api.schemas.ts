@@ -444,8 +444,52 @@ export interface ReferralInfoResponse {
 
 export interface LoginRequest {
   email: string;
-  /** @minLength 1 */
+  /**
+     * @minLength 1
+     * @maxLength 1024
+     */
   password: string;
+  /** @maxLength 64 */
+  code?: string;
+}
+
+export interface LoginResult {
+  user?: AuthUser;
+  requiresTwoFactor?: boolean;
+}
+
+export interface TwoFactorStatus {
+  enabled: boolean;
+  recoveryCodesRemaining: number;
+}
+
+export type TwoFactorInputAction = typeof TwoFactorInputAction[keyof typeof TwoFactorInputAction];
+
+
+export const TwoFactorInputAction = {
+  setup: 'setup',
+  enable: 'enable',
+  disable: 'disable',
+  recovery: 'recovery',
+} as const;
+
+export interface TwoFactorInput {
+  action: TwoFactorInputAction;
+  /**
+     * @minLength 1
+     * @maxLength 1024
+     */
+  password: string;
+  /** @maxLength 64 */
+  code?: string;
+}
+
+export interface TwoFactorResult {
+  enabled: boolean;
+  secret?: string;
+  qrCode?: string;
+  expiresAt?: string;
+  recoveryCodes?: string[];
 }
 
 export const SuccessResponseValue = {

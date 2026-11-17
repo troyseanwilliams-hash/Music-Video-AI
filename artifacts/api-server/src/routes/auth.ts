@@ -2,8 +2,9 @@ import bcrypt from "bcrypt";
 import crypto from "crypto";
 import { Router, type IRouter, type Request, type Response } from "express";
 import { RegisterUserBody, LoginUserBody, GetCurrentAuthUserResponse } from "@workspace/api-zod";
-import { db, analyticsEventsTable, usersTable, creditsTable, creditGrantsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, analyticsEventsTable, usersTable, creditsTable, creditGrantsTable, twoFactorTable } from "@workspace/db";
+import { allowAuthAttempt, authOriginGuard, verifySecondFactor } from "../lib/twoFactor.js";
+import { eq, sql } from "drizzle-orm";
 
 function isAdminEmail(email: string | null | undefined): boolean {
   return !!(process.env.ADMIN_EMAIL && email && email.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase());
@@ -217,50 +218,41 @@ router.post("/auth/register", async (req: Request, res: Response) => {
   res.json(GetCurrentAuthUserResponse.parse({ user: payload }));
 });
 
-router.post("/auth/login", async (req: Request, res: Response) => {
+router.post("/auth/login", authOriginGuard, async (req: Request, res: Response) => {
   const parsed = LoginUserBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid input" });
     return;
   }
 
-  const { email, password } = parsed.data;
+  const { email, password, code } = parsed.data;
   const normalizedEmail = email.toLowerCase().trim();
-
-  const [user] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.email, normalizedEmail))
-    .limit(1);
-
-  if (!user || !user.passwordHash) {
-    res.status(401).json({ error: "Invalid email or password" });
+  if (!(await allowAuthAttempt(`login-ip:${req.ip}`, 100)) ||
+      !(await allowAuthAttempt(`login-account:${normalizedEmail}`, 30))) {
+    res.status(429).json({ error: "Too many sign-in attempts. Please wait 15 minutes before trying again." });
     return;
   }
 
-  const valid = await bcrypt.compare(password, user.passwordHash);
-  if (!valid) {
-    res.status(401).json({ error: "Invalid email or password" });
-    return;
-  }
-
-  if (user.isDisabled) {
-    res.status(403).json({ error: "This account has been disabled." });
-    return;
-  }
-
-  await db
-    .update(usersTable)
-    .set({ lastLoginAt: new Date() })
-    .where(eq(usersTable.id, user.id));
-
-  req.log.info({ userId: user.id, email: user.email }, "User signed in");
-
-  const payload = buildUserPayload(user);
-  const sessionData: SessionData = { user: payload };
-  const sid = await createSession(sessionData);
-  setSessionCookie(res, sid);
-  res.json(GetCurrentAuthUserResponse.parse({ user: payload }));
+  const result = await db.transaction(async (tx) => {
+    const [user] = await tx.select().from(usersTable).where(eq(usersTable.email, normalizedEmail)).for("update");
+    if (!user?.passwordHash || !(await bcrypt.compare(password, user.passwordHash))) {
+      return { status: 401, body: { error: "Invalid email or password" } };
+    }
+    if (user.isDisabled) return { status: 403, body: { error: "This account has been disabled." } };
+    const [mfa] = await tx.select().from(twoFactorTable).where(eq(twoFactorTable.userId, user.id));
+    if (mfa?.enabled) {
+      if (!code) return { status: 200, body: { requiresTwoFactor: true } };
+      if (!(await verifySecondFactor(tx, user.id, code))) {
+        return { status: 401, body: { error: "Invalid or already-used code. Try a new authenticator code or an unused recovery code." } };
+      }
+    }
+    const payload = buildUserPayload(user);
+    const sid = await createSession({ user: payload, authVersion: user.authVersion }, tx);
+    await tx.update(usersTable).set({ lastLoginAt: new Date() }).where(eq(usersTable.id, user.id));
+    return { status: 200, body: GetCurrentAuthUserResponse.parse({ user: payload }), sid };
+  });
+  if (result.sid) setSessionCookie(res, result.sid);
+  res.status(result.status).json(result.body);
 });
 
 const APP_URL = process.env.APP_URL ?? "https://aibeatsync.com";
@@ -354,8 +346,8 @@ router.post("/auth/reset-password", async (req: Request, res: Response) => {
   const passwordHash = await bcrypt.hash(parsed.data.password, SALT_ROUNDS);
   await db
     .update(usersTable)
-    .set({ passwordHash, passwordResetToken: null, passwordResetExpires: null })
-    .where(eq(usersTable.id, user.id));
+    .set({ passwordHash, passwordResetToken: null, passwordResetExpires: null, authVersion: sql`${usersTable.authVersion} + 1` })
+    .where(and(eq(usersTable.id, user.id), eq(usersTable.passwordResetToken, hashResetToken(parsed.data.token)), gt(usersTable.passwordResetExpires, new Date())));
 
   req.log.info({ userId: user.id }, "Password reset completed");
   res.json({ ok: true });

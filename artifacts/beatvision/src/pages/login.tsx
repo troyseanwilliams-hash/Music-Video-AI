@@ -57,6 +57,9 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [requiresTwoFactor, setRequiresTwoFactor] = useState(false);
+  const [code, setCode] = useState("");
+  const [useRecovery, setUseRecovery] = useState(false);
 
   useSEO({
     title: "Sign in",
@@ -78,7 +81,13 @@ export default function Login() {
     setError(null);
     setIsSubmitting(true);
     try {
-      await login(email, password);
+      const result = await login(email, password, requiresTwoFactor ? code : undefined);
+      if (result.requiresTwoFactor) {
+        setRequiresTwoFactor(true);
+        return;
+      }
+      setPassword("");
+      setCode("");
       // Validate both the legacy `from` key and the newer returnTo key before
       // navigating after sign-in.
       setLocation(authIntent.returnTo);
@@ -176,13 +185,14 @@ export default function Login() {
           </div>
 
           <div className="mb-8">
-            <h1 className="text-3xl font-bold tracking-tight mb-2">Welcome back</h1>
+            <h1 className="text-3xl font-bold tracking-tight mb-2">{requiresTwoFactor ? "Verify your sign-in" : "Welcome back"}</h1>
             <p className="text-muted-foreground text-sm">
-              Sign in to create and manage your AI music videos.
+              {requiresTwoFactor ? "Enter a code to finish signing in. Your password alone does not sign you in." : "Sign in to create and manage your AI music videos."}
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4" aria-busy={isSubmitting}>
+            {!requiresTwoFactor && <>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -232,6 +242,25 @@ export default function Login() {
               </div>
             </div>
 
+            </>}
+            {requiresTwoFactor && <div className="space-y-3">
+              <Label htmlFor="two-factor-code">{useRecovery ? "Recovery code" : "Authenticator code"}</Label>
+              <Input
+                id="two-factor-code"
+                autoFocus
+                autoComplete="one-time-code"
+                inputMode={useRecovery ? "text" : "numeric"}
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                maxLength={64}
+                required
+                placeholder={useRecovery ? "Enter one unused recovery code" : "6-digit code"}
+              />
+              <p className="text-xs text-muted-foreground">{useRecovery ? "Each recovery code works once. It does not turn off two-factor authentication." : "Open your authenticator app. If you just used a code, wait for the next one."}</p>
+              <Button type="button" variant="link" className="px-0" disabled={isSubmitting} onClick={() => { setUseRecovery(!useRecovery); setCode(""); setError(null); }}>
+                {useRecovery ? "Use authenticator instead" : "Use a recovery code"}
+              </Button>
+            </div>}
             {error && (
               <p
                 id="login-error"
@@ -253,10 +282,13 @@ export default function Login() {
               {isSubmitting ? (
                 <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing in…</>
               ) : (
-                "Sign in"
+                requiresTwoFactor ? "Verify and sign in" : "Sign in"
               )}
             </Button>
             <p role="status" aria-live="polite" className="sr-only">{isSubmitting ? "Signing in. Please wait." : ""}</p>
+            {requiresTwoFactor && <Button type="button" variant="ghost" className="w-full" disabled={isSubmitting} onClick={() => {
+              setRequiresTwoFactor(false); setPassword(""); setCode(""); setError(null); setUseRecovery(false);
+            }}>Back to sign-in</Button>}
           </form>
 
           <p className="text-center text-sm text-muted-foreground mt-6">
