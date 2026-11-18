@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { revealThen } from "@/components/montage/editorTabs";
 import { ChevronDown, ChevronLeft, ChevronRight, CircleHelp, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -101,8 +102,9 @@ export function MontageWalkthrough(props: MontageWalkthroughProps) {
     if (!target) return;
     target.classList.add("montage-guide-highlight");
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    target.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "center" });
-    return () => target.classList.remove("montage-guide-highlight");
+    // Activate the editor tab holding a hidden target before scrolling to it.
+    const cancel = revealThen(target, () => target.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "center" }));
+    return () => { cancel(); target.classList.remove("montage-guide-highlight"); };
   }, [copy.target, progress.status, collapsed]);
 
   const persist = (next: MontageGuideProgress) => {

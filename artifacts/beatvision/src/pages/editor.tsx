@@ -67,6 +67,7 @@ import { OverlayTimeline } from "@/components/montage/OverlayTimeline";
 import { AudioClipPanel } from "@/components/montage/AudioClipPanel";
 import { AudioClipPlayer } from "@/components/montage/AudioClipPlayer";
 import { AudioClipTimeline } from "@/components/montage/AudioClipTimeline";
+import { EditorTabList, EditorTabPanel, useEditorTabReveal, type EditorTab } from "@/components/montage/editorTabs";
 import {
   normalizeAudioClipList,
   serializeAudioClips,
@@ -443,6 +444,8 @@ export default function Editor() {
   const [deleteProject, setDeleteProject] = useState<ProjectSummary | null>(null);
   const [renameProject, setRenameProject] = useState<ProjectSummary | null>(null);
   const [acceptedCopyright, setAcceptedCopyright] = useState(false);
+  const [activeTab, setActiveTab] = useState<EditorTab>("media");
+  useEditorTabReveal(setActiveTab);
   const { data: statsData } = useGetDashboardStats({});
   const balance = statsData?.creditsRemaining ?? null;
   const [topUpOpen, setTopUpOpen] = useState(false);
@@ -2076,133 +2079,6 @@ export default function Editor() {
         </div>
       )}
 
-      {(segments.length > 0 || overlays.length > 0 || textCards.length > 0) && (
-        <OverlayPanel
-          overlays={overlays}
-          textCards={textCards}
-          setOverlays={setOverlays}
-          setTextCards={setTextCards}
-          selectedId={selectedOverlayId}
-          setSelectedId={setSelectedOverlayId}
-          playheadSec={progress * totalDuration}
-          totalDuration={totalDuration}
-          projectClips={segments
-            .filter((s) => s.objectPath && !s.uploading)
-            .map((s) => ({
-              name: s.name,
-              objectPath: s.objectPath!,
-              durationSec: s.durationSec,
-              kind: s.kind === "photo" ? ("image" as const) : ("video" as const),
-            }))}
-          uploadFile={presignAndUpload}
-          issues={layerIssues}
-        />
-      )}
-
-      {(segments.length > 0 || audioClips.length > 0) && (
-        <AudioClipPanel
-          onSave={() => void saveProject()}
-          saving={savingProject}
-          clips={audioClips}
-          setClips={setAudioClips}
-          selectedId={selectedAudioClipId}
-          setSelectedId={setSelectedAudioClipId}
-          playheadSec={progress * totalDuration}
-          totalDuration={totalDuration}
-          sourceDurations={audioSourceDurations}
-          onSourceDuration={recordAudioSourceDuration}
-          uploadFile={presignAndUpload}
-          issues={audioClipIssues}
-          epoch={audioClipEpoch}
-          sourceErrors={audioSourceErrors}
-          onPendingChange={setAudioClipUploadsPending}
-          soundtrack={music?.objectPath && !music.uploading ? { name: music.name, objectPath: music.objectPath } : null}
-        />
-      )}
-
-      <div className="mb-4">
-        <TutorialTip id="remixlab" title="Montage Studio basics">
-          Add your clips and photos, add music (upload, Suno, or from My Music), then arrange them on the
-          timeline. To turn a narrated podcast or story into a still-image video, add the full audio, arrange your images in story order,
-          and set each image&apos;s hold time to match the narration. Making a commentary or reaction video? Add an overlay clip or text cards in
-          Overlays &amp; text cards, or{" "}
-          <button type="button" className="font-medium text-primary underline-offset-4 hover:underline" onClick={() => setCommentaryGuide(true)} data-testid="button-start-commentary-guide">
-            start the commentary walkthrough
-          </button>. Detect the beat to auto-sync photo cuts, set a transition, and export —
-          free on trial and for subscribers.
-        </TutorialTip>
-      </div>
-
-      {/* Add media */}
-      <div className="mb-4 flex flex-wrap gap-3" data-montage-guide="media">
-        <input ref={mediaInputRef} type="file" accept="video/*,image/*,audio/*,.mp4,.mov,.webm,.mkv,.avi,.wmv,.m4v,.3gp,.ts,.ogv,.mp3,.wav,.flac,.m4a,.aac,.ogg" multiple hidden onChange={(e) => addMedia(e.target.files)} />
-        <Button onClick={() => mediaInputRef.current?.click()}>
-          <Upload className="mr-2 h-4 w-4" /> Add media
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() => {
-            setSelectedGalleryVideoIds([]);
-            setGalleryOpen(true);
-          }}
-          data-testid="add-media-from-gallery"
-        >
-          <Film className="mr-2 h-4 w-4 text-primary" /> From Gallery
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() => {
-            setSelectedImageAssetIds([]);
-            setImageAssetsOpen(true);
-          }}
-          data-testid="add-generated-images"
-        >
-          <ImageIcon className="mr-2 h-4 w-4 text-primary" /> Generated images
-        </Button>
-        <input ref={musicInputRef} type="file" accept="audio/*" hidden onChange={(e) => addMusic(e.target.files)} />
-        <Button variant="outline" onClick={() => musicInputRef.current?.click()} data-montage-guide="audio">
-          <Music className="mr-2 h-4 w-4" /> {music ? "Change music" : "Background music"}
-        </Button>
-        <Button variant="outline" onClick={() => setSunoDialogOpen(true)} data-testid="add-music-from-link">
-          <Link2 className="mr-2 h-4 w-4" /> Add from Suno
-        </Button>
-        <Dialog open={sunoDialogOpen} onOpenChange={(open) => { if (open) setSunoDialogOpen(true); else closeSunoDialog(); }}>
-          <DialogContent className="w-[calc(100vw-2rem)] max-w-md">
-            <DialogHeader>
-              <DialogTitle>Add music from Suno</DialogTitle>
-              <DialogDescription>Paste a public Suno song link. Your current music stays in place until the import succeeds.</DialogDescription>
-            </DialogHeader>
-            <form onSubmit={(event) => { event.preventDefault(); void addMusicFromLink(); }} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="editor-suno-url">Suno song link</Label>
-                <Input id="editor-suno-url" value={sunoLink} onChange={(event) => { setSunoLink(event.target.value); setSunoImportError(null); }}
-                  placeholder="https://suno.com/song/…" aria-invalid={!!sunoImportError} aria-describedby={sunoImportError ? "editor-suno-error" : undefined}
-                  disabled={sunoImporting} className="min-h-11" data-testid="editor-suno-url" />
-                {sunoImportError && <p id="editor-suno-error" role="alert" className="text-sm text-destructive">{sunoImportError}</p>}
-                {sunoImporting && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Resolving and importing track…</p>}
-              </div>
-              <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row">
-                <Button type="button" variant="outline" className="min-h-11" onClick={closeSunoDialog}>Cancel</Button>
-                <Button type="submit" className="min-h-11" disabled={sunoImporting}>{sunoImporting ? "Importing…" : "Import track"}</Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-        <SoundtrackPickerDialog
-          onSelect={(t) => {
-            // Invalidate any in-flight upload/import so its completion (or
-            // failure) can't overwrite or null out this selection.
-            if (sunoImportController.current) closeSunoDialog();
-            musicLoadIdRef.current++;
-            setMusic({ name: t.title, objectPath: t.objectPath, localUrl: t.url, mode: "mix", volume: 0.6, uploading: false });
-          }}
-        >
-          <Button variant="outline" data-testid="add-music-from-soundtracks">
-            <Music className="mr-2 h-4 w-4 text-primary" /> Add from My Music
-          </Button>
-        </SoundtrackPickerDialog>
-      </div>
-
       <Dialog
         open={galleryOpen}
         onOpenChange={(open) => {
@@ -2427,250 +2303,62 @@ export default function Editor() {
         </DialogContent>
       </Dialog>
 
-      {/* Timeline */}
-      <Card className="mb-6 p-4" data-montage-guide="timeline">
-        {pendingMontageAnimation && (
-          <div className="mb-4 flex flex-col gap-3 rounded-lg border border-primary/30 bg-primary/[0.06] p-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-medium">Photo animation is processing</p>
-              <p className="text-xs text-muted-foreground">Keep Montage Studio open. Your original photo will remain until you choose what to do with the finished clip.</p>
-            </div>
-            <Button asChild size="sm" variant="outline" className="min-h-11 shrink-0">
-              <Link href={`/jobs/${pendingMontageAnimation.jobId}`}>View job</Link>
-            </Button>
-          </div>
-        )}
-        <div className="text-muted-foreground mb-3 text-xs font-medium uppercase tracking-wide">
-          Timeline {segments.length > 0 && `· ${totalDuration.toFixed(1)}s`}
+      {/* Creator Studio tabs: Media / Overlay / Audio / Export. Panels stay mounted (hidden when inactive) so pending uploads and edits survive tab switches. */}
+      <section className="mb-6" aria-label="Montage Studio controls" data-testid="editor-tabs">
+        <div className="sticky top-16 z-20 -mx-1 bg-background/85 px-1 py-1 backdrop-blur supports-[backdrop-filter]:bg-background/70">
+          <EditorTabList
+            active={activeTab}
+            onChange={setActiveTab}
+            badges={{
+              media: segments.length || undefined,
+              overlay: overlays.length + textCards.length || undefined,
+              audio: (music ? 1 : 0) + audioClips.length || undefined,
+            }}
+          />
         </div>
-        <OverlayTimeline
-          overlays={overlays}
-          textCards={textCards}
-          totalDuration={totalDuration}
-          playheadSec={progress * totalDuration}
-          selectedId={selectedOverlayId}
-          onSelect={setSelectedOverlayId}
-          onSeek={seekPreview}
-          onMoveOverlay={(id, startSec) => setOverlays((prev) => prev.map((o) => (o.id === id ? { ...o, startSec } : o)))}
-          onMoveText={(id, startSec) => setTextCards((prev) => prev.map((t) => (t.id === id ? { ...t, startSec } : t)))}
-        />
-        <AudioClipTimeline
-          clips={audioClips}
-          totalDuration={totalDuration}
-          playheadSec={progress * totalDuration}
-          selectedId={selectedAudioClipId}
-          onSelect={setSelectedAudioClipId}
-          onSeek={seekPreview}
-        />
-        {segments.length === 0 ? (
-          <div className="text-muted-foreground flex h-24 items-center justify-center text-sm">
-            Add videos and photos to build your timeline.
-          </div>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {segments.map((seg, i) => (
-              <div
-                key={seg.id}
-                draggable
-                onDragStart={() => (dragId.current = seg.id)}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  onDrop(seg.id);
-                }}
-                onClick={() => previewBlock(i)}
-                className={`relative h-[58px] w-[92px] cursor-pointer overflow-hidden rounded-md border bg-background ${
-                  previewIndex === i ? "border-primary" : "border-border"
-                }`}
-                title={seg.name}
-              >
-                {seg.thumb ? (
-                  <img src={seg.thumb} alt="" className="h-full w-full object-contain" />
-                ) : (
-                  <div className="text-muted-foreground flex h-full w-full items-center justify-center">
-                    {seg.kind === "video" ? <Film className="h-5 w-5" /> : <ImageIcon className="h-5 w-5" />}
-                  </div>
-                )}
-                {seg.uploading && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                    <Loader2 className="h-4 w-4 animate-spin text-white" />
-                  </div>
-                )}
-                <button
-                  className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-black/60 text-white"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeSegment(seg.id);
-                  }}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-                {seg.kind === "photo" ? (
-                  <span className="absolute bottom-1 right-1 rounded bg-black/60 px-1 text-[10px] text-white">
-                    {seg.durationSec.toFixed(1)}s
-                  </span>
-                ) : (
-                  <span className="absolute bottom-1 right-1 rounded bg-black/60 px-1 text-[10px] text-white">
-                    {Math.max(0, (seg.durationSec || 0) - (seg.trimStart || 0) - (seg.trimEnd || 0)).toFixed(1)}s
-                    {(seg.trimStart || seg.trimEnd) ? " ✂" : ""}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
 
-        {/* Duration panel for the selected image */}
-        {(() => {
-          const sel = segments[previewIndex];
-          if (!sel || sel.kind !== "photo") return null;
-          const setPhotoDuration = (value: number) => {
-            const safeValue = Number.isFinite(value) ? value : 3;
-            patchSegment(sel.id, { durationSec: Math.min(MAX_TIMELINE_SEC, Math.max(0.5, safeValue)) });
-            setGuideArranged(true);
-          };
-          return (
-            <div className="mt-3 rounded-lg border border-primary/25 bg-primary/[0.04] p-3">
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <span className="flex items-center gap-1.5 text-xs font-medium">
-                  <Clock className="h-3.5 w-3.5 text-primary" /> Image duration
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  Holds for {sel.durationSec.toFixed(1)} seconds
-                </span>
-              </div>
-              <label className="block text-xs text-muted-foreground">
-                Keep this image on screen for
-                <div className="mt-1 flex max-w-xs items-center gap-2">
-                  <input
-                    type="number"
-                    min={0.5}
-                    max={MAX_TIMELINE_SEC}
-                    step={0.5}
-                    value={sel.durationSec}
-                    onChange={(event) => setPhotoDuration(Number(event.target.value))}
-                    className="w-24 rounded border border-border bg-background px-2 py-1 text-sm text-foreground"
-                    aria-label={`Duration for ${sel.name}`}
-                  />
-                  <span>seconds</span>
-                </div>
-              </label>
-              <div className="mt-3 flex flex-wrap gap-2" aria-label="Common image durations">
-                {[3, 5, 10, 15, 30].map((seconds) => (
-                  <Button
-                    key={seconds}
-                    type="button"
-                    size="sm"
-                    variant={Math.abs(sel.durationSec - seconds) < 0.01 ? "default" : "outline"}
-                    onClick={() => setPhotoDuration(seconds)}
-                  >
-                    {seconds}s
-                  </Button>
-                ))}
-              </div>
-              <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-                Use this to match a line, scene, or section of your narration. The exported video keeps the selected duration.
-              </p>
-              {sel.objectPath && (
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  <Button
-                    type="button"
-                    className="min-h-11 whitespace-normal bg-gradient-electric text-white shadow-glow"
-                    onClick={() => setAnimateSegmentId(sel.id)}
-                  >
-                    <Wand2 className="mr-2 h-4 w-4 shrink-0" />
-                    Animate this photo
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="min-h-11 whitespace-normal"
-                    onClick={() => setLocation(storyHandoffUrl(sel.objectPath!))}
-                  >
-                    <Film className="mr-2 h-4 w-4 shrink-0" />
-                    Tell a story with this photo
-                  </Button>
-                </div>
-              )}
-            </div>
-          );
-        })()}
+        <EditorTabPanel tab="media" active={activeTab}>
+      <div className="mb-4">
+        <TutorialTip id="remixlab" title="Montage Studio basics">
+          Add your clips and photos, add music (upload, Suno, or from My Music), then arrange them on the
+          timeline. To turn a narrated podcast or story into a still-image video, add the full audio, arrange your images in story order,
+          and set each image&apos;s hold time to match the narration. Making a commentary or reaction video? Add an overlay clip or text cards in
+          Overlays &amp; text cards, or{" "}
+          <button type="button" className="font-medium text-primary underline-offset-4 hover:underline" onClick={() => setCommentaryGuide(true)} data-testid="button-start-commentary-guide">
+            start the commentary walkthrough
+          </button>. Detect the beat to auto-sync photo cuts, set a transition, and export —
+          free on trial and for subscribers.
+        </TutorialTip>
+      </div>
 
-        {/* Trim panel for the selected video clip */}
-        {(() => {
-          const sel = segments[previewIndex];
-          if (!sel || sel.kind !== "video" || !sel.durationSec) return null;
-          const ts = sel.trimStart || 0;
-          const te = sel.trimEnd || 0;
-          const kept = Math.max(0.3, sel.durationSec - ts - te);
-          const setTrim = (front: number, back: number) => {
-            const f = Math.max(0, Math.min(front, sel.durationSec - 0.3 - back));
-            const b = Math.max(0, Math.min(back, sel.durationSec - 0.3 - f));
-            patchSegment(sel.id, { trimStart: f, trimEnd: b });
-            setGuideArranged(true);
-            if (idxRef.current === previewIndex && videoRef.current) {
-              try {
-                videoRef.current.currentTime = f;
-              } catch {
-                /* metadata is not ready yet */
-              }
-            }
-          };
-          return (
-            <div className="mt-3 rounded-lg border border-border/60 bg-background/40 p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="flex items-center gap-1.5 text-xs font-medium">
-                  <Scissors className="h-3.5 w-3.5 text-primary" /> Trim clip {previewIndex + 1}
-                </span>
-                <span className="text-xs text-muted-foreground">{kept.toFixed(1)}s of {sel.durationSec.toFixed(1)}s</span>
-              </div>
-              <div className="mb-3">
-                <TrimBar
-                  durationSec={sel.durationSec}
-                  trimStart={ts}
-                  trimEnd={te}
-                  thumb={sel.thumb}
-                  onChange={setTrim}
-                />
-                <p className="mt-1 text-[10px] text-muted-foreground">Drag the handles to resize the clip.</p>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="text-xs text-muted-foreground">
-                  Trim front (s)
-                  <input
-                    type="number" min={0} step={0.1} value={ts}
-                    onChange={(e) => setTrim(Number(e.target.value) || 0, te)}
-                    className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-sm text-foreground"
-                  />
-                </label>
-                <label className="text-xs text-muted-foreground">
-                  Trim back (s)
-                  <input
-                    type="number" min={0} step={0.1} value={te}
-                    onChange={(e) => setTrim(ts, Number(e.target.value) || 0)}
-                    className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-sm text-foreground"
-                  />
-                </label>
-              </div>
-              {(ts > 0 || te > 0) && (
-                <button
-                  onClick={() => patchSegment(sel.id, { trimStart: 0, trimEnd: 0 })}
-                  className="mt-2 text-xs text-primary hover:underline"
-                >
-                  Reset trim
-                </button>
-              )}
-            </div>
-          );
-        })()}
+      <div className="mb-4 flex flex-wrap gap-3" data-montage-guide="media">
+        <input ref={mediaInputRef} type="file" accept="video/*,image/*,audio/*,.mp4,.mov,.webm,.mkv,.avi,.wmv,.m4v,.3gp,.ts,.ogv,.mp3,.wav,.flac,.m4a,.aac,.ogg" multiple hidden onChange={(e) => addMedia(e.target.files)} />
+        <Button onClick={() => mediaInputRef.current?.click()}>
+          <Upload className="mr-2 h-4 w-4" /> Add media
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => {
+            setSelectedGalleryVideoIds([]);
+            setGalleryOpen(true);
+          }}
+          data-testid="add-media-from-gallery"
+        >
+          <Film className="mr-2 h-4 w-4 text-primary" /> From Gallery
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => {
+            setSelectedImageAssetIds([]);
+            setImageAssetsOpen(true);
+          }}
+          data-testid="add-generated-images"
+        >
+          <ImageIcon className="mr-2 h-4 w-4 text-primary" /> Generated images
+        </Button>
+      </div>
 
-        <p className="text-muted-foreground mt-3 text-xs">
-          Drag blocks to reorder · click an image to set its hold time · trim the front/back of the selected clip
-        </p>
-      </Card>
-
-      {/* Controls */}
-      <div className="mb-6 grid gap-4 sm:grid-cols-2">
-        <Card className="p-4">
+      <Card className="p-4" data-testid="card-editor-transition">
           <div className="mb-3 text-sm font-medium">Transition</div>
           <Select value={transition} onValueChange={setTransition}>
             <SelectTrigger>
@@ -2690,73 +2378,90 @@ export default function Editor() {
               <Slider min={0.2} max={2} step={0.1} value={[transitionDuration]} onValueChange={(v) => setTransitionDuration(v[0]!)} />
             </div>
           )}
+        <p className="mt-3 text-xs text-muted-foreground">Arrange, trim and set hold times on the timeline below the tabs.</p>
+      </Card>
+        </EditorTabPanel>
 
-          <div className="mt-6">
-            <div className="mb-2 text-sm font-medium">Video name</div>
-            <input
-              type="text"
-              value={videoName}
-              onChange={(e) => setVideoName(e.target.value)}
-              placeholder="Name your video (optional)"
-              maxLength={120}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
-              data-testid="editor-video-name"
-            />
-            <p className="mt-1 text-xs text-muted-foreground">Shown in your library and gallery. Leave blank for a dated default.</p>
-          </div>
+        <EditorTabPanel tab="overlay" active={activeTab}>
+      {(segments.length > 0 || overlays.length > 0 || textCards.length > 0) && (
+        <OverlayPanel
+          overlays={overlays}
+          textCards={textCards}
+          setOverlays={setOverlays}
+          setTextCards={setTextCards}
+          selectedId={selectedOverlayId}
+          setSelectedId={setSelectedOverlayId}
+          playheadSec={progress * totalDuration}
+          totalDuration={totalDuration}
+          projectClips={segments
+            .filter((s) => s.objectPath && !s.uploading)
+            .map((s) => ({
+              name: s.name,
+              objectPath: s.objectPath!,
+              durationSec: s.durationSec,
+              kind: s.kind === "photo" ? ("image" as const) : ("video" as const),
+            }))}
+          uploadFile={presignAndUpload}
+          issues={layerIssues}
+        />
+      )}
+      {segments.length === 0 && overlays.length === 0 && textCards.length === 0 && (
+        <div className="rounded-lg border border-dashed border-border bg-card/50 px-4 py-8 text-center" data-commentary-guide="overlays" data-testid="empty-overlay-tab">
+          <Layers className="mx-auto mb-2 h-6 w-6 text-primary/70" aria-hidden="true" />
+          <p className="text-sm font-medium">Add a clip or photo first</p>
+          <p className="mx-auto mt-1 max-w-sm text-xs text-muted-foreground">Overlays and text cards sit on top of your main video. Open Media to add something to the timeline.</p>
+          <Button size="sm" variant="outline" className="mt-4" onClick={() => setActiveTab("media")} data-testid="button-overlay-go-media">Go to Media</Button>
+        </div>
+      )}
+        </EditorTabPanel>
 
-          <div className="mt-4">
-            <div className="mb-2 text-sm font-medium">Resolution</div>
-            <Select value={resolution} onValueChange={(v) => setResolution(v as "720p" | "1080p")}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="720p">720p</SelectItem>
-                <SelectItem value="1080p">1080p</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+        <EditorTabPanel tab="audio" active={activeTab}>
+      <div className="mb-4 flex flex-wrap gap-3">
+        <input ref={musicInputRef} type="file" accept="audio/*" hidden onChange={(e) => addMusic(e.target.files)} />
+        <Button variant="outline" onClick={() => musicInputRef.current?.click()} data-montage-guide="audio">
+          <Music className="mr-2 h-4 w-4" /> {music ? "Change music" : "Background music"}
+        </Button>
+        <Button variant="outline" onClick={() => setSunoDialogOpen(true)} data-testid="add-music-from-link">
+          <Link2 className="mr-2 h-4 w-4" /> Add from Suno
+        </Button>
+        <Dialog open={sunoDialogOpen} onOpenChange={(open) => { if (open) setSunoDialogOpen(true); else closeSunoDialog(); }}>
+          <DialogContent className="w-[calc(100vw-2rem)] max-w-md">
+            <DialogHeader>
+              <DialogTitle>Add music from Suno</DialogTitle>
+              <DialogDescription>Paste a public Suno song link. Your current music stays in place until the import succeeds.</DialogDescription>
+            </DialogHeader>
+            <form onSubmit={(event) => { event.preventDefault(); void addMusicFromLink(); }} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="editor-suno-url">Suno song link</Label>
+                <Input id="editor-suno-url" value={sunoLink} onChange={(event) => { setSunoLink(event.target.value); setSunoImportError(null); }}
+                  placeholder="https://suno.com/song/…" aria-invalid={!!sunoImportError} aria-describedby={sunoImportError ? "editor-suno-error" : undefined}
+                  disabled={sunoImporting} className="min-h-11" data-testid="editor-suno-url" />
+                {sunoImportError && <p id="editor-suno-error" role="alert" className="text-sm text-destructive">{sunoImportError}</p>}
+                {sunoImporting && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Resolving and importing track…</p>}
+              </div>
+              <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row">
+                <Button type="button" variant="outline" className="min-h-11" onClick={closeSunoDialog}>Cancel</Button>
+                <Button type="submit" className="min-h-11" disabled={sunoImporting}>{sunoImporting ? "Importing…" : "Import track"}</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+        <SoundtrackPickerDialog
+          onSelect={(t) => {
+            // Invalidate any in-flight upload/import so its completion (or
+            // failure) can't overwrite or null out this selection.
+            if (sunoImportController.current) closeSunoDialog();
+            musicLoadIdRef.current++;
+            setMusic({ name: t.title, objectPath: t.objectPath, localUrl: t.url, mode: "mix", volume: 0.6, uploading: false });
+          }}
+        >
+          <Button variant="outline" data-testid="add-music-from-soundtracks">
+            <Music className="mr-2 h-4 w-4 text-primary" /> Add from My Music
+          </Button>
+        </SoundtrackPickerDialog>
+      </div>
 
-          <div className="mt-4">
-            <div className="mb-2 text-sm font-medium">Orientation</div>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setOrientation("landscape")}
-                className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors ${
-                  orientation === "landscape"
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border bg-secondary/30 text-muted-foreground hover:text-foreground"
-                }`}
-                data-testid="orientation-landscape"
-              >
-                <span className="inline-block w-5 h-3 rounded-[3px] border-2 border-current" />
-                16:9 · Wide
-              </button>
-              <button
-                type="button"
-                onClick={() => setOrientation("portrait")}
-                className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors ${
-                  orientation === "portrait"
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border bg-secondary/30 text-muted-foreground hover:text-foreground"
-                }`}
-                data-testid="orientation-portrait"
-              >
-                <span className="inline-block w-3 h-5 rounded-[3px] border-2 border-current" />
-                9:16 · Mobile
-              </button>
-            </div>
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              {orientation === "portrait"
-                ? "Portrait — for TikTok, Reels & YouTube Shorts."
-                : "Widescreen — for YouTube & desktop."}
-            </p>
-          </div>
-        </Card>
-
-        <Card className="p-4">
+      <Card className="mb-4 p-4" data-testid="card-editor-music">
           <div className="mb-3 text-sm font-medium">Music</div>
           {music ? (
             <>
@@ -3039,8 +2744,101 @@ export default function Editor() {
               </p>
             )}
           </div>
-        </Card>
-      </div>
+      </Card>
+
+      {(segments.length > 0 || audioClips.length > 0) && (
+        <AudioClipPanel
+          onSave={() => void saveProject()}
+          saving={savingProject}
+          clips={audioClips}
+          setClips={setAudioClips}
+          selectedId={selectedAudioClipId}
+          setSelectedId={setSelectedAudioClipId}
+          playheadSec={progress * totalDuration}
+          totalDuration={totalDuration}
+          sourceDurations={audioSourceDurations}
+          onSourceDuration={recordAudioSourceDuration}
+          uploadFile={presignAndUpload}
+          issues={audioClipIssues}
+          epoch={audioClipEpoch}
+          sourceErrors={audioSourceErrors}
+          onPendingChange={setAudioClipUploadsPending}
+          soundtrack={music?.objectPath && !music.uploading ? { name: music.name, objectPath: music.objectPath } : null}
+        />
+      )}
+      {segments.length === 0 && audioClips.length === 0 && (
+        <p className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-muted-foreground" data-testid="empty-audio-clips-tab">
+          Timed music clips unlock once your timeline has a clip or photo.
+        </p>
+      )}
+        </EditorTabPanel>
+
+        <EditorTabPanel tab="export" active={activeTab}>
+      <Card className="mb-4 p-4" data-testid="card-editor-output">
+          <div className="mt-6">
+            <div className="mb-2 text-sm font-medium">Video name</div>
+            <input
+              type="text"
+              value={videoName}
+              onChange={(e) => setVideoName(e.target.value)}
+              placeholder="Name your video (optional)"
+              maxLength={120}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
+              data-testid="editor-video-name"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">Shown in your library and gallery. Leave blank for a dated default.</p>
+          </div>
+
+          <div className="mt-4">
+            <div className="mb-2 text-sm font-medium">Resolution</div>
+            <Select value={resolution} onValueChange={(v) => setResolution(v as "720p" | "1080p")}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="720p">720p</SelectItem>
+                <SelectItem value="1080p">1080p</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="mt-4">
+            <div className="mb-2 text-sm font-medium">Orientation</div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setOrientation("landscape")}
+                className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors ${
+                  orientation === "landscape"
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border bg-secondary/30 text-muted-foreground hover:text-foreground"
+                }`}
+                data-testid="orientation-landscape"
+              >
+                <span className="inline-block w-5 h-3 rounded-[3px] border-2 border-current" />
+                16:9 · Wide
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrientation("portrait")}
+                className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors ${
+                  orientation === "portrait"
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border bg-secondary/30 text-muted-foreground hover:text-foreground"
+                }`}
+                data-testid="orientation-portrait"
+              >
+                <span className="inline-block w-3 h-5 rounded-[3px] border-2 border-current" />
+                9:16 · Mobile
+              </button>
+            </div>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {orientation === "portrait"
+                ? "Portrait — for TikTok, Reels & YouTube Shorts."
+                : "Widescreen — for YouTube & desktop."}
+            </p>
+          </div>
+      </Card>
 
       {/* Copyright attestation */}
       <label className="mb-4 flex items-start gap-2.5 text-sm text-muted-foreground cursor-pointer">
@@ -3094,6 +2892,249 @@ export default function Editor() {
           </span>
         )}
       </div>
+        </EditorTabPanel>
+      </section>
+
+      {/* Timeline */}
+      <Card className="mb-6 p-4" data-montage-guide="timeline">
+        {pendingMontageAnimation && (
+          <div className="mb-4 flex flex-col gap-3 rounded-lg border border-primary/30 bg-primary/[0.06] p-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium">Photo animation is processing</p>
+              <p className="text-xs text-muted-foreground">Keep Montage Studio open. Your original photo will remain until you choose what to do with the finished clip.</p>
+            </div>
+            <Button asChild size="sm" variant="outline" className="min-h-11 shrink-0">
+              <Link href={`/jobs/${pendingMontageAnimation.jobId}`}>View job</Link>
+            </Button>
+          </div>
+        )}
+        <div className="text-muted-foreground mb-3 text-xs font-medium uppercase tracking-wide">
+          Timeline {segments.length > 0 && `· ${totalDuration.toFixed(1)}s`}
+        </div>
+        <OverlayTimeline
+          overlays={overlays}
+          textCards={textCards}
+          totalDuration={totalDuration}
+          playheadSec={progress * totalDuration}
+          selectedId={selectedOverlayId}
+          onSelect={setSelectedOverlayId}
+          onSeek={seekPreview}
+          onMoveOverlay={(id, startSec) => setOverlays((prev) => prev.map((o) => (o.id === id ? { ...o, startSec } : o)))}
+          onMoveText={(id, startSec) => setTextCards((prev) => prev.map((t) => (t.id === id ? { ...t, startSec } : t)))}
+        />
+        <AudioClipTimeline
+          clips={audioClips}
+          totalDuration={totalDuration}
+          playheadSec={progress * totalDuration}
+          selectedId={selectedAudioClipId}
+          onSelect={setSelectedAudioClipId}
+          onSeek={seekPreview}
+        />
+        {segments.length === 0 ? (
+          <div className="text-muted-foreground flex h-24 items-center justify-center text-sm">
+            Add videos and photos to build your timeline.
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {segments.map((seg, i) => (
+              <div
+                key={seg.id}
+                draggable
+                onDragStart={() => (dragId.current = seg.id)}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  onDrop(seg.id);
+                }}
+                onClick={() => previewBlock(i)}
+                className={`relative h-[58px] w-[92px] cursor-pointer overflow-hidden rounded-md border bg-background ${
+                  previewIndex === i ? "border-primary" : "border-border"
+                }`}
+                title={seg.name}
+              >
+                {seg.thumb ? (
+                  <img src={seg.thumb} alt="" className="h-full w-full object-contain" />
+                ) : (
+                  <div className="text-muted-foreground flex h-full w-full items-center justify-center">
+                    {seg.kind === "video" ? <Film className="h-5 w-5" /> : <ImageIcon className="h-5 w-5" />}
+                  </div>
+                )}
+                {seg.uploading && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                    <Loader2 className="h-4 w-4 animate-spin text-white" />
+                  </div>
+                )}
+                <button
+                  className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-black/60 text-white"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeSegment(seg.id);
+                  }}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+                {seg.kind === "photo" ? (
+                  <span className="absolute bottom-1 right-1 rounded bg-black/60 px-1 text-[10px] text-white">
+                    {seg.durationSec.toFixed(1)}s
+                  </span>
+                ) : (
+                  <span className="absolute bottom-1 right-1 rounded bg-black/60 px-1 text-[10px] text-white">
+                    {Math.max(0, (seg.durationSec || 0) - (seg.trimStart || 0) - (seg.trimEnd || 0)).toFixed(1)}s
+                    {(seg.trimStart || seg.trimEnd) ? " ✂" : ""}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Duration panel for the selected image */}
+        {(() => {
+          const sel = segments[previewIndex];
+          if (!sel || sel.kind !== "photo") return null;
+          const setPhotoDuration = (value: number) => {
+            const safeValue = Number.isFinite(value) ? value : 3;
+            patchSegment(sel.id, { durationSec: Math.min(MAX_TIMELINE_SEC, Math.max(0.5, safeValue)) });
+            setGuideArranged(true);
+          };
+          return (
+            <div className="mt-3 rounded-lg border border-primary/25 bg-primary/[0.04] p-3">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <span className="flex items-center gap-1.5 text-xs font-medium">
+                  <Clock className="h-3.5 w-3.5 text-primary" /> Image duration
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Holds for {sel.durationSec.toFixed(1)} seconds
+                </span>
+              </div>
+              <label className="block text-xs text-muted-foreground">
+                Keep this image on screen for
+                <div className="mt-1 flex max-w-xs items-center gap-2">
+                  <input
+                    type="number"
+                    min={0.5}
+                    max={MAX_TIMELINE_SEC}
+                    step={0.5}
+                    value={sel.durationSec}
+                    onChange={(event) => setPhotoDuration(Number(event.target.value))}
+                    className="w-24 rounded border border-border bg-background px-2 py-1 text-sm text-foreground"
+                    aria-label={`Duration for ${sel.name}`}
+                  />
+                  <span>seconds</span>
+                </div>
+              </label>
+              <div className="mt-3 flex flex-wrap gap-2" aria-label="Common image durations">
+                {[3, 5, 10, 15, 30].map((seconds) => (
+                  <Button
+                    key={seconds}
+                    type="button"
+                    size="sm"
+                    variant={Math.abs(sel.durationSec - seconds) < 0.01 ? "default" : "outline"}
+                    onClick={() => setPhotoDuration(seconds)}
+                  >
+                    {seconds}s
+                  </Button>
+                ))}
+              </div>
+              <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                Use this to match a line, scene, or section of your narration. The exported video keeps the selected duration.
+              </p>
+              {sel.objectPath && (
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <Button
+                    type="button"
+                    className="min-h-11 whitespace-normal bg-gradient-electric text-white shadow-glow"
+                    onClick={() => setAnimateSegmentId(sel.id)}
+                  >
+                    <Wand2 className="mr-2 h-4 w-4 shrink-0" />
+                    Animate this photo
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="min-h-11 whitespace-normal"
+                    onClick={() => setLocation(storyHandoffUrl(sel.objectPath!))}
+                  >
+                    <Film className="mr-2 h-4 w-4 shrink-0" />
+                    Tell a story with this photo
+                  </Button>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* Trim panel for the selected video clip */}
+        {(() => {
+          const sel = segments[previewIndex];
+          if (!sel || sel.kind !== "video" || !sel.durationSec) return null;
+          const ts = sel.trimStart || 0;
+          const te = sel.trimEnd || 0;
+          const kept = Math.max(0.3, sel.durationSec - ts - te);
+          const setTrim = (front: number, back: number) => {
+            const f = Math.max(0, Math.min(front, sel.durationSec - 0.3 - back));
+            const b = Math.max(0, Math.min(back, sel.durationSec - 0.3 - f));
+            patchSegment(sel.id, { trimStart: f, trimEnd: b });
+            setGuideArranged(true);
+            if (idxRef.current === previewIndex && videoRef.current) {
+              try {
+                videoRef.current.currentTime = f;
+              } catch {
+                /* metadata is not ready yet */
+              }
+            }
+          };
+          return (
+            <div className="mt-3 rounded-lg border border-border/60 bg-background/40 p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-xs font-medium">
+                  <Scissors className="h-3.5 w-3.5 text-primary" /> Trim clip {previewIndex + 1}
+                </span>
+                <span className="text-xs text-muted-foreground">{kept.toFixed(1)}s of {sel.durationSec.toFixed(1)}s</span>
+              </div>
+              <div className="mb-3">
+                <TrimBar
+                  durationSec={sel.durationSec}
+                  trimStart={ts}
+                  trimEnd={te}
+                  thumb={sel.thumb}
+                  onChange={setTrim}
+                />
+                <p className="mt-1 text-[10px] text-muted-foreground">Drag the handles to resize the clip.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="text-xs text-muted-foreground">
+                  Trim front (s)
+                  <input
+                    type="number" min={0} step={0.1} value={ts}
+                    onChange={(e) => setTrim(Number(e.target.value) || 0, te)}
+                    className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-sm text-foreground"
+                  />
+                </label>
+                <label className="text-xs text-muted-foreground">
+                  Trim back (s)
+                  <input
+                    type="number" min={0} step={0.1} value={te}
+                    onChange={(e) => setTrim(ts, Number(e.target.value) || 0)}
+                    className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-sm text-foreground"
+                  />
+                </label>
+              </div>
+              {(ts > 0 || te > 0) && (
+                <button
+                  onClick={() => patchSegment(sel.id, { trimStart: 0, trimEnd: 0 })}
+                  className="mt-2 text-xs text-primary hover:underline"
+                >
+                  Reset trim
+                </button>
+              )}
+            </div>
+          );
+        })()}
+
+        <p className="text-muted-foreground mt-3 text-xs">
+          Drag blocks to reorder · click an image to set its hold time · trim the front/back of the selected clip
+        </p>
+      </Card>
     </div>
 
     <Dialog open={projectsOpen} onOpenChange={setProjectsOpen}>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Crosshair, Layers, RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { revealThen } from "@/components/montage/editorTabs";
 import { COMMENTARY_GUIDE_STEPS, clampCommentaryStep } from "./commentaryGuide";
 
 export function CommentaryWalkthrough({ onClose }: { onClose: () => void }) {
@@ -15,7 +16,8 @@ export function CommentaryWalkthrough({ onClose }: { onClose: () => void }) {
     const el = document.querySelector<HTMLElement>(step.target);
     if (!el) { setMissing(true); return; }
     setMissing(false);
-    el.scrollIntoView({ behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
+    // Activate the editor tab holding a hidden target before scrolling to it.
+    revealThen(el, () => el.scrollIntoView({ behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" }));
     el.classList.add("montage-guide-highlight");
     window.setTimeout(() => el.classList.remove("montage-guide-highlight"), 2200);
   };
