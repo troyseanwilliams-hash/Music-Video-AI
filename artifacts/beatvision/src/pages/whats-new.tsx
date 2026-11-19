@@ -8,9 +8,9 @@ export default function WhatsNew() {
     <div className="flex-1">
       <Helmet>
         <title>What's New | AIBeatSync</title>
-        <meta name="description" content="Release notes for AIBeatSync, including commentary and reaction overlays in Montage Studio." />
+        <meta name="description" content="Release notes for AIBeatSync, including commentary and reaction overlays in Creator Studio." />
         <meta property="og:title" content="What's New | AIBeatSync" />
-        <meta property="og:description" content="Explore commentary overlays, reaction layouts, text cards, and 30-minute 1080p projects in Montage Studio." />
+        <meta property="og:description" content="Explore commentary overlays, reaction layouts, text cards, and 30-minute 1080p projects in Creator Studio." />
         <meta property="og:type" content="website" />
       </Helmet>
       <section className="border-b border-border/30 py-14 md:py-20">

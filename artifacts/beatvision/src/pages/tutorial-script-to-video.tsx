@@ -52,7 +52,7 @@ const EXAMPLE_NARRATIVE_SCRIPT = [
 ].join("\n");
 
 export const COMMENTARY_STEPS = [
-  { title: "Add your main video", body: "Open Montage Studio and add your episode or source video as the main track. Overlays & text cards appears below the preview once the timeline has media." },
+  { title: "Add your main video", body: "Open Creator Studio and add your episode or source video as the main track. Overlays & text cards appears below the preview once the timeline has media." },
   { title: "Add an overlay clip", body: "In Overlays & text cards, choose Upload overlay clip or Use existing clip (from this project or your Gallery). New items start at the playhead." },
   { title: "Commentary or Reaction", body: "Commentary fills the frame with your clip centred over a blurred copy. Reaction right or Reaction left makes a smaller window: drag it in the preview to move it, and drag its corner handle to resize." },
   { title: "Set the timing", body: "Use Starts at, Duration and Skip into clip, or press At playhead. If an overlay runs too long, End with main video shortens it to fit the timeline. You can also drag bars along the layer timeline." },
@@ -111,7 +111,7 @@ function ExampleScriptCard({
         {kind === "montage" ? (
           <>
             <p><strong className="text-foreground">1.</strong> Paste the numbered list into <Link href="/images" className="text-primary underline-offset-4 hover:underline">Create Images</Link> and review the credit estimate before creating.</p>
-            <p><strong className="text-foreground">2.</strong> In <Link href="/editor" className="text-primary underline-offset-4 hover:underline">Montage Studio</Link>, choose Generated images and add the pack.</p>
+            <p><strong className="text-foreground">2.</strong> In <Link href="/editor" className="text-primary underline-offset-4 hover:underline">Creator Studio</Link>, choose Generated images and add the pack.</p>
             <p><strong className="text-foreground">3.</strong> Add your track, then set each still's hold time on the timeline.</p>
           </>
         ) : (
@@ -143,9 +143,9 @@ export default function TutorialScriptToVideo() {
     <div className="flex flex-col min-h-[calc(100vh-4rem)]">
       <Helmet>
         <title>How to Turn a Script into a Video | AIBeatSync</title>
-        <meta name="description" content="Learn how to break down your script into numbered scene lists, create consistent image sequences, assemble them in Montage Studio, and add commentary overlays and text cards." />
+        <meta name="description" content="Learn how to break down your script into numbered scene lists, create consistent image sequences, assemble them in Creator Studio, and add commentary overlays and text cards." />
         <meta property="og:title" content="How to Turn a Script into a Video | AIBeatSync" />
-        <meta property="og:description" content="Learn how to break down your script into numbered scene lists, generate consistent image sequences, and assemble them in Montage Studio to create intentional vertical videos." />
+        <meta property="og:description" content="Learn how to break down your script into numbered scene lists, generate consistent image sequences, and assemble them in Creator Studio to create intentional vertical videos." />
       </Helmet>
 
       <main className="flex-1 pb-20">
@@ -161,7 +161,7 @@ export default function TutorialScriptToVideo() {
               Turn Your Script Into a <span className="text-gradient-electric">Visual Story</span>
             </h1>
             <p className="text-lg md:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto">
-              Learn how to break down any story, script, or podcast into a sequence of generated images, and assemble them into a compelling video in Montage Studio.
+              Learn how to break down any story, script, or podcast into a sequence of generated images, and assemble them into a compelling video in Creator Studio.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link href="/images">
@@ -173,7 +173,7 @@ export default function TutorialScriptToVideo() {
               <Link href="/editor">
                 <Button size="lg" variant="outline" className="w-full sm:w-auto h-12 px-8 border-accent/40 bg-secondary/50 hover:bg-accent/10 hover:text-accent hover:border-accent/60 backdrop-blur-sm transition-all" data-testid="tutorial-cta-remix">
                   <Scissors className="mr-2 h-5 w-5" />
-                  Open Montage Studio
+                  Open Creator Studio
                 </Button>
               </Link>
             </div>
@@ -234,10 +234,10 @@ export default function TutorialScriptToVideo() {
               <h3 className="mt-2 text-xl font-bold">Both use numbered prompts, but they live in different tools</h3>
               <div className="mt-5 grid gap-5 md:grid-cols-2">
                 <div className="rounded-xl border border-border/60 bg-background/40 p-4">
-                  <p className="font-semibold text-foreground">Still-image montage: Create Images, then Montage Studio</p>
+                  <p className="font-semibold text-foreground">Still-image montage: Create Images, then Creator Studio</p>
                   <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
                     Each line is an independent visual idea. Create the stills in Create Images, then add them in
-                    Montage Studio with Generated images and cut them to your music or narration. The scenes do not need to form a plot.
+                    Creator Studio with Generated images and cut them to your music or narration. The scenes do not need to form a plot.
                   </p>
                 </div>
                 <div className="rounded-xl border border-border/60 bg-background/40 p-4">
@@ -276,7 +276,7 @@ export default function TutorialScriptToVideo() {
 
             <div className="mt-6 rounded-xl border border-border/50 bg-card p-5 text-sm text-muted-foreground">
               <strong className="text-foreground">How to use either example:</strong>{" "}
-              For the montage script, paste it into Create Images, then assemble the stills in Montage Studio.
+              For the montage script, paste it into Create Images, then assemble the stills in Creator Studio.
               For the narrative script, upload the full track in Generate, paste it into Creative Prompt,
               and wait for the page to confirm the required prompt count and estimate before submitting.
             </div>
@@ -364,7 +364,7 @@ export default function TutorialScriptToVideo() {
           <section>
             <div className="flex items-center gap-4 mb-6">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent font-bold text-lg">4</div>
-              <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Assembling in Montage Studio</h2>
+              <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Assembling in Creator Studio</h2>
             </div>
             <p className="text-lg text-muted-foreground mb-6">
               Once you have your images, it's time to build the video.
@@ -379,14 +379,14 @@ export default function TutorialScriptToVideo() {
                     <Zap className="h-5 w-5 text-accent" />
                     <h3 className="font-bold">1. Upload Audio</h3>
                   </div>
-                  <p className="text-sm text-muted-foreground">Open Montage Studio and drag in your voiceover, podcast clip, or music track. The timeline will adjust to fit.</p>
+                  <p className="text-sm text-muted-foreground">Open Creator Studio and drag in your voiceover, podcast clip, or music track. The timeline will adjust to fit.</p>
                 </div>
                 <div>
                   <div className="flex items-center gap-3 mb-3">
                     <Layers className="h-5 w-5 text-accent" />
                     <h3 className="font-bold">2. Drop Images</h3>
                   </div>
-                  <p className="text-sm text-muted-foreground">Choose Generated images in Montage Studio, select the pack you made in Create Images, and add it in sequence.</p>
+                  <p className="text-sm text-muted-foreground">Choose Generated images in Creator Studio, select the pack you made in Create Images, and add it in sequence.</p>
                 </div>
                 <div>
                   <div className="flex items-center gap-3 mb-3">
@@ -400,7 +400,7 @@ export default function TutorialScriptToVideo() {
               <div className="mt-10 pt-10 border-t border-border/50">
                 <Link href="/editor">
                   <Button size="lg" className="bg-gradient-electric text-white shadow-glow hover:opacity-90 border-0" data-testid="tutorial-bottom-cta-remix">
-                    Try Montage Studio Now <ArrowRight className="ml-2 h-4 w-4" />
+                    Try Creator Studio Now <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                 </Link>
               </div>
@@ -426,8 +426,8 @@ export default function TutorialScriptToVideo() {
               ))}
             </ol>
             <div className="mt-6 rounded-xl border border-accent/25 bg-accent/[0.06] p-5 text-sm text-muted-foreground">
-              <strong className="text-foreground">Limits and rights:</strong> Montage Studio exports at up to 1080p and supports
-              timelines up to 30 minutes. That 30-minute limit is for Montage Studio only, not AI video generation.
+              <strong className="text-foreground">Limits and rights:</strong> Creator Studio exports at up to 1080p and supports
+              timelines up to 30 minutes. That 30-minute limit is for Creator Studio only, not AI video generation.
               Clips are shown in full, so any watermark already in a source clip stays visible. Only use footage you own or are licensed to use, and confirm rights before exporting.
             </div>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">

@@ -62,7 +62,7 @@ export const COMMENTARY_GUIDE_STEPS: CommentaryGuideStep[] = [
   {
     id: "export",
     title: "Review, then export",
-    body: "Montage exports go up to 1080p and timelines up to 30 minutes. Check the estimate, confirm you have rights to every clip (watermarks in sources stay visible), then export when you are ready. The guide will not export or spend credits.",
+    body: "Creator Studio exports go up to 1080p and timelines up to 30 minutes. Check the estimate, confirm you have rights to every clip (watermarks in sources stay visible), then export when you are ready. The guide will not export or spend credits.",
     target: '[data-montage-guide="export"]',
     control: "Export",
     missingHint: "Export is at the bottom of the editor.",

@@ -1048,7 +1048,7 @@ export default function Generate() {
               Unlock <span className="text-gradient-electric">AI video generation</span>
             </h2>
             <p className="text-muted-foreground text-lg">
-              Generate with an eligible plan and available credits. Your Montage Studio access remains available within its own limits.
+              Generate with an eligible plan and available credits. Your Creator Studio access remains available within its own limits.
             </p>
           </div>
           <div className="rounded-2xl border border-primary/20 bg-card/60 backdrop-blur p-6 text-left space-y-3">
@@ -2111,7 +2111,7 @@ export default function Generate() {
                     </Link>
                   )}
                   <Link href="/editor" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-border px-3 text-sm font-medium hover:border-primary/50" data-testid="link-starter-montage">
-                    <Film className="h-4 w-4" /> Montage Studio
+                    <Film className="h-4 w-4" /> Creator Studio
                   </Link>
                   <Link href="/pricing" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium text-primary" data-testid="link-starter-pricing">
                     <CreditCard className="h-4 w-4" /> Get credits
@@ -2190,7 +2190,7 @@ export default function Generate() {
         <TutorialTip id="generate" title="Making a video">
             <>
               Add audio (upload, Suno link, or from My Music), describe the look, pick your engine — <strong>Runway</strong> (premium)
-              or <strong>Kling</strong> (value) — and a length. For a spoken narrative or podcast, <Link href="/images" className="underline text-primary">create a still image pack</Link>, then use Montage Studio
+              or <strong>Kling</strong> (value) — and a length. For a spoken narrative or podcast, <Link href="/images" className="underline text-primary">create a still image pack</Link>, then use Creator Studio
               to place those images against your full audio and set each image&apos;s hold time to follow your timeline.
               <Link href="/tutorial/script-to-video" className="ml-1 underline text-primary hover:text-primary/80">Learn how</Link>. We charge credits only when it succeeds.
             </>
@@ -3113,7 +3113,7 @@ export default function Generate() {
                   <p className="text-sm font-medium">Silent video — add music later</p>
                   <p className="text-sm text-muted-foreground">
                     Renders your visuals with no soundtrack. Once it's ready, open it in the Editor
-                    (Montage Studio) to add a track — your own upload, a Suno link, or music from My Music.
+                    (Creator Studio) to add a track — your own upload, a Suno link, or music from My Music.
                   </p>
                   <p className="text-sm text-muted-foreground pt-1">
                     Need exact words on screen — a title card or a CTA? Don't type them into the prompt
@@ -4316,7 +4316,7 @@ export default function Generate() {
             <div className="text-left space-y-3 mt-1">
               <p className="text-sm text-muted-foreground leading-relaxed">
                 {imagePackMode
-                  ? `Review the image pack below. The saved ${imagePackAspectRatio === "9:16" ? "portrait" : "landscape"} images will be ready to add directly to Montage Studio.`
+                  ? `Review the image pack below. The saved ${imagePackAspectRatio === "9:16" ? "portrait" : "landscape"} images will be ready to add directly to Creator Studio.`
                   : "Your Gen Preview creates every source image first, then pauses before animation. Review all images, regenerate individual scenes, or use another image before you approve the final video."}
               </p>
               <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm space-y-1.5">

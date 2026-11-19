@@ -38,7 +38,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("Montage Studio editor tabs", () => {
+describe("Creator Studio editor tabs", () => {
   it("renders Media, Overlay, Audio, Export with ARIA wiring", () => {
     const tabs = Array.from(host.querySelectorAll('[role="tab"]')).map((t) => t.textContent);
     expect(tabs.map((t) => t?.match(/^(Media|Overlay|Audio|Export)/)?.[0])).toEqual(["Media", "Overlay", "Audio", "Export"]);

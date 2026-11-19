@@ -98,7 +98,7 @@ export function CreationGuide() {
 
           <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-4 pt-2 sm:p-6 sm:pt-2" data-testid="creation-goal-list">
             <GoalCard
-              title="Montage Video"
+              title="Creator Studio"
               badge="Recommended"
               icon={<Film className="w-5 h-5 sm:w-6 sm:h-6" />}
               description={`${FREE_OFFER_COPY.headline} ${FREE_OFFER_COPY.expiry} Bring your own media; clean exports during your active trial within trial limits. Lyric burns and Auto-sync use credits. After trial: 10 clean exports/month, then 15 credits each.`}
@@ -109,7 +109,7 @@ export function CreationGuide() {
               title="Commentary or Podcast Video"
               badge="New"
               icon={<Mic2 className="w-5 h-5 sm:w-6 sm:h-6" />}
-              description="Add a reaction or commentary clip and text cards over your main video in Montage Studio. An optional walkthrough points to each control; it never saves, exports, or spends credits for you."
+              description="Add a reaction or commentary clip and text cards over your main video in Creator Studio. An optional walkthrough points to each control; it never saves, exports, or spends credits for you."
               onClick={() => handleSelect("commentary", "/editor?guide=commentary", true)}
               testId="goal-commentary"
             />

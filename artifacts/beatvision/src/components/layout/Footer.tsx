@@ -5,7 +5,7 @@ const COLUMNS: { title: string; links: { label: string; href: string; external?:
   {
     title: "Create",
     links: [
-      { label: "Montage Studio", href: "/editor" },
+      { label: "Creator Studio", href: "/editor" },
       { label: "Generate AI Video", href: "/generate" },
       { label: "Create Images", href: "/images" },
       { label: "Create Narration", href: "/generate" },

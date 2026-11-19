@@ -232,7 +232,7 @@ export default function LipSyncPanel({
   }
 
   // Step 3 of the guided flow: hand the successful Lip Sync result off to
-  // Montage Studio as a prefilled replacement timeline (original video before the
+  // Creator Studio as a prefilled replacement timeline (original video before the
   // range, the Lip Sync clip in the range, original video after it) with the
   // untouched original song as the single continuous soundtrack. Resolves
   // the song's Remix-Lab-usable object path on demand (see routes/teasers.ts
@@ -243,7 +243,7 @@ export default function LipSyncPanel({
     if (!hr) return;
     if (!hr.hasSourceAudio) {
       setInsertError(
-        "This video has no source song on file, so there's nothing to use as the combined soundtrack. Open Montage Studio and add music manually instead.",
+        "This video has no source song on file, so there's nothing to use as the combined soundtrack. Open Creator Studio and add music manually instead.",
       );
       return;
     }
@@ -260,7 +260,7 @@ export default function LipSyncPanel({
       }
       if (isDurationMismatched(originalDurationSec, data.durationSec ?? null)) {
         setInsertError(
-          "The original song's length doesn't quite match this video's length, so we can't safely combine them automatically. You can still open Montage Studio and do it by hand.",
+          "The original song's length doesn't quite match this video's length, so we can't safely combine them automatically. You can still open Creator Studio and do it by hand.",
         );
         return;
       }
@@ -344,7 +344,7 @@ export default function LipSyncPanel({
             <ol className="text-xs text-muted-foreground leading-relaxed list-decimal list-inside space-y-1">
               <li>Create the visual video with a purely visual prompt (example below).</li>
               <li>Choose a short song range below and generate a Lip Sync performance for it.</li>
-              <li>Combine them — we'll open Montage Studio with everything already in place.</li>
+              <li>Combine them — we'll open Creator Studio with everything already in place.</li>
             </ol>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between gap-2">

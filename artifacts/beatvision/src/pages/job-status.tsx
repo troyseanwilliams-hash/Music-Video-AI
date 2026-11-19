@@ -456,7 +456,7 @@ export default function JobStatus() {
     !jobAudio.audioSourceUrl;
   const errInfo = customerFailureMessage(job.errorMessage);
 
-  // Montage Studio renders one final output video regardless of its timeline size.
+  // Creator Studio renders one final output video regardless of its timeline size.
   const isRemixJob = job.jobType === "editor_render";
   const isClipRemixJob = job.jobType === "remix";
   const isImagePackJob = job.jobType === "image_pack";
@@ -896,7 +896,7 @@ export default function JobStatus() {
                     </div>
                     {job.status === "queued" ? (
                       <div className="text-muted-foreground text-right text-xs tabular-nums">
-                        {isImagePackJob ? "Your images will be saved to Montage Studio as they finish." : `Typical total time ${jobEstimate.label} once processing starts`}
+                        {isImagePackJob ? "Your images will be saved to Creator Studio as they finish." : `Typical total time ${jobEstimate.label} once processing starts`}
                       </div>
                     ) : remainingEstimate ? (
                       <div className="text-muted-foreground text-right text-xs tabular-nums">
@@ -1111,8 +1111,8 @@ export default function JobStatus() {
                   ? isActive
                     ? "Each finished image appears here immediately while the remaining images are created."
                     : isFailed
-                      ? "Images that finished successfully remain available for Montage Studio."
-                      : "Your completed images are ready to arrange in Montage Studio."
+                      ? "Images that finished successfully remain available for Creator Studio."
+                      : "Your completed images are ready to arrange in Creator Studio."
                   : isReviewingImages
                     ? "Review every source image, regenerate any scene, or use another image before creating the video."
                     : ""}
@@ -1444,11 +1444,11 @@ export default function JobStatus() {
                     {visualImageCount} {imagePackAspectRatio} {visualImageCount === 1 ? "image is" : "images are"} ready
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Your saved AI stills are ready to add as photo segments in Montage Studio.
+                    Your saved AI stills are ready to add as photo segments in Creator Studio.
                   </p>
                 </div>
                 <Button onClick={() => setLocation("/editor")} className="shrink-0">
-                  <Scissors className="mr-2 h-4 w-4" /> Open Montage Studio
+                  <Scissors className="mr-2 h-4 w-4" /> Open Creator Studio
                 </Button>
               </CardContent>
             </Card>
@@ -1527,7 +1527,7 @@ export default function JobStatus() {
               {job.hasAudio === false ? (
                 <><Music className="h-4 w-4" /> Add Music</>
               ) : (
-                <><Scissors className="h-4 w-4" /> Open in Montage Studio</>
+                <><Scissors className="h-4 w-4" /> Open in Creator Studio</>
               )}
             </Button>
           </div>

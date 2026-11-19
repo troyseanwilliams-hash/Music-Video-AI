@@ -22,9 +22,9 @@ describe("Copy verification", () => {
     expect(homeContent.toLowerCase()).not.toContain("you fully own");
   });
 
-  it("offers a clear Montage Studio CTA for editing the user's own footage", () => {
+  it("offers a clear Creator Studio CTA for editing the user's own footage", () => {
     const homeContent = fs.readFileSync(path.join(__dirname, "../pages/home.tsx"), "utf-8");
-    expect(homeContent).toContain("Open Montage Studio");
+    expect(homeContent).toContain("Open Creator Studio");
     expect(homeContent).toContain('data-testid="link-hero-montage"');
   });
 
@@ -34,12 +34,12 @@ describe("Copy verification", () => {
     expect(homeContent).toContain('buildAuthUrl("/register", { returnTo: "/generate" })');
   });
 
-  it("prioritizes Montage in primary CTAs and public navigation", () => {
+  it("prioritizes Creator Studio in primary CTAs and public navigation", () => {
     const navbarContent = fs.readFileSync(path.join(__dirname, "../components/layout/Navbar.tsx"), "utf-8");
     const footerContent = fs.readFileSync(path.join(__dirname, "../components/layout/Footer.tsx"), "utf-8");
 
     // Editor should be first in public nav
-    expect(navbarContent).toContain('{ href: "/editor", label: "Montage"');
+    expect(navbarContent).toContain('{ href: "/editor", label: "Creator Studio"');
 
     // Editor should be first in Create footer section
     const createIndex = footerContent.indexOf('title: "Create"');

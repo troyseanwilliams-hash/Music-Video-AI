@@ -240,8 +240,8 @@ export default function Dashboard() {
             <Clock className={`h-4 w-4 shrink-0 ${trialExpired ? "text-destructive" : "text-primary"}`} />
             <span>
               {trialExpired
-                ? "Your Montage Studio trial has ended. Non-paid accounts can still make 10 clean Montage exports per calendar month, then 15 credits each. AI generation requires credits and plan eligibility."
-                : <>Montage Studio access — <strong>{trialDaysLeft} day{trialDaysLeft !== 1 ? "s" : ""}</strong> remaining within trial limits. Generation uses credits.</>}
+                ? "Your Creator Studio trial has ended. Non-paid accounts can still make 10 clean Creator Studio exports per calendar month, then 15 credits each. AI generation requires credits and plan eligibility."
+                : <>Creator Studio access — <strong>{trialDaysLeft} day{trialDaysLeft !== 1 ? "s" : ""}</strong> remaining within trial limits. Generation uses credits.</>}
             </span>
           </div>
           <Link href="/pricing">
@@ -266,7 +266,7 @@ export default function Dashboard() {
         <Link href="/editor">
           <Button className="bg-gradient-electric text-white shadow-glow">
             <Plus className="mr-2 h-4 w-4" />
-            New Montage
+            Open Creator Studio
           </Button>
         </Link>
       </div>
@@ -286,12 +286,12 @@ export default function Dashboard() {
                 <Sparkles className="h-5 w-5 text-primary" /> Welcome to AIBeatSync
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                <strong className="text-foreground">{FREE_OFFER_COPY.short}</strong> {FREE_OFFER_COPY.example} {FREE_OFFER_COPY.expiry} Music uses credits except for paid subscribers&apos; included monthly instrumentals. AI images, video and narration use credits and are subject to plan rules. Montage Studio remains available within trial and post-trial limits even when credits are exhausted. Here's how to start:
+                <strong className="text-foreground">{FREE_OFFER_COPY.short}</strong> {FREE_OFFER_COPY.example} {FREE_OFFER_COPY.expiry} Music uses credits except for paid subscribers&apos; included monthly instrumentals. AI images, video and narration use credits and are subject to plan rules. Creator Studio remains available within trial and post-trial limits even when credits are exhausted. Here's how to start:
               </p>
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
                 <Link href="/editor" className="rounded-xl border border-border bg-background/40 p-4 transition-colors hover:border-primary/50">
                   <Scissors className="mb-2 h-5 w-5 text-primary" />
-                  <p className="text-sm font-semibold">Montage Studio</p>
+                  <p className="text-sm font-semibold">Creator Studio</p>
                   <p className="text-xs text-muted-foreground">Clean exports of your uploaded clips & music within your trial or post-trial limits.</p>
                 </Link>
                 <Link href="/generate?guide=starter&from=dashboard" className="rounded-xl border border-primary/40 bg-primary/[0.06] p-4 transition-colors hover:border-primary/70" data-testid="link-dashboard-starter">
@@ -350,7 +350,7 @@ export default function Dashboard() {
                 <Zap className="h-4 w-4 text-accent shrink-0" />
                 <span>
                   {stats.creditsRemaining === 0
-                    ? "AI generation needs credits — top up or upgrade to generate more. Clean Montage Studio exports remain available within applicable limits."
+                    ? "AI generation needs credits — top up or upgrade to generate more. Clean Creator Studio exports remain available within applicable limits."
                     : <>Running low — <strong>{stats.creditsRemaining}</strong> credit{stats.creditsRemaining === 1 ? "" : "s"} left (a 5s starter video costs {STARTER_TOTAL}).</>}
                 </span>
               </div>
@@ -431,7 +431,7 @@ export default function Dashboard() {
                             {j.prompt || (
                               j.jobType === "preview_backfill"
                                 ? "Optimized browser preview"
-                                : j.jobType === "editor_render" ? "Montage Studio export" : "AI video"
+                                : j.jobType === "editor_render" ? "Creator Studio export" : "AI video"
                             )}
                           </p>
                           <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -488,7 +488,7 @@ export default function Dashboard() {
                       lyricsText?: string | null;
                       manifest?: { chargeCredits?: boolean; chargeAmount?: number } | null;
                     };
-                    // Montage Studio (editor_render) is pure ffmpeg — show the ACTUAL
+                    // Creator Studio (editor_render) is pure ffmpeg — show the ACTUAL
                     // charge (0 when free on trial/subscription or within the monthly
                     // free allotment, else the flat overage), never the AI estimate.
                     const cost = j.jobType === "editor_render"

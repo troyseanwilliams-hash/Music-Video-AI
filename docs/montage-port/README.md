@@ -1,6 +1,6 @@
-# Montage Studio migration kit
+# Creator Studio migration kit
 
-This is a source migration kit for bringing the existing Montage Studio into a podcast application. It is **not a standalone installed app**. The destination app has not been inspected or modified. Source paths are preserved under `source/`; application-specific worker orchestration is under `reference/`.
+This is a source migration kit for bringing the existing Creator Studio into a podcast application. It is **not a standalone installed app**. The destination app has not been inspected or modified. Source paths are preserved under `source/`; application-specific worker orchestration is under `reference/`.
 
 ## Included functionality
 
@@ -19,7 +19,7 @@ Only implemented source is included. Do not assume proposed features, such as dr
 
 Give the receiving agent this instruction:
 
-> Port Montage Studio from this migration kit into this podcast project. First inspect this project's editor, auth, media storage, database, billing and job runner. Read README.md, INTEGRATION.md, DEPENDENCIES.json and FILES.json. Reuse the included editor and renderer instead of recreating them from screenshots. Preserve all implemented video/image overlays, independent timed music slots, fades, mute/restore behavior, saved manifests, text cards, border presets and centered 16:9 blurred framing. Adapt the explicit integration boundaries to this project's own accounts, media and billing. Do not replace the whole application, copy credentials, reuse another application's user IDs, create a second billing authority, or run source database migrations blindly. Review the plan before making destructive changes. Run the included regression tests and the acceptance checklist before declaring the port complete.
+> Port Creator Studio from this migration kit into this podcast project. First inspect this project's editor, auth, media storage, database, billing and job runner. Read README.md, INTEGRATION.md, DEPENDENCIES.json and FILES.json. Reuse the included editor and renderer instead of recreating them from screenshots. Preserve all implemented video/image overlays, independent timed music slots, fades, mute/restore behavior, saved manifests, text cards, border presets and centered 16:9 blurred framing. Adapt the explicit integration boundaries to this project's own accounts, media and billing. Do not replace the whole application, copy credentials, reuse another application's user IDs, create a second billing authority, or run source database migrations blindly. Review the plan before making destructive changes. Run the included regression tests and the acceptance checklist before declaring the port complete.
 
 ## Package layout
 

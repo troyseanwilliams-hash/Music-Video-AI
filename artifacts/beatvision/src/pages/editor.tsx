@@ -709,7 +709,7 @@ export default function Editor() {
   }, [isAuthenticated, fullAccess, trialActive, user?.subscriptionStatus, user?.isAdmin]);
 
   // Logged-out visitors get a teaser (below) instead of a redirect, so they can
-  // see what Montage Studio does and sign up.
+  // see what Creator Studio does and sign up.
 
   // Handoff from Gallery / job page: pre-load a finished video as the first
   // clip, OR (see HYBRID_REMIX_KIND) a "Guided Hybrid Lip Sync Remix"
@@ -725,7 +725,7 @@ export default function Editor() {
         if (!isValidImageRemixHandoff(init)) {
           toast({
             title: "Couldn't add the selected images",
-            description: "That image selection was incomplete or out of date, so Montage Studio opened empty instead.",
+            description: "That image selection was incomplete or out of date, so Creator Studio opened empty instead.",
             variant: "destructive",
           });
           return;
@@ -756,13 +756,13 @@ export default function Editor() {
       if (init?.kind === HYBRID_REMIX_KIND) {
         // Fail closed on any malformed/stale/corrupted payload rather than
         // crash the editor or silently build a nonsense timeline -- falls
-        // through to the normal empty Montage Studio state, with a toast so the
+        // through to the normal empty Creator Studio state, with a toast so the
         // user knows what happened instead of just wondering where their
         // video went.
         if (!isValidHybridHandoff(init)) {
           toast({
             title: "Couldn't prepare the hybrid video",
-            description: "That handoff looked incomplete or out of date, so Montage Studio opened empty instead. You can still build the timeline manually.",
+            description: "That handoff looked incomplete or out of date, so Creator Studio opened empty instead. You can still build the timeline manually.",
             variant: "destructive",
           });
           return;
@@ -838,7 +838,7 @@ export default function Editor() {
     } catch {
       toast({
         title: "Couldn't prepare the hybrid video",
-        description: "Something went wrong reading the handoff, so Montage Studio opened empty instead. You can still build the timeline manually.",
+        description: "Something went wrong reading the handoff, so Creator Studio opened empty instead. You can still build the timeline manually.",
         variant: "destructive",
       });
     }
@@ -875,7 +875,7 @@ export default function Editor() {
   function applyProject(project: { id: string; name: string; createdAt: string; updatedAt: string; lastVideoId?: string; manifest?: unknown }) {
     const manifest = project.manifest as Partial<ProjectManifest> | undefined;
     if (!manifest || manifest.version !== 1 || !Array.isArray(manifest.segments)) {
-      throw new Error("This project is missing a compatible Montage Studio manifest.");
+      throw new Error("This project is missing a compatible Creator Studio manifest.");
     }
     const restored = manifest.segments.map((segment) => {
       if (!segment || (segment.kind !== "video" && segment.kind !== "photo") || typeof segment.objectPath !== "string" || !segment.objectPath) {
@@ -1028,7 +1028,7 @@ export default function Editor() {
     } catch (error) { toast({ title: "Couldn't rename project", description: String((error as Error).message), variant: "destructive" }); }
   }
 
-  // Montage Studio is pure ffmpeg (no AI cost), so the real charge is the flat
+  // Creator Studio is pure ffmpeg (no AI cost), so the real charge is the flat
   // freemium overage (studio.ts): free on trial/subscription and within the
   // monthly free allotment, otherwise a small flat fee per export — never
   // size-scaled. Trial karaoke lyric burns cost the standard lyric add-on.
@@ -1715,7 +1715,7 @@ export default function Editor() {
     if (totalDuration > MAX_TIMELINE_SEC) {
       toast({
         title: "Project is too long",
-        description: `Montage Studio exports up to 30 minutes. Your timeline is ${formatTimelineTime(totalDuration)} — trim or remove clips to export.`,
+        description: `Creator Studio exports up to 30 minutes. Your timeline is ${formatTimelineTime(totalDuration)} — trim or remove clips to export.`,
         variant: "destructive",
       });
       return;
@@ -1745,7 +1745,7 @@ export default function Editor() {
       // never the generic "Editor export".
       const finalName =
         videoName.trim() ||
-        `Montage Studio · ${new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+        `Creator Studio · ${new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
       const body = {
         name: finalName,
         segments: ready.map((s) => ({
@@ -1846,7 +1846,7 @@ export default function Editor() {
       <div className="mb-6">
         <div className="inline-flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-xs font-semibold text-accent mb-3">
           <Sparkles className="h-3.5 w-3.5" />
-          Montage
+          Creator Studio
         </div>
         <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">
           Your cut, <span className="text-gradient-electric">your rules</span>
@@ -1905,7 +1905,7 @@ export default function Editor() {
       {trialActive && (
         <Card className="border-primary/30 bg-primary/5 mb-6 p-4 text-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            Montage Studio trial — {trialDaysLeft} day{trialDaysLeft === 1 ? "" : "s"} left. Your Montage Studio features remain available within trial limits even when generation credits run out: 1080p,
+            Creator Studio trial — {trialDaysLeft} day{trialDaysLeft === 1 ? "" : "s"} left. Your Creator Studio features remain available within trial limits even when generation credits run out: 1080p,
             no watermark, smooth transitions.{" "}
             {segments.length > 0 &&
               (estimatedCost > 0 ? (
@@ -2075,7 +2075,7 @@ export default function Editor() {
 
       {totalDuration > MAX_TIMELINE_SEC && (
         <div role="alert" className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive" data-testid="status-timeline-too-long">
-          Your timeline is {formatTimelineTime(totalDuration)}. Montage Studio exports up to 30:00 — trim or remove clips to export.
+          Your timeline is {formatTimelineTime(totalDuration)}. Creator Studio exports up to 30:00 — trim or remove clips to export.
         </div>
       )}
 
@@ -2304,7 +2304,7 @@ export default function Editor() {
       </Dialog>
 
       {/* Creator Studio tabs: Media / Overlay / Audio / Export. Panels stay mounted (hidden when inactive) so pending uploads and edits survive tab switches. */}
-      <section className="mb-6" aria-label="Montage Studio controls" data-testid="editor-tabs">
+      <section className="mb-6" aria-label="Creator Studio controls" data-testid="editor-tabs">
         <div className="sticky top-16 z-20 -mx-1 bg-background/85 px-1 py-1 backdrop-blur supports-[backdrop-filter]:bg-background/70">
           <EditorTabList
             active={activeTab}
@@ -2319,7 +2319,7 @@ export default function Editor() {
 
         <EditorTabPanel tab="media" active={activeTab}>
       <div className="mb-4">
-        <TutorialTip id="remixlab" title="Montage Studio basics">
+        <TutorialTip id="remixlab" title="Creator Studio basics">
           Add your clips and photos, add music (upload, Suno, or from My Music), then arrange them on the
           timeline. To turn a narrated podcast or story into a still-image video, add the full audio, arrange your images in story order,
           and set each image&apos;s hold time to match the narration. Making a commentary or reaction video? Add an overlay clip or text cards in
@@ -2901,7 +2901,7 @@ export default function Editor() {
           <div className="mb-4 flex flex-col gap-3 rounded-lg border border-primary/30 bg-primary/[0.06] p-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-medium">Photo animation is processing</p>
-              <p className="text-xs text-muted-foreground">Keep Montage Studio open. Your original photo will remain until you choose what to do with the finished clip.</p>
+              <p className="text-xs text-muted-foreground">Keep Creator Studio open. Your original photo will remain until you choose what to do with the finished clip.</p>
             </div>
             <Button asChild size="sm" variant="outline" className="min-h-11 shrink-0">
               <Link href={`/jobs/${pendingMontageAnimation.jobId}`}>View job</Link>

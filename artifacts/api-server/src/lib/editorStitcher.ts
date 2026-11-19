@@ -329,7 +329,7 @@ export async function stitchEditorTimeline(
         if (seg.kind === "photo") {
           const dur = Math.max(0.5, seg.durationSec || 3);
           if (plannedDurations.reduce((sum, value) => sum + value, 0) + dur > 1800.1)
-            throw new RangeError("Montage projects can be at most 30 minutes.");
+            throw new RangeError("Creator Studio projects can be at most 30 minutes.");
           await run([
             "-y",
             "-loop", "1", "-t", String(dur), "-i", raw,
@@ -723,7 +723,7 @@ export async function stitchEditorTimeline(
     }
 
     const mainDuration = await probeVideoDuration(current);
-    if (mainDuration > 1800.1) throw new Error("Montage projects can be at most 30 minutes. Shorten the main timeline.");
+    if (mainDuration > 1800.1) throw new Error("Creator Studio projects can be at most 30 minutes. Shorten the main timeline.");
     if (skipped.length && input.audioClips?.length)
       throw new Error("A main timeline clip could not be rendered. Replace it before exporting timed music.");
     if (input.overlays?.length || input.textCards?.length) {

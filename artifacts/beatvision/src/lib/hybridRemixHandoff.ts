@@ -1,6 +1,6 @@
 // "Guided Hybrid Lip Sync Remix": shared handoff contract + pure timeline
 // math between LipSyncPanel (prepares the handoff after a successful Lip
-// Sync result) and editor.tsx / Montage Studio (consumes it to prefill a
+// Sync result) and editor.tsx / Creator Studio (consumes it to prefill a
 // replacement timeline). Deliberately dependency-free (no React, no fetch)
 // so the timeline math is directly unit-testable.
 //

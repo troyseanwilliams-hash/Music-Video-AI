@@ -92,7 +92,7 @@ export function EditorTabList({
   return (
     <div
       role="tablist"
-      aria-label="Montage Studio sections"
+      aria-label="Creator Studio sections"
       aria-orientation="horizontal"
       onKeyDown={onKeyDown}
       className="grid grid-cols-4 gap-1 rounded-xl border border-border bg-muted/40 p-1"

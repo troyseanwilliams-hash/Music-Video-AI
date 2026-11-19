@@ -47,7 +47,7 @@ export async function renderEditorLayers(options: {
   onProgress?: (done: number, total: number) => void;
 }): Promise<string> {
   const { current, dir, width: W, height: H, fps, duration, overlays, textCards, run } = options;
-  if (!(duration > 0) || duration > 1800.1) throw new Error("Montage projects can be at most 30 minutes.");
+  if (!(duration > 0) || duration > 1800.1) throw new Error("Creator Studio projects can be at most 30 minutes.");
   const sources: { path: string; audio: boolean }[] = [];
   for (const [i, overlay] of overlays.entries()) {
     const ext = overlay.ext && /^[a-z0-9]{1,10}$/i.test(overlay.ext) ? overlay.ext : "mp4";

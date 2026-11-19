@@ -30,7 +30,7 @@ describe("pricing entitlement copy", () => {
       "AI video, image, and narration generation uses credits",
     );
     expect(pricingSource).toContain(
-      "Unlimited clean</strong> Montage Studio exports during your trial and while",
+      "Unlimited clean</strong> Creator Studio exports during your trial and while",
     );
     expect(pricingSource).toContain("FREE_OFFER_COPY.trialExtras");
     expect(pricingSource).toContain(

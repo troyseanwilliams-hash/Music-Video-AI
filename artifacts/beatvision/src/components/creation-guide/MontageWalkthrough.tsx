@@ -133,13 +133,13 @@ export function MontageWalkthrough(props: MontageWalkthroughProps) {
   return (
     <section
       className="sticky top-[4.5rem] z-20 mb-5 flex flex-col rounded-xl border border-primary/40 bg-background/95 shadow-lg backdrop-blur"
-      aria-label="Montage creation walkthrough"
+      aria-label="Creator Studio creation walkthrough"
       data-testid="panel-montage-walkthrough"
     >
       <div className="flex items-center gap-1 sm:gap-2 p-2 sm:p-3 md:p-4 shrink-0">
         <CircleHelp className="h-4 w-4 sm:h-5 sm:w-5 shrink-0 text-primary hidden sm:block" aria-hidden="true" />
         <p className="min-w-0 flex-1 text-xs md:text-sm font-semibold truncate pl-1 sm:pl-0">
-          Montage walkthrough <span className="font-normal text-muted-foreground whitespace-nowrap">· {activeIndex + 1} of {MONTAGE_GUIDE_STEPS.length}</span>
+          Creator Studio walkthrough <span className="font-normal text-muted-foreground whitespace-nowrap">· {activeIndex + 1} of {MONTAGE_GUIDE_STEPS.length}</span>
         </p>
         <Button
           type="button"

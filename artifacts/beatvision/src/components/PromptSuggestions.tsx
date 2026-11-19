@@ -161,7 +161,7 @@ export function PromptSuggestions({ mode, imageCount, onUseExample }: PromptSugg
         <p className="text-[11px] leading-relaxed text-muted-foreground">
           Free to use. Generated media costs credits. Have your own photos or clips?{" "}
           <Link href="/editor" className="font-medium text-primary underline-offset-2 hover:underline">
-            Try Montage Studio
+            Try Creator Studio
           </Link>{" "}
           with its trial.
         </p>

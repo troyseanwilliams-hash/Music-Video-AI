@@ -39,7 +39,7 @@ export function Navbar() {
 
   // Flat top bar links; Gallery sits next to Dashboard.
   const memberLinks = [
-    { href: "/editor", label: "Montage", icon: Video },
+    { href: "/editor", label: "Creator Studio", icon: Video },
     { href: "/generate", label: "Generate Video", icon: Wand2 },
     { href: "/images", label: "Create Images", icon: ImageIcon },
     { href: "/prompt-studio", label: "Prompt", icon: Sparkles },
@@ -48,7 +48,7 @@ export function Navbar() {
     { href: "/gallery", label: "Gallery", icon: Film },
   ];
   const publicLinks = [
-    { href: "/editor", label: "Montage", icon: Video },
+    { href: "/editor", label: "Creator Studio", icon: Video },
     { href: "/generate", label: "Generate Video", icon: Wand2 },
     { href: "/images", label: "Create Images", icon: ImageIcon },
     { href: "/explore", label: "Explore", icon: Compass },

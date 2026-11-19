@@ -9,7 +9,7 @@ import { affordableNextSteps, formatExpiry, getStarterCost, isAiEligible } from 
 const NEXT = {
   starter_video: { href: "/generate?guide=starter", icon: Wand2, label: "Another 5s video", cost: () => `${getStarterCost().total} credits` },
   images: { href: "/images", icon: ImageIcon, label: "Scene images", cost: () => `${GENERATED_IMAGE_CREDITS_PER_VISUAL} credits each` },
-  montage: { href: "/editor", icon: Film, label: "Montage Studio", cost: () => "Within your export limits" },
+  montage: { href: "/editor", icon: Film, label: "Creator Studio", cost: () => "Within your export limits" },
 } as const;
 
 /** Shown under a finished video: how to keep it, plus optional next creations that fit the balance. Nothing starts automatically. */

@@ -198,7 +198,7 @@ function genreCfg(genre: string): UseCaseConfig {
   };
 }
 
-// ── Montage Studio positioning: slideshow / CapCut-alternative pages (CTA → editor) ──
+// ── Creator Studio positioning: slideshow / CapCut-alternative pages (CTA → editor) ──
 
 export function SlideshowMakerLanding() {
   return <UseCaseLanding cfg={{
@@ -206,14 +206,14 @@ export function SlideshowMakerLanding() {
     metaDescription: "Turn your photos into a beautiful slideshow video with music and smooth transitions. Perfect for weddings, events, and work presentations — no editing skills needed. Free to start.",
     badge: "Photos in. A polished video out.",
     h1a: "Turn your photos into a", h1accent: "slideshow video", h1b: "",
-    subhead: "Drop in your photos and clips, pick a song, and Montage Studio builds a smooth, beat-timed slideshow with transitions — ready for weddings, events, work, social, or just for fun. No editing skills required.",
+    subhead: "Drop in your photos and clips, pick a song, and Creator Studio builds a smooth, beat-timed slideshow with transitions — ready for weddings, events, work, social, or just for fun. No editing skills required.",
     ctaLabel: "Make my slideshow", ctaHref: "/editor",
     steps: [
       { icon: Images, title: "Add your photos", body: "Drag in photos and video clips and arrange them on a simple timeline." },
       { icon: Music2, title: "Pick music & transitions", body: "Add a song (or generate one) and smooth crossfades — timed automatically." },
       { icon: Film, title: "Export & share", body: "Download your slideshow and one-click cuts for TikTok, Reels, and Shorts." },
     ],
-    seo: "AIBeatSync's Montage Studio is a fast, simple slideshow maker: turn photos into a polished video with music and smooth transitions. A friendlier, AI-powered alternative to complex editors like CapCut — great for wedding slideshows, event recaps, and work presentations. Start free.",
+    seo: "AIBeatSync's Creator Studio is a fast, simple slideshow maker: turn photos into a polished video with music and smooth transitions. A friendlier, AI-powered alternative to complex editors like CapCut — great for wedding slideshows, event recaps, and work presentations. Start free.",
   }} />;
 }
 
@@ -237,17 +237,17 @@ export function WeddingSlideshowLanding() {
 export function CapcutAlternativeLanding() {
   return <UseCaseLanding cfg={{
     docTitle: "A Simpler CapCut Alternative — AI Video & Slideshow Editor | AIBeatSync",
-    metaDescription: "Looking for a CapCut alternative? AIBeatSync's Montage Studio is a simple, AI-powered editor for slideshows, music videos, and social clips — timeline editing, music, transitions, and one-click social exports.",
+    metaDescription: "Looking for a CapCut alternative? AIBeatSync's Creator Studio is a simple, AI-powered editor for slideshows, music videos, and social clips — timeline editing, music, transitions, and one-click social exports.",
     badge: "The simple, AI-powered CapCut alternative.",
     h1a: "A simpler", h1accent: "CapCut alternative", h1b: "",
-    subhead: "Montage Studio gives you the essentials — a timeline, music, transitions, and one-click social exports — without the clutter. Build slideshows, music videos, and social clips, with AI to fill the gaps.",
+    subhead: "Creator Studio gives you the essentials — a timeline, music, transitions, and one-click social exports — without the clutter. Build slideshows, music videos, and social clips, with AI to fill the gaps.",
     ctaLabel: "Open the editor", ctaHref: "/editor",
     steps: [
       { icon: Upload, title: "Add photos or clips", body: "Bring your own media or AI-generated clips onto a clean, simple timeline." },
       { icon: Scissors, title: "Trim, arrange, transition", body: "Cut, reorder, add music and smooth crossfades — no learning curve." },
       { icon: Film, title: "Export everywhere", body: "One click gives you vertical TikTok/Reels/Shorts cuts and a shareable video." },
     ],
-    seo: "AIBeatSync's Montage Studio is a lightweight, AI-powered alternative to CapCut for slideshows, music videos, and social content. Timeline editing, music, smooth transitions, and one-click TikTok/Reels/Shorts exports — plus AI video and music generation built in. Free to start.",
+    seo: "AIBeatSync's Creator Studio is a lightweight, AI-powered alternative to CapCut for slideshows, music videos, and social content. Timeline editing, music, smooth transitions, and one-click TikTok/Reels/Shorts exports — plus AI video and music generation built in. Free to start.",
   }} />;
 }
 

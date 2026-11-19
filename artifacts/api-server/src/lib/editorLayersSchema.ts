@@ -67,7 +67,7 @@ export function validateEditorTiming(
     return sum + Math.max(minimum, s.durationSec - (s.trimStart ?? 0) - (s.trimEnd ?? 0));
   }, 0);
   if (total > MAX_EDITOR_SECONDS + 0.001)
-    ctx.addIssue({ code: "custom", message: "Montage projects can be at most 30 minutes." });
+    ctx.addIssue({ code: "custom", message: "Creator Studio projects can be at most 30 minutes." });
   for (const layer of input.overlays ?? []) {
     const active = (input.overlays ?? []).filter((other) =>
       other.startSec <= layer.startSec && other.startSec + other.durationSec > layer.startSec);

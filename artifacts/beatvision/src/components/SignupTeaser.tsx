@@ -28,10 +28,10 @@ const CONTENT: Record<"generate" | "remix", Content> = {
     ],
   },
   remix: {
-    badge: "Montage Studio",
+    badge: "Creator Studio",
     title: (
       <>
-        Build your own cut in the <span className="text-gradient-electric">Montage Studio</span>
+        Build your own cut in the <span className="text-gradient-electric">Creator Studio</span>
       </>
     ),
     sub: `Drop your own clips and photos on a timeline, sync music and export clean 1080p video. ${FREE_OFFER_COPY.short}`,

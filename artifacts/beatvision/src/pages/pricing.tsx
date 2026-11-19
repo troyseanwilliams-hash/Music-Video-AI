@@ -138,7 +138,7 @@ export default function Pricing() {
   useSEO({
     title: "Pricing",
     description:
-      "Choose a credit plan for AIBeatSync music, images, narration, AI video, and clean Montage Studio exports.",
+      "Choose a credit plan for AIBeatSync music, images, narration, AI video, and clean Creator Studio exports.",
     canonical: "/pricing",
   });
 
@@ -406,7 +406,7 @@ export default function Pricing() {
         </h1>
         <p className="text-base leading-7 text-muted-foreground max-w-xl mx-auto sm:text-lg">
           Pick the credits that fit your output. Plans cover credit-based music, images, narration, and AI video,
-          plus clean Montage Studio exports. Plan credits refresh with your billing cycle; top-ups never expire.
+          plus clean Creator Studio exports. Plan credits refresh with your billing cycle; top-ups never expire.
         </p>
         <div className="mx-auto mt-5 flex max-w-md items-start gap-2 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-3 text-left text-sm font-medium sm:inline-flex sm:max-w-none sm:items-center sm:rounded-full sm:py-2">
           <Sparkles className="h-4 w-4 text-primary" />
@@ -712,7 +712,7 @@ export default function Pricing() {
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                      <span>
-                       <strong>Unlimited clean</strong> Montage Studio exports during your trial and while
+                       <strong>Unlimited clean</strong> Creator Studio exports during your trial and while
                        subscribed — expired non-paid accounts get 10 free exports per calendar month, then 15 credits each
                      </span>
                   </li>
@@ -720,7 +720,7 @@ export default function Pricing() {
                     <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                      <span>
                        Trial karaoke lyric-burn exports cost credits; Auto-sync aligns cost credits per run.
-                       Paid subscribers retain their plan&apos;s Montage Studio features
+                       Paid subscribers retain their plan&apos;s Creator Studio features
                      </span>
                   </li>
                   <li className="flex items-start gap-2">

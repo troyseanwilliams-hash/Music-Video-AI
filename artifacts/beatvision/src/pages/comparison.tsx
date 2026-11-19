@@ -37,7 +37,7 @@ const rows = [
   },
   {
     label: "Editor & Sync",
-    beat: "Beat/energy/structure analysis; Montage Studio for ordered photos/clips, narration timing, music sync, transitions, and live preview",
+    beat: "Beat/energy/structure analysis; Creator Studio for ordered photos/clips, narration timing, music sync, transitions, and live preview",
     pod: "Narration, audio mixing, and auto-captioned episode workflows",
     other: "Manual cutting, separate timeline tools, or rigid beat-matching",
   },
@@ -199,7 +199,7 @@ export default function Comparison() {
               },
               {
                 icon: Scissors,
-                title: "Montage Studio",
+                title: "Creator Studio",
                 body: "Order photos and clips, handle narration timing and music sync, and add transitions with live preview.",
               },
               {

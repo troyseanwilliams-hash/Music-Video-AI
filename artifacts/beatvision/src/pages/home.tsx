@@ -98,7 +98,7 @@ export default function Home() {
                 </h1>
 
                 <p className="text-base sm:text-lg md:text-xl text-white/60 mb-8 max-w-xl lg:mx-0 font-light leading-relaxed">
-                  Upload a track and pick how you want to start. AI generation creates new visuals from prompts and uses credits. Montage Studio edits your own clips and photos on a timeline.
+                  Upload a track and pick how you want to start. AI generation creates new visuals from prompts and uses credits. Creator Studio edits your own clips and photos on a timeline.
                 </p>
 
                 <div className="grid w-full gap-3 sm:grid-cols-3" data-testid="group-creation-paths">
@@ -127,7 +127,7 @@ export default function Home() {
                       {g.label}
                     </Link>
                   ))}
-                  <span className="text-white/40">Prefer your own footage? <Link href={isAuthenticated ? "/editor" : buildAuthUrl("/register", { returnTo: "/editor" })} onClick={() => trackCTA("hero_guides", "open_editor", "Montage Studio")} className="underline underline-offset-4 hover:text-white" data-testid="link-hero-montage">Montage Studio</Link></span>
+                  <span className="text-white/40">Prefer your own footage? <Link href={isAuthenticated ? "/editor" : buildAuthUrl("/register", { returnTo: "/editor" })} onClick={() => trackCTA("hero_guides", "open_editor", "Creator Studio")} className="underline underline-offset-4 hover:text-white" data-testid="link-hero-montage">Creator Studio</Link></span>
                 </div>
 
                 {!isAuthenticated && (
@@ -460,12 +460,12 @@ export default function Home() {
                 </div>
                 <div className="space-y-6">
                   <div>
-                    <h4 className="text-white font-semibold mb-2">Montage Studio</h4>
+                    <h4 className="text-white font-semibold mb-2">Creator Studio</h4>
                     <p className="text-sm text-white/50 leading-relaxed">A built-in timeline editor to trim, transition, and finalize your own clips and photos. No AI generation required.</p>
                   </div>
                   <div>
                     <h4 className="text-white font-semibold mb-2">1080p Exports, 30-Minute Timelines</h4>
-                    <p className="text-sm text-white/50 leading-relaxed">Montage Studio exports at up to 1080p with timelines up to 30 minutes, including commentary overlays and text cards. The 30-minute limit is for Montage Studio only; AI video generation keeps its own separate length limits.</p>
+                    <p className="text-sm text-white/50 leading-relaxed">Creator Studio exports at up to 1080p with timelines up to 30 minutes, including commentary overlays and text cards. The 30-minute limit is for Creator Studio only; AI video generation keeps its own separate length limits.</p>
                   </div>
                 </div>
               </div>
@@ -483,7 +483,7 @@ export default function Home() {
               Layer videos, images, and commentary—right on cue
             </h2>
             <p className="mt-6 max-w-3xl text-lg leading-relaxed text-white/70">
-              Build reaction videos, video-podcast episodes, and commentary content in Montage Studio.
+              Build reaction videos, video-podcast episodes, and commentary content in Creator Studio.
               Add multiple video clips, static images, and text cards over your main video.
               Give each overlay its own start time and duration—for reactions, screenshots, product
               photos, and supporting visuals that appear exactly when you need them.
@@ -513,7 +513,7 @@ export default function Home() {
               </Link>
             </div>
             <p className="mt-4 text-sm text-white/50">
-              The 30-minute limit applies to Montage Studio only. AI video generation has separate limits.
+              The 30-minute limit applies to Creator Studio only. AI video generation has separate limits.
             </p>
           </div>
         </section>
@@ -594,16 +594,16 @@ export default function Home() {
               Ready for your next release?
             </h2>
             <p className="text-xl text-white/50 mb-12">
-              Generate new AI visuals with credits, or edit your own footage in Montage Studio.
+              Generate new AI visuals with credits, or edit your own footage in Creator Studio.
             </p>
             <p className="text-sm text-white/60 mb-4">
-              <Link href="/whats-new" className="underline underline-offset-4 hover:text-white" data-testid="link-home-whats-new">What's new (November 9, 2026): commentary and reaction overlays in Montage Studio</Link>
+              <Link href="/whats-new" className="underline underline-offset-4 hover:text-white" data-testid="link-home-whats-new">What's new (November 9, 2026): commentary and reaction overlays in Creator Studio</Link>
             </p>
             <p className="text-sm text-white/60 mb-6">{FREE_OFFER_COPY.short} {FREE_OFFER_COPY.example} {FREE_OFFER_COPY.expiry} {FREE_OFFER_COPY.credits}</p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-5">
-              <Link href={isAuthenticated ? "/editor" : buildAuthUrl("/register", { returnTo: "/editor" })} onClick={() => trackCTA("footer", "open_montage_studio", "Open Montage Studio")}>
+              <Link href={isAuthenticated ? "/editor" : buildAuthUrl("/register", { returnTo: "/editor" })} onClick={() => trackCTA("footer", "open_montage_studio", "Open Creator Studio")}>
                 <Button size="lg" className="w-full sm:w-auto text-lg h-14 px-10 bg-white text-black hover:bg-white/90 rounded-full font-semibold">
-                  Open Montage Studio
+                  Open Creator Studio
                 </Button>
               </Link>
               <Link href="/pricing" onClick={() => trackCTA("footer", "view_pricing", "View pricing plans")}>

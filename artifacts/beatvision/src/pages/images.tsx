@@ -155,7 +155,7 @@ export default function CreateImages() {
   return (
     <div className="container mx-auto max-w-4xl px-4 py-8 sm:py-12">
       <h1 className="text-3xl font-bold">Create Images</h1>
-      <p className="mt-2 text-muted-foreground">Generate standalone images for your gallery and Montage Studio. No audio or video render needed.</p>
+      <p className="mt-2 text-muted-foreground">Generate standalone images for your gallery and Creator Studio. No audio or video render needed.</p>
       <div className="mt-5 flex flex-wrap gap-3 text-sm">
         <Link href="/generate" className="inline-flex min-h-11 items-center text-primary underline">Generate Video</Link>
         <Link href="/gallery?view=images" className="inline-flex min-h-11 items-center text-primary underline">View image gallery</Link>
