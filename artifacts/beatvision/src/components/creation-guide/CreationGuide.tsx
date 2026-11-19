@@ -84,19 +84,19 @@ export function CreationGuide() {
 
       <Dialog open={isOpen} onOpenChange={handleOpenChange}>
         <DialogContent
-          className="top-auto bottom-0 translate-y-0 sm:top-[50%] sm:bottom-auto sm:-translate-y-1/2 rounded-b-none sm:rounded-xl sm:max-w-[600px] max-h-[90dvh] flex flex-col p-0 overflow-hidden w-full m-0 [&>button]:h-11 [&>button]:w-11 [&>button]:right-2 [&>button]:top-2 [&>button]:flex [&>button]:items-center [&>button]:justify-center [&>button]:bg-background/50 [&>button]:rounded-full [&>button]:backdrop-blur-sm sm:[&>button]:bg-transparent sm:[&>button]:backdrop-blur-none"
+          className="top-auto bottom-0 translate-y-0 sm:top-[50%] sm:bottom-auto sm:-translate-y-1/2 rounded-b-none sm:rounded-xl sm:max-w-[600px] max-h-[90dvh] flex flex-col gap-0 p-0 overflow-hidden w-full m-0 [&>button]:h-11 [&>button]:w-11 [&>button]:right-2 [&>button]:top-2 [&>button]:flex [&>button]:items-center [&>button]:justify-center [&>button]:bg-background/50 [&>button]:rounded-full [&>button]:backdrop-blur-sm sm:[&>button]:bg-transparent sm:[&>button]:backdrop-blur-none"
           data-testid="dialog-creation-guide"
         >
           <div className="p-4 sm:p-6 pb-2 sm:pb-2 shrink-0 [@media(max-height:500px)]:p-3 [@media(max-height:500px)]:pb-0">
-            <DialogHeader>
+            <DialogHeader className="text-left">
               <DialogTitle className="text-xl sm:text-2xl font-bold pr-10 [@media(max-height:500px)]:text-lg">What would you like to create?</DialogTitle>
               <DialogDescription className="text-sm sm:text-base mt-1.5 sm:mt-2 [@media(max-height:500px)]:sr-only">
-                 Choose what you want to make. The guide is free; {FREE_OFFER_COPY.short} {FREE_OFFER_COPY.example} {FREE_OFFER_COPY.expiry} Generation uses credits and existing plan rules.
+                 Choose what you want to make. The guide is free; generation uses credits and your plan rules.
               </DialogDescription>
             </DialogHeader>
           </div>
 
-          <div className="grid min-h-0 gap-3 p-4 pt-2 sm:p-6 sm:pt-2 overflow-y-auto">
+          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-4 pt-2 sm:p-6 sm:pt-2" data-testid="creation-goal-list">
             <GoalCard
               title="Montage Video"
               badge="Recommended"
@@ -172,7 +172,7 @@ function GoalCard({ title, badge, icon, description, onClick, testId }: GoalCard
   return (
     <button
       onClick={onClick}
-      className="flex items-start gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl border bg-card text-card-foreground shadow-sm hover:border-primary hover:ring-1 hover:ring-primary transition-all text-left group w-full"
+      className="flex h-auto shrink-0 items-start gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl border bg-card text-card-foreground shadow-sm hover:border-primary hover:ring-1 hover:ring-primary transition-all text-left group w-full"
       data-testid={testId}
     >
       <div className="p-2 sm:p-3 bg-primary/10 rounded-lg text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors shrink-0 flex items-center justify-center min-w-[40px] min-h-[40px] sm:min-w-[48px] sm:min-h-[48px]">
