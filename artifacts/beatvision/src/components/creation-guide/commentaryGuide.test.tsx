@@ -26,6 +26,22 @@ describe("commentary guide content", () => {
     expect(all).not.toMatch(/Visual Montage/);
     expect(all).not.toMatch(/all AI generation is free/i);
   });
+  it("describes the current tabbed Creator Studio controls", () => {
+    const tutorial = JSON.stringify(COMMENTARY_STEPS);
+    const walkthrough = JSON.stringify(COMMENTARY_GUIDE_STEPS);
+    expect(tutorial).toContain("Media tab");
+    expect(tutorial).toContain("Overlay tab");
+    expect(tutorial).toContain("timed music clips");
+    expect(tutorial).toContain("fade-in");
+    expect(tutorial).toContain("muted");
+    expect(walkthrough).toContain("Media tab");
+    expect(walkthrough).toContain("Overlay tab");
+    expect(tutorial).toContain("Center 16:9");
+    expect(tutorial).toContain("border");
+    expect(tutorial).toContain("Export");
+    expect(tutorial).not.toContain("below the preview");
+    expect(walkthrough).not.toContain("main video is never changed");
+  });
   it("has a single dated release that links to real routes", () => {
     expect(RELEASE_NOTES).toHaveLength(1);
     expect(RELEASE_NOTES[0].date).toBe("November 9, 2026");

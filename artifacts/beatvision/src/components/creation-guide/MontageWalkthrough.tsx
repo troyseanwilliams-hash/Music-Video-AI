@@ -26,18 +26,18 @@ interface MontageWalkthroughProps {
 
 const COPY: Record<MontageGuideStep, { title: string; body: string; target: string }> = {
   audio: {
-    title: "Add a soundtrack (optional)",
-    body: "Choose your own track, a Suno link, or My Music. You can also continue without audio.",
+    title: "Add music (optional)",
+    body: "In Audio, add continuous background music or place several timed music clips at different points. Set fade-in and fade-out for each timed clip; the main video audio is muted during its slot and returns when the slot ends. You can also continue without adding music.",
     target: "audio",
   },
   media: {
-    title: "Add ready photos or clips",
-    body: "Use files that are ready now, or select finished work from Gallery or Generated images. Wait for uploads to finish before exporting.",
+    title: "Add photos or clips",
+    body: "In Media, upload your own files or choose finished work from Gallery or Generated images. Wait for uploads to finish before exporting.",
     target: "media",
   },
   arrange: {
-    title: "Arrange the real timeline",
-    body: "Drag items into order, then select one to adjust its photo hold time or video trim. Your draft stays exactly as you leave it.",
+    title: "Arrange the timeline",
+    body: "The timeline stays visible as you work across tabs. Drag media into order, adjust photo hold times or video trims, and use Overlay for multiple timed video/image layers or text cards. Save to keep your arrangement.",
     target: "timeline",
   },
   preview: {
@@ -47,7 +47,7 @@ const COPY: Record<MontageGuideStep, { title: string; body: string; target: stri
   },
   export: {
     title: "Review, then export when ready",
-    body: "Check the estimate below and confirm content rights. Exporting starts a real render; this guide will never click it or spend credits for you.",
+    body: "In Export, choose your name, resolution and orientation. Check the estimate and confirm content rights. Exporting starts a real render; this guide will never click it or spend credits for you.",
     target: "export",
   },
 };

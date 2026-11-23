@@ -52,14 +52,14 @@ const EXAMPLE_NARRATIVE_SCRIPT = [
 ].join("\n");
 
 export const COMMENTARY_STEPS = [
-  { title: "Add your main video", body: "Open Creator Studio and add your episode or source video as the main track. Overlays & text cards appears below the preview once the timeline has media." },
-  { title: "Add an overlay clip", body: "In Overlays & text cards, choose Upload overlay clip or Use existing clip (from this project or your Gallery). New items start at the playhead." },
-  { title: "Commentary or Reaction", body: "Commentary fills the frame with your clip centred over a blurred copy. Reaction right or Reaction left makes a smaller window: drag it in the preview to move it, and drag its corner handle to resize." },
-  { title: "Set the timing", body: "Use Starts at, Duration and Skip into clip, or press At playhead. If an overlay runs too long, End with main video shortens it to fit the timeline. You can also drag bars along the layer timeline." },
-  { title: "Balance the sound", body: "Each overlay has its own Overlay sound volume, with quick presets and a slider. The main video's audio is never changed." },
-  { title: "Add text cards", body: "Add text card for titles and fact cards. Text does not wrap automatically: press Enter where you want each new line, and the export matches the preview." },
-  { title: "Save your project", body: "Save or Save as keeps overlays and text cards with the project, so you can reopen it later." },
-  { title: "Review and export", body: "Choose 720p or 1080p, check the export estimate, confirm content rights, then Export & render MP4." },
+  { title: "Add your main video", body: "In the Media tab, add your episode or source video as the main track. The preview and timeline stay visible while you switch between tabs." },
+  { title: "Add overlays", body: "Open the Overlay tab to upload video clips, add static images, choose existing project or Gallery media, or create text cards. You can layer multiple items over the main video." },
+  { title: "Choose an overlay layout", body: "Commentary centers your clip over a blurred copy. Reaction layouts place a smaller clip on the left or right; drag it in the preview to reposition or resize it. Center 16:9 keeps the overlay centered and blurs the sides, and decorative border presets frame video and image overlays." },
+  { title: "Set overlay timing", body: "Select an overlay to set its start time and duration, or place it at the playhead. Drag its bar in the timeline to change when it appears. Each overlay keeps its own timing when you save the project." },
+  { title: "Add background or timed music", body: "In Audio, Background music sets a continuous soundtrack. For music only during selected moments, add multiple timed music clips and set each clip's start and duration. Set fade-in and fade-out times; the underlying video audio is muted during each music slot and returns when it ends." },
+  { title: "Mix audio and add text", body: "Adjust background music and overlay sound separately. Add text cards in Overlay for titles or facts; press Enter wherever you want a line break. Preview your changes before exporting." },
+  { title: "Save your project", body: "Use Save or Save as to keep your media arrangement, overlay timing and styles, and timed music clips together so you can reopen the edit later." },
+  { title: "Review and export", body: "Open Export, choose your video name, resolution and orientation, then review the estimate and confirm you have rights to the content. Export & render MP4 starts the render." },
 ];
 
 function ExampleScriptCard({
