@@ -46,8 +46,12 @@ export const AudioClipSchema = z.object({
   volume: unit,
   fadeInSec: z.number().finite().min(0).max(MAX_EDITOR_SECONDS).optional(),
   fadeOutSec: z.number().finite().min(0).max(MAX_EDITOR_SECONDS).optional(),
-}).strict().refine((c) => (c.fadeInSec ?? 0) + (c.fadeOutSec ?? 0) <= c.durationSec,
-  { message: "Music fades must fit within the clip duration." });
+}).strict().superRefine((clip, ctx) => {
+  for (const key of ["fadeInSec", "fadeOutSec"] as const) {
+    if ((clip[key] ?? 0) > clip.durationSec)
+      ctx.addIssue({ code: "custom", path: [key], message: "Music fades cannot be longer than the clip." });
+  }
+});
 export const editorLayersShape = {
   audioClips: z.array(AudioClipSchema).max(100).optional(),
   overlays: z.array(VideoOverlaySchema).max(100).optional(),

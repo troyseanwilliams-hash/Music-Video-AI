@@ -1796,8 +1796,16 @@ components:
         durationSec: { type: number, exclusiveMinimum: 0, maximum: 1800 }
         trimStart: { type: number, minimum: 0, maximum: 1800 }
         volume: { type: number, minimum: 0, maximum: 1 }
-        fadeInSec: { type: number, minimum: 0, maximum: 1800 }
-        fadeOutSec: { type: number, minimum: 0, maximum: 1800 }
+        fadeInSec:
+          type: number
+          minimum: 0
+          maximum: 1800
+          description: Linear fade-in in seconds, at most durationSec. Omitted or zero disables it.
+        fadeOutSec:
+          type: number
+          minimum: 0
+          maximum: 1800
+          description: Linear fade-out in seconds, at most durationSec. Overlapping fades multiply. Omitted or zero disables it.
     StudioMusic:
       type: object
       additionalProperties: false

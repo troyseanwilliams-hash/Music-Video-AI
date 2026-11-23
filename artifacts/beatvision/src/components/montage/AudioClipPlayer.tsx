@@ -22,7 +22,7 @@ function ClipAudio({
   useEffect(() => {
     const a = ref.current;
     if (!a) return undefined;
-    a.volume = clamp(gain, 0, 1);
+    a.volume = Number.isFinite(gain) ? clamp(gain, 0, 1) : 0;
     a.muted = clip.volume <= 0;
     if (!active || !playing) {
       if (!a.paused) a.pause();

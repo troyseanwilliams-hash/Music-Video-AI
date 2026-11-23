@@ -16,13 +16,14 @@ const fmt = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart
 
 /** Number field that keeps a text draft so partial input like "1." is not lost. */
 function SecondsField({
-  label, value, onCommit, testId, min = 0, step = 0.1,
+  label, value, onCommit, testId, min = 0, max, step = 0.1,
 }: {
   label: string;
   value: number;
   onCommit: (v: number) => void;
   testId: string;
   min?: number;
+  max?: number;
   step?: number;
 }) {
   const [draft, setDraft] = useState(String(value));
@@ -34,6 +35,7 @@ function SecondsField({
         type="number"
         inputMode="decimal"
         min={min}
+        max={max}
         step={step}
         value={draft}
         onChange={(e) => {
@@ -159,7 +161,15 @@ export function AudioClipPanel({
   }
 
   const update = (id: string, patch: Partial<AudioClip>) =>
-    setClips((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+    setClips((prev) => prev.map((c) => {
+      if (c.id !== id) return c;
+      const next = { ...c, ...patch };
+      if (patch.durationSec !== undefined) {
+        for (const key of ["fadeInSec", "fadeOutSec"] as const)
+          if (next[key] !== undefined) next[key] = Math.min(next[key]!, Math.max(0, next.durationSec));
+      }
+      return next;
+    }));
   const duplicate = (c: AudioClip) => {
     if (clips.length >= MAX_AUDIO_CLIPS) return;
     const startSec = Math.round(Math.min(Math.max(0, total - c.durationSec), c.startSec + c.durationSec) * 100) / 100;
@@ -286,10 +296,10 @@ export function AudioClipPanel({
                   </div>
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2">
-                  <SecondsField label="Fade in (s)" value={c.fadeInSec ?? 0} onCommit={(v) => update(c.id, { fadeInSec: Math.max(0, v) })} testId={`input-audio-clip-fade-in-${c.id}`} />
-                  <SecondsField label="Fade out (s)" value={c.fadeOutSec ?? 0} onCommit={(v) => update(c.id, { fadeOutSec: Math.max(0, v) })} testId={`input-audio-clip-fade-out-${c.id}`} />
+                  <SecondsField label="Fade in (s)" value={c.fadeInSec ?? 0} max={c.durationSec} onCommit={(v) => update(c.id, { fadeInSec: Math.max(0, Math.min(v, c.durationSec)) })} testId={`input-audio-clip-fade-in-${c.id}`} />
+                  <SecondsField label="Fade out (s)" value={c.fadeOutSec ?? 0} max={c.durationSec} onCommit={(v) => update(c.id, { fadeOutSec: Math.max(0, Math.min(v, c.durationSec)) })} testId={`input-audio-clip-fade-out-${c.id}`} />
                 </div>
-                <p className="mt-1 text-[11px] text-muted-foreground">Set 0 for no fade. Fades are saved and included in the final video. Underlying audio stays muted throughout the music slot.</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">0 means no fade. Each fade is limited to the clip length; overlapping fades combine. Fades are saved and included in the final video. Underlying audio stays muted throughout the music slot.</p>
                 <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
                   <Button type="button" size="sm" variant="outline" disabled={clips.length >= MAX_AUDIO_CLIPS} onClick={(e) => { e.stopPropagation(); duplicate(c); }} data-testid={`button-another-music-slot-${c.id}`}>
                     <Copy className="mr-1 h-3.5 w-3.5" /> Add another time slot

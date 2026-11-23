@@ -208,11 +208,13 @@ export interface StudioAudioClip {
      */
   volume: number;
   /**
+     * Linear fade-in in seconds, at most durationSec. Omitted or zero disables it.
      * @minimum 0
      * @maximum 1800
      */
   fadeInSec?: number;
   /**
+     * Linear fade-out in seconds, at most durationSec. Overlapping fades multiply. Omitted or zero disables it.
      * @minimum 0
      * @maximum 1800
      */

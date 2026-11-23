@@ -7,6 +7,10 @@ import { z } from "zod";
 import { stitchEditorTimeline } from "./editorStitcher.js";
 import { layerChunkBoundaries, type EditorOverlayInput } from "./editorLayers.js";
 import { editorLayersShape, validateEditorTiming } from "./editorLayersSchema.js";
+import { renderEditorAudioClips } from "./editorAudioClips.js";
+// Runtime import keeps the sibling worker outside this package's TS rootDir.
+const workerAudioPath = new URL("../../../worker/src/lib/editorAudioClips.ts", import.meta.url).pathname;
+const { renderEditorAudioClips: renderWorkerAudioClips }: typeof import("./editorAudioClips.js") = await import(workerAudioPath);
 
 function command(program: string, args: string[], input?: Buffer): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -78,9 +82,12 @@ describe("Montage layer contracts", () => {
     ] };
     expect(timingSchema.parse(JSON.parse(JSON.stringify(input)))).toEqual(input);
     for (const patch of [{ durationSec: 0 }, { startSec: -1 }, { trimStart: -1 },
-      { volume: 2 }, { startSec: 19 }, { startSec: NaN }]) {
+      { volume: 2 }, { startSec: 19 }, { startSec: NaN },
+      { fadeInSec: -1 }, { fadeOutSec: 6 }, { fadeInSec: NaN }, { fadeOutSec: Infinity }, { fadeInSec: null }]) {
       expect(timingSchema.safeParse({ ...input, audioClips: [{ ...clip, ...patch }] }).success).toBe(false);
     }
+    const faded = { ...input, audioClips: [{ ...clip, fadeInSec: 5, fadeOutSec: 5 }] };
+    expect(timingSchema.parse(JSON.parse(JSON.stringify(faded)))).toEqual(faded);
     expect(timingSchema.safeParse({ ...input, audioClips: Array.from({ length: 5 }, (_, i) => ({ ...clip, id: String(i) })) }).success).toBe(false);
     expect(timingSchema.safeParse({ ...input, audioClips: Array.from({ length: 101 }, (_, i) => ({ ...clip, id: String(i) })) }).success).toBe(false);
   });
@@ -165,6 +172,34 @@ describe("Montage layer exports", () => {
       expect(await amplitude(path, 1.2, 440)).toBeLessThan(0.005);
     } finally { await rm(dir, { recursive: true, force: true }); }
   }, 120_000);
+  it.each([["API", renderEditorAudioClips], ["worker", renderWorkerAudioClips]] as const)(
+    "%s keeps fade envelopes continuous across 30-second and clip-edge windows", async (_name, render) => {
+      const dir = await mkdtemp(join(tmpdir(), "music-fades-"));
+      try {
+        const current = join(dir, "main.mp4");
+        await writeFile(current, await fixture(36, "blue", 440));
+        const song = await command("ffmpeg", ["-v", "error", "-f", "lavfi", "-i",
+          "sine=frequency=880:sample_rate=48000:duration=14", "-f", "wav", "pipe:1"]);
+        const clip = { id: "fade", name: "Fade", objectPath: "/objects/song", buffer: song, ext: "wav",
+          startSec: 26, durationSec: 8, trimStart: 3, volume: 0.6, fadeInSec: 6, fadeOutSec: 6 };
+        const options = { current, dir, duration: 36,
+          clips: [clip, { ...clip, id: "edge", startSec: 29, durationSec: 2, fadeInSec: 0, fadeOutSec: 0, volume: 0 }],
+          run: async (args: string[]) => { await command("ffmpeg", ["-v", "error", ...args]); },
+          hasAudio: async () => true, probeDuration: async () => 14 };
+        const output = await render(options);
+        // 0.2s sample windows: expected gain at their midpoint, with AAC tolerance.
+        for (const t of [26.2, 28.7, 29.1, 29.7, 30.1, 30.7, 31.1, 33.5]) {
+          const midpoint = t + 0.1;
+          const gain = 0.6 * Math.min(1, (midpoint - 26) / 6) * Math.min(1, (34 - midpoint) / 6);
+          expect(await amplitude(output, t, 880)).toBeCloseTo(0.0625 * gain, 2);
+        }
+        for (const t of [25, 34.5]) expect(await amplitude(output, t, 880)).toBeLessThan(0.001);
+        for (const fade of [-1, 9, NaN, Infinity]) {
+          await expect(render({ ...options, clips: [{ ...clip, fadeInSec: fade }] })).rejects.toThrow("fades");
+        }
+      } finally { await rm(dir, { recursive: true, force: true }); }
+    }, 120_000,
+  );
   it("mutes underlying audio until the last overlapping music clip ends, then restores it", async () => {
     const dir = await mkdtemp(join(tmpdir(), "music-mix-test-"));
     try {

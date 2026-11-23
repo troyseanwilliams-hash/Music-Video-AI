@@ -25,9 +25,10 @@ export async function renderEditorAudioClips(options: {
   const boundaries = new Set([0, duration]);
   for (let t = 30; t < duration; t += 30) boundaries.add(t);
   for (const [i, clip] of clips.entries()) {
-    const fadeIn = clip.fadeInSec ?? 0, fadeOut = clip.fadeOutSec ?? 0;
-    if (![fadeIn, fadeOut].every(Number.isFinite) || fadeIn < 0 || fadeOut < 0 || fadeIn + fadeOut > clip.durationSec)
-      throw new Error("Music fades must fit within the clip duration.");
+    for (const fade of [clip.fadeInSec, clip.fadeOutSec]) {
+      if (fade !== undefined && (!Number.isFinite(fade) || fade < 0 || fade > clip.durationSec))
+        throw new Error("Music fades must be between zero and the clip length.");
+    }
     if (![clip.startSec, clip.durationSec, clip.trimStart, clip.volume].every(Number.isFinite)
       || clip.startSec < 0 || clip.durationSec <= 0 || clip.trimStart < 0
       || clip.volume < 0 || clip.volume > 1 || clip.startSec + clip.durationSec > duration + 0.05)
@@ -57,13 +58,12 @@ export async function renderEditorAudioClips(options: {
     const labels = ["[base]"];
     for (const [j, { clip, index }] of active.entries()) {
       args.push("-ss", String(clip.trimStart + start - clip.startSec), "-i", sources[index]!);
-      // Shift PTS to clip-local time so fades continue across render windows.
-      const offset = start - clip.startSec;
+      // Evaluate fades on clip-local time, not window-local or source-trim time.
       const fades = [
-        clip.fadeInSec ? `afade=t=in:st=0:d=${clip.fadeInSec}` : "",
-        clip.fadeOutSec ? `afade=t=out:st=${clip.durationSec - clip.fadeOutSec}:d=${clip.fadeOutSec}` : "",
-      ].filter(Boolean);
-      graph.push(`[${j + 1}:a]atrim=duration=${length},asetpts=PTS-STARTPTS+${offset}/TB,aresample=48000,${fades.length ? fades.join(",") + "," : ""}asetpts=PTS-STARTPTS,volume=${clip.volume},apad,atrim=duration=${length}[a${j}]`);
+        ...(clip.fadeInSec ? [`afade=t=in:st=0:d=${clip.fadeInSec}:curve=tri`] : []),
+        ...(clip.fadeOutSec ? [`afade=t=out:st=${clip.durationSec - clip.fadeOutSec}:d=${clip.fadeOutSec}:curve=tri`] : []),
+      ];
+      graph.push(`[${j + 1}:a]atrim=duration=${length},asetpts=PTS-STARTPTS+${start - clip.startSec}/TB,aresample=48000,${fades.length ? fades.join(",") + "," : ""}asetpts=PTS-STARTPTS,volume=${clip.volume},apad,atrim=duration=${length}[a${j}]`);
       labels.push(`[a${j}]`);
     }
     const mixed = active.length ? "mixed" : "base";

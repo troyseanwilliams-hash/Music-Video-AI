@@ -30,7 +30,28 @@ describe("audio clip data", () => {
     expect(audioClipGain(c, 15)).toBeCloseTo(0.3);
     expect(audioClipGain(c, 16)).toBe(0);
     expect(validateAudioClips([c], 20)).toEqual([]);
-    expect(validateAudioClips([{ ...c, fadeOutSec: 5 }], 20).length).toBeGreaterThan(0);
+    expect(validateAudioClips([{ ...c, fadeOutSec: 7 }], 20).length).toBeGreaterThan(0);
+  });
+  it("roundtrips optional fades and rejects malformed or excessive fades", () => {
+    const c = clip({ fadeInSec: 2, fadeOutSec: 4 });
+    expect(normalizeAudioClipList(JSON.parse(JSON.stringify(serializeAudioClips([c]))))).toEqual([c]);
+    expect(validateAudioClips([c], 60)).toEqual([]);
+    for (const fade of [-1, 6, NaN, Infinity]) {
+      expect(validateAudioClips([clip({ fadeInSec: fade })], 60)).not.toEqual([]);
+      expect(validateAudioClips([clip({ fadeOutSec: fade })], 60)).not.toEqual([]);
+    }
+    expect(validateAudioClips(normalizeAudioClipList([{ ...c, fadeInSec: null }]), 60)).not.toEqual([]);
+  });
+
+  it("uses linear clip-local envelopes through arbitrary boundaries and overlapping fades", () => {
+    const c = clip({ startSec: 26, durationSec: 8, fadeInSec: 6, fadeOutSec: 6 });
+    for (const t of [26, 27, 28.9, 29.1, 29.9, 30.1, 32, 33.9]) {
+      expect(audioClipGain(c, t)).toBeCloseTo(0.6 * Math.min(1, (t - 26) / 6) * Math.min(1, (34 - t) / 6));
+    }
+    expect(audioClipGain(c, 25)).toBe(0);
+    expect(audioClipGain(c, 34)).toBe(0);
+    expect(audioClipGain(clip(), 2)).toBe(0.6);
+    expect(audioClipGain(clip({ fadeInSec: 0, fadeOutSec: 0 }), 0)).toBe(0.6);
   });
   it("roundtrips exactly through JSON and treats legacy absent as empty", () => {
     const clips = [clip(), clip({ id: "a2", startSec: 30.25, durationSec: 8.5, trimStart: 0, volume: 1 })];
@@ -156,6 +177,17 @@ describe("audio clip components", () => {
     expect(onErr).toHaveBeenCalledWith("/objects/uploads/song");
   });
 
+  it("updates faded volume after seeks, pauses, resumes and live edits", () => {
+    const c = clip({ startSec: 26, durationSec: 8, fadeInSec: 6, fadeOutSec: 6 });
+    for (const [time, playing] of [[27, true], [30, true], [33, false], [33, true], [28, true]] as const) {
+      act(() => root.render(<AudioClipPlayer clips={[c]} timeSec={time} playing={playing} />));
+      expect(host.querySelector("audio")!.volume).toBeCloseTo(audioClipGain(c, time));
+      expect(paused).toBe(!playing);
+    }
+    act(() => root.render(<AudioClipPlayer clips={[{ ...c, fadeInSec: 0, fadeOutSec: 0 }]} timeSec={28} playing />));
+    expect(host.querySelector("audio")!.volume).toBeCloseTo(0.6);
+  });
+
   it("discards an upload that finishes after a project switch", async () => {
     let clips: AudioClip[] = [];
     const setClips = vi.fn((next: AudioClip[] | ((p: AudioClip[]) => AudioClip[])) => {
@@ -233,6 +265,17 @@ describe("audio clip components", () => {
       start.dispatchEvent(new Event("input", { bubbles: true }));
     });
     expect(clips[0]!.startSec).toBe(7.5);
+    const edit = (testId: string, value: string) => act(() => {
+      const input = host.querySelector<HTMLInputElement>(`[data-testid="${testId}"]`)!;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    edit("input-audio-clip-fade-in-a1", "2");
+    edit("input-audio-clip-fade-out-a1", "99");
+    expect(clips[0]).toMatchObject({ fadeInSec: 2, fadeOutSec: 5 });
+    edit("input-audio-clip-duration-a1", "1");
+    expect(clips[0]).toMatchObject({ fadeInSec: 1, fadeOutSec: 1 });
+    edit("input-audio-clip-duration-a1", "5");
     act(() => host.querySelector<HTMLButtonElement>('[data-testid="button-audio-clip-at-playhead-a1"]')!.click());
     expect(clips[0]!.startSec).toBe(20);
     act(() => host.querySelector<HTMLButtonElement>('[data-testid="button-duplicate-audio-clip-a1"]')!.click());
@@ -245,6 +288,7 @@ describe("audio clip components", () => {
     act(() => host.querySelector<HTMLButtonElement>('[data-testid="button-another-music-slot-a1"]')!.click());
     expect(clips).toHaveLength(3);
     expect(clips[0]!.startSec).toBe(20);
+    expect(clips[1]).toMatchObject({ fadeInSec: 1, fadeOutSec: 1 });
     act(() => host.querySelector<HTMLButtonElement>('[data-testid="button-delete-audio-clip-a1"]')!.click());
     expect(clips.map((c) => c.id)).not.toContain("a1");
   });
