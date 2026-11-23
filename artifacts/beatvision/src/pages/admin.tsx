@@ -1082,6 +1082,10 @@ function RecoverStrandedPanel() {
 /* ─── Analytics dashboard ─── */
 interface AnalyticsOverview {
   days: number;
+  firstCreation?: {
+    signups: number; confirmationRequired: number; confirmed: number; chosePath: number;
+    choseStudio: number; choseVideo: number; choseImages: number; submitted: number; savedResult: number;
+  };
   firstVideoActivation?: {
     signups: number; completed: number; matureSignups: number; matureCompleted: number;
     steps: { step: string; users: number }[];
@@ -1226,6 +1230,33 @@ function AnalyticsPanel() {
               </ResponsiveContainer>
             </div>
           </div>
+
+          {data.firstCreation && (
+            <section className="space-y-3" data-testid="first-creation-checkpoints">
+              <h3 className="text-sm font-semibold">First-creation checkpoints</h3>
+              <p className="text-xs text-muted-foreground">
+                Accounts created in the selected window, with activity during their first seven days.
+                These are unique-account checkpoints, not a strict sequential funnel; recent accounts still have time to create.
+              </p>
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <StatCard icon={Users} label="New accounts" value={data.firstCreation.signups.toLocaleString()} />
+                <StatCard icon={Mail} label="Email confirmed" value={`${data.firstCreation.confirmed} / ${data.firstCreation.confirmationRequired}`} sub="Of accounts requiring confirmation" />
+                <StatCard icon={Play} label="Chose a starting path" value={data.firstCreation.chosePath.toLocaleString()} />
+                <StatCard icon={CheckCircle2} label="Saved a creation" value={data.firstCreation.savedResult.toLocaleString()} />
+              </div>
+              <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                <span>Creator Studio: <strong>{data.firstCreation.choseStudio}</strong></span>
+                <span>Short AI video: <strong>{data.firstCreation.choseVideo}</strong></span>
+                <span>Images: <strong>{data.firstCreation.choseImages}</strong></span>
+                <span>Submitted a creation: <strong>{data.firstCreation.submitted}</strong></span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Path choices come from browser events and may be missing. Submissions and saved results come from product records.
+                A saved video, image (including partial packs), or music track counts as a result; deleted results are not counted.
+                People may choose more than one path. The starter-video steps below show where that guided flow stops.
+              </p>
+            </section>
+          )}
 
           {data.firstVideoActivation && (
             <section className="space-y-3">

@@ -7,6 +7,8 @@ import { useGetDashboardStats, getGetDashboardStatsQueryKey } from "@workspace/a
 import { LYRIC_OVERLAY_COST } from "@/lib/creditPricing";
 import { FREE_OFFER_COPY } from "@/lib/freeOffer";
 import { getStarterCost } from "@/lib/starterVideo";
+import { FIRST_CREATION_CHOICES } from "@/lib/firstCreationChoices";
+import { track } from "@/lib/analytics";
 
 const STARTER_TOTAL = getStarterCost().total;
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -64,12 +66,17 @@ export default function Dashboard() {
   const [watchingJobId, setWatchingJobId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [cancelingId, setCancelingId] = useState<string | null>(null);
-  const [welcomeDismissed, setWelcomeDismissed] = useState(() => {
-    try { return localStorage.getItem("abs_welcome_dismissed") === "1"; } catch { return false; }
-  });
+  const [welcomeDismissedFor, setWelcomeDismissedFor] = useState<string | null>(null);
+  const welcomeDismissed = !!user?.id && welcomeDismissedFor === user.id;
+  useEffect(() => {
+    try {
+      setWelcomeDismissedFor(user?.id && localStorage.getItem(`abs_first_creation_dismissed_${user.id}`) === "1" ? user.id : null);
+    } catch { setWelcomeDismissedFor(null); }
+  }, [user?.id]);
   const dismissWelcome = () => {
-    try { localStorage.setItem("abs_welcome_dismissed", "1"); } catch { /* ignore */ }
-    setWelcomeDismissed(true);
+    if (!user?.id) return;
+    try { localStorage.setItem(`abs_first_creation_dismissed_${user.id}`, "1"); } catch { /* ignore */ }
+    setWelcomeDismissedFor(user.id);
   };
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -283,28 +290,27 @@ export default function Dashboard() {
                 <X className="h-4 w-4" />
               </button>
               <h2 className="flex items-center gap-2 text-xl font-bold">
-                <Sparkles className="h-5 w-5 text-primary" /> Welcome to AIBeatSync
+                <Sparkles className="h-5 w-5 text-primary" /> Start with one creation
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                <strong className="text-foreground">{FREE_OFFER_COPY.short}</strong> {FREE_OFFER_COPY.example} {FREE_OFFER_COPY.expiry} Music uses credits except for paid subscribers&apos; included monthly instrumentals. AI images, video and narration use credits and are subject to plan rules. Creator Studio remains available within trial and post-trial limits even when credits are exhausted. Here's how to start:
+                Choose a starting point below. You review any credit cost before creating. {FREE_OFFER_COPY.expiry}
               </p>
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                <Link href="/editor" className="rounded-xl border border-border bg-background/40 p-4 transition-colors hover:border-primary/50">
-                  <Scissors className="mb-2 h-5 w-5 text-primary" />
-                  <p className="text-sm font-semibold">Creator Studio</p>
-                  <p className="text-xs text-muted-foreground">Clean exports of your uploaded clips & music within your trial or post-trial limits.</p>
-                </Link>
-                <Link href="/generate?guide=starter&from=dashboard" className="rounded-xl border border-primary/40 bg-primary/[0.06] p-4 transition-colors hover:border-primary/70" data-testid="link-dashboard-starter">
-                  <Wand2 className="mb-2 h-5 w-5 text-primary" />
-                  <p className="text-sm font-semibold">Make your first video</p>
-                  <p className="text-xs text-muted-foreground">A 5s vertical clip synced to your track: {STARTER_TOTAL} credits, approved by you before anything is made.</p>
-                </Link>
-                <Link href="/soundtracks" className="rounded-xl border border-border bg-background/40 p-4 transition-colors hover:border-primary/50">
-                  <Music2 className="mb-2 h-5 w-5 text-primary" />
-                  <p className="text-sm font-semibold">Create Music</p>
-                  <p className="text-xs text-muted-foreground">Royalty-free instrumentals in seconds.</p>
-                </Link>
+                {FIRST_CREATION_CHOICES.map((choice) => (
+                  <Link
+                    key={choice.goal}
+                    href={choice.goal === "generate" ? `${choice.href}&from=dashboard` : choice.href}
+                    onClick={() => track("goal_selected", { goal: choice.goal, source: "dashboard" })}
+                    className="rounded-xl border border-primary/30 bg-background/40 p-4 transition-colors hover:border-primary/70"
+                    data-testid={choice.goal === "generate" ? "link-dashboard-starter" : `link-dashboard-${choice.goal}`}
+                  >
+                    {choice.goal === "montage" ? <Scissors className="mb-2 h-5 w-5 text-primary" /> : <Wand2 className="mb-2 h-5 w-5 text-primary" />}
+                    <p className="text-sm font-semibold">{choice.title}</p>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{choice.description}</p>
+                  </Link>
+                ))}
               </div>
+              <p className="mt-3 text-xs text-muted-foreground">Looking for music, narration, or photo animation? Open Help for more ways to create.</p>
             </div>
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

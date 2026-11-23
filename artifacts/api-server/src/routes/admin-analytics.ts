@@ -199,9 +199,50 @@ router.get("/admin/analytics/overview", async (req, res) => {
         AND ae.meta->>'step' IN ('opened','audio_ready','visual_ready','review','storyboard_opened','submitted','customize')
       GROUP BY ae.meta->>'step'
     `);
-    const [funnel, time, feature, sources, landing, vTrend, sTrend, actions, activation, starterSteps] = await Promise.all([
+    // First-use checkpoints across all three starting paths. Browser choices
+    // are observational; account, submission and saved-result counts are DB-backed.
+    const firstCreationQ = db.execute(sql`
+      WITH cohort AS (
+        SELECT id, created_at, email_verification_required, email_verified_at
+        FROM users WHERE created_at >= NOW() - make_interval(days => ${days})
+      ), checkpoints AS (
+        SELECT c.*,
+          EXISTS (SELECT 1 FROM analytics_events a WHERE a.user_id = c.id
+            AND a.event_type = 'goal_selected' AND a.meta->>'goal' = 'montage'
+            AND a.created_at >= c.created_at AND a.created_at < c.created_at + interval '7 days') AS chose_studio,
+          EXISTS (SELECT 1 FROM analytics_events a WHERE a.user_id = c.id
+            AND a.event_type = 'goal_selected' AND a.meta->>'goal' = 'generate'
+            AND a.created_at >= c.created_at AND a.created_at < c.created_at + interval '7 days') AS chose_video,
+          EXISTS (SELECT 1 FROM analytics_events a WHERE a.user_id = c.id
+            AND a.event_type = 'goal_selected' AND a.meta->>'goal' = 'images'
+            AND a.created_at >= c.created_at AND a.created_at < c.created_at + interval '7 days') AS chose_images,
+          (EXISTS (SELECT 1 FROM jobs j WHERE j.user_id = c.id
+            AND j.created_at >= c.created_at AND j.created_at < c.created_at + interval '7 days')
+            OR EXISTS (SELECT 1 FROM soundtracks s WHERE s.user_id = c.id
+            AND s.created_at >= c.created_at AND s.created_at < c.created_at + interval '7 days')) AS submitted,
+          (EXISTS (SELECT 1 FROM videos v WHERE v.user_id = c.id AND v.deleted_at IS NULL
+            AND v.created_at >= c.created_at AND v.created_at < c.created_at + interval '7 days')
+            OR EXISTS (SELECT 1 FROM image_assets i WHERE i.user_id = c.id AND i.deleted_at IS NULL
+            AND i.created_at >= c.created_at AND i.created_at < c.created_at + interval '7 days')
+            OR EXISTS (SELECT 1 FROM soundtracks s WHERE s.user_id = c.id
+            AND s.created_at >= c.created_at AND s.created_at < c.created_at + interval '7 days')) AS saved_result
+        FROM cohort c
+      )
+      SELECT COUNT(*) AS signups,
+        COUNT(*) FILTER (WHERE email_verification_required) AS confirmation_required,
+        COUNT(*) FILTER (WHERE email_verification_required AND email_verified_at >= created_at
+          AND email_verified_at < created_at + interval '7 days') AS confirmed,
+        COUNT(*) FILTER (WHERE chose_studio OR chose_video OR chose_images) AS chose_path,
+        COUNT(*) FILTER (WHERE chose_studio) AS chose_studio,
+        COUNT(*) FILTER (WHERE chose_video) AS chose_video,
+        COUNT(*) FILTER (WHERE chose_images) AS chose_images,
+        COUNT(*) FILTER (WHERE submitted) AS submitted,
+        COUNT(*) FILTER (WHERE saved_result) AS saved_result
+      FROM checkpoints
+    `);
+    const [funnel, time, feature, sources, landing, vTrend, sTrend, actions, activation, starterSteps, firstCreation] = await Promise.all([
       funnelQ, timeQ, featureQ, sourcesQ, landingQ, visitorTrendQ, signupTrendQ, actionsQ,
-      activationQ, starterStepsQ,
+      activationQ, starterStepsQ, firstCreationQ,
     ]);
 
     const actionMap = new Map<string, number>();
@@ -228,6 +269,17 @@ router.get("/admin/analytics/overview", async (req, res) => {
 
     res.json({
       days,
+      firstCreation: {
+        signups: num(firstCreation.rows[0]?.signups),
+        confirmationRequired: num(firstCreation.rows[0]?.confirmation_required),
+        confirmed: num(firstCreation.rows[0]?.confirmed),
+        chosePath: num(firstCreation.rows[0]?.chose_path),
+        choseStudio: num(firstCreation.rows[0]?.chose_studio),
+        choseVideo: num(firstCreation.rows[0]?.chose_video),
+        choseImages: num(firstCreation.rows[0]?.chose_images),
+        submitted: num(firstCreation.rows[0]?.submitted),
+        savedResult: num(firstCreation.rows[0]?.saved_result),
+      },
       firstVideoActivation: {
         signups: num(activation.rows[0]?.signups),
         completed: num(activation.rows[0]?.completed),

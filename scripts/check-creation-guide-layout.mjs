@@ -43,7 +43,7 @@ try {
     const result = await evaluate(`(() => {
       const dialog = document.querySelector('[data-testid=dialog-creation-guide]');
       const list = document.querySelector('[data-testid=creation-goal-list]');
-      const cards = [...list.querySelectorAll('button')];
+      const cards = [...list.querySelectorAll('button')].filter(c => c.checkVisibility());
       const rects = cards.map(c => c.getBoundingClientRect());
       const bounds = dialog.getBoundingClientRect();
       return {
@@ -56,19 +56,22 @@ try {
       };
     })()`);
     console.log(`${width}x${height}`, result);
-    if (result.cards !== 7 || !result.noOverlap || !result.textContained || !result.fitsViewport || !result.noHorizontalOverflow) {
+    if (result.cards !== 3 || !result.noOverlap || !result.textContained || !result.fitsViewport || !result.noHorizontalOverflow) {
       throw Error("Layout check failed");
     }
     const image = await send("Page.captureScreenshot", { format: "png" });
     await writeFile(`generated-artifacts/guide-layout/${width}.png`, Buffer.from(image.data, "base64"));
     const reachedEnd = await evaluate(`(() => {
       const list = document.querySelector('[data-testid=creation-goal-list]');
+      list.querySelector('details').open = true;
       list.scrollTop = list.scrollHeight;
       const card = document.querySelector('[data-testid=goal-animate-photo]').getBoundingClientRect();
       const region = list.getBoundingClientRect();
       return card.bottom <= region.bottom+1 && card.top >= region.top;
     })()`);
     if (!reachedEnd) throw Error("Last option cannot be reached");
+    const expandedCount = await evaluate(`document.querySelector('[data-testid=creation-goal-list]').querySelectorAll('button').length`);
+    if (expandedCount !== 7) throw Error("Secondary creation paths missing");
     await evaluate(`[...document.querySelectorAll('[data-testid=dialog-creation-guide] button')].find(b => b.textContent === 'Skip for now').click()`);
     await wait('!document.querySelector("[data-testid=dialog-creation-guide]")');
   }

@@ -8,6 +8,7 @@ import { PlaySquare, Film, Music, BookOpen, Sparkles, Image as ImageIcon, Mic2 }
 import { shouldAutoOpen, setGuideDismissed } from "./utils";
 import { buildAuthUrl } from "@/lib/authIntent";
 import { FREE_OFFER_COPY } from "@/lib/freeOffer";
+import { FIRST_CREATION_CHOICES } from "@/lib/firstCreationChoices";
 
 export function CreationGuide() {
   const [isOpen, setIsOpen] = useState(false);
@@ -45,7 +46,7 @@ export function CreationGuide() {
   };
 
   const handleSelect = (goal: string, path: string, requiresAuth: boolean = false) => {
-    track("goal_selected", { goal });
+    track("goal_selected", { goal, source: "welcome" });
     setIsOpen(false);
     if (user?.id) {
       setGuideDismissed(user.id);
@@ -89,43 +90,37 @@ export function CreationGuide() {
         >
           <div className="p-4 sm:p-6 pb-2 sm:pb-2 shrink-0 [@media(max-height:500px)]:p-3 [@media(max-height:500px)]:pb-0">
             <DialogHeader className="text-left">
-              <DialogTitle className="text-xl sm:text-2xl font-bold pr-10 [@media(max-height:500px)]:text-lg">What would you like to create?</DialogTitle>
+              <DialogTitle className="text-xl sm:text-2xl font-bold pr-10 [@media(max-height:500px)]:text-lg">Start with one creation</DialogTitle>
               <DialogDescription className="text-sm sm:text-base mt-1.5 sm:mt-2 [@media(max-height:500px)]:sr-only">
-                 Choose what you want to make. The guide is free; generation uses credits and your plan rules.
+                 Pick a starting point. Choosing a path is free—you review any credit cost before creating.
               </DialogDescription>
             </DialogHeader>
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-4 pt-2 sm:p-6 sm:pt-2" data-testid="creation-goal-list">
-            <GoalCard
-              title="Creator Studio"
-              badge="Recommended"
-              icon={<Film className="w-5 h-5 sm:w-6 sm:h-6" />}
-              description={`${FREE_OFFER_COPY.headline} ${FREE_OFFER_COPY.expiry} Bring your own media; clean exports during your active trial within trial limits. Lyric burns and Auto-sync use credits. After trial: 10 clean exports/month, then 15 credits each.`}
-              onClick={() => handleSelect("montage", "/editor?guide=montage", true)}
-              testId="goal-montage"
-            />
+            {FIRST_CREATION_CHOICES.map((choice) => (
+              <GoalCard
+                key={choice.goal}
+                title={choice.title}
+                badge={choice.goal === "generate" ? "Guided" : undefined}
+                icon={choice.goal === "montage" ? <Film className="w-5 h-5 sm:w-6 sm:h-6" /> : choice.goal === "generate" ? <PlaySquare className="w-5 h-5 sm:w-6 sm:h-6" /> : <ImageIcon className="w-5 h-5 sm:w-6 sm:h-6" />}
+                description={choice.description}
+                onClick={() => handleSelect(choice.goal, choice.href, true)}
+                testId={`goal-${choice.goal}`}
+              />
+            ))}
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {FREE_OFFER_COPY.short} {FREE_OFFER_COPY.expiry} Credits and plan rules apply.
+            </p>
+            <details className="shrink-0 rounded-lg border border-border/60 p-3" data-testid="more-creation-options">
+              <summary className="cursor-pointer py-1 text-sm font-semibold">More ways to create</summary>
+              <div className="mt-3 flex flex-col gap-3">
             <GoalCard
               title="Commentary or Podcast Video"
-              badge="New"
               icon={<Mic2 className="w-5 h-5 sm:w-6 sm:h-6" />}
-              description="Add a reaction or commentary clip and text cards over your main video in Creator Studio. An optional walkthrough points to each control; it never saves, exports, or spends credits for you."
+              description="Layer reaction clips and text over your video in Creator Studio, with an optional walkthrough."
               onClick={() => handleSelect("commentary", "/editor?guide=commentary", true)}
               testId="goal-commentary"
-            />
-            <GoalCard 
-              title="Generate Video"
-              icon={<PlaySquare className="w-5 h-5 sm:w-6 sm:h-6" />}
-              description={`Create AI scenes and visuals using credits, subject to plan rules. ${FREE_OFFER_COPY.short} ${FREE_OFFER_COPY.example} ${FREE_OFFER_COPY.expiry}`}
-              onClick={() => handleSelect("generate", "/generate?guide=starter", true)}
-              testId="goal-generate"
-            />
-            <GoalCard
-              title="Create Images"
-              icon={<Film className="w-5 h-5 sm:w-6 sm:h-6" />}
-              description="Create standalone image packs from a prompt or scene script. Credits and plan rules apply."
-              onClick={() => handleSelect("images", "/images", true)}
-              testId="goal-images"
             />
             <GoalCard 
               title="Original Music"
@@ -148,6 +143,8 @@ export function CreationGuide() {
               onClick={() => handleSelect("animate_photo", "/gallery?tab=images&action=animate", true)}
               testId="goal-animate-photo"
             />
+              </div>
+            </details>
           </div>
 
           <div className="p-3 sm:p-4 border-t bg-muted/30 flex justify-end pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-4 shrink-0 [@media(max-height:500px)]:py-1">
