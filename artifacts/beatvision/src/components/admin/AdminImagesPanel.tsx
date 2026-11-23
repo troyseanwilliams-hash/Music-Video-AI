@@ -40,6 +40,7 @@ export default function AdminImagesPanel() {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<AdminImageAsset | null>(null);
+  const [failedImageIds, setFailedImageIds] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -59,10 +60,22 @@ export default function AdminImagesPanel() {
       if (!response.ok) throw new Error(body.error ?? "Could not load generated images");
       return body as AdminImageAssetList;
     },
-    staleTime: 30_000,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
   });
 
   const pageCount = Math.max(1, Math.ceil((data?.total ?? 0) / PAGE_SIZE));
+  const retryImage = (assetId: string) => {
+    setFailedImageIds((current) => {
+      if (!current.has(assetId)) return current;
+      const next = new Set(current);
+      next.delete(assetId);
+      return next;
+    });
+  };
 
   return (
     <section className="space-y-4" aria-labelledby="admin-images-heading">
@@ -107,20 +120,38 @@ export default function AdminImagesPanel() {
             {data.total.toLocaleString()} image{data.total === 1 ? "" : "s"} · page {page} of {pageCount}
           </p>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {data.assets.map((asset) => (
+            {data.assets.map((asset, index) => (
               <Card key={asset.id} className="overflow-hidden border-border/70">
                 <button
                   type="button"
-                  className="group relative block aspect-[4/3] w-full bg-black/90"
-                  onClick={() => setSelected(asset)}
+                  className="group relative block aspect-[4/3] min-h-48 w-full bg-black/90"
+                  onClick={() => {
+                    retryImage(asset.id);
+                    setSelected(asset);
+                  }}
                   aria-label={`Inspect image from ${asset.email ?? "unknown account"}`}
                 >
-                  <img
-                    src={`/api/storage${asset.objectPath}`}
-                    alt={`Generated image. Prompt: ${asset.prompt}`}
-                    loading="lazy"
-                    className="h-full w-full object-contain transition-opacity group-hover:opacity-90"
-                  />
+                  {failedImageIds.has(asset.id) ? (
+                    <span className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4 text-center text-sm text-muted-foreground">
+                      <ImageIcon className="h-8 w-8" aria-hidden="true" />
+                      Preview unavailable
+                      <span className="text-xs">Tap to view details or retry</span>
+                    </span>
+                  ) : (
+                    <img
+                      src={`/api/storage${asset.objectPath}`}
+                      alt={`Generated image. Prompt: ${asset.prompt}`}
+                      loading={index < 4 ? "eager" : "lazy"}
+                      onLoad={() => setFailedImageIds((current) => {
+                        if (!current.has(asset.id)) return current;
+                        const next = new Set(current);
+                        next.delete(asset.id);
+                        return next;
+                      })}
+                      onError={() => setFailedImageIds((current) => new Set(current).add(asset.id))}
+                      className="h-full w-full object-contain transition-opacity group-hover:opacity-90"
+                    />
+                  )}
                   <span className="absolute bottom-2 right-2 rounded-md bg-black/70 px-2 py-1 text-xs text-white">View image</span>
                 </button>
                 <CardContent className="space-y-2.5 p-3">
@@ -174,11 +205,20 @@ export default function AdminImagesPanel() {
                 </DialogDescription>
               </DialogHeader>
               <div className="flex max-h-[65vh] justify-center rounded-lg bg-black/90 p-2">
-                <img
-                  src={`/api/storage${selected.objectPath}`}
-                  alt={`Generated image. Prompt: ${selected.prompt}`}
-                  className="max-h-[62vh] max-w-full object-contain"
-                />
+                {failedImageIds.has(selected.id) ? (
+                  <div className="flex min-h-48 w-full flex-col items-center justify-center gap-2 px-4 text-center text-sm text-muted-foreground">
+                    <ImageIcon className="h-8 w-8" aria-hidden="true" />
+                    <p>Image preview could not be loaded.</p>
+                    <Button variant="outline" size="sm" onClick={() => retryImage(selected.id)}>Try loading again</Button>
+                  </div>
+                ) : (
+                  <img
+                    src={`/api/storage${selected.objectPath}`}
+                    alt={`Generated image. Prompt: ${selected.prompt}`}
+                    onError={() => setFailedImageIds((current) => new Set(current).add(selected.id))}
+                    className="max-h-[62vh] max-w-full object-contain"
+                  />
+                )}
               </div>
               <div className="space-y-1">
                 <h3 className="text-sm font-semibold">Generation prompt</h3>
