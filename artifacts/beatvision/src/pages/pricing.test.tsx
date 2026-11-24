@@ -26,7 +26,10 @@ const plans = {
         { id: "price_test_studio_year", lookupKey: "studio_yearly", interval: "year", unitAmount: 79000, currency: "usd", credits: 60000 },
       ] },
   ],
-  topups: [],
+  topups: [
+    { id: "pack_500", name: "Pack 500", description: "500 credits", kind: "topup", popular: false,
+      prices: [{ id: "price_test_pack_500", lookupKey: "topup_500", interval: null, unitAmount: 1000, currency: "usd", credits: 500 }] },
+  ],
 };
 
 vi.mock("wouter", () => ({
@@ -113,5 +116,44 @@ describe("pricing interval selection", () => {
     expect(checkout).not.toHaveBeenCalled();
     expect(navigate).toHaveBeenCalledWith(expect.stringContaining("interval=year"));
     expect(navigate).toHaveBeenCalledWith(expect.stringContaining("plan=studio"));
+  });
+
+  it("shows only each tier's own included instrumental count and keeps annual totals", () => {
+    const starter = container.querySelector('[data-testid="card-plan-starter"]')!.textContent!;
+    const pro = container.querySelector('[data-testid="card-plan-pro"]')!.textContent!;
+    const studio = container.querySelector('[data-testid="card-plan-studio"]')!.textContent!;
+    expect(starter).toContain("25 included instrumentals");
+    expect(starter).not.toContain("100 included");
+    expect(pro).toContain("100 included instrumentals");
+    expect(pro).not.toContain("Starter: 25");
+    expect(studio).toContain("300 included instrumentals");
+    click("button-interval-yearly");
+    const studioYear = container.querySelector('[data-testid="card-plan-studio"]')!.textContent!;
+    expect(studioYear).toContain("60,000 credits per year");
+    expect(studioYear).toContain("Billed $790 once per year");
+  });
+
+  it("keeps policies in expandable details and free-credit expiry visible", () => {
+    expect(container.querySelectorAll("details").length).toBeGreaterThanOrEqual(4);
+    expect(container.querySelector('[data-testid="text-free-offer"]')!.textContent).toContain("expire");
+    const pack = container.querySelector('[data-testid="card-topup-500"]')!.textContent!;
+    expect(pack).toContain("never expires");
+    expect(pack).not.toMatch(/clips/);
+  });
+
+  it("buys a credit pack directly when signed in", () => {
+    click("button-topup-500");
+    expect(checkout).toHaveBeenCalledExactlyOnceWith({ priceId: "price_test_pack_500" });
+  });
+
+  it("carries the topup checkout intent to registration when signed out", () => {
+    authenticated = false;
+    render();
+    click("button-topup-500");
+    expect(checkout).not.toHaveBeenCalled();
+    const url = decodeURIComponent(navigate.mock.calls[0][0] as string);
+    expect(url).toContain("/register");
+    expect(url).toMatch(/price_test_pack_500/);
+    expect(url).not.toContain("plan=");
   });
 });

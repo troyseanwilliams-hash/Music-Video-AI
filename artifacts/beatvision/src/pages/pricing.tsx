@@ -38,10 +38,7 @@ import {
   Sparkles,
   CreditCard,
   ArrowLeft,
-  Music2,
-  ImageIcon,
-  Youtube,
-  Mic2,
+  ChevronDown,
 } from "lucide-react";
 
 type Interval = AuthBillingInterval;
@@ -87,6 +84,13 @@ function getTopupIntentIdentifiers(
     .map((value) => normalizeTopupIdentifier(value))
     .filter((value): value is string => value !== null);
 }
+
+// Monthly included instrumentals per tier (unchanged entitlement).
+const INCLUDED_INSTRUMENTALS: Record<string, number> = {
+  starter: 25,
+  pro: 100,
+  studio: 300,
+};
 
 const TIER_ICONS: Record<string, typeof Zap> = {
   starter: Zap,
@@ -372,8 +376,8 @@ export default function Pricing() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-12 max-w-6xl">
-      <div className="mb-6 flex items-center justify-between gap-4">
+    <div className="container mx-auto max-w-6xl overflow-x-clip px-4 py-6 sm:py-8">
+      <div className="mb-3 flex items-center justify-between gap-4">
         <Button variant="ghost" size="sm" onClick={() => window.history.back()}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
@@ -396,41 +400,33 @@ export default function Pricing() {
         )}
       </div>
 
-      <div className="text-center mb-10 sm:mb-12">
-        <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary mb-4">
-          <Zap className="h-3.5 w-3.5" />
-          Simple, credit-based pricing
-        </div>
-        <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight mb-4">
+      <div className="text-center mb-6">
+        <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-2">
           Choose your <span className="text-gradient-electric">plan</span>
         </h1>
-        <p className="text-base leading-7 text-muted-foreground max-w-xl mx-auto sm:text-lg">
-          Pick the credits that fit your output. Plans cover credit-based music, images, narration, and AI video,
-          plus clean Creator Studio exports. Plan credits refresh with your billing cycle; top-ups never expire.
+        <p className="text-sm leading-6 text-muted-foreground max-w-2xl mx-auto sm:text-base">
+          Subscribe for credits that refresh every billing cycle, or buy a one-time pack that never expires.
+          Credits cover music, images, narration and AI video.
         </p>
-        <div className="mx-auto mt-5 flex max-w-md items-start gap-2 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-3 text-left text-sm font-medium sm:inline-flex sm:max-w-none sm:items-center sm:rounded-full sm:py-2">
-          <Sparkles className="h-4 w-4 text-primary" />
-          <span>
+        <div className="mx-auto mt-3 flex max-w-md items-start gap-2 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-2 text-left text-sm font-medium sm:max-w-2xl" data-testid="text-free-offer">
+          <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          <span className="min-w-0">
             <strong className="text-foreground">{FREE_OFFER_COPY.headline}</strong>
-            {" "}{FREE_OFFER_COPY.example} {FREE_OFFER_COPY.expiry}
+            {" "}{FREE_OFFER_COPY.expiry}
           </span>
         </div>
-        <div className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-          {FREE_OFFER_COPY.videoExample} {FREE_OFFER_COPY.music} {FREE_OFFER_COPY.trialExtras} {FREE_OFFER_COPY.afterTrial}{" "}
-          {FREE_OFFER_COPY.credits} {FREE_OFFER_COPY.paid}
-        </div>
         {!isAuthenticated && (
-          <div className="mt-5">
+          <div className="mt-3 flex flex-col items-center gap-x-3 gap-y-1 sm:flex-row sm:justify-center">
             <Link href="/register">
-              <Button size="lg" className="w-full sm:w-auto">Create account — get 150 credits</Button>
+              <Button className="w-full sm:w-auto">Create account — get 150 credits</Button>
             </Link>
-            <p className="mt-2 text-xs text-muted-foreground">No credit card required to create an account.</p>
+            <p className="text-xs text-muted-foreground">No credit card required to create an account.</p>
           </div>
         )}
         {checkoutReady && selectedIntentLabel && (
           <div
             role="status"
-            className="mx-auto mt-4 max-w-xl rounded-xl border border-primary/40 bg-primary/10 px-4 py-3 text-sm"
+            className="mx-auto mt-3 max-w-xl rounded-xl border border-primary/40 bg-primary/10 px-4 py-3 text-sm"
             data-testid="pricing-checkout-intent"
           >
             Your {selectedIntentLabel} is ready to review. Choose{" "}
@@ -440,7 +436,7 @@ export default function Pricing() {
         )}
         {isAuthenticated && subscription && (
           <div
-            className="mx-auto mt-4 flex max-w-md flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-2xl border border-border/50 bg-secondary/40 px-4 py-3 text-sm sm:inline-flex sm:max-w-none sm:rounded-full sm:py-2"
+            className="mx-auto mt-3 flex max-w-md flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-2xl border border-border/50 bg-secondary/40 px-4 py-3 text-sm sm:inline-flex sm:max-w-none sm:rounded-full sm:py-2"
             data-testid="pricing-credits-summary"
           >
             <Zap className="h-4 w-4 text-primary" />
@@ -466,8 +462,14 @@ export default function Pricing() {
         )}
       </div>
 
+      <div className="mb-3 text-center">
+        <h2 className="text-xl font-bold">Subscriptions</h2>
+        <p className="mx-auto max-w-xl text-sm text-muted-foreground">
+          Credits refresh every billing cycle. Prefer to pay once? See credit packs below.
+        </p>
+      </div>
       {hasYearly && (
-        <div className="mb-10 flex flex-col items-center justify-center gap-3">
+        <div className="mb-8 flex flex-col items-center justify-center gap-2 sm:flex-row sm:gap-3">
           {annualSavings && (
             <div className="inline-flex items-center gap-2 rounded-full border border-primary/40 bg-primary/10 px-3.5 py-1.5 text-xs font-semibold text-primary">
               <Sparkles className="h-3.5 w-3.5" />
@@ -510,54 +512,7 @@ export default function Pricing() {
         </div>
       )}
 
-      <section className="mb-12" aria-labelledby="included-highlights-heading">
-        <div className="mb-5 text-center">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
-            Included creative tools
-          </p>
-          <h2 id="included-highlights-heading" className="mt-2 text-2xl font-bold sm:text-3xl">
-            More than just music videos
-          </h2>
-          <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Your plan credits unlock the full AIBeatSync creative suite as your tier grows.
-          </p>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {[
-            {
-              icon: Music2,
-              title: "Music",
-              description: "Paid subscribers receive monthly included instrumentals (Starter 25, Pro 100, Studio 300). Vocal songs and additional instrumentals use credits.",
-            },
-            {
-              icon: ImageIcon,
-              title: "AI Image Generation",
-              description: `New: create consistent image packs for ${GENERATED_IMAGE_CREDITS_PER_VISUAL} credits per image.`,
-            },
-            {
-              icon: Youtube,
-              title: "Narrative Videos for YouTube",
-              description: "Build chronological, story-led videos with scene-by-scene visuals for long-form YouTube content.",
-            },
-            {
-              icon: Mic2,
-              title: "Narration",
-              description: "Create mixed narration from a script with an AI-generated music bed or your own audio.",
-            },
-          ].map(({ icon: FeatureIcon, title, description }) => (
-            <div
-              key={title}
-              className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/[0.08] via-card/70 to-accent/[0.05] p-5"
-            >
-              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary">
-                <FeatureIcon className="h-5 w-5" />
-              </div>
-              <h3 className="font-semibold">{title}</h3>
-              <p className="mt-1.5 text-sm leading-6 text-muted-foreground">{description}</p>
-            </div>
-          ))}
-        </div>
-      </section>
+
 
       {/* Digital Drift Pro perk — hidden for now */}
       {false && <section className="mb-12">
@@ -578,7 +533,7 @@ export default function Pricing() {
         </div>
       </section>}
 
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16" aria-label="Subscription plans">
         {subscriptions.map((plan) => {
           // Never silently substitute a monthly checkout when yearly is selected.
           const price = plan.prices.find((p) => p.interval === interval);
@@ -591,9 +546,10 @@ export default function Pricing() {
           const isCurrent =
             subscription?.priceLookupKey &&
             price.lookupKey === subscription.priceLookupKey;
-           const isSelectedIntent =
-             selectedPlan === normalizeAuthPlan(plan.name) &&
-             interval === price.interval;
+          const isSelectedIntent =
+            selectedPlan === normalizeAuthPlan(plan.name) &&
+            interval === price.interval;
+          const includedInstrumentals = INCLUDED_INSTRUMENTALS[plan.name.toLowerCase()];
 
           return (
             <Card
@@ -659,81 +615,19 @@ export default function Pricing() {
                 </div>
 
                 <ul className="space-y-2 text-sm">
+                  {includedInstrumentals !== undefined && (
+                    <li className="flex items-start gap-2" data-testid={`text-instrumentals-${plan.name.toLowerCase()}`}>
+                      <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                      <span>{includedInstrumentals} included instrumentals each month</span>
+                    </li>
+                  )}
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                    <span>
-                      {price.credits.toLocaleString()} credits per{" "}
-                      {price.interval === "year" ? "year" : "month"}{" "}
-                      <span className="text-muted-foreground">
-                        — AI video, image, and narration generation uses credits
-                      </span>
-                    </span>
+                    <span>Video, image, music and narration tools</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                    <span>Credit-based beat-synced AI music videos</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                    <span>
-                      <strong>AI Music</strong>{" "}
-                      <span className="text-muted-foreground">
-                        — Starter: 25, Pro: 100, Studio: 300 included instrumentals each month; additional instrumentals and vocal songs use credits
-                      </span>
-                    </span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                    <span>
-                      <strong>AI Narration</strong>{" "}
-                      <span className="text-muted-foreground">
-                        — requires credits: 3 credits per started 1,000 script characters, 3-credit minimum; an AI-generated music bed is included
-                      </span>
-                    </span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                    <span>
-                      <strong>Use your own background music at no extra music-generation charge</strong>{" "}
-                      <span className="text-muted-foreground">
-                        — choose music from AIBeatSync, upload audio, import a Suno song, or use voice only
-                      </span>
-                    </span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                    <span>
-                      <strong>New: AI Image Generation</strong>{" "}
-                      <span className="text-muted-foreground">
-                        — {GENERATED_IMAGE_CREDITS_PER_VISUAL} credits per generated image, limited only by your credit balance
-                      </span>
-                    </span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                     <span>
-                       <strong>Unlimited clean</strong> Creator Studio exports during your trial and while
-                       subscribed — expired non-paid accounts get 10 free exports per calendar month, then 15 credits each
-                     </span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                     <span>
-                       Trial karaoke lyric-burn exports cost credits; Auto-sync aligns cost credits per run.
-                       Paid subscribers retain their plan&apos;s Creator Studio features
-                     </span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                    <span>TikTok/Shorts teaser cuts &amp; Spotify Canvas exports</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                    <span>Watermark-free 1080p exports</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                    <span>Full HD downloads</span>
+                    <span>Clean, watermark-free 1080p exports</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
@@ -777,15 +671,16 @@ export default function Pricing() {
       </section>
 
       {topups.length > 0 && (
-        <section className="mb-16">
+        <section className="mb-16" aria-labelledby="packs-heading">
           <div className="text-center mb-8">
-            <h2 className="text-2xl font-bold mb-2">Credit packs</h2>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">One-time</p>
+            <h2 id="packs-heading" className="mt-1 text-2xl font-bold mb-2">Credit packs</h2>
             <p className="text-muted-foreground">
-              One-time purchase · credits never expire · bigger packs = lower cost per video
+              Pay once, no subscription. Pack credits never expire and stack with any plan.
             </p>
-            <div className="inline-flex items-center gap-2 mt-4 px-4 py-2 rounded-full border border-primary/40 bg-primary/10 text-sm font-medium">
+            <div className="mx-auto mt-4 flex max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-medium sm:inline-flex sm:rounded-full">
               <span className="text-primary font-semibold">15% off your first pack</span>
-              <span className="text-muted-foreground">— use code</span>
+              <span className="text-muted-foreground">with code</span>
               <code className="px-2 py-0.5 rounded bg-primary/20 text-primary font-mono font-bold tracking-wider">FIRST15</code>
               <span className="text-muted-foreground text-xs">at checkout</span>
             </div>
@@ -806,7 +701,7 @@ export default function Pricing() {
                 ? Math.round((1 - price.unitAmount / faceValueCents) * 100)
                 : 0;
               const perCreditCents = price.unitAmount / 100 / price.credits;
-              const estClips = Math.floor(price.credits / 60); // 10s clip = 60 credits
+
 
               return (
                 <Card
@@ -836,7 +731,7 @@ export default function Pricing() {
                       {price.credits.toLocaleString()} credits
                     </CardTitle>
                     <p className="text-sm text-muted-foreground">
-                      ≈ {estClips} × 10s clips · never expires
+                      One-time purchase · never expires
                     </p>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -885,6 +780,74 @@ export default function Pricing() {
         </section>
       )}
 
+      <section className="mb-12" aria-labelledby="pricing-details-heading" data-testid="section-pricing-details">
+        <h2 id="pricing-details-heading" className="mb-4 text-center text-xl font-bold sm:text-2xl">Details and policies</h2>
+        <div className="mx-auto max-w-3xl divide-y divide-border rounded-2xl border border-border bg-card/40">
+          {[
+            {
+              id: "tools",
+              title: "What credits pay for",
+              body: [
+                `AI image generation: ${GENERATED_IMAGE_CREDITS_PER_VISUAL} credits per generated image, limited only by your credit balance.`,
+                "Credit-based beat-synced AI music videos and narrative, story-led videos for long-form YouTube content.",
+                "AI Music: paid plans include a monthly number of instrumentals (shown on each plan). Additional instrumentals and vocal songs use credits.",
+                "AI Narration: 3 credits per started 1,000 script characters, 3-credit minimum. An AI-generated music bed is included.",
+                "Use your own background music at no extra music-generation charge: choose music from AIBeatSync, upload audio, import a Suno song, or use voice only.",
+                "Generation costs vary by model, length and settings, so credit packs do not map to a fixed number of clips.",
+              ],
+            },
+            {
+              id: "studio",
+              title: "Creator Studio exports",
+              body: [
+                "Unlimited clean Creator Studio exports during your trial and while subscribed. Expired non-paid accounts get 10 free exports per calendar month, then 15 credits each.",
+                "Trial karaoke lyric-burn exports cost credits; Auto-sync aligns cost credits per run. Paid subscribers retain their plan's Creator Studio features.",
+                "All paid plans include TikTok/Shorts teaser cuts, Spotify Canvas exports, and watermark-free 1080p Full HD downloads.",
+              ],
+            },
+            {
+              id: "free",
+              title: "Free 150 credits and trial terms",
+              body: [
+                FREE_OFFER_COPY.headline,
+                FREE_OFFER_COPY.example,
+                FREE_OFFER_COPY.expiry,
+                FREE_OFFER_COPY.videoExample,
+                FREE_OFFER_COPY.music,
+                FREE_OFFER_COPY.trialExtras,
+                FREE_OFFER_COPY.afterTrial,
+                FREE_OFFER_COPY.credits,
+                FREE_OFFER_COPY.paid,
+              ],
+            },
+            {
+              id: "billing",
+              title: "Billing, renewals and cancellation",
+              body: [
+                "Subscriptions renew automatically each month or year. Plan credits refresh with your billing cycle.",
+                "Yearly plans are billed once per year for the full annual credit amount shown.",
+                "Credit packs are one-time purchases. Top-up credits never expire.",
+                "Cancel or change plans anytime from Manage Billing.",
+              ],
+            },
+          ].map((item) => (
+            <details key={item.id} className="group px-4 sm:px-5" data-testid={`details-${item.id}`}>
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-4 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+                <span>{item.title}</span>
+                <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden="true" />
+              </summary>
+              <ul className="space-y-2 pb-4 text-sm leading-6 text-muted-foreground">
+                {item.body.map((line) => (
+                  <li key={line} className="flex gap-2 break-words">
+                    <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
+                    <span className="min-w-0">{line}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ))}
+        </div>
+      </section>
       <div className="text-center text-sm text-muted-foreground">
         Need a custom plan?{" "}
         <Link href="/" className="text-primary hover:underline">
