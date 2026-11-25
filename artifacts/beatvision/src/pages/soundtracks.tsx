@@ -1,5 +1,5 @@
 import { StorageRetentionNotice } from "@/components/StorageRetentionNotice";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -98,8 +98,11 @@ const PRESETS = [
   { label: "Deep house", prompt: "Deep house, warm rolling bassline, soulful chords, hypnotic groove, 122 BPM" },
 ];
 
+// Mirror of calculateSongCost() in api-server/src/lib/creditCost.ts: the music
+// markup is 1.5x (MUSIC_GEN_MARKUP). This previously used 2x, which showed 8
+// credits for ~30s when the server charges 6.
 function songCredits(seconds: number): number {
-  return Math.min(10, Math.max(5, Math.ceil((Math.min(Math.max(seconds, 5), 120) * 0.002 * 2) / 0.015)));
+  return Math.min(10, Math.max(5, Math.ceil((Math.min(Math.max(seconds, 5), 120) * 0.002 * 1.5) / 0.015)));
 }
 function inferVocalDurationSeconds(lyrics?: string): number {
   const sectionCount = lyrics?.match(/^\s*\[[^\]]+\]\s*$/gm)?.length ?? 0;
@@ -150,7 +153,7 @@ export default function Soundtracks() {
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
 
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState(PRESETS[0]?.prompt ?? "");
   const [lengthKey, setLengthKey] = useState("loop10");
   const [loopKey, setLoopKey] = useState("off");
   const [withVocals, setWithVocals] = useState(false);
@@ -167,6 +170,8 @@ export default function Soundtracks() {
   const [libSort, setLibSort] = useState<"new" | "old" | "name">("new");
   const [topUpOpen, setTopUpOpen] = useState(false);
   const [topUpCost, setTopUpCost] = useState(0);
+  const [ready, setReady] = useState<{ objectPath: string; url: string; title: string; saved: boolean } | null>(null);
+  const readyRef = useRef<HTMLDivElement>(null);
   const duration = LENGTH_OPTIONS.find((l) => l.key === lengthKey)?.seconds ?? 10;
   const loopToSeconds = withVocals ? 0 : LOOP_OPTIONS.find((l) => l.key === loopKey)?.seconds ?? 0;
 
@@ -256,6 +261,7 @@ export default function Soundtracks() {
 
   const gen = useMutation({
     mutationFn: async () => {
+      setReady(null);
       trackEvent("creation_started", {
         creation_type: "soundtrack",
         soundtrack_type: withVocals ? "vocals" : "instrumental",
@@ -289,12 +295,24 @@ export default function Soundtracks() {
       return data as {
         creditsCharged: number;
         wasFree: boolean;
+        objectPath?: string;
+        url?: string;
+        savedToLibrary?: boolean;
       };
     },
     onSuccess: (data) => {
       trackEvent("creation_accepted", { creation_type: "soundtrack" });
       trackEvent("creation_completed", { creation_type: "soundtrack" });
       setProgress(100);
+      if (typeof data.objectPath === "string" && typeof data.url === "string") {
+        setReady({
+          objectPath: data.objectPath,
+          url: data.url,
+          title: prompt.trim().slice(0, 60) || "AI-generated music",
+          saved: data.savedToLibrary !== false,
+        });
+        window.setTimeout(() => readyRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 150);
+      }
       queryClient.invalidateQueries({ queryKey: ["soundtracks"] });
       queryClient.invalidateQueries({ queryKey: ["soundtracks", "status"] });
       toast({
@@ -541,6 +559,14 @@ export default function Soundtracks() {
                     className="resize-none text-base min-h-[100px]"
                   />
                   <div className="flex flex-wrap gap-2">
+                    <button type="button"
+                      onClick={() => {
+                        const pick = PRESETS[Math.floor(Math.random() * PRESETS.length)];
+                        if (pick) setPrompt(pick.prompt);
+                      }}
+                      className="text-xs px-3 py-1.5 rounded-full border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
+                      <Sparkles className="inline h-3 w-3 mr-1" aria-hidden="true" />Surprise me
+                    </button>
                     {PRESETS.map((p) => (
                       <button key={p.label} type="button" onClick={() => setPrompt(p.prompt)} title={p.prompt}
                         className="text-xs px-3 py-1.5 rounded-full border border-border bg-background/50 text-muted-foreground hover:border-primary hover:text-primary transition-colors">
@@ -756,6 +782,38 @@ export default function Soundtracks() {
           </div>
         )}
       </div>
+
+      {ready && (
+        <div ref={readyRef} className="mb-8 space-y-3 rounded-2xl border border-primary/30 bg-primary/5 p-5">
+          <div className="flex items-center gap-2 font-semibold">
+            <Check className="h-4 w-4 text-primary" aria-hidden="true" /> Your track is ready
+          </div>
+          <audio controls src={ready.url} className="w-full h-10" />
+          <div className="flex flex-wrap gap-2">
+            <Button
+              className="bg-gradient-electric text-white border-0"
+              onClick={() => {
+                trackEvent("soundtrack_sent_to_video", { destination: "generate" });
+                navigate(`/generate?audioObjectPath=${encodeURIComponent(ready.objectPath)}&title=${encodeURIComponent(ready.title)}`);
+              }}
+            >
+              <Video className="h-4 w-4 mr-2" aria-hidden="true" /> Make a video with this track
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                trackEvent("soundtrack_sent_to_video", { destination: "montage" });
+                navigate(`/editor?audio=${encodeURIComponent(ready.url)}&title=${encodeURIComponent(ready.title)}`);
+              }}
+            >
+              <Scissors className="h-4 w-4 mr-2" aria-hidden="true" /> Remix in editor
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {ready.saved ? "Saved to My Music below." : "This track couldn't be saved to My Music, so use or download it now."}
+          </p>
+        </div>
+      )}
 
       {/* Library */}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
