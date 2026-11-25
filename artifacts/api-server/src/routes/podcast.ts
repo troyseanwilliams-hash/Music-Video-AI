@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { hasPurchasedTopupCredits } from "../lib/paidCreditEntitlement.js";
 import { randomUUID } from "crypto";
 import ffmpeg from "fluent-ffmpeg";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
@@ -46,8 +47,9 @@ function publicPodcast(job: typeof podcastJobsTable.$inferSelect, status: string
 router.post("/podcast/jobs", async (req, res) => {
   if (!req.isAuthenticated()) return void res.status(401).json({ error: "Unauthorized" });
   const [user] = await db.select({ subscriptionStatus: usersTable.subscriptionStatus }).from(usersTable).where(eq(usersTable.id, req.user.id)).limit(1);
-  if (!isAdmin(req.user.email) && !["active", "trialing"].includes(user?.subscriptionStatus ?? "")) {
-    return void res.status(403).json({ error: "An active AIBeatSync subscription is required for Podcast Media." });
+  if (!isAdmin(req.user.email) && !["active", "trialing"].includes(user?.subscriptionStatus ?? "")
+    && !(await hasPurchasedTopupCredits(db, req.user.id))) {
+    return void res.status(403).json({ error: "An active AIBeatSync plan or purchased credit pack is required for Podcast Media." });
   }
   const [active] = await db.select({ id: jobsTable.id }).from(jobsTable).where(and(
     eq(jobsTable.userId, req.user.id), eq(jobsTable.jobType, "podcast"),

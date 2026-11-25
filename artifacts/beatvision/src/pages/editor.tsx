@@ -686,7 +686,12 @@ export default function Editor() {
   const trialDaysLeft = user?.trialEndsAt
     ? Math.max(0, Math.ceil((new Date(user.trialEndsAt).getTime() - Date.now()) / 86400000))
     : 0;
-  const fullAccess = !!user && (user.isAdmin || user.subscriptionStatus === "active" || trialActive);
+  // Purchased credit packs unlock the full site while purchased credits remain,
+  // priced like the trial (clean exports included, lyric add-ons use credits).
+  const packAccess = !!user && !user.isAdmin && user.subscriptionStatus !== "active" && !trialActive
+    && statsData?.hasPurchasedCredits === true;
+  const creditPricedAccess = trialActive || packAccess;
+  const fullAccess = !!user && (user.isAdmin || user.subscriptionStatus === "active" || trialActive || packAccess);
 
   // Free-Remix quota (only relevant for non-subscribers after trial).
   const [quota, setQuota] = useState<{
@@ -701,12 +706,12 @@ export default function Editor() {
   } | null>(null);
   useEffect(() => {
     // Trial users need the quota to price karaoke lyric burns before export.
-    if (!isAuthenticated || (fullAccess && !trialActive) || user?.subscriptionStatus === "active" || user?.isAdmin) return;
+    if (!isAuthenticated || (fullAccess && !creditPricedAccess) || user?.subscriptionStatus === "active" || user?.isAdmin) return;
     fetch("/api/studio/quota", { credentials: "include" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => d && setQuota(d))
       .catch(() => {});
-  }, [isAuthenticated, fullAccess, trialActive, user?.subscriptionStatus, user?.isAdmin]);
+  }, [isAuthenticated, fullAccess, creditPricedAccess, user?.subscriptionStatus, user?.isAdmin]);
 
   // Logged-out visitors get a teaser (below) instead of a redirect, so they can
   // see what Creator Studio does and sign up.
@@ -1035,17 +1040,17 @@ export default function Editor() {
   // Mirror the server's quota so the
   // shown estimate matches what's actually charged.
   const trialLyricCost =
-    karaokeEnabled && trialActive && quota?.trial && lyricsText.trim()
+    karaokeEnabled && creditPricedAccess && quota?.trial && lyricsText.trim()
       ? quota.trial.lyricOverageCost
       : 0;
-  const estimatedCost = trialActive
+  const estimatedCost = creditPricedAccess
     ? trialLyricCost
     : quota && quota.remaining <= 0
       ? quota.overageCost
       : 0;
   const exportCostKnown = isMontageExportCostKnown({
     fullAccess,
-    trialActive,
+    trialActive: creditPricedAccess,
     karaokeHasLyrics: karaokeEnabled && !!lyricsText.trim(),
     quotaLoaded: quota !== null,
   });
@@ -1965,10 +1970,12 @@ export default function Editor() {
           costSummary={
             !exportCostKnown
               ? "Export estimate unavailable. Export is disabled until your current allowance can be confirmed."
-              : trialActive
+              : creditPricedAccess
               ? estimatedCost > 0
                 ? `Estimated cost: ${estimatedCost} credits for the lyric add-on.`
-                : "Clean export included during your active trial. Karaoke lyric burns and Auto-sync use credits."
+                : trialActive
+                  ? "Clean export included during your active trial. Karaoke lyric burns and Auto-sync use credits."
+                  : "Clean export included with your purchased credits. Karaoke lyric burns and Auto-sync use credits."
               : quota && quota.remaining > 0
                 ? `Free export; ${quota.remaining} of ${quota.free} monthly exports remain.`
                 : quota
@@ -2632,7 +2639,7 @@ export default function Editor() {
             </div>
             {karaokeEnabled ? (
               <>
-            {trialActive && (
+            {creditPricedAccess && (
               <p className="mb-2 text-xs text-muted-foreground" data-testid="text-trial-lyric-allowance">
                 Karaoke lyric exports cost {LYRIC_OVERLAY_COST} credits each.
                 Auto-sync costs {LYRIC_ALIGN_COST} credits per run. Paid subscribers retain their plan benefits.
@@ -2869,13 +2876,13 @@ export default function Editor() {
             Export estimate unavailable — refresh to confirm your allowance before exporting.
           </span>
         )}
-        {!uploadsPending && segments.length > 0 && (trialActive || !fullAccess) && (
+        {!uploadsPending && segments.length > 0 && (creditPricedAccess || !fullAccess) && (
           <span className="text-muted-foreground text-sm tabular-nums">
-            {trialActive ? (
+            {creditPricedAccess ? (
               estimatedCost > 0 ? (
                 <>Est. cost: {estimatedCost} credits (lyric add-on)</>
               ) : (
-                <span className="text-primary">Free during trial</span>
+                <span className="text-primary">{trialActive ? "Free during trial" : "Free with your credit pack"}</span>
               )
             ) : quota && quota.remaining > 0 ? (
               <span className="text-primary">Free · {quota.remaining} of {quota.free} left this month</span>

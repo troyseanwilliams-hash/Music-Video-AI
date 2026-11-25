@@ -676,7 +676,7 @@ export default function Pricing() {
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">One-time</p>
             <h2 id="packs-heading" className="mt-1 text-2xl font-bold mb-2">Credit packs</h2>
             <p className="text-muted-foreground">
-              Pay once, no subscription. Pack credits never expire and stack with any plan.
+              Pay once, no subscription. A pack unlocks the full site while you have pack credits; they never expire and stack with any plan.
             </p>
             <div className="mx-auto mt-4 flex max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-medium sm:inline-flex sm:rounded-full">
               <span className="text-primary font-semibold">15% off your first pack</span>
@@ -826,7 +826,7 @@ export default function Pricing() {
               body: [
                 "Subscriptions renew automatically each month or year. Plan credits refresh with your billing cycle.",
                 "Yearly plans are billed once per year for the full annual credit amount shown.",
-                "Credit packs are one-time purchases. Top-up credits never expire.",
+                "Credit packs are one-time purchases. Top-up credits never expire, and holding purchased pack credits unlocks the full site without a subscription. Plan-only extras such as included instrumentals and plan resolution limits still require a plan.",
                 "Cancel or change plans anytime from Manage Billing.",
               ],
             },

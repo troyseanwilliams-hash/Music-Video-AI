@@ -13,6 +13,7 @@ import { eq, and, gte, ne, count, sql, inArray, isNull, desc } from "drizzle-orm
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import { FREE_EDITOR_EXPORTS_PER_MONTH, EDITOR_OVERAGE_COST, TRIAL_LYRIC_EXPORTS } from "../lib/editorCost.js";
+import { hasPurchasedTopupCredits } from "../lib/paidCreditEntitlement.js";
 import { LYRIC_OVERLAY_COST, LYRIC_ALIGN_COST, TRIAL_FREE_ALIGNS } from "../lib/creditCost.js";
 import { MAX_LYRICS_LENGTH } from "../lib/lyricLimits.js";
 import { ObjectNotFoundError, ObjectStorageService } from "../lib/objectStorage.js";
@@ -337,9 +338,11 @@ router.get("/studio/quota", async (req, res) => {
     .where(eq(usersTable.id, req.user.id))
     .limit(1);
   const quotaTrialActive =
-    !!quotaUser?.trialEndsAt &&
-    new Date(quotaUser.trialEndsAt).getTime() > Date.now() &&
-    quotaUser?.subscriptionStatus === "trial";
+    (!!quotaUser?.trialEndsAt &&
+      new Date(quotaUser.trialEndsAt).getTime() > Date.now() &&
+      quotaUser?.subscriptionStatus === "trial")
+    // Credit-pack buyers are priced like the trial (lyric burns use credits).
+    || (quotaUser?.subscriptionStatus !== "active" && await hasPurchasedTopupCredits(db, req.user.id));
   let lyricUsed = 0;
   if (quotaTrialActive) {
     const [{ used: lu }] = await db
@@ -431,8 +434,12 @@ router.post("/studio/render", async (req, res) => {
   const trialActive =
     userRecord?.subscriptionStatus === "trial" &&
     !!userRecord.trialEndsAt && new Date(userRecord.trialEndsAt).getTime() > Date.now();
-  // Full, free Editor access during the 7-day trial, with a subscription, or for admins.
-  const fullAccess = isAdmin || isSubscribed || trialActive;
+  // Purchased credit packs unlock the full site while purchased credits remain,
+  // priced like the trial: clean exports included, lyric burns use credits.
+  const packAccess = !isAdmin && !isSubscribed && !trialActive
+    && await hasPurchasedTopupCredits(db, req.user.id);
+  // Full Editor access during the 7-day trial, with a subscription or credit pack, or for admins.
+  const fullAccess = isAdmin || isSubscribed || trialActive || packAccess;
 
   // Remix Lab exports stay CLEAN (no watermark) — it's a headline advantage over
   // CapCut, whose free tier stamps one on. The viral "Made with AIBeatSync"
@@ -472,7 +479,7 @@ router.post("/studio/render", async (req, res) => {
     };
 
     // Trial lyric burns consume the same credits as any other paid generation.
-    if (lyricsRequested && trialActive && !isAdmin && !isSubscribed) {
+    if (lyricsRequested && (trialActive || packAccess) && !isAdmin && !isSubscribed) {
         chargeCredits = true;
         chargeAmount = LYRIC_OVERLAY_COST;
         const userCredits = await loadCredits();
@@ -570,7 +577,7 @@ router.post("/studio/render", async (req, res) => {
   const jobId = job.id;
 
   req.log.info(
-    { userId: req.user.id, jobId, totalDuration, creditCost, fullAccess, trialActive },
+    { userId: req.user.id, jobId, totalDuration, creditCost, fullAccess, trialActive, packAccess },
     "Editor render queued",
   );
 

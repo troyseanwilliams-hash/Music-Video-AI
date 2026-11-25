@@ -231,13 +231,15 @@ export default function Dashboard() {
   const subStatus = user?.subscriptionStatus ?? "none";
   const trialDaysLeft = daysUntil(user?.trialEndsAt);
   const trialExpired = subStatus === "trial" && trialDaysLeft === 0;
+  // Purchased credit packs keep full access after the trial ends.
+  const packAccess = stats?.hasPurchasedCredits === true;
   const daily = getDailyContent();
   const DailyIcon = DAILY_ICONS[daily.type];
 
   return (
     <div className="container mx-auto px-4 py-12 max-w-6xl">
       <StorageRetentionNotice />
-      {subStatus === "trial" && !isAdmin && (
+      {subStatus === "trial" && !isAdmin && !(trialExpired && packAccess) && (
         <div className={`mb-6 flex flex-col items-stretch gap-3 rounded-lg border px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-4 ${
           trialExpired
             ? "border-destructive/40 bg-destructive/5 text-destructive"
@@ -247,7 +249,7 @@ export default function Dashboard() {
             <Clock className={`h-4 w-4 shrink-0 ${trialExpired ? "text-destructive" : "text-primary"}`} />
             <span>
               {trialExpired
-                ? "Your Creator Studio trial has ended. Non-paid accounts can still make 10 clean Creator Studio exports per calendar month, then 15 credits each. AI generation uses credits, and purchased credit packs never expire."
+                ? "Your Creator Studio trial has ended. Non-paid accounts can still make 10 clean Creator Studio exports per calendar month, then 15 credits each. Buy a credit pack to unlock the full site while those credits last; purchased credits never expire."
                 : <>Creator Studio access — <strong>{trialDaysLeft} day{trialDaysLeft !== 1 ? "s" : ""}</strong> remaining within trial limits. Generation uses credits.</>}
             </span>
           </div>

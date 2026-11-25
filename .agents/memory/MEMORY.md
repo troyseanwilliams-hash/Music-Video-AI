@@ -77,3 +77,4 @@
 - [Montage commentary workflow](montage-commentary-workflow.md) — optional commentary layers preserve source watermarks and absolute timing; missing main media must not shift overlays.
 - [Optional two-factor authentication](optional-two-factor.md) — MFA is opt-in for everyone, including admins; encryption-root changes require deliberate seed migration.
 - [Trust proxy chain](trust-proxy-chain.md) — trust private hops only; hop count 1 collapses all visitors onto a proxy IP and blocks signups under the per-IP cap.
+- [Credit-pack full access](credit-pack-full-access.md) — purchased pack credits unlock every feature gate like a trial; plan-only allowances stay plan perks.

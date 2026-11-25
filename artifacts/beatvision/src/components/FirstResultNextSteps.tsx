@@ -20,7 +20,7 @@ export function FirstResultNextSteps() {
     query: { queryKey: getGetDashboardStatsQueryKey(), staleTime: 0, refetchOnMount: "always" },
   });
   const balance = isLoading ? null : stats?.creditsRemaining ?? null;
-  const steps = affordableNextSteps(balance, isAiEligible(user));
+  const steps = affordableNextSteps(balance, isAiEligible(user) || stats?.hasPurchasedCredits === true);
   const expiry = formatExpiry(stats?.welcomeExpiresAt ?? null);
 
   return (
