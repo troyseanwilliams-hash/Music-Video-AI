@@ -19,7 +19,7 @@ import {
   type NarrationMusicSource,
 } from "../lib/narration.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
-import { canCreateCreditFundedMedia } from "../lib/generationEligibility.js";
+import { canCreateCreditFundedMediaWithPurchases } from "../lib/paidCreditEntitlement.js";
 
 const router = Router();
 const storage = new ObjectStorageService();
@@ -223,9 +223,9 @@ router.post("/narrations", async (req, res) => {
   }
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.user.id)).limit(1);
   const isAdmin = admin(user?.email);
-  if (!isAdmin && !canCreateCreditFundedMedia(user)) {
+  if (!isAdmin && !(await canCreateCreditFundedMediaWithPurchases(db, user))) {
     return void res.status(403).json({
-      error: "An active membership or trial is required for AI narration.",
+      error: "An active plan, trial, or purchased credit pack is required for AI narration.",
       code: "SUBSCRIPTION_REQUIRED",
     });
   }

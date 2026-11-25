@@ -6,6 +6,9 @@ import { db, analyticsEventsTable, usersTable, creditsTable, creditGrantsTable, 
 import { allowAuthAttempt, authOriginGuard, verifySecondFactor } from "../lib/twoFactor.js";
 import { newEmailCode, sendEmailConfirmation } from "../lib/emailConfirmation.js";
 import { eq, sql } from "drizzle-orm";
+import { isDisposableEmail } from "../lib/emailPolicy.js";
+import { hasDeletedEmail, recordDeletedEmail } from "../lib/deletedEmails.js";
+import { maxAccountsPerIp as getMaxAccountsPerIp, signupIpWindowDays, signupIpWindowStart } from "../lib/signupLimits.js";
 
 function isAdminEmail(email: string | null | undefined): boolean {
   return !!(process.env.ADMIN_EMAIL && email && email.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase());
@@ -28,7 +31,7 @@ import { notifyNewUser } from "../lib/notifications.js";
 import { emailShell, ctaButton } from "../lib/emailTemplates.js";
 import { z } from "zod";
 import { Resend } from "resend";
-import { and, gt } from "drizzle-orm";
+import { and, gt, gte } from "drizzle-orm";
 import {
   buildSignupCompletedEvent,
   buildSignupFailureEvent,
@@ -100,6 +103,15 @@ router.post("/auth/register", async (req: Request, res: Response) => {
   const { email, password, name, referralCode } = parsed.data;
   const normalizedEmail = email.toLowerCase().trim();
 
+  if (isDisposableEmail(normalizedEmail)) {
+    await recordSignupFailure(req, "validation", anonId);
+    res.status(400).json({
+      error: "Please use a permanent email address. Temporary inboxes can't receive your confirmation code reliably.",
+      code: "DISPOSABLE_EMAIL",
+    });
+    return;
+  }
+
   const existing = await db
     .select({ id: usersTable.id })
     .from(usersTable)
@@ -112,15 +124,20 @@ router.post("/auth/register", async (req: Request, res: Response) => {
     return;
   }
 
-  // Anti-abuse: cap new accounts per client IP. req.ip is the real client
-  // (trust proxy is enabled). Tune/disable with MAX_ACCOUNTS_PER_IP (0 = off).
+  // Anti-abuse: cap new accounts per client IP within a rolling window, so a
+  // shared network is not locked out forever. req.ip is the real client (trust
+  // proxy is enabled). Tune with MAX_ACCOUNTS_PER_IP (0 = off) and
+  // SIGNUP_IP_WINDOW_DAYS.
   const signupIp = (req.ip || "").toString().trim();
-  const maxAccountsPerIp = parseInt(process.env.MAX_ACCOUNTS_PER_IP ?? "3", 10);
+  const maxAccountsPerIp = getMaxAccountsPerIp();
   if (signupIp && maxAccountsPerIp > 0) {
     const priorFromIp = await db
       .select({ id: usersTable.id })
       .from(usersTable)
-      .where(eq(usersTable.signupIp, signupIp))
+      .where(and(
+        eq(usersTable.signupIp, signupIp),
+        gte(usersTable.createdAt, signupIpWindowStart(Date.now(), signupIpWindowDays())),
+      ))
       .limit(maxAccountsPerIp);
     if (priorFromIp.length >= maxAccountsPerIp) {
       req.log.warn({ signupIp, email: normalizedEmail }, "Registration blocked: too many accounts from this IP");
@@ -133,6 +150,18 @@ router.post("/auth/register", async (req: Request, res: Response) => {
       return;
     }
   }
+
+  // A returning address (its account was closed) does not get the one-time
+  // welcome credits again; everything else about signup is unchanged.
+  // Fails open: if the ledger is unreachable (e.g. the table has not been
+  // pushed yet) signup must keep working, so we log and grant as before.
+  let returningAddress = false;
+  try {
+    returningAddress = await hasDeletedEmail(db, normalizedEmail);
+  } catch (err) {
+    req.log.error({ err }, "Deleted-email ledger lookup failed; granting welcome credits");
+  }
+  const welcomeAmount = returningAddress ? 0 : WELCOME_CREDITS;
 
   const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
   const nameParts = name.trim().split(/\s+/);
@@ -175,15 +204,17 @@ router.post("/auth/register", async (req: Request, res: Response) => {
       await tx.insert(creditsTable).values({
         id: crypto.randomUUID(),
         userId: createdUser.id,
-        creditsRemaining: WELCOME_CREDITS,
-        welcomeCredits: WELCOME_CREDITS,
+        creditsRemaining: welcomeAmount,
+        welcomeCredits: welcomeAmount,
       });
-      await tx.insert(creditGrantsTable).values({
-        id: crypto.randomUUID(),
-        userId: createdUser.id,
-        source: "trial",
-        creditsGranted: WELCOME_CREDITS,
-      });
+      if (welcomeAmount > 0) {
+        await tx.insert(creditGrantsTable).values({
+          id: crypto.randomUUID(),
+          userId: createdUser.id,
+          source: "trial",
+          creditsGranted: welcomeAmount,
+        });
+      }
 
       // The event id is derived from this opaque new user id. The primary key
       // plus onConflictDoNothing makes retries idempotent and this insert is
@@ -454,6 +485,17 @@ router.delete("/auth/account", async (req: Request, res: Response) => {
   if (!validPassword) {
     res.status(401).json({ error: "Incorrect password" });
     return;
+  }
+
+  // Remember the address BEFORE it is scrubbed, so re-registering it cannot
+  // claim the welcome credits a second time. Fails open: a ledger problem must
+  // never stop a user from closing their account (it is logged for follow-up).
+  if (user.email) {
+    try {
+      await recordDeletedEmail(db, user.email);
+    } catch (err) {
+      req.log.error({ err, userId: user.id }, "Could not record deleted email in ledger");
+    }
   }
 
   await db

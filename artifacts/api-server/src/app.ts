@@ -3,6 +3,8 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import { pinoHttp } from "pino-http";
 import router from "./routes/index.js";
+import { csrfOriginGuard, isAllowedOrigin } from "./lib/originPolicy.js";
+import { parseTrustProxy } from "./lib/trustProxy.js";
 import { logger } from "./lib/logger.js";
 import { authMiddleware } from "./middlewares/authMiddleware.js";
 import {
@@ -12,9 +14,10 @@ import {
 
 const app: Express = express();
 
-// Behind Replit's load balancer, so trust the proxy chain to derive the real
-// client IP from X-Forwarded-For (used for signup abuse limits + logging).
-app.set("trust proxy", true);
+// Behind Replit's proxy chain. Trust only private-network hops (override with
+// TRUST_PROXY_HOPS) rather than `true`, which would accept a client-forged leftmost
+// X-Forwarded-For value and defeat the per-IP signup/login limits.
+app.set("trust proxy", parseTrustProxy(process.env.TRUST_PROXY_HOPS));
 
 app.use(
   pinoHttp({
@@ -36,7 +39,16 @@ app.use(
   }),
 );
 
-app.use(cors({ credentials: true, origin: true }));
+// Credentialed CORS only for our own origins (never reflect arbitrary origins
+// while cookies are accepted). Requests with no Origin header are unaffected.
+app.use(
+  cors((req, callback) => {
+    callback(null, {
+      credentials: true,
+      origin: isAllowedOrigin(req.headers.origin, req.headers.host),
+    });
+  }),
+);
 
 // Stripe webhook MUST be registered BEFORE express.json() so it gets the raw Buffer.
 app.post(
@@ -91,6 +103,9 @@ app.post(
   },
 );
 
+// CSRF defence: reject state-changing requests sent from untrusted origins.
+// Stripe webhooks (above) carry no Origin and are signature-verified instead.
+app.use(csrfOriginGuard);
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

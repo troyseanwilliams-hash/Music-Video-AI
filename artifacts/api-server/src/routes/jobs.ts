@@ -31,7 +31,7 @@ import {
   MAX_FULL_SECONDS,
 } from "../lib/creditCost.js";
 import { getUserTier, canRender4k } from "../lib/tier.js";
-import { canCreateCreditFundedMedia } from "../lib/generationEligibility.js";
+import { canCreateCreditFundedMediaWithPurchases } from "../lib/paidCreditEntitlement.js";
 import {
   applyApprovedScenePrompts,
   hasStrictUniqueSourcePlan,
@@ -701,9 +701,9 @@ router.post("/jobs", async (req, res) => {
   req.log.info({ userId: req.user.id, ip: req.ip }, "Copyright attestation recorded");
 
   if (!isAdmin) {
-    if (!canCreateCreditFundedMedia(userRecord)) {
+    if (!(await canCreateCreditFundedMediaWithPurchases(db, userRecord))) {
       res.status(403).json({
-        error: "A subscription is required to create videos.",
+        error: "An active plan, trial, or purchased credit pack is required to create videos.",
         code: "SUBSCRIPTION_REQUIRED",
       });
       return;
@@ -2063,9 +2063,9 @@ router.post("/jobs/:id/remix", async (req, res) => {
     userRecord?.email?.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase()
   );
 
-  if (!isAdmin && !canCreateCreditFundedMedia(userRecord)) {
+  if (!isAdmin && !(await canCreateCreditFundedMediaWithPurchases(db, userRecord))) {
     res.status(403).json({
-      error: "A subscription is required to remix videos.",
+      error: "An active plan, trial, or purchased credit pack is required to remix videos.",
       code: "SUBSCRIPTION_REQUIRED",
     });
     return;

@@ -3243,6 +3243,7 @@ export const GetDashboardStatsResponse = zod.object({
   "welcomeExpiresAt": zod.coerce.date().nullish().describe('Authoritative welcome-credit expiry, the earlier of signup plus seven days and the original trial end. Does not apply to legacy non-expiring credits.'),
   "subscriptionCredits": zod.number(),
   "topupCredits": zod.number(),
+  "hasPurchasedCredits": zod.boolean().optional().describe('True when the user holds top-up credits backed by a real credit-pack purchase, which keeps generation available without a subscription or trial.'),
   "recentJobs": zod.array(zod.object({
   "id": zod.string(),
   "userId": zod.string(),

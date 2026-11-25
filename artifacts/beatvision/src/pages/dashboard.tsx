@@ -247,7 +247,7 @@ export default function Dashboard() {
             <Clock className={`h-4 w-4 shrink-0 ${trialExpired ? "text-destructive" : "text-primary"}`} />
             <span>
               {trialExpired
-                ? "Your Creator Studio trial has ended. Non-paid accounts can still make 10 clean Creator Studio exports per calendar month, then 15 credits each. AI generation requires credits and plan eligibility."
+                ? "Your Creator Studio trial has ended. Non-paid accounts can still make 10 clean Creator Studio exports per calendar month, then 15 credits each. AI generation uses credits, and purchased credit packs never expire."
                 : <>Creator Studio access — <strong>{trialDaysLeft} day{trialDaysLeft !== 1 ? "s" : ""}</strong> remaining within trial limits. Generation uses credits.</>}
             </span>
           </div>

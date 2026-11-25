@@ -12,6 +12,14 @@ export const sessionsTable = pgTable(
   (table) => [index("IDX_session_expire").on(table.expire)],
 );
 
+// Keyed hashes of email addresses whose accounts were closed by the user. Lets
+// registration recognise a returning address and withhold the one-time welcome
+// credits, without keeping the address itself (the users row is scrubbed).
+export const deletedEmailHashesTable = pgTable("deleted_email_hashes", {
+  emailHash: varchar("email_hash").primaryKey(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const usersTable = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   email: varchar("email").unique(),

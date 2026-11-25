@@ -30,7 +30,7 @@ import {
   UpdateImageAssetVisibilityResponse,
 } from "@workspace/api-zod";
 import { getUserTier } from "../lib/tier.js";
-import { canCreateCreditFundedMedia } from "../lib/generationEligibility.js";
+import { canCreateCreditFundedMediaWithPurchases } from "../lib/paidCreditEntitlement.js";
 import { GENERATED_IMAGE_CREDITS_PER_VISUAL } from "../lib/creditCost.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import {
@@ -383,9 +383,9 @@ router.post("/image-packs", async (req, res) => {
   const isAdmin =
     !!process.env.ADMIN_EMAIL
     && user.email?.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase();
-  if (!isAdmin && !canCreateCreditFundedMedia(user)) {
+  if (!isAdmin && !(await canCreateCreditFundedMediaWithPurchases(db, user))) {
     res.status(403).json({
-      error: "A subscription is required to generate an image pack.",
+      error: "An active plan, trial, or purchased credit pack is required to generate an image pack.",
       code: "SUBSCRIPTION_REQUIRED",
     });
     return;

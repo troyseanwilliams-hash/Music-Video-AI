@@ -1031,7 +1031,11 @@ export default function Generate() {
   const trialActive = subStatus === "trial" && !!user?.trialEndsAt && new Date(user.trialEndsAt).getTime() > Date.now();
   // A trial account with credits can generate; credit and plan checks still happen
   // at the individual generation endpoints.
-  const canCreate = isAdmin || subStatus === "active" || trialActive;
+  // Purchased credit packs never expire and must work without a subscription.
+  // Referral/admin credits alone do not qualify; the server reports whether
+  // the top-up balance is backed by a real pack purchase and re-checks on submit.
+  const hasPurchasedCredits = statsData?.hasPurchasedCredits === true;
+  const canCreate = isAdmin || subStatus === "active" || trialActive || hasPurchasedCredits;
 
   if (!canCreate) {
     return (

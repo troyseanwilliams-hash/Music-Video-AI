@@ -22,5 +22,7 @@ export interface DashboardStats {
   welcomeExpiresAt?: Date | null;
   subscriptionCredits: number;
   topupCredits: number;
+  /** True when the user holds top-up credits backed by a real credit-pack purchase, which keeps generation available without a subscription or trial. */
+  hasPurchasedCredits?: boolean;
   recentJobs?: Job[];
 }

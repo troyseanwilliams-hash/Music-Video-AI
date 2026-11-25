@@ -5,6 +5,7 @@ import { eq, count, and, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { touchPresence } from "../lib/presence.js";
 import { welcomeCreditExpiry } from "../lib/welcomeOffer.js";
+import { hasPurchasedTopupCredits } from "../lib/paidCreditEntitlement.js";
 
 const router = Router();
 
@@ -92,6 +93,8 @@ router.get("/dashboard/stats", async (req, res) => {
     }
   }
 
+  const hasPurchasedCredits = topupCredits > 0 && (await hasPurchasedTopupCredits(db, userId));
+
   const completedJobs = allJobs.filter((j) => j.status === "ready").length;
   const processingJobs = allJobs.filter(
     (j) =>
@@ -113,6 +116,7 @@ router.get("/dashboard/stats", async (req, res) => {
     welcomeCredits,
     welcomeExpiresAt: owners[0] ? welcomeCreditExpiry(owners[0]) : null,
     topupCredits,
+    hasPurchasedCredits,
     recentJobs,
     activeJobs,
     activePreviewJobs,

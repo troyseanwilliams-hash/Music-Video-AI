@@ -4,7 +4,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { creditsTable, db, imageAssetsTable, jobsTable, usersTable, lockActiveCredits, splitCreditDebit, debitCreditColumns } from "@workspace/db";
 import { calculateCreditCost } from "../lib/creditCost.js";
-import { canCreateCreditFundedMedia } from "../lib/generationEligibility.js";
+import { canCreateCreditFundedMediaWithPurchases } from "../lib/paidCreditEntitlement.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { assessGeneratedMediaPrompt } from "../lib/promptSafety.js";
 import { perceptualFingerprint } from "../lib/mediaUniqueness.js";
@@ -313,7 +313,7 @@ router.post("/photo-animations", async (req, res): Promise<void> => {
         .where(eq(usersTable.id, req.user.id)).limit(1).for("update");
       if (!user) return { kind: "unauthorized" as const };
       const admin = Boolean(process.env.ADMIN_EMAIL && user.email?.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase());
-      if (!admin && !canCreateCreditFundedMedia(user)) return { kind: "subscription" as const };
+      if (!admin && !(await canCreateCreditFundedMediaWithPurchases(tx, user))) return { kind: "subscription" as const };
 
       const duplicate = await tx.execute<{ id: string; status: string; requestHash: string }>(sql`
         SELECT id, status, manifest->'photoAnimation'->>'requestHash' AS "requestHash"
@@ -403,7 +403,7 @@ router.post("/photo-animations", async (req, res): Promise<void> => {
     });
 
     if (result.kind === "unauthorized") res.status(401).json({ error: "Account not found." });
-    else if (result.kind === "subscription") res.status(403).json({ error: "A subscription is required to create videos.", code: "SUBSCRIPTION_REQUIRED" });
+    else if (result.kind === "subscription") res.status(403).json({ error: "An active plan, trial, or purchased credit pack is required to create videos.", code: "SUBSCRIPTION_REQUIRED" });
     else if (result.kind === "mismatch") res.status(409).json({ error: "This idempotency key was used for a different request.", code: "IDEMPOTENCY_MISMATCH" });
     else if (result.kind === "source") res.status(409).json({ error: "The selected image was deleted before submission.", code: "SOURCE_CHANGED" });
     else if (result.kind === "credits") res.status(402).json({ error: "Insufficient credits.", code: "INSUFFICIENT_CREDITS", creditsRequired: plan.videoCredits, creditsRemaining: result.remaining });

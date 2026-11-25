@@ -316,4 +316,31 @@ describe("registration signup measurement", () => {
       }),
     );
   });
+  it("withholds welcome credits when the email belongs to a previously closed account", async () => {
+    let selects = 0;
+    mocks.db.select.mockImplementation(() => {
+      selects += 1;
+      const builder = {
+        from: () => builder,
+        where: () => builder,
+        // 1: existing user, 2: per-IP count, 3: deleted-email ledger
+        limit: vi.fn(async () => (selects === 3 ? [{ emailHash: "seen" }] : [])),
+      };
+      return builder;
+    });
+
+    const res = response();
+    await registrationHandler()(
+      request({ name: "New User", email: "new@example.test", password: "password123" }),
+      res,
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(mocks.tx.insert.mock.results[1]?.value.values).toHaveBeenCalledWith(expect.objectContaining({
+      userId: user.id,
+      creditsRemaining: 0,
+      welcomeCredits: 0,
+    }));
+    expect(mocks.tx.insert).not.toHaveBeenCalledWith(creditGrantsTable);
+  });
 });
